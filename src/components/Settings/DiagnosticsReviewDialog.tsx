@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { Button } from "@/components/ui/button";
@@ -57,37 +57,34 @@ export function DiagnosticsReviewDialog({
     return json;
   }, [reviewPayload, enabledSections, replacements]);
 
-  const toggleSection = useCallback((key: string) => {
+  const toggleSection = (key: string) => {
     setEnabledSections((prev) => ({ ...prev, [key]: !prev[key] }));
-  }, []);
+  };
 
-  const addReplacement = useCallback(() => {
+  const addReplacement = () => {
     setReplacements((prev) => [...prev, { find: "", replace: "[REDACTED]" }]);
-  }, []);
+  };
 
-  const updateReplacement = useCallback(
-    (index: number, field: "find" | "replace", value: string) => {
-      setReplacements((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
-    },
-    []
-  );
+  const updateReplacement = (index: number, field: "find" | "replace", value: string) => {
+    setReplacements((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+  };
 
-  const removeReplacement = useCallback((index: number) => {
+  const removeReplacement = (index: number) => {
     setReplacements((prev) => prev.filter((_, i) => i !== index));
-  }, []);
+  };
 
-  const handleSave = useCallback(() => {
+  const handleSave = () => {
     onSave(
       enabledSections,
       replacements.filter((r) => r.find)
     );
-  }, [enabledSections, replacements, onSave]);
+  };
 
   const allEnabled = reviewPayload
     ? reviewPayload.sectionKeys.every((k) => enabledSections[k])
     : false;
 
-  const toggleAll = useCallback(() => {
+  const toggleAll = () => {
     if (!reviewPayload) return;
     const newState = !allEnabled;
     const updated: Record<string, boolean> = {};
@@ -95,7 +92,7 @@ export function DiagnosticsReviewDialog({
       updated[key] = newState;
     }
     setEnabledSections(updated);
-  }, [reviewPayload, allEnabled]);
+  };
 
   if (!reviewPayload) return null;
 

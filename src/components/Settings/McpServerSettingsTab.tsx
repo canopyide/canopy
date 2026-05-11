@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Copy,
   Check,
@@ -72,14 +72,14 @@ export function McpServerSettingsTab() {
 
   useSettingsTabValidation("mcp", Boolean(error));
 
-  const refreshAuditRecords = useCallback(async (): Promise<void> => {
+  const refreshAuditRecords = async (): Promise<void> => {
     try {
       const records = await window.electron.mcpServer.getAuditRecords();
       setAuditRecords(records);
     } catch (err) {
       logError("Failed to load MCP audit log", err);
     }
-  }, []);
+  };
 
   useEffect(() => {
     let settled = false;
@@ -143,7 +143,7 @@ export function McpServerSettingsTab() {
     };
   }, []);
 
-  const handleToggle = useCallback(async () => {
+  const handleToggle = async () => {
     try {
       setError(null);
       const newStatus = await window.electron.mcpServer.setEnabled(!status.enabled);
@@ -152,9 +152,9 @@ export function McpServerSettingsTab() {
       setError(formatErrorMessage(err, "Failed to update MCP server"));
       logError("Failed to update MCP server", err);
     }
-  }, [status.enabled]);
+  };
 
-  const handleCopyConfig = useCallback(async () => {
+  const handleCopyConfig = async () => {
     try {
       const snippet = await window.electron.mcpServer.getConfigSnippet();
       await navigator.clipboard.writeText(snippet);
@@ -170,9 +170,9 @@ export function McpServerSettingsTab() {
       setError(formatErrorMessage(err, "Failed to copy config"));
       logError("Failed to copy MCP config", err);
     }
-  }, []);
+  };
 
-  const handlePortSave = useCallback(async () => {
+  const handlePortSave = async () => {
     try {
       setError(null);
       const portValue = portInput.trim();
@@ -189,9 +189,9 @@ export function McpServerSettingsTab() {
       setError(formatErrorMessage(err, "Failed to update port"));
       logError("Failed to update MCP port", err);
     }
-  }, [portInput]);
+  };
 
-  const confirmRotateApiKey = useCallback(async () => {
+  const confirmRotateApiKey = async () => {
     if (isRotating) return;
     setIsRotating(true);
     try {
@@ -207,15 +207,15 @@ export function McpServerSettingsTab() {
     } finally {
       setIsRotating(false);
     }
-  }, [isRotating]);
+  };
 
-  const handleCancelRotate = useCallback(() => {
+  const handleCancelRotate = () => {
     if (isRotating) return;
     setShowRotateConfirm(false);
     setShowApiKey(false);
-  }, [isRotating]);
+  };
 
-  const handleCopyApiKey = useCallback(async () => {
+  const handleCopyApiKey = async () => {
     try {
       await navigator.clipboard.writeText(status.apiKey);
       setCopiedKey(true);
@@ -230,9 +230,9 @@ export function McpServerSettingsTab() {
       setError(formatErrorMessage(err, "Failed to copy API key"));
       logError("Failed to copy MCP API key", err);
     }
-  }, [status.apiKey]);
+  };
 
-  const handleAuditEnabledToggle = useCallback(async () => {
+  const handleAuditEnabledToggle = async () => {
     try {
       setError(null);
       const next = !auditEnabled;
@@ -244,9 +244,9 @@ export function McpServerSettingsTab() {
       setError(formatErrorMessage(err, "Failed to update audit logging"));
       logError("Failed to toggle MCP audit log", err);
     }
-  }, [auditEnabled]);
+  };
 
-  const handleMaxRecordsSave = useCallback(async () => {
+  const handleMaxRecordsSave = async () => {
     const trimmed = maxRecordsInput.trim();
     const parsed = Number.parseInt(trimmed, 10);
     if (
@@ -268,9 +268,9 @@ export function McpServerSettingsTab() {
       setError(formatErrorMessage(err, "Failed to update audit cap"));
       logError("Failed to update audit cap", err);
     }
-  }, [maxRecordsInput, refreshAuditRecords]);
+  };
 
-  const confirmClearAuditLog = useCallback(async () => {
+  const confirmClearAuditLog = async () => {
     if (isClearing) return;
     setIsClearing(true);
     try {
@@ -284,14 +284,14 @@ export function McpServerSettingsTab() {
     } finally {
       setIsClearing(false);
     }
-  }, [isClearing]);
+  };
 
-  const handleCancelClear = useCallback(() => {
+  const handleCancelClear = () => {
     if (isClearing) return;
     setShowClearConfirm(false);
-  }, [isClearing]);
+  };
 
-  const handleCopyAuditAsJson = useCallback(async (records: McpAuditRecord[]) => {
+  const handleCopyAuditAsJson = async (records: McpAuditRecord[]) => {
     try {
       setError(null);
       await navigator.clipboard.writeText(JSON.stringify(records, null, 2));
@@ -307,7 +307,7 @@ export function McpServerSettingsTab() {
       setError(formatErrorMessage(err, "Failed to copy audit log"));
       logError("Failed to copy MCP audit log", err);
     }
-  }, []);
+  };
 
   const sseUrl = status.port ? `http://127.0.0.1:${status.port}/sse` : null;
 

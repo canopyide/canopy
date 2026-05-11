@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Mic,
   Eye,
@@ -154,7 +154,7 @@ export function VoiceInputSettingsTab() {
     });
   };
 
-  const handleRequestMicPermission = useCallback(async () => {
+  const handleRequestMicPermission = async () => {
     setIsRequestingMic(true);
     try {
       await window.electron?.voiceInput?.requestMicPermission();
@@ -165,16 +165,16 @@ export function VoiceInputSettingsTab() {
     } finally {
       setIsRequestingMic(false);
     }
-  }, []);
+  };
 
-  const handleOpenMicSettings = useCallback(() => {
+  const handleOpenMicSettings = () => {
     window.electron?.voiceInput?.openMicSettings();
-  }, []);
+  };
 
-  const handleRefreshMicPermission = useCallback(async () => {
+  const handleRefreshMicPermission = async () => {
     const status = await window.electron?.voiceInput?.checkMicPermission();
     if (status) setMicPermission(status);
-  }, []);
+  };
 
   const addDictionaryWord = () => {
     const word = newDictionaryWord.trim();
@@ -391,7 +391,7 @@ function ApiKeyRow({
     return () => clearTimeout(timer);
   }, [validation]);
 
-  const handleSave = useCallback(async () => {
+  const handleSave = async () => {
     const key = keyInput.trim();
     if (!key) return;
     setValidation("testing");
@@ -410,14 +410,14 @@ function ApiKeyRow({
       setValidation("invalid");
       setValidationError("Failed to validate API key");
     }
-  }, [keyInput, onSave, onValidate]);
+  };
 
-  const handleClear = useCallback(() => {
+  const handleClear = () => {
     onSave("");
     setKeyInput("");
     setValidation("idle");
     setValidationError(null);
-  }, [onSave]);
+  };
 
   return (
     <div className="space-y-2">

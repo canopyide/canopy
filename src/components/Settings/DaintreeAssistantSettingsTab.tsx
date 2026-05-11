@@ -216,7 +216,7 @@ export function DaintreeAssistantSettingsTab() {
   // semantics simple (per past lesson #4958) while still letting the audit
   // viewer hydrate independently of the settings + MCP status round-trips.
   // `allSettled` so a stats failure doesn't silently blank the record list.
-  const refreshAuditRecords = useCallback(async (): Promise<void> => {
+  const refreshAuditRecords = async (): Promise<void> => {
     const [recordsResult, statsResult] = await Promise.allSettled([
       window.electron.mcpServer.getAuditRecords(),
       window.electron.mcpServer.getAuditStats(),
@@ -231,7 +231,7 @@ export function DaintreeAssistantSettingsTab() {
     } else {
       logError("Failed to load MCP audit stats for assistant tab", statsResult.reason);
     }
-  }, []);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -265,7 +265,7 @@ export function DaintreeAssistantSettingsTab() {
     };
   }, []);
 
-  const handleCopyAuditAsJson = useCallback(async (records: McpAuditRecord[]) => {
+  const handleCopyAuditAsJson = async (records: McpAuditRecord[]) => {
     try {
       await navigator.clipboard.writeText(JSON.stringify(records, null, 2));
       setAuditCopied(true);
@@ -280,9 +280,9 @@ export function DaintreeAssistantSettingsTab() {
       setError(formatErrorMessage(err, "Couldn't copy audit log"));
       logError("Failed to copy MCP audit log from assistant tab", err);
     }
-  }, []);
+  };
 
-  const confirmClearAuditLog = useCallback(async () => {
+  const confirmClearAuditLog = async () => {
     if (isClearingAudit) return;
     setIsClearingAudit(true);
     try {
@@ -296,12 +296,12 @@ export function DaintreeAssistantSettingsTab() {
     } finally {
       setIsClearingAudit(false);
     }
-  }, [isClearingAudit]);
+  };
 
-  const handleCancelClearAudit = useCallback(() => {
+  const handleCancelClearAudit = () => {
     if (isClearingAudit) return;
     setShowClearAuditConfirm(false);
-  }, [isClearingAudit]);
+  };
 
   const persist = useCallback(
     async (patch: Partial<HelpAssistantSettings>) => {
@@ -319,56 +319,44 @@ export function DaintreeAssistantSettingsTab() {
     [settings]
   );
 
-  const toggleDocSearch = useCallback(() => {
+  const toggleDocSearch = () => {
     void persist({ docSearch: !settings.docSearch });
-  }, [persist, settings.docSearch]);
+  };
 
-  const toggleDaintreeControl = useCallback(() => {
+  const toggleDaintreeControl = () => {
     void persist({ daintreeControl: !settings.daintreeControl });
-  }, [persist, settings.daintreeControl]);
+  };
 
-  const setTier = useCallback(
-    (value: string) => {
-      if (value !== "workbench" && value !== "action" && value !== "system") return;
-      void persist({ tier: value });
-    },
-    [persist]
-  );
+  const setTier = (value: string) => {
+    if (value !== "workbench" && value !== "action" && value !== "system") return;
+    void persist({ tier: value });
+  };
 
-  const toggleBypassPermissions = useCallback(() => {
+  const toggleBypassPermissions = () => {
     void persist({ bypassPermissions: !settings.bypassPermissions });
-  }, [persist, settings.bypassPermissions]);
+  };
 
-  const setRetention = useCallback(
-    (value: string) => {
-      const parsed = Number(value);
-      if (parsed !== 0 && parsed !== 7 && parsed !== 30) return;
-      void persist({ auditRetention: parsed as 0 | 7 | 30 });
-    },
-    [persist]
-  );
+  const setRetention = (value: string) => {
+    const parsed = Number(value);
+    if (parsed !== 0 && parsed !== 7 && parsed !== 30) return;
+    void persist({ auditRetention: parsed as 0 | 7 | 30 });
+  };
 
-  const setHibernateMinutes = useCallback(
-    (value: string) => {
-      const parsed = Number(value);
-      if (parsed !== 0 && parsed !== 15 && parsed !== 30 && parsed !== 60 && parsed !== 120) {
-        return;
-      }
-      void persist({ idleHibernateMinutes: parsed as 0 | 15 | 30 | 60 | 120 });
-    },
-    [persist]
-  );
+  const setHibernateMinutes = (value: string) => {
+    const parsed = Number(value);
+    if (parsed !== 0 && parsed !== 15 && parsed !== 30 && parsed !== 60 && parsed !== 120) {
+      return;
+    }
+    void persist({ idleHibernateMinutes: parsed as 0 | 15 | 30 | 60 | 120 });
+  };
 
-  const handleAgentChange = useCallback(
-    (value: string) => {
-      setPreferredAgent(value || null);
-    },
-    [setPreferredAgent]
-  );
+  const handleAgentChange = (value: string) => {
+    setPreferredAgent(value || null);
+  };
 
-  const handleCustomArgsChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCustomArgsChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setPendingCustomArgs(event.target.value);
-  }, []);
+  };
 
   // Persist the pending value once the debounce settles. Skipped when pending
   // matches what's already persisted (e.g., user typed and undid, or the
@@ -400,7 +388,7 @@ export function DaintreeAssistantSettingsTab() {
     isCustomArgsDirty
   );
 
-  const confirmRotateKey = useCallback(async () => {
+  const confirmRotateKey = async () => {
     if (isRotating) return;
     setIsRotating(true);
     try {
@@ -414,17 +402,17 @@ export function DaintreeAssistantSettingsTab() {
     } finally {
       setIsRotating(false);
     }
-  }, [isRotating]);
+  };
 
-  const handleCancelRotate = useCallback(() => {
+  const handleCancelRotate = () => {
     if (isRotating) return;
     setShowRotateConfirm(false);
-  }, [isRotating]);
+  };
 
   const apiKeySuffix =
     mcpStatus?.apiKey && mcpStatus.apiKey.length >= 8 ? mcpStatus.apiKey.slice(-4) : "";
 
-  const handleCopyConfig = useCallback(async () => {
+  const handleCopyConfig = async () => {
     try {
       const snippet = await window.electron.mcpServer.getConfigSnippet();
       await navigator.clipboard.writeText(snippet);
@@ -435,7 +423,7 @@ export function DaintreeAssistantSettingsTab() {
       setError(formatErrorMessage(err, "Couldn't copy config"));
       logError("Failed to copy MCP config", err);
     }
-  }, []);
+  };
 
   return (
     <div className="space-y-6" id="settings-panel-assistant-content">

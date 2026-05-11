@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -102,20 +102,17 @@ export function ColorSchemePicker() {
     return byType.filter((s) => s.name.toLowerCase().includes(lowerQuery));
   }, [allSchemes, typeFilter, lowerQuery, appThemeId]);
 
-  const handlePreviewEnter = useCallback(
-    (id: string) => {
-      if (revertRafRef.current !== null) {
-        cancelAnimationFrame(revertRafRef.current);
-        revertRafRef.current = null;
-      }
-      setPreviewSchemeId(id);
-      const scheme = allSchemes.find((s) => s.id === id);
-      if (scheme) setPreviewAnnouncement(`Previewing: ${scheme.name}`);
-    },
-    [setPreviewSchemeId, allSchemes]
-  );
+  const handlePreviewEnter = (id: string) => {
+    if (revertRafRef.current !== null) {
+      cancelAnimationFrame(revertRafRef.current);
+      revertRafRef.current = null;
+    }
+    setPreviewSchemeId(id);
+    const scheme = allSchemes.find((s) => s.id === id);
+    if (scheme) setPreviewAnnouncement(`Previewing: ${scheme.name}`);
+  };
 
-  const handlePreviewLeave = useCallback(() => {
+  const handlePreviewLeave = () => {
     if (revertRafRef.current !== null) {
       cancelAnimationFrame(revertRafRef.current);
     }
@@ -124,7 +121,7 @@ export function ColorSchemePicker() {
       setPreviewSchemeId(null);
       setPreviewAnnouncement("");
     });
-  }, [setPreviewSchemeId]);
+  };
 
   useEffect(() => {
     return () => {
@@ -135,23 +132,20 @@ export function ColorSchemePicker() {
     };
   }, [setPreviewSchemeId]);
 
-  const handleSelect = useCallback(
-    async (id: string) => {
-      setSelectedSchemeId(id);
-      setPreviewSchemeId(null);
-      try {
-        await terminalConfigClient.setColorScheme(id);
-        await terminalConfigClient.setRecentSchemeIds(
-          useTerminalColorSchemeStore.getState().recentSchemeIds
-        );
-      } catch (error) {
-        logError("Failed to persist color scheme", error);
-      }
-    },
-    [setSelectedSchemeId, setPreviewSchemeId]
-  );
+  const handleSelect = async (id: string) => {
+    setSelectedSchemeId(id);
+    setPreviewSchemeId(null);
+    try {
+      await terminalConfigClient.setColorScheme(id);
+      await terminalConfigClient.setRecentSchemeIds(
+        useTerminalColorSchemeStore.getState().recentSchemeIds
+      );
+    } catch (error) {
+      logError("Failed to persist color scheme", error);
+    }
+  };
 
-  const handleImport = useCallback(async () => {
+  const handleImport = async () => {
     try {
       const result = await terminalConfigClient.importColorScheme();
       if (!result.ok) return;
@@ -167,7 +161,7 @@ export function ColorSchemePicker() {
     } catch (error) {
       logError("Failed to import color scheme", error);
     }
-  }, [addCustomScheme, handleSelect]);
+  };
 
   const isEmpty = filteredSchemes.length === 0;
 

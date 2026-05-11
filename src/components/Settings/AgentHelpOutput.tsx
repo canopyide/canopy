@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Copy, RefreshCw } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
@@ -50,32 +50,29 @@ export function AgentHelpOutput({
     };
   }, []);
 
-  const loadHelp = useCallback(
-    async (refresh = false) => {
-      const gen = ++loadGenRef.current;
-      setIsLoading(true);
-      setError(null);
+  const loadHelp = async (refresh = false) => {
+    const gen = ++loadGenRef.current;
+    setIsLoading(true);
+    setError(null);
 
-      if (!isAgentInstalled(availability)) {
-        setIsLoading(false);
-        return;
-      }
+    if (!isAgentInstalled(availability)) {
+      setIsLoading(false);
+      return;
+    }
 
-      try {
-        const result = await agentHelpClient.get({ agentId, refresh });
-        if (loadGenRef.current !== gen) return;
-        setHelpResult(result);
-      } catch (err) {
-        if (loadGenRef.current !== gen) return;
-        setError(formatErrorMessage(err, "Failed to load help output"));
-      } finally {
-        if (loadGenRef.current === gen) setIsLoading(false);
-      }
-    },
-    [agentId, availability]
-  );
+    try {
+      const result = await agentHelpClient.get({ agentId, refresh });
+      if (loadGenRef.current !== gen) return;
+      setHelpResult(result);
+    } catch (err) {
+      if (loadGenRef.current !== gen) return;
+      setError(formatErrorMessage(err, "Failed to load help output"));
+    } finally {
+      if (loadGenRef.current === gen) setIsLoading(false);
+    }
+  };
 
-  const handleCopy = useCallback(async () => {
+  const handleCopy = async () => {
     if (!helpResult) return;
 
     const textToCopy = sanitizeErrorText(
@@ -102,7 +99,7 @@ export function AgentHelpOutput({
     } catch (err) {
       logError("Failed to copy to clipboard", err);
     }
-  }, [helpResult]);
+  };
 
   const renderOutput = () => {
     if (!helpResult) return null;

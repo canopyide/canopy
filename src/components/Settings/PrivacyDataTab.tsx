@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Signal, FolderOpen, Trash2, Clock, HardDrive, AlertTriangle, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { notify } from "@/lib/notify";
@@ -146,81 +146,75 @@ export function PrivacyDataTab({ activeSubtab, onSubtabChange }: PrivacyDataTabP
     }
   }, [currentSubtab]);
 
-  const handleTelemetryChange = useCallback(
-    async (level: TelemetryLevel) => {
-      const prev = telemetryLevel;
-      setTelemetryLevel(level);
-      try {
-        await window.electron.privacy.setTelemetryLevel(level);
-      } catch (err) {
-        setTelemetryLevel(prev);
-        const retry = async () => {
-          try {
-            await window.electron.privacy.setTelemetryLevel(level);
-            setTelemetryLevel(level);
-          } catch (retryErr) {
-            setTelemetryLevel(prev);
-            notify({
-              type: "error",
-              title: "Failed to save setting",
-              message: "Telemetry level could not be saved.",
-              actions: [{ label: "Try again", variant: "primary", onClick: retry }],
-            });
-            logError("Failed to set telemetry level", retryErr);
-          }
-        };
-        notify({
-          type: "error",
-          title: "Failed to save setting",
-          message: "Telemetry level could not be saved.",
-          actions: [{ label: "Try again", variant: "primary", onClick: retry }],
-        });
-        logError("Failed to set telemetry level", err);
-      }
-    },
-    [telemetryLevel]
-  );
+  const handleTelemetryChange = async (level: TelemetryLevel) => {
+    const prev = telemetryLevel;
+    setTelemetryLevel(level);
+    try {
+      await window.electron.privacy.setTelemetryLevel(level);
+    } catch (err) {
+      setTelemetryLevel(prev);
+      const retry = async () => {
+        try {
+          await window.electron.privacy.setTelemetryLevel(level);
+          setTelemetryLevel(level);
+        } catch (retryErr) {
+          setTelemetryLevel(prev);
+          notify({
+            type: "error",
+            title: "Failed to save setting",
+            message: "Telemetry level could not be saved.",
+            actions: [{ label: "Try again", variant: "primary", onClick: retry }],
+          });
+          logError("Failed to set telemetry level", retryErr);
+        }
+      };
+      notify({
+        type: "error",
+        title: "Failed to save setting",
+        message: "Telemetry level could not be saved.",
+        actions: [{ label: "Try again", variant: "primary", onClick: retry }],
+      });
+      logError("Failed to set telemetry level", err);
+    }
+  };
 
-  const handleRetentionChange = useCallback(
-    async (days: LogRetention) => {
-      const prev = logRetentionDays;
-      setLogRetentionDays(days);
-      try {
-        await window.electron.privacy.setLogRetention(days);
-      } catch (err) {
-        setLogRetentionDays(prev);
-        const retry = async () => {
-          try {
-            await window.electron.privacy.setLogRetention(days);
-            setLogRetentionDays(days);
-          } catch (retryErr) {
-            setLogRetentionDays(prev);
-            notify({
-              type: "error",
-              title: "Failed to save setting",
-              message: "Log retention could not be saved.",
-              actions: [{ label: "Try again", variant: "primary", onClick: retry }],
-            });
-            logError("Failed to set log retention", retryErr);
-          }
-        };
-        notify({
-          type: "error",
-          title: "Failed to save setting",
-          message: "Log retention could not be saved.",
-          actions: [{ label: "Try again", variant: "primary", onClick: retry }],
-        });
-        logError("Failed to set log retention", err);
-      }
-    },
-    [logRetentionDays]
-  );
+  const handleRetentionChange = async (days: LogRetention) => {
+    const prev = logRetentionDays;
+    setLogRetentionDays(days);
+    try {
+      await window.electron.privacy.setLogRetention(days);
+    } catch (err) {
+      setLogRetentionDays(prev);
+      const retry = async () => {
+        try {
+          await window.electron.privacy.setLogRetention(days);
+          setLogRetentionDays(days);
+        } catch (retryErr) {
+          setLogRetentionDays(prev);
+          notify({
+            type: "error",
+            title: "Failed to save setting",
+            message: "Log retention could not be saved.",
+            actions: [{ label: "Try again", variant: "primary", onClick: retry }],
+          });
+          logError("Failed to set log retention", retryErr);
+        }
+      };
+      notify({
+        type: "error",
+        title: "Failed to save setting",
+        message: "Log retention could not be saved.",
+        actions: [{ label: "Try again", variant: "primary", onClick: retry }],
+      });
+      logError("Failed to set log retention", err);
+    }
+  };
 
-  const handleOpenDataFolder = useCallback(() => {
+  const handleOpenDataFolder = () => {
     window.electron.privacy.openDataFolder();
-  }, []);
+  };
 
-  const handleClearCache = useCallback(async () => {
+  const handleClearCache = async () => {
     setCacheClearing(true);
     setCacheCleared(false);
     try {
@@ -232,15 +226,15 @@ export function PrivacyDataTab({ activeSubtab, onSubtabChange }: PrivacyDataTabP
     } finally {
       setCacheClearing(false);
     }
-  }, []);
+  };
 
-  const handleResetAllData = useCallback(() => {
+  const handleResetAllData = () => {
     window.electron.privacy.resetAllData();
-  }, []);
+  };
 
-  const handleOpenTelemetryPreview = useCallback(() => {
+  const handleOpenTelemetryPreview = () => {
     void actionService.dispatch("telemetry.togglePreview", { active: true }, { source: "user" });
-  }, []);
+  };
 
   return (
     <div className="space-y-6">

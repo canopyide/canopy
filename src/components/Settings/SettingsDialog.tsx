@@ -8,7 +8,6 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
-  useCallback,
   useContext,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
@@ -144,14 +143,14 @@ function SettingsDialogInner({
       rememberedTab = activeTab;
     }
   }, [activeTab]);
-  const markTabVisited = useCallback((tab: SettingsTab) => {
+  const markTabVisited = (tab: SettingsTab) => {
     setVisitedTabs((prev) => {
       if (prev.has(tab)) return prev;
       const next = new Set(prev);
       next.add(tab);
       return next;
     });
-  }, []);
+  };
   const [activeSubtabs, setActiveSubtabs] = useState<Partial<Record<SettingsTab, string>>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const deferredQuery = useDeferredValue(searchQuery);
@@ -335,10 +334,10 @@ function SettingsDialogInner({
   const flushRegistry = useContext(SettingsFlushContext);
   const flushAllTabs = flushRegistry?.flushAll;
 
-  const flushDialog = useCallback(async () => {
+  const flushDialog = async () => {
     if (flushAllTabs) await flushAllTabs();
     await projectForm.flush();
-  }, [flushAllTabs, projectForm]);
+  };
 
   // Electron 41 WebContentsView detach (project switch, window close) does not
   // fire beforeunload — visibilitychange is the reliable signal. Flushing on
@@ -359,15 +358,15 @@ function SettingsDialogInner({
       });
   }, [isOpen]);
 
-  const handleBeforeClose = useCallback(async () => {
+  const handleBeforeClose = async () => {
     await flushDialog();
     return true;
-  }, [flushDialog]);
+  };
 
-  const handleClose = useCallback(async () => {
+  const handleClose = async () => {
     await flushDialog();
     onClose();
-  }, [onClose, flushDialog]);
+  };
 
   const searchResults = useMemo(
     () =>
@@ -438,36 +437,30 @@ function SettingsDialogInner({
     }
   };
 
-  const handleScrollToSectionHandled = useCallback((sectionId: string) => {
+  const handleScrollToSectionHandled = (sectionId: string) => {
     setScrollToSection((current) => (current === sectionId ? null : current));
-  }, []);
+  };
 
-  const handleNavSelect = useCallback(
-    (tab: SettingsTab) => {
-      markTabVisited(tab);
-      setSearchQuery("");
-      setScrollToSection(null);
-      setHiddenSettingBanner(null);
-      startTransition(() => setActiveTab(tab));
-    },
-    [markTabVisited]
-  );
+  const handleNavSelect = (tab: SettingsTab) => {
+    markTabVisited(tab);
+    setSearchQuery("");
+    setScrollToSection(null);
+    setHiddenSettingBanner(null);
+    startTransition(() => setActiveTab(tab));
+  };
 
-  const handleScopeSwitch = useCallback(
-    (scope: SettingsScope) => {
-      if (scope === activeScope) return;
-      setActiveScope(scope);
-      setSearchQuery("");
-      const tab = scope === "project" ? rememberedProjectTab : rememberedTab;
-      markTabVisited(tab);
-      startTransition(() => setActiveTab(tab));
-    },
-    [activeScope, markTabVisited]
-  );
+  const handleScopeSwitch = (scope: SettingsScope) => {
+    if (scope === activeScope) return;
+    setActiveScope(scope);
+    setSearchQuery("");
+    const tab = scope === "project" ? rememberedProjectTab : rememberedTab;
+    markTabVisited(tab);
+    startTransition(() => setActiveTab(tab));
+  };
 
   const tablistRef = useRef<HTMLDivElement>(null);
 
-  const handleTablistKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
+  const handleTablistKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     const container = tablistRef.current;
     if (!container) return;
 
@@ -499,7 +492,7 @@ function SettingsDialogInner({
     // already fires onClick on Enter/Space, so the existing onSelect handler
     // covers activation without an explicit keydown branch here.
     tabs[nextIndex]!.focus();
-  }, []);
+  };
 
   const tabTitles: Record<SettingsTab, string> = {
     ...globalTabTitles,

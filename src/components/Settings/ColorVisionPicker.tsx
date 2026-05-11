@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Select,
   SelectContent,
@@ -67,18 +67,15 @@ export function ColorVisionPicker() {
   const colorVisionMode = useAppThemeStore((s) => s.colorVisionMode);
   const setColorVisionMode = useAppThemeStore((s) => s.setColorVisionMode);
 
-  const handleChange = useCallback(
-    async (value: string) => {
-      const mode = value as ColorVisionMode;
-      setColorVisionMode(mode);
-      try {
-        await appThemeClient.setColorVisionMode(mode);
-      } catch (error) {
-        logError("Failed to persist color vision mode", error);
-      }
-    },
-    [setColorVisionMode]
-  );
+  const handleChange = async (value: string) => {
+    const mode = value as ColorVisionMode;
+    setColorVisionMode(mode);
+    try {
+      await appThemeClient.setColorVisionMode(mode);
+    } catch (error) {
+      logError("Failed to persist color vision mode", error);
+    }
+  };
 
   return (
     <div>
