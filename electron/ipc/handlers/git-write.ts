@@ -510,7 +510,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     let conflictedFiles: ConflictedFileEntry[] = [];
     if (conflicted.length > 0) {
       try {
-        const porcelain = await git.raw(["status", "--porcelain=v2"]);
+        const porcelain = await git.raw(["-c", "core.quotepath=false", "status", "--porcelain=v2"]);
         conflictedFiles = parsePorcelainV2Conflicts(porcelain);
       } catch {
         // Fall back to the simple-git path list without XY labels.

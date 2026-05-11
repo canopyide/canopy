@@ -52,10 +52,11 @@ export async function detectRepoOperationState(
   const results = await Promise.all(
     OPERATION_SENTINEL_NAMES.map((name) => pathExists(path.join(gitDir, name)))
   );
-  const [hasMergeHead, hasRebaseMerge, hasRebaseApply, hasCherryPickHead, hasRevertHead] = results;
+  const has = (name: (typeof OPERATION_SENTINEL_NAMES)[number]) =>
+    results[OPERATION_SENTINEL_NAMES.indexOf(name)] ?? false;
 
-  if (hasRebaseMerge || hasRebaseApply) {
-    const backend: "merge" | "apply" = hasRebaseMerge ? "merge" : "apply";
+  if (has("rebase-merge") || has("rebase-apply")) {
+    const backend: "merge" | "apply" = has("rebase-merge") ? "merge" : "apply";
     const [{ step, total }, sequence] = await Promise.all([
       readRebaseProgress(gitDir, backend),
       // Only the merge backend stores per-commit todo/done; apply uses numbered
@@ -69,7 +70,7 @@ export async function detectRepoOperationState(
       rebaseSequence: sequence,
     };
   }
-  if (hasCherryPickHead) {
+  if (has("CHERRY_PICK_HEAD")) {
     return {
       state: "CHERRY_PICKING",
       rebaseStep: null,
@@ -77,10 +78,10 @@ export async function detectRepoOperationState(
       rebaseSequence: null,
     };
   }
-  if (hasRevertHead) {
+  if (has("REVERT_HEAD")) {
     return { state: "REVERTING", rebaseStep: null, rebaseTotalSteps: null, rebaseSequence: null };
   }
-  if (hasMergeHead) {
+  if (has("MERGE_HEAD")) {
     return { state: "MERGING", rebaseStep: null, rebaseTotalSteps: null, rebaseSequence: null };
   }
   return {

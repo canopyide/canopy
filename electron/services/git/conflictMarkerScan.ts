@@ -4,6 +4,10 @@ export const STAGED_FILE_SIZE_CAP = 1_000_000;
 
 const CONFLICT_MARKER_RE = /^(?:<{7}|\|{7}|={7}|>{7})[ \t\r]?/m;
 
+// Numstat binary paths: binary diffs report tab-separated `-` placeholders.
+// Rename diffs render "{old => new}" in the path column, so renamed binary files
+// may miss this set. Tolerated — a binary blob won't match the line-anchored
+// 7-char marker regex on the subsequent cat-file anyway.
 function parseBinaryPathsFromNumstat(raw: string): Set<string> {
   const binary = new Set<string>();
   for (const line of raw.split("\n")) {
