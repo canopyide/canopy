@@ -96,8 +96,8 @@ export interface SearchablePaletteProps<T> {
    * Dynamic footer derived from the currently selected item. Receives `null`
    * when there is no selection (empty results). Takes precedence over
    * `footer` when both are provided. Consumed only by `SearchablePalette`
-   * itself — never forwarded to row items, so per-item `React.memo` stays
-   * intact when arrow keys move selection.
+   * itself — never forwarded to row items, so React Compiler keeps the
+   * unchanged row functions cached when arrow keys move selection.
    */
   getFooter?: (selectedItem: T | null) => React.ReactNode;
   /**
