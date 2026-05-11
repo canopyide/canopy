@@ -129,7 +129,9 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       const branch = source.slice(branchStart, branchEnd);
       expect(branch).toContain("<EmptyState");
       expect(branch).toContain('variant="filtered-empty"');
-      expect(branch).toContain('title="No matching worktrees"');
+      expect(branch).toContain('"No matching worktrees"');
+      expect(branch).toMatch(/hasQuery/);
+      expect(branch).toMatch(/truncateSearchQuery/);
       expect(branch).toMatch(/onClick=\{clearAllFilters\}[\s\S]*?>\s*Clear filters\s*</);
     });
   });
