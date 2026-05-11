@@ -19,6 +19,21 @@ export interface SerializedError {
    */
   gitReason?: GitOperationReason;
   /**
+   * Captured `refs/remotes/origin/<branch>` SHA at the moment a push was
+   * rejected as non-fast-forward. Used by the renderer's force-push-with-lease
+   * recovery flow to pin the lease against the SHA observed at rejection
+   * time, not at click time — a background fetch advancing the local
+   * remote-tracking ref between rejection and click would silently degrade
+   * `--force-with-lease` to a plain `--force`.
+   */
+  leaseSha?: string;
+  /**
+   * Local branch name carried alongside `leaseSha` for the divergence-recovery
+   * UI (so the renderer can surface the branch in confirmation copy and pass
+   * it back through the force-push handler without re-querying git).
+   */
+  branchName?: string;
+  /**
    * Correlation ID linking this error across main-process logs, Sentry, and
    * the renderer error envelope. Set post-hoc in `security.ts` after
    * serialization so the field survives the packaged-build strip.

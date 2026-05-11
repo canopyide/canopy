@@ -1132,8 +1132,42 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
     /**
      * Resolves on success. Throws `GitOperationError` on failure — the renderer
      * reads `caught.gitReason` to surface a classified recovery hint.
+     *
+     * On `gitReason === "push-rejected-outdated"` the thrown error also carries
+     * `leaseSha` (captured `refs/remotes/origin/<branch>` SHA at rejection
+     * time) and `branchName`, used by the divergence-recovery flow to drive
+     * `git:force-push-with-lease`.
      */
     result: void;
+  };
+  "git:pull-rebase": {
+    args: [payload: { cwd: string }];
+    /**
+     * Runs `git pull --rebase origin <currentBranch>`. Throws
+     * `GitOperationError` on failure (including `conflict-unresolved` when the
+     * rebase halts on a conflict).
+     */
+    result: void;
+  };
+  "git:force-push-with-lease": {
+    args: [payload: { cwd: string; branchName: string; leaseSha: string }];
+    /**
+     * Runs `git push origin <branch> --force-with-lease=<branch>:<leaseSha>
+     * --force-if-includes`. The lease SHA must come from the `leaseSha` field
+     * captured on the original `git:push` rejection error — capturing later
+     * (e.g. at click time) lets a background fetch advance the local
+     * remote-tracking ref and silently degrade the lease to `--force`.
+     */
+    result: void;
+  };
+  "git:list-remote-commits": {
+    args: [payload: { cwd: string; branchName: string; limit?: number }];
+    /**
+     * Returns the parsed commits in `HEAD..refs/remotes/origin/<branch>` so
+     * the force-push confirmation modal can show which remote commits would
+     * be discarded. Capped at `limit` (default 20) entries.
+     */
+    result: Array<{ hash: string; date: string; message: string; author: string }>;
   };
   "git:get-staging-status": {
     args: [cwd: string];

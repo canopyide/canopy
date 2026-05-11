@@ -360,10 +360,11 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     validateCwd(payload?.cwd);
 
     const git = createAuthenticatedGit(payload.cwd);
+    let branchName: string | undefined;
 
     try {
       const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
-      const branchName = branch.trim();
+      branchName = branch.trim();
 
       if (payload.setUpstream) {
         await git.push(["--set-upstream", "origin", branchName]);
@@ -390,14 +391,142 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
       }
       const errorMessage = formatErrorMessage(error, "git push failed");
       const gitReason = classifyGitError(error);
+      // Capture the lease SHA at rejection time, not at click time. A
+      // background fetch advancing `refs/remotes/origin/<branch>` between
+      // here and the user's force-push click would silently degrade
+      // `--force-with-lease` to plain `--force`. revparse may itself fail
+      // (no upstream tracking); on failure we omit leaseSha and the renderer
+      // suppresses the force-push CTA.
+      let leaseSha: string | undefined;
+      if (gitReason === "push-rejected-outdated" && branchName) {
+        try {
+          const sha = await git.revparse([`refs/remotes/origin/${branchName}`]);
+          leaseSha = sha.trim() || undefined;
+        } catch {
+          leaseSha = undefined;
+        }
+      }
       throw new GitOperationError(gitReason, errorMessage, {
         cwd: payload.cwd,
         op: "push",
         cause: error instanceof Error ? error : undefined,
+        leaseSha,
+        branchName,
       });
     }
   };
   handlers.push(typedHandle(CHANNELS.GIT_PUSH, handlePush));
+
+  const handlePullRebase = async (payload: { cwd: string }): Promise<void> => {
+    checkRateLimit(CHANNELS.GIT_PULL_REBASE, 3, 10_000);
+    validateCwd(payload?.cwd);
+
+    const git = createAuthenticatedGit(payload.cwd);
+
+    try {
+      const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
+      const branchName = branch.trim();
+      await git.pull("origin", branchName, ["--rebase"]);
+      if (store.get("notificationSettings").uiFeedbackSoundEnabled) {
+        playSoundFireAndForget("git-push");
+      }
+    } catch (error) {
+      if (store.get("notificationSettings").uiFeedbackSoundEnabled) {
+        playSoundFireAndForget("git-push-error");
+      }
+      const errorMessage = formatErrorMessage(error, "git pull --rebase failed");
+      const gitReason = classifyGitError(error);
+      throw new GitOperationError(gitReason, errorMessage, {
+        cwd: payload.cwd,
+        op: "pull-rebase",
+        cause: error instanceof Error ? error : undefined,
+      });
+    }
+  };
+  handlers.push(typedHandle(CHANNELS.GIT_PULL_REBASE, handlePullRebase));
+
+  const handleForcePushWithLease = async (payload: {
+    cwd: string;
+    branchName: string;
+    leaseSha: string;
+  }): Promise<void> => {
+    checkRateLimit(CHANNELS.GIT_FORCE_PUSH_WITH_LEASE, 3, 10_000);
+    validateCwd(payload?.cwd);
+    if (typeof payload.branchName !== "string" || !payload.branchName.trim()) {
+      throw new Error("Invalid branch name");
+    }
+    if (typeof payload.leaseSha !== "string" || !/^[0-9a-f]{4,64}$/i.test(payload.leaseSha)) {
+      // Reject anything that isn't a hex SHA — the lease ref:sha form must
+      // never receive arbitrary user input that could include `--` flags.
+      throw new Error("Invalid lease SHA");
+    }
+
+    const git = createAuthenticatedGit(payload.cwd);
+    const branchName = payload.branchName.trim();
+
+    try {
+      await git.push("origin", branchName, [
+        `--force-with-lease=${branchName}:${payload.leaseSha}`,
+        "--force-if-includes",
+      ]);
+      if (store.get("notificationSettings").uiFeedbackSoundEnabled) {
+        playSoundFireAndForget("git-push");
+      }
+    } catch (error) {
+      if (store.get("notificationSettings").uiFeedbackSoundEnabled) {
+        playSoundFireAndForget("git-push-error");
+      }
+      const errorMessage = formatErrorMessage(error, "git push --force-with-lease failed");
+      const gitReason = classifyGitError(error);
+      throw new GitOperationError(gitReason, errorMessage, {
+        cwd: payload.cwd,
+        op: "force-push-with-lease",
+        cause: error instanceof Error ? error : undefined,
+      });
+    }
+  };
+  handlers.push(typedHandle(CHANNELS.GIT_FORCE_PUSH_WITH_LEASE, handleForcePushWithLease));
+
+  const handleListRemoteCommits = async (payload: {
+    cwd: string;
+    branchName: string;
+    limit?: number;
+  }): Promise<Array<{ hash: string; date: string; message: string; author: string }>> => {
+    checkRateLimit(CHANNELS.GIT_LIST_REMOTE_COMMITS, 10, 10_000);
+    validateCwd(payload?.cwd);
+    if (typeof payload.branchName !== "string" || !payload.branchName.trim()) {
+      throw new Error("Invalid branch name");
+    }
+    const branchName = payload.branchName.trim();
+    const limit = Math.max(1, Math.min(100, payload.limit ?? 20));
+
+    const git = createHardenedGit(payload.cwd);
+    try {
+      // No `--no-merges` — `behindCount` from `git status -b` includes merge
+      // commits, and the dialog's "N more" tail relies on the listed rows
+      // matching what `--force-with-lease` would actually discard. Filtering
+      // merges here would understate the discard preview against `behindCount`.
+      const log = await git.log([
+        `--max-count=${limit}`,
+        `HEAD..refs/remotes/origin/${branchName}`,
+      ]);
+      return log.all.map((commit) => ({
+        hash: commit.hash,
+        date: commit.date,
+        message: commit.message,
+        author: commit.author_name,
+      }));
+    } catch (error) {
+      const errorMessage = formatErrorMessage(error, "git log failed");
+      const gitReason = classifyGitError(error);
+      throw new GitOperationError(gitReason, errorMessage, {
+        cwd: payload.cwd,
+        op: "list-remote-commits",
+        cause: error instanceof Error ? error : undefined,
+      });
+    }
+  };
+  handlers.push(typedHandle(CHANNELS.GIT_LIST_REMOTE_COMMITS, handleListRemoteCommits));
 
   const handleGetUsername = async (cwd: string): Promise<string | null> => {
     checkRateLimit(CHANNELS.GIT_GET_USERNAME, 20, 10_000);

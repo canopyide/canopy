@@ -30,6 +30,8 @@ export class GitOperationError extends GitError {
   readonly reason: GitOperationReason;
   readonly op?: string;
   readonly rawMessage: string;
+  readonly leaseSha?: string;
+  readonly branchName?: string;
 
   constructor(
     reason: GitOperationReason,
@@ -40,6 +42,8 @@ export class GitOperationError extends GitError {
       cause?: Error;
       rawMessage?: string;
       context?: Record<string, unknown>;
+      leaseSha?: string;
+      branchName?: string;
     } = {}
   ) {
     const context: Record<string, unknown> = { ...(opts.context ?? {}) };
@@ -50,6 +54,8 @@ export class GitOperationError extends GitError {
     this.reason = reason;
     this.op = opts.op;
     this.rawMessage = opts.rawMessage ?? message;
+    if (opts.leaseSha !== undefined) this.leaseSha = opts.leaseSha;
+    if (opts.branchName !== undefined) this.branchName = opts.branchName;
   }
 }
 
