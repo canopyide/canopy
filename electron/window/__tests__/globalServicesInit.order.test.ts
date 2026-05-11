@@ -266,6 +266,26 @@ describe("initGlobalServices task ordering", () => {
     expect(dbMaintIndex).toBeGreaterThan(sleepIndex);
   });
 
+  it("defers pre-agent-snapshot-service after system-sleep-service and doesn't initialize eagerly (#7656)", async () => {
+    const { preAgentSnapshotService } = await import("../../services/PreAgentSnapshotService.js");
+    const initSpy = preAgentSnapshotService.initialize as ReturnType<typeof vi.fn>;
+    initSpy.mockClear();
+
+    const fakeRegistry = { all: () => [], size: 0 } as unknown as WindowRegistry;
+    await initGlobalServices(fakeRegistry);
+
+    // The eager call has been removed — initialize() must not fire during
+    // initGlobalServices(); it runs only when the deferred queue drains.
+    expect(initSpy).not.toHaveBeenCalled();
+
+    const sleepIndex = registeredTaskNames.indexOf("system-sleep-service");
+    const snapshotIndex = registeredTaskNames.indexOf("pre-agent-snapshot-service");
+
+    expect(sleepIndex).toBeGreaterThanOrEqual(0);
+    expect(snapshotIndex).toBeGreaterThanOrEqual(0);
+    expect(snapshotIndex).toBeGreaterThan(sleepIndex);
+  });
+
   it("registers ccr-config and plugin-service as deferred tasks", async () => {
     const fakeRegistry = { all: () => [], size: 0 } as unknown as WindowRegistry;
     await initGlobalServices(fakeRegistry);

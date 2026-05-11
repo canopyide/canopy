@@ -28,20 +28,19 @@ export class PreAgentSnapshotService {
     this.pruneAllWorktrees();
     this.pruneTimer = setInterval(() => this.pruneAllWorktrees(), this.pruneIntervalMs);
 
-    try {
-      this.removeSuspendListener = getSystemSleepService().onSuspend(() => {
-        if (this.pruneTimer) {
-          clearInterval(this.pruneTimer);
-          this.pruneTimer = null;
-        }
-      });
-      this.removeWakeListener = getSystemSleepService().onWake(() => {
-        if (this.pruneTimer) return;
-        this.pruneTimer = setInterval(() => this.pruneAllWorktrees(), this.pruneIntervalMs);
-      });
-    } catch {
-      // SystemSleepService may not be initialized yet at early startup.
-    }
+    // Deferred init queue registers this task AFTER system-sleep-service, so
+    // the singleton is guaranteed live here — no try/catch needed.
+    const sleepService = getSystemSleepService();
+    this.removeSuspendListener = sleepService.onSuspend(() => {
+      if (this.pruneTimer) {
+        clearInterval(this.pruneTimer);
+        this.pruneTimer = null;
+      }
+    });
+    this.removeWakeListener = sleepService.onWake(() => {
+      if (this.pruneTimer) return;
+      this.pruneTimer = setInterval(() => this.pruneAllWorktrees(), this.pruneIntervalMs);
+    });
   }
 
   updatePollInterval(ms: number): void {

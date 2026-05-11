@@ -107,7 +107,7 @@ async function evictStaleSessionFiles(): Promise<void> {
 /**
  * Run the once-per-app-lifecycle global initialization on the first window
  * setup. Migrations run inline (synchronous, blocking); everything else is
- * either a synchronous boot (GitHubAuth storage, preAgentSnapshot) or
+ * either a synchronous boot (GitHubAuth storage, ActionBreadcrumbService) or
  * registered as a deferred task that drains after first-interactive.
  *
  * Returns "exit-requested" when migrations fail and `app.exit(1)` has been
@@ -219,11 +219,10 @@ export async function initGlobalServices(
   }
 
   // Notifications (global singletons)
-  // AgentNotificationService is deferred — agents can't emit state events
-  // before the renderer is interactive, and its boot grace period now starts
-  // from the deferred initialize() so the suppression window still covers
-  // the actual agent startup interval.
-  preAgentSnapshotService.initialize();
+  // AgentNotificationService and PreAgentSnapshotService are deferred — agents
+  // can't emit state events before the renderer is interactive, and the boot
+  // grace period now starts from the deferred initialize() so the suppression
+  // window still covers the actual agent startup interval.
   getActionBreadcrumbService().initialize();
 
   registerDeferredTask({
@@ -329,6 +328,17 @@ export async function initGlobalServices(
     name: "database-maintenance",
     run: () => {
       getDatabaseMaintenanceService().startMaintenance();
+    },
+  });
+
+  // Pre-agent snapshot pruning + 1-hour interval timer. Deferred so the
+  // initial pruneAllWorktrees() pass and setInterval arming don't contend
+  // with renderer hydration. Registered AFTER system-sleep-service so the
+  // suspend/wake listeners attach to a live service.
+  registerDeferredTask({
+    name: "pre-agent-snapshot-service",
+    run: () => {
+      preAgentSnapshotService.initialize();
     },
   });
 
