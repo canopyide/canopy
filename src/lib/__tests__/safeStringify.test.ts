@@ -172,6 +172,15 @@ describe("safeStringify", () => {
   });
 
   it("handles top-level BigInt", () => {
-    expect(safeStringify(BigInt(42))).toBe('"42"');
+    expect(safeStringify(BigInt("9007199254740993123456789"))).toBe('"9007199254740993123456789"');
+  });
+
+  it("handles circular reference containing BigInt", () => {
+    const obj: Record<string, unknown> = {
+      id: BigInt("999999999999999999999"),
+    };
+    obj.self = obj;
+    const result = safeStringify(obj);
+    expect(result).toBe('{"id":"999999999999999999999","self":"[Circular]"}');
   });
 });
