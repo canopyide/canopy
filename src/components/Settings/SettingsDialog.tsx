@@ -1022,6 +1022,13 @@ function ProjectFormTabContent({
       );
 
     default:
+      // A project-scope registry entry exists but ProjectFormTabContent has no
+      // matching case. Surfaces silent-null bugs when entries are added without
+      // a renderer mapping.
+      logError(
+        "ProjectFormTabContent: no renderer for project tab",
+        new Error(`Unhandled project settings tab id: ${entry.id}`)
+      );
       return null;
   }
 }
