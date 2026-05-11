@@ -2,9 +2,6 @@ import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback } fr
 import type React from "react";
 import { Button } from "@/components/ui/button";
 import {
-  SlidersHorizontal,
-  SquareTerminal,
-  AlertCircle,
   GitCommit,
   GitPullRequest,
   CircleDot,
@@ -12,15 +9,13 @@ import {
   PanelLeftClose,
   Check,
   ChevronsUpDown,
-  Globe,
   MonitorPlay,
-  Bell,
   Ellipsis,
   GitBranch,
-  Plug,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { Folders, McpServerIcon } from "@/components/icons";
+import { TOOLBAR_BUTTON_METADATA, isToolbarButtonVisible } from "./toolbarButtonMetadata";
 import { cn } from "@/lib/utils";
 import { shortcutHintStore } from "@/store/shortcutHintStore";
 import { isMac, isLinux } from "@/lib/platform";
@@ -65,8 +60,7 @@ import { ToolbarPortalButton } from "./ToolbarPortalButton";
 import { ToolbarAssistantButton } from "./ToolbarAssistantButton";
 import { useOverflowBadgeSeverity, type OverflowBadgeSeverity } from "./useOverflowBadgeSeverity";
 
-import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds";
-import { getAgentConfig } from "@/config/agents";
+import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
 
 const AGENT_TOOLBAR_IDS = new Set<ToolbarButtonId>([
   "agent-tray",
@@ -74,6 +68,11 @@ const AGENT_TOOLBAR_IDS = new Set<ToolbarButtonId>([
 ]);
 
 type OverflowMenuMeta = { label: string; icon: React.ComponentType<{ className?: string }> };
+
+// voice-recording has no actionable overflow item — it's a persistent
+// indicator that only appears while recording is already active. Surface the
+// label via tooltip text only; suppress from the dropdown list itself.
+const OVERFLOW_DROPDOWN_SKIP = new Set<AnyToolbarButtonId>(["voice-recording"]);
 
 const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text relative";
 // These controls are project-only visually, but their no-drag rectangles must
@@ -136,23 +135,15 @@ export function PluginToolbarButton({
   );
 }
 
-export const OVERFLOW_MENU_META: Partial<Record<AnyToolbarButtonId, OverflowMenuMeta>> = {
-  ...(Object.fromEntries(
-    BUILT_IN_AGENT_IDS.map((id) => [
-      id,
-      { label: getAgentConfig(id)?.name ?? id, icon: SquareTerminal },
-    ])
-  ) as unknown as Record<BuiltInAgentId, OverflowMenuMeta>),
-  "agent-tray": { label: "Agent Tray", icon: Plug },
-  terminal: { label: "Terminal", icon: SquareTerminal },
-  browser: { label: "Browser", icon: Globe },
-  "dev-server": { label: "Dev Preview", icon: MonitorPlay },
-  "github-stats": { label: "GitHub Stats", icon: GitPullRequest },
-  "notification-center": { label: "Notifications", icon: Bell },
-  "copy-tree": { label: "Copy Context", icon: Folders },
-  settings: { label: "Settings", icon: SlidersHorizontal },
-  problems: { label: "Problems", icon: AlertCircle },
-};
+// Adapter view over the unified `TOOLBAR_BUTTON_METADATA` registry. Skips
+// entries that should never render as overflow menu items (see
+// `OVERFLOW_DROPDOWN_SKIP`) — those are still surfaced in tooltip text.
+export const OVERFLOW_MENU_META: Partial<Record<AnyToolbarButtonId, OverflowMenuMeta>> =
+  Object.fromEntries(
+    Object.entries(TOOLBAR_BUTTON_METADATA)
+      .filter(([id]) => !OVERFLOW_DROPDOWN_SKIP.has(id as AnyToolbarButtonId))
+      .map(([id, meta]) => [id, { label: meta!.label, icon: meta!.icon }])
+  ) as Partial<Record<AnyToolbarButtonId, OverflowMenuMeta>>;
 
 interface ToolbarProps {
   onLaunchAgent: (type: string) => void;
@@ -652,21 +643,29 @@ export function Toolbar({
     ]
   );
 
-  const hiddenSet = useMemo(
-    () => new Set(toolbarLayout.hiddenButtons),
-    [toolbarLayout.hiddenButtons]
-  );
+  const pinnedButtons = toolbarLayout.pinnedButtons;
 
   const effectiveLeftButtons = useMemo(
-    () => toolbarLayout.leftButtons.filter((id) => !hiddenSet.has(id)),
-    [toolbarLayout.leftButtons, hiddenSet]
+    () =>
+      toolbarLayout.leftButtons.filter((id) =>
+        isToolbarButtonVisible(id, pinnedButtons, effectiveAgentSettings, agentAvailability)
+      ),
+    [toolbarLayout.leftButtons, pinnedButtons, effectiveAgentSettings, agentAvailability]
   );
 
   const effectiveRightButtons = useMemo(() => {
     const existing = new Set(toolbarLayout.rightButtons);
     const extra = pluginButtonIds.filter((id) => !existing.has(id));
-    return [...toolbarLayout.rightButtons, ...extra].filter((id) => !hiddenSet.has(id));
-  }, [toolbarLayout.rightButtons, pluginButtonIds, hiddenSet]);
+    return [...toolbarLayout.rightButtons, ...extra].filter((id) =>
+      isToolbarButtonVisible(id, pinnedButtons, effectiveAgentSettings, agentAvailability)
+    );
+  }, [
+    toolbarLayout.rightButtons,
+    pluginButtonIds,
+    pinnedButtons,
+    effectiveAgentSettings,
+    agentAvailability,
+  ]);
 
   const availableLeftIds = useMemo(
     () =>

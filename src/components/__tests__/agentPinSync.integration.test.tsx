@@ -152,7 +152,7 @@ vi.mock("@/components/ui/button", () => ({
 let sharedToolbarLayout = {
   leftButtons: ["agent-tray", "claude", "gemini", "codex", "terminal"] as string[],
   rightButtons: ["settings"] as string[],
-  hiddenButtons: [] as string[],
+  pinnedButtons: {} as Record<string, boolean>,
 };
 const sharedToolbarLauncher = { alwaysShowDevServer: false, defaultSelection: undefined };
 
@@ -243,7 +243,7 @@ describe("agent pin sync — Settings > Toolbar and Agent Tray share state (#511
     sharedToolbarLayout = {
       leftButtons: ["agent-tray", "claude", "gemini", "codex", "terminal"],
       rightButtons: ["settings"],
-      hiddenButtons: [],
+      pinnedButtons: {},
     };
   });
 
@@ -309,7 +309,7 @@ describe("agent pin sync — Settings > Toolbar and Agent Tray share state (#511
     expect(geminiCheckboxB.checked).toBe(true);
   });
 
-  it("Settings checkbox toggles for agent IDs never touch toolbarPreferencesStore.hiddenButtons", () => {
+  it("Settings checkbox toggles for agent IDs never touch toolbarPreferencesStore.pinnedButtons", () => {
     const settings = render(<ToolbarSettingsTab />);
     fireEvent.click(settings.getByLabelText("Toggle Claude Agent visibility"));
     fireEvent.click(settings.getByLabelText("Toggle Terminal visibility"));
@@ -318,7 +318,7 @@ describe("agent pin sync — Settings > Toolbar and Agent Tray share state (#511
     expect(setAgentPinnedMock).toHaveBeenCalledWith("claude", false);
     expect(toggleButtonVisibilityMock).toHaveBeenCalledTimes(1);
     expect(toggleButtonVisibilityMock).toHaveBeenCalledWith("terminal", "left");
-    // Agent toggles never write hiddenButtons.
+    // Agent toggles never write pinnedButtons.
     expect(toggleButtonVisibilityMock).not.toHaveBeenCalledWith("claude", expect.anything());
   });
 });

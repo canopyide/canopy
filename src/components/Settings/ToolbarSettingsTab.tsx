@@ -15,29 +15,18 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import {
-  GripVertical,
-  SquareTerminal,
-  Globe,
-  MonitorPlay,
-  AlertTriangle,
-  Settings,
-  AlertCircle,
-  Bell,
-  Mic,
-  LayoutGrid,
-  Rocket,
-  RotateCcw,
-  Puzzle,
-} from "lucide-react";
-import { Folders } from "@/components/icons";
+import { GripVertical, LayoutGrid, Rocket, RotateCcw } from "lucide-react";
 import { useToolbarPreferencesStore } from "@/store";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import type { AnyToolbarButtonId } from "@/../../shared/types/toolbar";
-import type { AgentSettings, CliAvailability } from "@shared/types";
 import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
 import { isAgentToolbarVisible } from "../../../shared/utils/agentPinned";
+import {
+  TOOLBAR_BUTTON_METADATA,
+  isToolbarButtonVisible,
+  type ToolbarButtonMetadata,
+} from "@/components/Layout/toolbarButtonMetadata";
 import { getAgentConfig } from "@/config/agents";
 import { usePluginToolbarButtons } from "@/hooks/usePluginToolbarButtons";
 import { McpServerIcon } from "@/components/icons";
@@ -45,100 +34,18 @@ import { cn } from "@/lib/utils";
 import { SettingsSection } from "./SettingsSection";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
 
-type ButtonMetadata = { label: string; icon: React.ReactNode; description: string };
-
-// Agent-ID writes and reads for visibility go through `agentSettingsStore`
-// (the authoritative IPC-persisted store). `toolbarPreferencesStore.hiddenButtons`
-// is the source of truth only for non-agent buttons. A `version: 5` migration
-// strips stale agent IDs from persisted `hiddenButtons` so they can't shadow
-// the canonical pinned state.
+// Agent-ID writes for visibility route to `agentSettingsStore` (the
+// authoritative IPC-persisted store). Non-agent buttons (including
+// `agent-tray` and plugin buttons) live in `toolbarPreferencesStore`'s
+// `pinnedButtons` map. A version: 5 migration strips stale agent IDs from
+// pre-unification state so they can't shadow the canonical pinned state.
 const AGENT_ID_SET = new Set<string>(BUILT_IN_AGENT_IDS);
-
-function isEffectivelyVisible(
-  buttonId: AnyToolbarButtonId,
-  hiddenButtons: string[],
-  agentSettings: AgentSettings | null,
-  agentAvailability: CliAvailability | null | undefined
-): boolean {
-  if (AGENT_ID_SET.has(buttonId)) {
-    return isAgentToolbarVisible(agentSettings?.agents?.[buttonId], agentAvailability?.[buttonId]);
-  }
-  return !hiddenButtons.includes(buttonId);
-}
-
-const BUTTON_METADATA: Partial<Record<AnyToolbarButtonId, ButtonMetadata>> = {
-  "agent-tray": {
-    label: "Agent Tray",
-    icon: <Puzzle className="h-4 w-4" />,
-    description: "Dropdown for launching any agent and jumping into setup",
-  },
-  ...Object.fromEntries(
-    BUILT_IN_AGENT_IDS.map((id) => {
-      const cfg = getAgentConfig(id);
-      const Icon = cfg?.icon;
-      const name = cfg?.name ?? id;
-      return [
-        id,
-        {
-          label: `${name} Agent`,
-          icon: Icon ? <Icon className="h-4 w-4" /> : <SquareTerminal className="h-4 w-4" />,
-          description: `Launch ${name} AI agent`,
-        },
-      ];
-    })
-  ),
-  terminal: {
-    label: "Terminal",
-    icon: <SquareTerminal className="h-4 w-4" />,
-    description: "Open new terminal",
-  },
-  browser: {
-    label: "Browser",
-    icon: <Globe className="h-4 w-4" />,
-    description: "Open browser panel",
-  },
-  "dev-server": {
-    label: "Dev Preview",
-    icon: <MonitorPlay className="h-4 w-4" />,
-    description: "Open dev preview panel",
-  },
-  "voice-recording": {
-    label: "Voice Recording",
-    icon: <Mic className="h-4 w-4" />,
-    description: "Persistent dictation indicator shown while recording is active",
-  },
-  "github-stats": {
-    label: "GitHub Stats",
-    icon: <AlertTriangle className="h-4 w-4" />,
-    description: "GitHub issues, PRs, and commits",
-  },
-  "notification-center": {
-    label: "Notifications",
-    icon: <Bell className="h-4 w-4" />,
-    description: "Notification history dropdown",
-  },
-  "copy-tree": {
-    label: "Copy Context",
-    icon: <Folders className="h-4 w-4" />,
-    description: "Copy project context to clipboard",
-  },
-  settings: {
-    label: "Settings",
-    icon: <Settings className="h-4 w-4" />,
-    description: "Open settings dialog",
-  },
-  problems: {
-    label: "Problems",
-    icon: <AlertCircle className="h-4 w-4" />,
-    description: "Show problems panel",
-  },
-};
 
 interface SortableButtonItemProps {
   buttonId: AnyToolbarButtonId;
   isVisible: boolean;
   onToggle: (buttonId: AnyToolbarButtonId) => void;
-  allMetadata: Partial<Record<AnyToolbarButtonId, ButtonMetadata>>;
+  allMetadata: Partial<Record<AnyToolbarButtonId, ToolbarButtonMetadata>>;
 }
 
 function SortableButtonItem({
@@ -160,6 +67,7 @@ function SortableButtonItem({
   };
 
   if (!metadata) return null;
+  const Icon = metadata.icon;
 
   return (
     <div
@@ -176,7 +84,9 @@ function SortableButtonItem({
         />
       </div>
       <div className="flex items-center gap-2 flex-1">
-        <div className="text-daintree-text">{metadata.icon}</div>
+        <div className="text-daintree-text">
+          <Icon className="h-4 w-4" />
+        </div>
         <div className="flex-1">
           <div className="text-sm font-medium text-daintree-text">{metadata.label}</div>
           <div className="text-xs text-daintree-text/50 select-text">{metadata.description}</div>
@@ -217,18 +127,18 @@ export function ToolbarSettingsTab() {
   const { buttonIds: pluginButtonIds, configs: pluginConfigs } = usePluginToolbarButtons();
 
   const allMetadata = useMemo(() => {
-    const pluginMeta: Record<string, ButtonMetadata> = {};
+    const pluginMeta: Record<string, ToolbarButtonMetadata> = {};
     for (const id of pluginButtonIds) {
       const config = pluginConfigs.get(id);
       if (config) {
         pluginMeta[id] = {
           label: config.label,
-          icon: <McpServerIcon className="h-4 w-4" />,
+          icon: McpServerIcon,
           description: `Plugin button (${config.pluginId})`,
         };
       }
     }
-    return { ...BUTTON_METADATA, ...pluginMeta };
+    return { ...TOOLBAR_BUTTON_METADATA, ...pluginMeta };
   }, [pluginButtonIds, pluginConfigs]);
 
   const handleLeftDragEnd = (event: DragEndEvent) => {
@@ -295,7 +205,7 @@ export function ToolbarSettingsTab() {
       <SettingsSection
         icon={LayoutGrid}
         title="Left Side Buttons"
-        description={`Drag to reorder, uncheck to hide. ${layout.leftButtons.filter((id) => isEffectivelyVisible(id, layout.hiddenButtons, agentSettings, agentAvailability)).length} of ${layout.leftButtons.length} visible.`}
+        description={`Drag to reorder, uncheck to hide. ${layout.leftButtons.filter((id) => isToolbarButtonVisible(id, layout.pinnedButtons, agentSettings, agentAvailability)).length} of ${layout.leftButtons.length} visible.`}
       >
         <DndContext
           sensors={sensors}
@@ -308,9 +218,9 @@ export function ToolbarSettingsTab() {
                 <SortableButtonItem
                   key={buttonId}
                   buttonId={buttonId}
-                  isVisible={isEffectivelyVisible(
+                  isVisible={isToolbarButtonVisible(
                     buttonId,
-                    layout.hiddenButtons,
+                    layout.pinnedButtons,
                     agentSettings,
                     agentAvailability
                   )}
@@ -326,7 +236,7 @@ export function ToolbarSettingsTab() {
       <SettingsSection
         icon={LayoutGrid}
         title="Right Side Buttons"
-        description={`Drag to reorder, uncheck to hide. ${layout.rightButtons.filter((id) => isEffectivelyVisible(id, layout.hiddenButtons, agentSettings, agentAvailability)).length} of ${layout.rightButtons.length} visible.`}
+        description={`Drag to reorder, uncheck to hide. ${layout.rightButtons.filter((id) => isToolbarButtonVisible(id, layout.pinnedButtons, agentSettings, agentAvailability)).length} of ${layout.rightButtons.length} visible.`}
       >
         <DndContext
           sensors={sensors}
@@ -339,9 +249,9 @@ export function ToolbarSettingsTab() {
                 <SortableButtonItem
                   key={buttonId}
                   buttonId={buttonId}
-                  isVisible={isEffectivelyVisible(
+                  isVisible={isToolbarButtonVisible(
                     buttonId,
-                    layout.hiddenButtons,
+                    layout.pinnedButtons,
                     agentSettings,
                     agentAvailability
                   )}
