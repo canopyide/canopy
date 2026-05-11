@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { Spinner } from "@/components/ui/Spinner";
@@ -44,13 +44,7 @@ export function ForcePushConfirmDialog({
   const isExecutingRef = useRef(false);
   const requestIdRef = useRef(0);
 
-  useEffect(() => {
-    if (!isOpen) {
-      setCommits(null);
-      setLoadError(null);
-      setIsLoading(false);
-      return;
-    }
+  const loadCommits = useCallback(() => {
     const requestId = ++requestIdRef.current;
     setIsLoading(true);
     setLoadError(null);
@@ -73,11 +67,25 @@ export function ForcePushConfirmDialog({
         }),
       { context: "ForcePushConfirmDialog: load remote commits" }
     );
-  }, [isOpen, cwd, branchName]);
+  }, [cwd, branchName]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setCommits(null);
+      setLoadError(null);
+      setIsLoading(false);
+      return;
+    }
+    loadCommits();
+  }, [isOpen, loadCommits]);
 
   const handleConfirm = async () => {
     if (isExecutingRef.current) return;
     if (isLoading) return;
+    // Block confirm when the discard preview failed to load — without it the
+    // user has no visibility into what `--force-with-lease` would discard,
+    // even though the lease itself still keeps the operation safe.
+    if (loadError) return;
     isExecutingRef.current = true;
     setIsPushing(true);
     try {
@@ -138,7 +146,21 @@ export function ForcePushConfirmDialog({
           {!isLoading && loadError && (
             <div className="px-3 py-3 text-status-error flex items-start gap-2">
               <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              <span>{loadError}</span>
+              <div className="flex-1 min-w-0">
+                <div>{loadError}</div>
+                <button
+                  type="button"
+                  onClick={loadCommits}
+                  data-testid="force-push-commits-retry"
+                  className={cn(
+                    "mt-1 inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium transition-colors",
+                    "bg-status-error/15 hover:bg-status-error/25 text-status-error",
+                    "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-status-error"
+                  )}
+                >
+                  Retry
+                </button>
+              </div>
             </div>
           )}
 

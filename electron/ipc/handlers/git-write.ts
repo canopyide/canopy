@@ -502,8 +502,11 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
 
     const git = createHardenedGit(payload.cwd);
     try {
+      // No `--no-merges` — `behindCount` from `git status -b` includes merge
+      // commits, and the dialog's "N more" tail relies on the listed rows
+      // matching what `--force-with-lease` would actually discard. Filtering
+      // merges here would understate the discard preview against `behindCount`.
       const log = await git.log([
-        "--no-merges",
         `--max-count=${limit}`,
         `HEAD..refs/remotes/origin/${branchName}`,
       ]);
