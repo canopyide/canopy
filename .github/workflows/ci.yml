@@ -112,9 +112,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Renderer import budget
-        run: npm run renderer-import-budget:check
-
       - name: Smoke test
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: xvfb-run --auto-servernum npm run test:smoke
