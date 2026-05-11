@@ -17,7 +17,7 @@ describe("fleetBroadcastConfirmStore", () => {
       const promise = requestFleetBroadcastConfirmation({
         text: "rm -rf /",
         warningReasons: ["destructive"],
-      });
+      }).catch(() => {});
       expect(promise).toBeInstanceOf(Promise);
 
       const { pending } = useFleetBroadcastConfirmStore.getState();
@@ -31,7 +31,7 @@ describe("fleetBroadcastConfirmStore", () => {
       requestFleetBroadcastConfirmation({
         text: "rm -rf /",
         warningReasons: ["destructive"],
-      });
+      }).catch(() => {});
       const { pending } = useFleetBroadcastConfirmStore.getState();
       const serialized = JSON.stringify(pending);
       const parsed = JSON.parse(serialized);
@@ -49,9 +49,11 @@ describe("fleetBroadcastConfirmStore", () => {
       requestFleetBroadcastConfirmation({
         text: "hello",
         warningReasons: ["multiline"],
-      }).then(() => {
-        resolved = true;
-      });
+      })
+        .then(() => {
+          resolved = true;
+        })
+        .catch(() => {});
 
       resolveFleetBroadcastConfirmation();
 
@@ -71,9 +73,11 @@ describe("fleetBroadcastConfirmStore", () => {
       requestFleetBroadcastConfirmation({
         text: "hello",
         warningReasons: [],
-      }).then(() => {
-        callCount++;
-      });
+      })
+        .then(() => {
+          callCount++;
+        })
+        .catch(() => {});
 
       resolveFleetBroadcastConfirmation();
       resolveFleetBroadcastConfirmation();
@@ -89,9 +93,11 @@ describe("fleetBroadcastConfirmStore", () => {
       requestFleetBroadcastConfirmation({
         text: "hello",
         warningReasons: [],
-      }).then(() => {
-        resolved = true;
-      });
+      })
+        .then(() => {
+          resolved = true;
+        })
+        .catch(() => {});
 
       useFleetBroadcastConfirmStore.getState().clear();
       expect(useFleetBroadcastConfirmStore.getState().pending).toBeNull();
@@ -116,18 +122,22 @@ describe("fleetBroadcastConfirmStore", () => {
       requestFleetBroadcastConfirmation({
         text: "first",
         warningReasons: [],
-      }).then(() => {
-        firstResolved = true;
-      });
+      })
+        .then(() => {
+          firstResolved = true;
+        })
+        .catch(() => {});
 
       const firstId = useFleetBroadcastConfirmStore.getState().pending!.requestId;
 
       requestFleetBroadcastConfirmation({
         text: "second",
         warningReasons: [],
-      }).then(() => {
-        secondResolved = true;
-      });
+      })
+        .then(() => {
+          secondResolved = true;
+        })
+        .catch(() => {});
 
       const secondId = useFleetBroadcastConfirmStore.getState().pending!.requestId;
       expect(secondId).not.toBe(firstId);
