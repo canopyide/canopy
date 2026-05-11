@@ -226,7 +226,7 @@ export function CommitPanel({
               <span className="w-20 truncate capitalize">{e.stage}</span>
               <div className="flex-1 h-1 bg-daintree-bg rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-daintree-accent rounded-full transition-[width] duration-300 ease-out"
+                  className="h-full bg-primary rounded-full transition-[width] duration-300 ease-out"
                   style={{ width: `${Math.min(100, Math.max(0, e.progress ?? 0))}%` }}
                 />
               </div>
