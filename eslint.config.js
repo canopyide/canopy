@@ -411,6 +411,13 @@ export default tseslint.config(
     rules: { "no-restricted-imports": "off" },
   },
 
+  // Allowlist — framer-motion worktree row entry animations (AnimatePresence
+  // wraps the row mapping to prevent overlap during bulk-create insertion).
+  {
+    files: ["src/components/Sidebar/SidebarContent.tsx"],
+    rules: { "no-restricted-imports": "off" },
+  },
+
   // Allowlist — framer-motion content grid animations (terminal layout).
   {
     files: [

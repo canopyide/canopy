@@ -28,6 +28,7 @@ import { BulkCreateWorktreeDialog } from "@/components/GitHub/BulkCreateWorktree
 import { FleetPickerPalette } from "@/components/Fleet/FleetPickerPalette";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { AnimatePresence } from "framer-motion";
 import { getWorktreeSortDragId } from "@/components/DragDrop/SortableWorktreeCard";
 import { usePanelStore, useWorktreeSelectionStore, useProjectStore } from "@/store";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
@@ -100,6 +101,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const deferredWorktrees = useDeferredValue(worktrees);
   const [isRefreshing, startRefreshTransition] = useTransition();
   const showRefreshSpinner = useDeferredLoading(isRefreshing, UI_DOHERTY_THRESHOLD);
+  const disableMotion = document.body.dataset.performanceMode === "true";
   const currentProject = useProjectStore((state) => state.currentProject);
   useProjectSettings();
   const { availability, agentSettings } = useAgentLauncher();
@@ -965,28 +967,37 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
               ) : (
                 <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
                   <div className="flex flex-col">
-                    {filteredWorktrees.map((worktree, idx) => {
-                      const isPinned = pinnedWorktrees.includes(worktree.id);
-                      return (
-                        <SidebarWorktreeRow
-                          key={worktree.id}
-                          worktreeId={worktree.id}
-                          activeWorktreeId={activeWorktreeId}
-                          focusedWorktreeId={focusedWorktreeId}
-                          totalWorktreeCount={deferredWorktrees.length}
-                          selectWorktree={selectWorktree}
-                          worktreeActions={worktreeActions}
-                          availability={availability}
-                          agentSettings={agentSettings}
-                          homeDir={homeDir}
-                          dragStartOrder={dragStartOrder}
-                          isSortDisabled={isSortDisabled}
-                          isPinned={isPinned}
-                          rowIndex={idx}
-                          ariaRowIndex={firstScrollableRowIndex + idx}
-                        />
+                    {(() => {
+                      const rows = filteredWorktrees.map((worktree, idx) => {
+                        const isPinned = pinnedWorktrees.includes(worktree.id);
+                        return (
+                          <SidebarWorktreeRow
+                            key={worktree.id}
+                            worktreeId={worktree.id}
+                            activeWorktreeId={activeWorktreeId}
+                            focusedWorktreeId={focusedWorktreeId}
+                            totalWorktreeCount={deferredWorktrees.length}
+                            selectWorktree={selectWorktree}
+                            worktreeActions={worktreeActions}
+                            availability={availability}
+                            agentSettings={agentSettings}
+                            homeDir={homeDir}
+                            dragStartOrder={dragStartOrder}
+                            isSortDisabled={isSortDisabled}
+                            isPinned={isPinned}
+                            rowIndex={idx}
+                            ariaRowIndex={firstScrollableRowIndex + idx}
+                          />
+                        );
+                      });
+                      return disableMotion ? (
+                        rows
+                      ) : (
+                        <AnimatePresence initial={false} mode="popLayout">
+                          {rows}
+                        </AnimatePresence>
                       );
-                    })}
+                    })()}
                   </div>
                 </SortableContext>
               )}
