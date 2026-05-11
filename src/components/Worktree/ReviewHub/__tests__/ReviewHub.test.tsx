@@ -923,7 +923,7 @@ describe("ReviewHub", () => {
       });
     });
 
-    it("opens PR in browser when PR badge is clicked", async () => {
+    it("opens PR in browser when external-link button is clicked", async () => {
       setWorktreePR({
         prNumber: 42,
         prUrl: "https://github.com/test/repo/pull/42",
@@ -934,8 +934,13 @@ describe("ReviewHub", () => {
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
 
       await waitFor(() => screen.getByRole("button", { name: /view pull request #42/i }));
-      fireEvent.click(screen.getByRole("button", { name: /view pull request #42/i }));
 
+      // Clicking the pill text does not open the PR
+      fireEvent.click(screen.getByText("#42"));
+      expect(openPRMock).not.toHaveBeenCalled();
+
+      // Clicking the external-link button opens the PR
+      fireEvent.click(screen.getByRole("button", { name: /view pull request #42/i }));
       expect(openPRMock).toHaveBeenCalledWith("https://github.com/test/repo/pull/42");
     });
 
