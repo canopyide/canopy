@@ -15,8 +15,14 @@ interface ReviewHubProps {
 
 export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
   const state = useReviewHubState({ worktreePath, active: isOpen });
-  const { selectedFile, selectedBaseBranchFile, mainBranch, status, setSelectedFile, setSelectedBaseBranchFile } =
-    state;
+  const {
+    selectedFile,
+    selectedBaseBranchFile,
+    mainBranch,
+    status,
+    setSelectedFile,
+    setSelectedBaseBranchFile,
+  } = state;
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useOverlayState(isOpen);

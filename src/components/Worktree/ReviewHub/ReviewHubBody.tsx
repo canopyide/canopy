@@ -230,10 +230,7 @@ export function ReviewHubBody({ state, onClose, closeButtonRef }: ReviewHubBodyP
               aria-label="Refresh"
             >
               <RefreshCw
-                className={cn(
-                  "w-3.5 h-3.5",
-                  (loading || isBackgroundRefreshing) && "animate-spin"
-                )}
+                className={cn("w-3.5 h-3.5", (loading || isBackgroundRefreshing) && "animate-spin")}
               />
             </button>
           )}
@@ -322,10 +319,7 @@ export function ReviewHubBody({ state, onClose, closeButtonRef }: ReviewHubBodyP
       <div
         ref={scrollContainerRef}
         data-testid="review-hub-scroll-container"
-        className={cn(
-          "flex-1 overflow-y-auto min-h-0",
-          isBackgroundRefreshing && "surface-stale"
-        )}
+        className={cn("flex-1 overflow-y-auto min-h-0", isBackgroundRefreshing && "surface-stale")}
         aria-busy={isBackgroundRefreshing || undefined}
         onScroll={handleScrollContainer}
       >
