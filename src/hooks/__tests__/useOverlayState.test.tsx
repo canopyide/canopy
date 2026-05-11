@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
-import { render } from "@testing-library/react";
+import { render, renderHook } from "@testing-library/react";
 import { describe, expect, it, beforeEach } from "vitest";
-import { useOverlayClaim, useOverlayState } from "../useOverlayState";
+import {
+  useOverlayClaim,
+  useOverlayOpen,
+  useOverlayState,
+  useTopmostOverlay,
+} from "../useOverlayState";
 import { useUIStore } from "@/store/uiStore";
 
 function NamedClaim({ id, active }: { id: string; active: boolean }) {
@@ -14,101 +19,101 @@ function AnonymousClaim({ active }: { active: boolean }) {
   return null;
 }
 
-function getClaims() {
-  return useUIStore.getState().overlayClaims;
+function getStack() {
+  return useUIStore.getState().overlayStack;
 }
 
 beforeEach(() => {
-  useUIStore.setState({ overlayClaims: new Set<string>() });
+  useUIStore.setState({ overlayStack: [] });
 });
 
 describe("useOverlayClaim", () => {
   it("adds the claim when active becomes true", () => {
     render(<NamedClaim id="settings" active={true} />);
-    expect(getClaims().has("settings")).toBe(true);
-    expect(getClaims().size).toBe(1);
+    expect(getStack().includes("settings")).toBe(true);
+    expect(getStack().length).toBe(1);
   });
 
   it("removes the claim when active flips to false", () => {
     const { rerender } = render(<NamedClaim id="settings" active={true} />);
-    expect(getClaims().has("settings")).toBe(true);
+    expect(getStack().includes("settings")).toBe(true);
 
     rerender(<NamedClaim id="settings" active={false} />);
-    expect(getClaims().has("settings")).toBe(false);
-    expect(getClaims().size).toBe(0);
+    expect(getStack().includes("settings")).toBe(false);
+    expect(getStack().length).toBe(0);
   });
 
   it("removes the claim on unmount", () => {
     const { unmount } = render(<NamedClaim id="settings" active={true} />);
-    expect(getClaims().has("settings")).toBe(true);
+    expect(getStack().includes("settings")).toBe(true);
 
     unmount();
-    expect(getClaims().size).toBe(0);
+    expect(getStack().length).toBe(0);
   });
 
   it("does not add a claim when active is false from the start", () => {
     render(<NamedClaim id="settings" active={false} />);
-    expect(getClaims().size).toBe(0);
+    expect(getStack().length).toBe(0);
   });
 
   it("collapses duplicate registrations for the same ID", () => {
     render(<NamedClaim id="shared" active={true} />);
     render(<NamedClaim id="shared" active={true} />);
-    expect(getClaims().size).toBe(1);
-    expect(getClaims().has("shared")).toBe(true);
+    expect(getStack().length).toBe(1);
+    expect(getStack().includes("shared")).toBe(true);
   });
 
-  it("preserves the Set reference when addOverlayClaim is a no-op", () => {
+  it("preserves the array reference when addOverlayClaim is a no-op", () => {
     const { addOverlayClaim } = useUIStore.getState();
     addOverlayClaim("first");
-    const before = useUIStore.getState().overlayClaims;
+    const before = useUIStore.getState().overlayStack;
     addOverlayClaim("first");
-    const after = useUIStore.getState().overlayClaims;
+    const after = useUIStore.getState().overlayStack;
     expect(after).toBe(before);
   });
 
-  it("preserves the Set reference when removeOverlayClaim is a no-op", () => {
-    const before = useUIStore.getState().overlayClaims;
+  it("preserves the array reference when removeOverlayClaim is a no-op", () => {
+    const before = useUIStore.getState().overlayStack;
     useUIStore.getState().removeOverlayClaim("missing");
-    const after = useUIStore.getState().overlayClaims;
+    const after = useUIStore.getState().overlayStack;
     expect(after).toBe(before);
   });
 
   it("tracks rapid toggle cycles", () => {
     const { rerender } = render(<NamedClaim id="toggle" active={false} />);
-    expect(getClaims().size).toBe(0);
+    expect(getStack().length).toBe(0);
 
     rerender(<NamedClaim id="toggle" active={true} />);
-    expect(getClaims().size).toBe(1);
+    expect(getStack().length).toBe(1);
 
     rerender(<NamedClaim id="toggle" active={false} />);
-    expect(getClaims().size).toBe(0);
+    expect(getStack().length).toBe(0);
 
     rerender(<NamedClaim id="toggle" active={true} />);
-    expect(getClaims().size).toBe(1);
+    expect(getStack().length).toBe(1);
   });
 
   it("holds multiple named claims simultaneously", () => {
     const { unmount: unmountA } = render(<NamedClaim id="a" active={true} />);
     render(<NamedClaim id="b" active={true} />);
-    expect(getClaims().size).toBe(2);
-    expect(getClaims().has("a")).toBe(true);
-    expect(getClaims().has("b")).toBe(true);
+    expect(getStack().length).toBe(2);
+    expect(getStack().includes("a")).toBe(true);
+    expect(getStack().includes("b")).toBe(true);
 
     unmountA();
-    expect(getClaims().size).toBe(1);
-    expect(getClaims().has("b")).toBe(true);
+    expect(getStack().length).toBe(1);
+    expect(getStack().includes("b")).toBe(true);
   });
 
   it("swaps the registered claim when the ID changes while active", () => {
     const { rerender } = render(<NamedClaim id="a" active={true} />);
-    expect(getClaims().has("a")).toBe(true);
-    expect(getClaims().size).toBe(1);
+    expect(getStack().includes("a")).toBe(true);
+    expect(getStack().length).toBe(1);
 
     rerender(<NamedClaim id="b" active={true} />);
-    expect(getClaims().has("a")).toBe(false);
-    expect(getClaims().has("b")).toBe(true);
-    expect(getClaims().size).toBe(1);
+    expect(getStack().includes("a")).toBe(false);
+    expect(getStack().includes("b")).toBe(true);
+    expect(getStack().length).toBe(1);
   });
 });
 
@@ -118,16 +123,81 @@ describe("useOverlayState (backwards-compat shim)", () => {
     render(<AnonymousClaim active={true} />);
     // Two concurrent anonymous callers must not collide on a single ID — the
     // shim's per-instance useId() gives each its own slot.
-    expect(getClaims().size).toBe(2);
+    expect(getStack().length).toBe(2);
 
     unmountA();
-    expect(getClaims().size).toBe(1);
+    expect(getStack().length).toBe(1);
   });
 
   it("releases the claim on unmount", () => {
     const { unmount } = render(<AnonymousClaim active={true} />);
-    expect(getClaims().size).toBe(1);
+    expect(getStack().length).toBe(1);
     unmount();
-    expect(getClaims().size).toBe(0);
+    expect(getStack().length).toBe(0);
+  });
+});
+
+describe("useOverlayOpen", () => {
+  it("returns false when the id has no claim", () => {
+    const { result } = renderHook(() => useOverlayOpen("settings"));
+    expect(result.current).toBe(false);
+  });
+
+  it("returns true while the id has an active claim", () => {
+    useUIStore.getState().addOverlayClaim("settings");
+    const { result } = renderHook(() => useOverlayOpen("settings"));
+    expect(result.current).toBe(true);
+  });
+
+  it("flips to false when the claim is released", () => {
+    useUIStore.getState().addOverlayClaim("settings");
+    const { result, rerender } = renderHook(() => useOverlayOpen("settings"));
+    expect(result.current).toBe(true);
+
+    useUIStore.getState().removeOverlayClaim("settings");
+    rerender();
+    expect(result.current).toBe(false);
+  });
+
+  it("isolates each id from unrelated stack mutations", () => {
+    useUIStore.getState().addOverlayClaim("other");
+    const { result } = renderHook(() => useOverlayOpen("settings"));
+    expect(result.current).toBe(false);
+  });
+});
+
+describe("useTopmostOverlay", () => {
+  it("returns undefined when no overlay is open", () => {
+    const { result } = renderHook(() => useTopmostOverlay());
+    expect(result.current).toBeUndefined();
+  });
+
+  it("returns the most recently added claim", () => {
+    useUIStore.getState().addOverlayClaim("a");
+    useUIStore.getState().addOverlayClaim("b");
+    useUIStore.getState().addOverlayClaim("c");
+    const { result } = renderHook(() => useTopmostOverlay());
+    expect(result.current).toBe("c");
+  });
+
+  it("updates when the topmost claim is released", () => {
+    useUIStore.getState().addOverlayClaim("a");
+    useUIStore.getState().addOverlayClaim("b");
+    const { result, rerender } = renderHook(() => useTopmostOverlay());
+    expect(result.current).toBe("b");
+
+    useUIStore.getState().removeOverlayClaim("b");
+    rerender();
+    expect(result.current).toBe("a");
+  });
+
+  it("returns undefined once the stack drains", () => {
+    useUIStore.getState().addOverlayClaim("a");
+    const { result, rerender } = renderHook(() => useTopmostOverlay());
+    expect(result.current).toBe("a");
+
+    useUIStore.getState().removeOverlayClaim("a");
+    rerender();
+    expect(result.current).toBeUndefined();
   });
 });

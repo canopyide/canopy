@@ -105,7 +105,7 @@ const createPortalStore: StateCreator<PortalState & PortalActions> = (set, get) 
         // viewport (e.g. a settings dialog). Without this the store flips to
         // isOpen=true but PortalVisibilityController keeps the webview hidden,
         // leaving the Portal visually closed yet "open" per the store.
-        if (!s.isOpen && useUIStore.getState().overlayClaims.size > 0) return s;
+        if (!s.isOpen && useUIStore.getState().overlayStack.length > 0) return s;
         return { isOpen: !s.isOpen };
       }),
 

@@ -339,7 +339,7 @@ beforeEach(() => {
     defaultNewTabUrl: null,
   });
 
-  useUIStore.setState({ overlayClaims: new Set<string>() });
+  useUIStore.setState({ overlayStack: [] });
 
   useWorktreeSelectionStore.setState({
     activeWorktreeId: null,
@@ -892,7 +892,7 @@ describe("panel action hardening", () => {
     const actions = buildRegistry(registerPanelActions);
     const openUrl = actions.get("portal.openUrl")!();
 
-    useUIStore.setState({ overlayClaims: new Set(["theme-browser"]) });
+    useUIStore.setState({ overlayStack: ["theme-browser"] });
     usePortalStore.setState({
       isOpen: false,
       activeTabId: null,

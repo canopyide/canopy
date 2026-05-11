@@ -560,7 +560,7 @@ export function registerPanelActions(actions: ActionRegistry, callbacks: ActionC
       // viewport (e.g. theme browser). Mirrors portalStore.toggle()'s guard —
       // without it, setOpen(true) would flip isOpen unconditionally and the
       // portal would pop into view the moment the overlay closed.
-      if (useUIStore.getState().overlayClaims.size > 0) return;
+      if (useUIStore.getState().overlayStack.length > 0) return;
 
       // Ensure portal is visible before activating a tab
       if (!state.isOpen) {

@@ -32,7 +32,7 @@ import { useProjectPresetsSubscription } from "@/hooks/useProjectPresetsSubscrip
 import type { RetryAction } from "@/store";
 import { appClient } from "@/clients";
 import type { CliAvailability, AgentSettings } from "@shared/types";
-import { useLayoutState } from "@/hooks";
+import { useLayoutState, useOverlayOpen } from "@/hooks";
 import type { UseProjectSwitcherPaletteReturn } from "@/hooks";
 import { suppressSidebarResizes } from "@/lib/sidebarToggle";
 import { logError } from "@/utils/logger";
@@ -82,8 +82,7 @@ export function AppLayout({
   const [isAssistantResizing, setIsAssistantResizing] = useState(false);
   const currentProject = useProjectStore((state) => state.currentProject);
   const layout = useLayoutState();
-  const overlayClaims = useUIStore((s) => s.overlayClaims);
-  const isThemeBrowserOpen = overlayClaims.has("theme-browser");
+  const isThemeBrowserOpen = useOverlayOpen("theme-browser");
   const themeBrowserOpen = useThemeBrowserStore((s) => s.isOpen);
   const reduceAnimations = usePreferencesStore((s) => s.reduceAnimations);
   const showSidebar = !layout.gestureSidebarHidden && currentProject != null;

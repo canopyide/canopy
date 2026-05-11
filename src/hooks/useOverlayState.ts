@@ -3,8 +3,9 @@ import { useUIStore } from "@/store/uiStore";
 
 /**
  * Register a named claim on the viewport while `active` is true. The store
- * tracks claims as a Set keyed by stable IDs so `overlayClaims` can be read
- * to see exactly which features currently own the viewport.
+ * tracks claims as an ordered LIFO stack keyed by stable IDs so
+ * `overlayStack` can be read to see exactly which features currently own
+ * the viewport and which is topmost.
  *
  * Usage:
  * ```tsx
@@ -38,10 +39,28 @@ export function useOverlayClaim(id: string, active: boolean): void {
  * simultaneous callers never collide.
  *
  * Prefer `useOverlayClaim(id, active)` with a descriptive ID whenever a
- * stable identifier is available — named claims make `overlayClaims`
+ * stable identifier is available — named claims make `overlayStack`
  * readable from the DevTools console.
  */
 export function useOverlayState(isOpen: boolean): void {
   const id = useId();
   useOverlayClaim(id, isOpen);
+}
+
+/**
+ * Returns `true` while the named overlay claim is registered. Returns a
+ * primitive so Zustand only re-renders subscribers when this id's open
+ * state actually flips.
+ */
+export function useOverlayOpen(id: string): boolean {
+  return useUIStore((state) => state.overlayStack.includes(id));
+}
+
+/**
+ * Returns the id of the topmost overlay claim, or `undefined` when no
+ * overlay is open. Returns a primitive so subscribers only re-render when
+ * the topmost id actually changes, not on unrelated stack mutations.
+ */
+export function useTopmostOverlay(): string | undefined {
+  return useUIStore((state) => state.overlayStack.at(-1));
 }

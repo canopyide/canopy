@@ -8,19 +8,19 @@ import { useGlobalEscapeDispatcher } from "@/hooks/useGlobalEscapeDispatcher";
 
 const GRACE_MS = 300;
 
-let mockOverlayClaims = new Set<string>();
+let mockOverlayStack: string[] = [];
 
-function setOverlayClaimsSize(size: number) {
-  const next = new Set<string>();
+function setOverlayStackLength(size: number) {
+  const next: string[] = [];
   for (let i = 0; i < size; i++) {
-    next.add(`claim-${i}`);
+    next.push(`claim-${i}`);
   }
-  mockOverlayClaims = next;
+  mockOverlayStack = next;
 }
 
 vi.mock("@/store/uiStore", () => ({
-  useUIStore: (selector: (state: { overlayClaims: Set<string> }) => unknown) =>
-    selector({ overlayClaims: mockOverlayClaims }),
+  useUIStore: (selector: (state: { overlayStack: string[] }) => unknown) =>
+    selector({ overlayStack: mockOverlayStack }),
 }));
 
 vi.mock("@/hooks/useAnimatedPresence", () => ({
@@ -61,7 +61,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
 
   beforeEach(() => {
     _resetForTests();
-    setOverlayClaimsSize(0);
+    setOverlayStackLength(0);
     onOpenChange = vi.fn();
     anchorRef = createAnchor();
     vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
@@ -84,7 +84,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
     // overlay rises are treated as user-initiated dismiss triggers.
     advancePastGrace();
 
-    setOverlayClaimsSize(1);
+    setOverlayStackLength(1);
     rerender(
       <FixedDropdown open={true} onOpenChange={onOpenChange} anchorRef={anchorRef}>
         <div>Content</div>
@@ -106,7 +106,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
     // An in-flight modal (e.g. cold-start AgentSetupWizard) mounts shortly
     // after and pushes the overlay count. Still inside the grace window, so
     // the dropdown should not be auto-closed.
-    setOverlayClaimsSize(1);
+    setOverlayStackLength(1);
     rerender(
       <FixedDropdown open={true} onOpenChange={onOpenChange} anchorRef={anchorRef}>
         <div>Content</div>
@@ -141,7 +141,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
     );
 
     // In-flight modal mounts during grace, absorbed into baseline=1.
-    setOverlayClaimsSize(1);
+    setOverlayStackLength(1);
     rerender(
       <FixedDropdown open={true} onOpenChange={onOpenChange} anchorRef={anchorRef}>
         <div>Content</div>
@@ -151,7 +151,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
     advancePastGrace();
 
     // In-flight modal closes — baseline must decay back to 0.
-    setOverlayClaimsSize(0);
+    setOverlayStackLength(0);
     rerender(
       <FixedDropdown open={true} onOpenChange={onOpenChange} anchorRef={anchorRef}>
         <div>Content</div>
@@ -160,7 +160,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
     expect(onOpenChange).not.toHaveBeenCalled();
 
     // User now opens a genuine modal at the same numeric level — must dismiss.
-    setOverlayClaimsSize(1);
+    setOverlayStackLength(1);
     rerender(
       <FixedDropdown open={true} onOpenChange={onOpenChange} anchorRef={anchorRef}>
         <div>Content</div>
@@ -175,7 +175,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
     // Cold-start variant: a wizard is already open when the user clicks the
     // toolbar. The grace-setup effect must seed baseline=1 so that the
     // dropdown does not immediately self-close.
-    setOverlayClaimsSize(1);
+    setOverlayStackLength(1);
     const { rerender } = render(
       <FixedDropdown open={true} onOpenChange={onOpenChange} anchorRef={anchorRef}>
         <div>Content</div>
@@ -194,7 +194,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
     expect(onOpenChange).not.toHaveBeenCalled();
 
     // A second modal on top of the first should dismiss the dropdown.
-    setOverlayClaimsSize(2);
+    setOverlayStackLength(2);
     rerender(
       <FixedDropdown open={true} onOpenChange={onOpenChange} anchorRef={anchorRef}>
         <div>Content</div>
@@ -212,7 +212,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
     );
 
     // In-flight modal arrives during grace; absorbed into baseline.
-    setOverlayClaimsSize(1);
+    setOverlayStackLength(1);
     rerender(
       <FixedDropdown open={true} onOpenChange={onOpenChange} anchorRef={anchorRef}>
         <div>Content</div>
@@ -222,7 +222,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
     advancePastGrace();
 
     // User now opens a genuinely new modal — this must dismiss the dropdown.
-    setOverlayClaimsSize(2);
+    setOverlayStackLength(2);
     rerender(
       <FixedDropdown open={true} onOpenChange={onOpenChange} anchorRef={anchorRef}>
         <div>Content</div>
@@ -248,7 +248,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
       </FixedDropdown>
     );
 
-    setOverlayClaimsSize(2);
+    setOverlayStackLength(2);
     rerender(
       <FixedDropdown open={true} onOpenChange={onOpenChange} anchorRef={anchorRef}>
         <div>Content</div>
@@ -256,7 +256,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
     );
 
     // Within the new grace window, any further in-flight rise is absorbed.
-    setOverlayClaimsSize(3);
+    setOverlayStackLength(3);
     rerender(
       <FixedDropdown open={true} onOpenChange={onOpenChange} anchorRef={anchorRef}>
         <div>Content</div>
@@ -266,7 +266,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
 
     // After the new grace window expires, a further rise closes.
     advancePastGrace();
-    setOverlayClaimsSize(4);
+    setOverlayStackLength(4);
     rerender(
       <FixedDropdown open={true} onOpenChange={onOpenChange} anchorRef={anchorRef}>
         <div>Content</div>
@@ -291,7 +291,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
 
     advancePastGrace();
 
-    setOverlayClaimsSize(1);
+    setOverlayStackLength(1);
     rerender(
       <FixedDropdown
         open={true}
@@ -307,7 +307,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
   });
 
   it("suppresses Escape dismiss while child overlay is active", () => {
-    setOverlayClaimsSize(1);
+    setOverlayStackLength(1);
     render(
       <>
         <Dispatcher />
@@ -328,7 +328,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
   });
 
   it("suppresses outside pointer dismiss while child overlay is active", () => {
-    setOverlayClaimsSize(1);
+    setOverlayStackLength(1);
     render(
       <FixedDropdown
         open={true}
@@ -348,7 +348,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
   });
 
   it("resumes Escape dismiss after child overlay closes", () => {
-    setOverlayClaimsSize(1);
+    setOverlayStackLength(1);
     const { rerender } = render(
       <>
         <Dispatcher />
@@ -363,7 +363,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
       </>
     );
 
-    setOverlayClaimsSize(0);
+    setOverlayStackLength(0);
     rerender(
       <>
         <Dispatcher />
@@ -384,7 +384,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
   });
 
   it("stays suppressed through multiple overlay transitions (1→2→1)", () => {
-    setOverlayClaimsSize(1);
+    setOverlayStackLength(1);
     const { rerender } = render(
       <>
         <Dispatcher />
@@ -399,7 +399,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
       </>
     );
 
-    setOverlayClaimsSize(2);
+    setOverlayStackLength(2);
     rerender(
       <>
         <Dispatcher />
@@ -416,7 +416,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
 
     expect(onOpenChange).not.toHaveBeenCalled();
 
-    setOverlayClaimsSize(1);
+    setOverlayStackLength(1);
     rerender(
       <>
         <Dispatcher />
@@ -437,7 +437,7 @@ describe("FixedDropdown overlay-claims dismiss behavior", () => {
   });
 
   it("can be explicitly closed by parent while child overlay is active", () => {
-    setOverlayClaimsSize(1);
+    setOverlayStackLength(1);
     const { rerender } = render(
       <FixedDropdown
         open={true}
@@ -470,7 +470,7 @@ describe("FixedDropdown keepMounted behavior", () => {
 
   beforeEach(() => {
     _resetForTests();
-    setOverlayClaimsSize(0);
+    setOverlayStackLength(0);
     onOpenChange = vi.fn();
     anchorRef = createAnchor();
     vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
@@ -559,7 +559,7 @@ describe("FixedDropdown right-edge anchor (issue #6800)", () => {
 
   beforeEach(() => {
     _resetForTests();
-    setOverlayClaimsSize(0);
+    setOverlayStackLength(0);
     onOpenChange = vi.fn();
     anchorRef = createAnchor();
     vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
