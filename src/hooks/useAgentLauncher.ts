@@ -246,8 +246,8 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               spawnedBy: launchOptions?.spawnedBy,
             });
             if (!terminalId) return null;
-            const location = (usePanelStore.getState().panelsById[terminalId]?.location ??
-              "grid") as "grid" | "dock";
+            const rawLocation = usePanelStore.getState().panelsById[terminalId]?.location ?? "grid";
+            const location = rawLocation === "dock" ? "dock" : "grid";
             return { terminalId, location };
           } catch (error) {
             logError("Failed to launch browser pane", error);
@@ -268,8 +268,8 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               spawnedBy: launchOptions?.spawnedBy,
             });
             if (!terminalId) return null;
-            const location = (usePanelStore.getState().panelsById[terminalId]?.location ??
-              "grid") as "grid" | "dock";
+            const rawLocation = usePanelStore.getState().panelsById[terminalId]?.location ?? "grid";
+            const location = rawLocation === "dock" ? "dock" : "grid";
             return { terminalId, location };
           } catch (error) {
             logError("Failed to launch dev-preview pane", error);
@@ -541,16 +541,18 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               }
               return next;
             });
-            return { terminalId: gateId, location: gatePanel.location as "grid" | "dock" };
+            return {
+              terminalId: gateId,
+              location: gatePanel.location === "dock" ? "dock" : "grid",
+            };
           }
         }
 
         try {
           const terminalId = await addPanel(options);
           if (!terminalId) return null;
-          const location = (usePanelStore.getState().panelsById[terminalId]?.location ?? "grid") as
-            | "grid"
-            | "dock";
+          const rawLocation = usePanelStore.getState().panelsById[terminalId]?.location ?? "grid";
+          const location = rawLocation === "dock" ? "dock" : "grid";
           return { terminalId, location };
         } catch (error) {
           logError(`Failed to launch ${agentId} agent`, error);
