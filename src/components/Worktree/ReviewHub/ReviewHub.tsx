@@ -13,6 +13,7 @@ import {
   X,
   RefreshCw,
   CheckSquare,
+  ExternalLink,
   Square,
   AlertTriangle,
   CheckCircle2,
@@ -926,64 +927,75 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                 worktreePR.prUrl &&
                 (() => {
                   const ciVisual = prCIStatusVisual(worktreePR.prCiStatus);
+                  const prStateLabel =
+                    worktreePR.prState === "merged"
+                      ? "merged"
+                      : worktreePR.prState === "closed"
+                        ? "closed"
+                        : "open";
                   return (
-                    <button
-                      type="button"
-                      onClick={() => void githubClient.openPR(worktreePR.prUrl as string)}
-                      className={cn(
-                        "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono",
-                        "bg-tint/[0.07] border border-tint/[0.08]",
-                        "hover:bg-tint/[0.12] transition-colors cursor-pointer",
-                        "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent"
-                      )}
-                      aria-label={
-                        ciVisual
-                          ? `Open pull request #${worktreePR.prNumber} on GitHub — CI ${ciVisual.label}`
-                          : `Open pull request #${worktreePR.prNumber} on GitHub`
-                      }
-                    >
-                      <GitPullRequest
-                        className={cn(
-                          "w-3 h-3 shrink-0",
-                          worktreePR.prState === "merged"
-                            ? "text-github-merged"
-                            : worktreePR.prState === "closed"
-                              ? "text-github-closed"
-                              : "text-github-open"
-                        )}
-                      />
+                    <>
                       <span
-                        className={
-                          worktreePR.prState === "merged"
-                            ? "text-github-merged"
-                            : worktreePR.prState === "closed"
-                              ? "text-github-closed"
-                              : "text-github-open"
+                        className={cn(
+                          "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono",
+                          "bg-tint/[0.07] border border-tint/[0.08]"
+                        )}
+                        aria-label={
+                          ciVisual
+                            ? `Pull request #${worktreePR.prNumber} ${prStateLabel} — CI ${ciVisual.label}`
+                            : `Pull request #${worktreePR.prNumber} ${prStateLabel}`
                         }
                       >
-                        #{worktreePR.prNumber}
+                        <GitPullRequest
+                          className={cn(
+                            "w-3 h-3 shrink-0",
+                            worktreePR.prState === "merged"
+                              ? "text-github-merged"
+                              : worktreePR.prState === "closed"
+                                ? "text-github-closed"
+                                : "text-github-open"
+                          )}
+                        />
+                        <span
+                          className={
+                            worktreePR.prState === "merged"
+                              ? "text-github-merged"
+                              : worktreePR.prState === "closed"
+                                ? "text-github-closed"
+                                : "text-github-open"
+                          }
+                        >
+                          #{worktreePR.prNumber}
+                        </span>
+                        <span className="text-daintree-text/40">·</span>
+                        <span className="text-daintree-text/60">{prStateLabel}</span>
+                        {ciVisual && (
+                          <>
+                            <span className="text-daintree-text/40">·</span>
+                            <span className="inline-flex items-center gap-0.5">
+                              <ciVisual.Icon
+                                className={cn("w-2.5 h-2.5 shrink-0", ciVisual.className)}
+                                aria-hidden="true"
+                              />
+                              <span className={ciVisual.className}>{ciVisual.label}</span>
+                            </span>
+                          </>
+                        )}
                       </span>
-                      <span className="text-daintree-text/40">·</span>
-                      <span className="text-daintree-text/60">
-                        {worktreePR.prState === "merged"
-                          ? "merged"
-                          : worktreePR.prState === "closed"
-                            ? "closed"
-                            : "open"}
-                      </span>
-                      {ciVisual && (
-                        <>
-                          <span className="text-daintree-text/40">·</span>
-                          <span className="inline-flex items-center gap-0.5">
-                            <ciVisual.Icon
-                              className={cn("w-2.5 h-2.5 shrink-0", ciVisual.className)}
-                              aria-hidden="true"
-                            />
-                            <span className={ciVisual.className}>{ciVisual.label}</span>
-                          </span>
-                        </>
-                      )}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => void githubClient.openPR(worktreePR.prUrl as string)}
+                        className={cn(
+                          "inline-flex items-center justify-center p-0.5 rounded",
+                          "text-daintree-text/60 hover:bg-tint/5 hover:text-daintree-text",
+                          "transition-colors cursor-pointer",
+                          "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent"
+                        )}
+                        aria-label={`View pull request #${worktreePR.prNumber} on GitHub`}
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                      </button>
+                    </>
                   );
                 })()}
               {status?.hasRemote && !worktreePR && (

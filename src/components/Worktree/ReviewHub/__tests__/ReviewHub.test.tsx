@@ -917,7 +917,7 @@ describe("ReviewHub", () => {
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
 
       await waitFor(() => {
-        screen.getByRole("button", { name: /open pull request #42/i });
+        screen.getByRole("button", { name: /view pull request #42/i });
         screen.getByText("#42");
         screen.getByText("open");
       });
@@ -933,8 +933,8 @@ describe("ReviewHub", () => {
 
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
 
-      await waitFor(() => screen.getByRole("button", { name: /open pull request #42/i }));
-      fireEvent.click(screen.getByRole("button", { name: /open pull request #42/i }));
+      await waitFor(() => screen.getByRole("button", { name: /view pull request #42/i }));
+      fireEvent.click(screen.getByRole("button", { name: /view pull request #42/i }));
 
       expect(openPRMock).toHaveBeenCalledWith("https://github.com/test/repo/pull/42");
     });
@@ -1009,7 +1009,7 @@ describe("ReviewHub", () => {
 
       await waitFor(() => {
         screen.getByText("failing");
-        screen.getByRole("button", { name: /ci failing/i });
+        screen.getByText(/ci failing/i);
       });
     });
 
