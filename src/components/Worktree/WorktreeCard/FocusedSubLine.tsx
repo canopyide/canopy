@@ -15,8 +15,11 @@ export function FocusedSubLine({
   statusLabel,
 }: FocusedSubLineProps) {
   const showChanges = typeof changedFileCount === "number" && changedFileCount > 0;
-  const hasTimestamp = typeof lastActivityTimestamp === "number";
-  const hasLabel = typeof statusLabel === "string" && statusLabel.length > 0;
+  const hasTimestamp =
+    typeof lastActivityTimestamp === "number" &&
+    Number.isFinite(lastActivityTimestamp) &&
+    lastActivityTimestamp > 0;
+  const hasLabel = typeof statusLabel === "string" && statusLabel.trim().length > 0;
   const hasContent = showChanges || hasTimestamp || hasLabel;
   const isVisible = open && hasContent;
 
@@ -45,24 +48,25 @@ export function FocusedSubLine({
         )}
         data-open={isVisible ? "" : undefined}
       >
-        {segments.map((seg, i) => (
-          <span key={seg} className={cn("flex items-center", seg === "label" && "min-w-0")}>
-            {i > 0 && (
-              <span aria-hidden="true" className="mr-1.5 text-text-muted">
-                ·
-              </span>
-            )}
-            {seg === "changes" && (
-              <span className="shrink-0 tabular-nums">
-                {changedFileCount} file{changedFileCount !== 1 ? "s" : ""}
-              </span>
-            )}
-            {seg === "time" && (
-              <LiveTimeAgo timestamp={lastActivityTimestamp} className="shrink-0" />
-            )}
-            {seg === "label" && <span className="truncate">{statusLabel}</span>}
-          </span>
-        ))}
+        {isVisible &&
+          segments.map((seg, i) => (
+            <span key={seg} className={cn("flex items-center", seg === "label" && "min-w-0")}>
+              {i > 0 && (
+                <span aria-hidden="true" className="mr-1.5 text-text-muted">
+                  ·
+                </span>
+              )}
+              {seg === "changes" && (
+                <span className="shrink-0 tabular-nums">
+                  {changedFileCount} file{changedFileCount !== 1 ? "s" : ""}
+                </span>
+              )}
+              {seg === "time" && (
+                <LiveTimeAgo timestamp={lastActivityTimestamp} className="shrink-0" />
+              )}
+              {seg === "label" && <span className="truncate">{statusLabel}</span>}
+            </span>
+          ))}
       </div>
     </div>
   );

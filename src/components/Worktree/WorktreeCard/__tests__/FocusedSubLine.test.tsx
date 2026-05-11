@@ -128,6 +128,39 @@ describe("FocusedSubLine", () => {
     expect(wrapper.getAttribute("aria-hidden")).toBe("false");
   });
 
+  it("treats NaN/non-finite timestamps as absent", () => {
+    renderSubLine({
+      open: true,
+      changedFileCount: null,
+      lastActivityTimestamp: Number.NaN,
+      statusLabel: null,
+    });
+    const wrapper = screen.getByTestId("worktree-focused-subline");
+    expect(wrapper.hasAttribute("data-open")).toBe(false);
+  });
+
+  it("treats whitespace-only statusLabel as absent", () => {
+    renderSubLine({
+      open: true,
+      changedFileCount: null,
+      lastActivityTimestamp: null,
+      statusLabel: "   ",
+    });
+    const wrapper = screen.getByTestId("worktree-focused-subline");
+    expect(wrapper.hasAttribute("data-open")).toBe(false);
+  });
+
+  it("does not mount inner content (LiveTimeAgo) when open=false", () => {
+    const { container } = renderSubLine({
+      open: false,
+      changedFileCount: 5,
+      lastActivityTimestamp: Date.now() - 60_000,
+      statusLabel: "Running",
+    });
+    expect(container.querySelectorAll("[aria-label]").length).toBe(0);
+    expect(container.textContent ?? "").toBe("");
+  });
+
   it("renders the status label with a truncate class so long text doesn't overflow", () => {
     renderSubLine({
       open: true,
