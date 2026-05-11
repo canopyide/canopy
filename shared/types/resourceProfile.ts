@@ -13,6 +13,14 @@ export interface ResourceProfileConfig {
   maxWebGLContexts: number;
   /** HibernationService memory-pressure inactivity threshold (ms) */
   memoryPressureInactiveMs: number;
+  /**
+   * Available system memory (MB) below which ProjectViewManager clamps its
+   * effective cached-view limit to 1 for the current eviction pass. `null`
+   * disables the override (the user-configured cachedProjectViews limit stays
+   * authoritative). "Available" on macOS means free + purgeable; on other
+   * platforms it is free alone.
+   */
+  lowMemoryFreeThresholdMb: number | null;
 }
 
 export interface ResourceProfilePayload {
@@ -38,6 +46,7 @@ export const RESOURCE_PROFILE_CONFIGS: Record<ResourceProfile, ResourceProfileCo
     projectStatsPollInterval: 5000,
     maxWebGLContexts: 16,
     memoryPressureInactiveMs: 60 * 60 * 1000, // 60 min
+    lowMemoryFreeThresholdMb: null,
   },
   balanced: {
     pollIntervalActive: 2000,
@@ -46,6 +55,7 @@ export const RESOURCE_PROFILE_CONFIGS: Record<ResourceProfile, ResourceProfileCo
     projectStatsPollInterval: 5000,
     maxWebGLContexts: 12,
     memoryPressureInactiveMs: 30 * 60 * 1000, // 30 min
+    lowMemoryFreeThresholdMb: 768,
   },
   efficiency: {
     pollIntervalActive: 4000,
@@ -54,5 +64,6 @@ export const RESOURCE_PROFILE_CONFIGS: Record<ResourceProfile, ResourceProfileCo
     projectStatsPollInterval: 25000,
     maxWebGLContexts: 6,
     memoryPressureInactiveMs: 15 * 60 * 1000, // 15 min
+    lowMemoryFreeThresholdMb: 1024,
   },
 };

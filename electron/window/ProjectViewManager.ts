@@ -83,6 +83,7 @@ export class ProjectViewManager {
   private webContentsToProject = new Map<number, string>();
   private activeProjectId: string | null = null;
   private maxCachedViews = 1;
+  private lowMemoryFreeThresholdMb: number | null = null;
   private win: BrowserWindow;
   private dirname: string;
   private onRecreateWindow?: () => Promise<void>;
@@ -305,6 +306,19 @@ export class ProjectViewManager {
     const safe = Number.isFinite(n) ? n : 1;
     this.maxCachedViews = Math.max(1, Math.min(5, safe));
     this.evictStaleViews("limit-change");
+  }
+
+  /**
+   * Set the available-memory floor (MB) below which eviction clamps the
+   * effective cap to 1 view for the current pass without mutating
+   * `maxCachedViews`. `null` disables the override.
+   */
+  setLowMemoryFreeThresholdMb(mb: number | null): void {
+    if (mb == null || !Number.isFinite(mb) || mb <= 0) {
+      this.lowMemoryFreeThresholdMb = null;
+    } else {
+      this.lowMemoryFreeThresholdMb = mb;
+    }
   }
 
   destroyView(projectId: string): void {
@@ -809,8 +823,30 @@ export class ProjectViewManager {
   }
 
   private evictStaleViews(reason: EvictionReason): void {
-    if (this.views.size <= this.maxCachedViews) return;
+    // Override the user-configured cap when system memory is low so we can
+    // reclaim Chromium renderers (~100–500 MB each) before the OS hits
+    // compressed-RAM throttling. The override is per-pass — `maxCachedViews`
+    // is never mutated, so once pressure subsides the user's setting takes
+    // effect on the next eviction.
+    const availableMb = this.getAvailableMemoryMb();
+    const lowMemoryOverride =
+      this.lowMemoryFreeThresholdMb != null &&
+      availableMb != null &&
+      availableMb < this.lowMemoryFreeThresholdMb;
+    const effectiveMax = lowMemoryOverride ? 1 : this.maxCachedViews;
+    const effectiveReason: EvictionReason = lowMemoryOverride ? "pressure" : reason;
+
+    if (this.views.size <= effectiveMax) return;
     if (this.activeProjectId === null) return;
+
+    if (lowMemoryOverride) {
+      logInfo("projectview.pressure-override", {
+        availableMb,
+        thresholdMb: this.lowMemoryFreeThresholdMb,
+        configuredMax: this.maxCachedViews,
+        effectiveMax,
+      });
+    }
 
     // Build pid → privateBytes index from the synchronous app.getAppMetrics()
     // snapshot. Joined per-view via `webContents.getOSProcessId()` so eviction
@@ -866,15 +902,47 @@ export class ProjectViewManager {
 
     const candidates = [...safeToEvict, ...activeAgentFallback];
 
-    while (this.views.size > this.maxCachedViews && candidates.length > 0) {
+    while (this.views.size > effectiveMax && candidates.length > 0) {
       const [projectId, entry, activeAgent] = candidates.shift()!;
       const ageMs = Date.now() - entry.lastUsed;
       const memoryKb = memoryFor(entry);
-      const ctx: Record<string, unknown> = { projectId, reason, ageMs, activeAgent };
+      const ctx: Record<string, unknown> = {
+        projectId,
+        reason: effectiveReason,
+        ageMs,
+        activeAgent,
+      };
       if (memoryKb > 0) ctx.memoryKb = memoryKb;
+      if (availableMb != null) ctx.memoryAvailableMb = availableMb;
       logInfo("projectview.eviction", ctx);
       this.evictionTimestamps.set(projectId, Date.now());
       this.cleanupEntry(projectId);
+    }
+  }
+
+  /**
+   * Read system-wide available memory in MB. On macOS, "available" = free +
+   * purgeable, because Darwin holds reclaimable pages as purgeable rather
+   * than free — using `free` alone would fire false positives on every
+   * healthy mac. On Windows/Linux, `free` alone is accurate. Returns null
+   * when the Chromium API is unavailable (e.g., under test mocks).
+   */
+  private getAvailableMemoryMb(): number | null {
+    try {
+      const getInfo = (
+        process as {
+          getSystemMemoryInfo?: () => { free: number; purgeable?: number; total: number };
+        }
+      ).getSystemMemoryInfo;
+      if (typeof getInfo !== "function") return null;
+      const info = getInfo.call(process);
+      const freeKb = typeof info.free === "number" ? info.free : 0;
+      const purgeableKb = typeof info.purgeable === "number" ? info.purgeable : 0;
+      const availableKb = freeKb + purgeableKb;
+      if (availableKb <= 0) return null;
+      return availableKb / 1024;
+    } catch {
+      return null;
     }
   }
 }

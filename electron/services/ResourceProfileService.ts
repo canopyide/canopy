@@ -501,6 +501,16 @@ export class ResourceProfileService {
       } catch {
         // non-critical
       }
+      // Push the profile's low-memory floor unconditionally on every transition
+      // so an upgrade out of efficiency doesn't leave the stricter threshold
+      // stuck in place. PVM checks this floor inside `evictStaleViews` and
+      // clamps `effectiveMax` to 1 for the pass when available RAM drops below
+      // it, without mutating the user-configured `maxCachedViews`.
+      try {
+        pvm.setLowMemoryFreeThresholdMb(config.lowMemoryFreeThresholdMb);
+      } catch {
+        // non-critical
+      }
     }
 
     // Broadcast to renderer
