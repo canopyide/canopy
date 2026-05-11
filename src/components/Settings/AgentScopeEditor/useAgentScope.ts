@@ -147,9 +147,11 @@ export function useAgentScope({
 
   const handleStartEdit = (preset: AgentPreset) => {
     if (!preset.name || preset.name.length > 200) {
+      console.warn("Invalid preset name length");
       return;
     }
     if (/[<>'"&]/.test(preset.name)) {
+      console.warn("Preset name contains dangerous characters");
       return;
     }
     setEditingPresetId(preset.id);
