@@ -94,12 +94,14 @@ vi.mock("@/components/ui/button", () => ({
     children,
     onClick,
     disabled,
+    "aria-disabled": ariaDisabled,
     "aria-label": ariaLabel,
     "data-testid": testId,
   }: {
     children: ReactNode;
     onClick?: () => void;
     disabled?: boolean;
+    "aria-disabled"?: boolean;
     variant?: string;
     size?: string;
     className?: string;
@@ -110,11 +112,72 @@ vi.mock("@/components/ui/button", () => ({
       type="button"
       onClick={onClick}
       disabled={disabled}
+      aria-disabled={ariaDisabled}
       aria-label={ariaLabel}
       data-testid={testId}
     >
       {children}
     </button>
+  ),
+}));
+
+vi.mock("@/components/ui/split-button", () => ({
+  SplitButton: ({
+    primaryLabel,
+    primaryIcon,
+    onPrimaryClick,
+    menuItems,
+    ariaDisabled,
+    disabledReason,
+    isBusy,
+  }: {
+    primaryLabel: string;
+    primaryIcon?: ReactNode;
+    onPrimaryClick: () => void;
+    menuItems: { label: string; icon?: ReactNode; shortcut?: string; onClick: () => void }[];
+    ariaDisabled?: boolean;
+    disabledReason?: ReactNode;
+    isBusy?: boolean;
+    variant?: string;
+    size?: string;
+    className?: string;
+  }) => (
+    <div data-testid="split-button">
+      <button
+        type="button"
+        onClick={onPrimaryClick}
+        aria-disabled={ariaDisabled}
+        data-testid="split-button-primary"
+      >
+        {primaryIcon}
+        {primaryLabel}
+      </button>
+      <button
+        type="button"
+        aria-label="More commit actions"
+        aria-disabled={ariaDisabled}
+        data-testid="split-button-chevron"
+      >
+        v
+      </button>
+      {disabledReason && ariaDisabled && (
+        <div data-testid="split-button-tooltip">{disabledReason}</div>
+      )}
+      <div data-testid="split-button-menu">
+        {menuItems.map((item) => (
+          <button
+            type="button"
+            key={item.label}
+            onClick={item.onClick}
+            disabled={ariaDisabled || isBusy}
+            data-testid={`split-button-menu-item-${item.label}`}
+          >
+            {item.label}
+            {item.shortcut && <span>{item.shortcut}</span>}
+          </button>
+        ))}
+      </div>
+    </div>
   ),
 }));
 
@@ -157,7 +220,7 @@ vi.mock("@/components/ui/ConfirmDialog", () => ({
 
 vi.mock("@/components/ui/tooltip", () => ({
   Tooltip: ({ children }: { children: ReactNode }) => <>{children}</>,
-  TooltipContent: () => null,
+  TooltipContent: ({ children }: { children: ReactNode }) => <>{children}</>,
   TooltipTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
   TooltipProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
@@ -1051,6 +1114,112 @@ describe("ReviewHub", () => {
 
       await waitFor(() => screen.getByText("index.ts"));
       expect(screen.queryByTestId("conflict-panel")).toBeNull();
+    });
+  });
+
+  describe("commit panel", () => {
+    it("renders split button when hasRemote is true", async () => {
+      getStagingStatusMock.mockResolvedValue(makeStatus({ hasRemote: true }));
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      expect(screen.getByTestId("split-button")).toBeDefined();
+      const primary = screen.getByTestId("split-button-primary");
+      expect(primary.textContent).toMatch(/Commit & Push/);
+    });
+
+    it("renders single Commit button when hasRemote is false", async () => {
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      expect(screen.queryByTestId("split-button")).toBeNull();
+      expect(screen.getByRole("button", { name: /Commit \(1\)/i })).toBeDefined();
+    });
+
+    it("uses aria-disabled instead of native disabled on commit button when blocked", async () => {
+      getStagingStatusMock.mockResolvedValue(makeStatus({ staged: [], hasRemote: false }));
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      const btn = screen.getByRole("button", { name: /Commit \(0\)/i });
+      expect(btn.getAttribute("aria-disabled")).toBe("true");
+      expect(btn.hasAttribute("disabled")).toBe(false);
+    });
+
+    it("uses aria-disabled on split button primary when blocked", async () => {
+      getStagingStatusMock.mockResolvedValue(makeStatus({ staged: [], hasRemote: true }));
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      const primary = screen.getByTestId("split-button-primary");
+      expect(primary.getAttribute("aria-disabled")).toBe("true");
+    });
+
+    it("shows tooltip content when blocked and hasRemote is false", async () => {
+      getStagingStatusMock.mockResolvedValue(makeStatus({ staged: [], hasRemote: false }));
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      // The TooltipContent is mocked but the blocker list renders as ReactNode
+      // Since our Tooltip mock renders children, the tooltip content reveals via DOM
+      expect(screen.getByText("Cannot commit")).toBeDefined();
+    });
+
+    it("shows tooltip content in split button when blocked and hasRemote is true", async () => {
+      getStagingStatusMock.mockResolvedValue(makeStatus({ staged: [], hasRemote: true }));
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      expect(screen.getByTestId("split-button-tooltip")).toBeDefined();
+    });
+
+    it("reentrancy guard prevents double-commit via rapid clicks", async () => {
+      commitMock.mockResolvedValue({ hash: "abc", summary: "ok" });
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      const textarea = screen.getByPlaceholderText("Commit message…");
+      fireEvent.change(textarea, { target: { value: "feat: test double click" } });
+
+      const btn = screen.getByRole("button", { name: /Commit \(1\)/i });
+      fireEvent.click(btn);
+      fireEvent.click(btn);
+
+      await waitFor(() => expect(commitMock).toHaveBeenCalledTimes(1));
+    });
+
+    it("Cmd+Enter fires primary commit when not blocked", async () => {
+      commitMock.mockResolvedValue({ hash: "abc", summary: "ok" });
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      const textarea = screen.getByPlaceholderText("Commit message…");
+      fireEvent.change(textarea, { target: { value: "feat: keyboard shortcut" } });
+      fireEvent.keyDown(textarea, { key: "Enter", metaKey: true });
+
+      await waitFor(() => expect(commitMock).toHaveBeenCalledTimes(1));
+    });
+
+    it("Cmd+Shift+Enter fires commit (alternate) when hasRemote", async () => {
+      commitMock.mockResolvedValue({ hash: "abc", summary: "ok" });
+      getStagingStatusMock.mockResolvedValue(makeStatus({ hasRemote: true }));
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      const textarea = screen.getByPlaceholderText("Commit message…");
+      fireEvent.change(textarea, { target: { value: "feat: shift shortcut" } });
+      fireEvent.keyDown(textarea, { key: "Enter", metaKey: true, shiftKey: true });
+
+      await waitFor(() => expect(commitMock).toHaveBeenCalledTimes(1));
+      expect(pushMock).not.toHaveBeenCalled();
     });
   });
 

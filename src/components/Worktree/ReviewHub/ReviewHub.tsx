@@ -300,6 +300,8 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const savedScrollTop = useRef(0);
   const debouncedBgRefreshRef = useRef<ReturnType<typeof debounce> | null>(null);
+  const conflictSectionRef = useRef<HTMLDivElement>(null);
+  const unstagedSectionRef = useRef<HTMLDivElement>(null);
 
   const mainBranch = useWorktreeStore(
     (state) =>
@@ -627,6 +629,15 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
     debouncedBgRefreshRef.current?.cancel();
     await runPush();
   }, [runPush]);
+
+  const handleFocusBlocker = useCallback((blocker: "conflicts" | "staged-files") => {
+    if (blocker === "conflicts") {
+      conflictSectionRef.current?.focus();
+    } else {
+      const stageAllBtn = unstagedSectionRef.current?.querySelector("button");
+      stageAllBtn?.focus();
+    }
+  }, []);
 
   useLayoutEffect(() => {
     if (scrollContainerRef.current && status) {
@@ -1072,7 +1083,11 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                   <div>
                     {/* Conflict warning */}
                     {hasConflicts && (
-                      <div className="px-4 py-2.5 bg-status-error/10 border-b border-divider flex items-start gap-2">
+                      <div
+                        ref={conflictSectionRef}
+                        tabIndex={-1}
+                        className="px-4 py-2.5 bg-status-error/10 border-b border-divider flex items-start gap-2 outline-hidden focus:ring-2 focus:ring-daintree-accent"
+                      >
                         <AlertTriangle className="w-3.5 h-3.5 text-status-error mt-0.5 shrink-0" />
                         <div className="text-xs text-status-error">
                           <span className="font-medium">
@@ -1127,7 +1142,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                     </div>
 
                     {/* Unstaged section */}
-                    <div>
+                    <div ref={unstagedSectionRef}>
                       <div className="flex items-center justify-between px-4 py-2 bg-overlay-subtle">
                         <span className="text-[11px] font-semibold uppercase tracking-wider text-daintree-text/60">
                           Changes
@@ -1186,6 +1201,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                 onCommitMessageChange={setCommitMessage}
                 onCommit={handleCommit}
                 onCommitAndPush={handleCommitAndPush}
+                onFocusBlocker={handleFocusBlocker}
               />
             )}
         </div>
