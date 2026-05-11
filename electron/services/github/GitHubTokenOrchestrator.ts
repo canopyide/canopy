@@ -2,7 +2,15 @@ import type { GitHubTokenValidation } from "./GitHubAuth.js";
 import { GitHubAuth } from "./GitHubAuth.js";
 import { setGitHubToken, clearGitHubToken, validateGitHubToken } from "./GitHubToken.js";
 import { gitHubTokenHealthService } from "./GitHubTokenHealthService.js";
-import { getWorkspaceClient } from "../WorkspaceClient.js";
+
+async function syncWorkspaceToken(token: string | null): Promise<void> {
+  try {
+    const { getWorkspaceClient } = await import("../WorkspaceClient.js");
+    getWorkspaceClient().updateGitHubToken(token);
+  } catch {
+    // WorkspaceClient may not be initialized yet
+  }
+}
 
 export async function setTokenAndSync(token: string): Promise<GitHubTokenValidation> {
   const trimmed = token.trim();
@@ -21,12 +29,7 @@ export async function setTokenAndSync(token: string): Promise<GitHubTokenValidat
       );
     }
 
-    try {
-      const workspaceClient = getWorkspaceClient();
-      workspaceClient.updateGitHubToken(trimmed);
-    } catch {
-      // WorkspaceClient may not be initialized yet
-    }
+    await syncWorkspaceToken(trimmed);
 
     gitHubTokenHealthService.resetState();
     void gitHubTokenHealthService.refresh({ force: true }).catch(() => {});
@@ -37,13 +40,6 @@ export async function setTokenAndSync(token: string): Promise<GitHubTokenValidat
 
 export async function clearTokenAndSync(): Promise<void> {
   clearGitHubToken();
-
-  try {
-    const workspaceClient = getWorkspaceClient();
-    workspaceClient.updateGitHubToken(null);
-  } catch {
-    // WorkspaceClient may not be initialized yet
-  }
-
+  await syncWorkspaceToken(null);
   gitHubTokenHealthService.resetState();
 }

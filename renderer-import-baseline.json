@@ -1,6 +1,6 @@
 {
   "entryName": "index",
-  "eagerChunkCount": 36,
+  "eagerChunkCount": 40,
   "eagerChunks": [
     "ActionService",
     "Spinner",
@@ -12,6 +12,8 @@
     "appClient",
     "appThemeStore",
     "clients",
+    "commandsClient",
+    "copyTreeClient",
     "createWorktreeStore",
     "errorMessage",
     "githubConfigStore",
@@ -22,7 +24,9 @@
     "notify",
     "persistedStoreRegistry",
     "portalStore",
+    "projectSettingsStore",
     "projectStore",
+    "radix-loader",
     "rolldown-runtime",
     "safeStorage",
     "store",
@@ -34,7 +38,7 @@
     "vendor-editor",
     "vendor-icons",
     "vendor-motion",
-    "vendor-radix",
+    "vendor-radix-utils",
     "vendor-react",
     "vendor-xterm",
     "vendor-zod"
