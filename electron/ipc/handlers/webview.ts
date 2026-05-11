@@ -15,6 +15,7 @@ import type {
 import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 import { AppError } from "../../utils/errorTypes.js";
 import { logError, logWarn } from "../../utils/logger.js";
+import { freezeWebContents, unfreezeWebContents } from "../../utils/webContentsLifecycle.js";
 
 interface CdpSession {
   runtimeEnabled: boolean;
@@ -232,23 +233,7 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
     const wc = webContents.fromId(webContentsId);
     if (!wc || wc.isDestroyed()) return;
 
-    try {
-      ensureAttached(wc);
-      await wc.debugger.sendCommand("Page.enable");
-      await wc.debugger.sendCommand("Page.setWebLifecycleState", {
-        state: frozen ? "frozen" : "active",
-      });
-    } catch (err) {
-      const message = formatErrorMessage(err, "CDP lifecycle state failed");
-      const isExpected =
-        message.includes("Target closed") ||
-        message.includes("Inspected target navigated") ||
-        message.includes("Cannot attach") ||
-        message.includes("debugger is already attached");
-      if (!isExpected) {
-        console.warn(`[webview] CDP lifecycle state failed for id=${webContentsId}:`, message);
-      }
-    }
+    await (frozen ? freezeWebContents(wc) : unfreezeWebContents(wc));
   };
 
   const handleStartConsoleCapture = async (

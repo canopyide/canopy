@@ -126,6 +126,11 @@ vi.mock("../skeletonCss.js", () => ({
   injectSkeletonCss: vi.fn(),
 }));
 
+vi.mock("../../utils/webContentsLifecycle.js", () => ({
+  freezeWebContents: vi.fn().mockResolvedValue(undefined),
+  unfreezeWebContents: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../../utils/logger.js", () => ({
   logInfo: vi.fn(),
   createLogger: vi.fn(() => ({

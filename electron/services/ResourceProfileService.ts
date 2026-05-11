@@ -509,8 +509,13 @@ export class ResourceProfileService {
       try {
         if (profile === "efficiency") {
           pvm.setCachedViewLimit(1);
+          // Freeze cached project views' renderers via CDP under efficiency to
+          // suppress timer wake-ups on top of background throttling. PVM
+          // debounces the actual freeze pass internally.
+          pvm.setEfficiencyFreeze(true);
         } else if (previous === "efficiency") {
           pvm.setCachedViewLimit(this.deps.getUserCachedViewLimit());
+          pvm.setEfficiencyFreeze(false);
         }
       } catch {
         // non-critical
