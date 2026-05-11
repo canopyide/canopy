@@ -41,6 +41,10 @@ export function TwoPaneSplitLayout({
   useEffect(() => {
     isDraggingDividerRef.current = isDraggingDivider;
   }, [isDraggingDivider]);
+  // Set when the sidebar transition unlocks during an in-flight divider drag —
+  // the resync rAF skips in that case, so we run the deferred measurement on
+  // the next drag-end edge instead.
+  const pendingResyncAfterDragRef = useRef(false);
 
   // Refs for unmount cleanup (avoid closure/dependency issues)
   const localRatioRef = useRef<number | null>(null);
@@ -161,10 +165,14 @@ export function TwoPaneSplitLayout({
         // Re-check the lock — a second toggle may have started in the ~16ms
         // between unlock and this rAF.
         if (isSidebarLayoutTransitionLocked()) return;
-        // Don't override an in-progress divider drag — `localRatio` is
-        // driving widths directly and `containerWidth` is read only for
-        // clamping bounds.
-        if (isDraggingDividerRef.current) return;
+        // Don't override an in-progress divider drag — changing
+        // `containerWidth` mid-drag shifts `minRatio`/`maxRatio` clamping
+        // bounds, which can snap the live ratio. Defer the resync until
+        // the drag ends.
+        if (isDraggingDividerRef.current) {
+          pendingResyncAfterDragRef.current = true;
+          return;
+        }
         const measureNode = containerRef.current;
         if (!measureNode) return;
         const width = measureNode.clientWidth;
@@ -179,6 +187,20 @@ export function TwoPaneSplitLayout({
       unsubscribe();
     };
   }, []);
+
+  // Recover the deferred unlock-resync once the drag ends. Without this, a
+  // sidebar transition that completed mid-drag would leave `containerWidth`
+  // at its pre-animation value — no further RO event fires unless the outer
+  // container changes again, so pane pixel widths would be stale.
+  useEffect(() => {
+    if (isDraggingDivider) return;
+    if (!pendingResyncAfterDragRef.current) return;
+    pendingResyncAfterDragRef.current = false;
+    const node = containerRef.current;
+    if (!node) return;
+    const width = node.clientWidth;
+    setContainerWidth((prev) => (prev === width ? prev : width));
+  }, [isDraggingDivider]);
 
   const handleRatioChange = useCallback((newRatio: number) => {
     setLocalRatio(newRatio);

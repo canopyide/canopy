@@ -44,6 +44,13 @@ describe("TwoPaneSplitLayout sidebar lock gating (issue #7825)", () => {
     expect(content).toContain("isDraggingDividerRef.current");
   });
 
+  it("defers the resync until drag end when the unlock fires mid-drag", async () => {
+    const content = await readFile(LAYOUT_PATH, "utf-8");
+    expect(content).toContain("pendingResyncAfterDragRef");
+    expect(content).toContain("pendingResyncAfterDragRef.current = true");
+    expect(content).toContain("pendingResyncAfterDragRef.current = false");
+  });
+
   it("cancels pending animation frames on cleanup", async () => {
     const content = await readFile(LAYOUT_PATH, "utf-8");
     expect(content).toContain("observer.disconnect()");
