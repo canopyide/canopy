@@ -32,6 +32,7 @@ import {
   attachRendererConsoleCapture,
   detachRendererConsoleCapture,
 } from "./rendererConsoleCapture.js";
+import { freezeWebContents, unfreezeWebContents } from "../utils/webContentsLifecycle.js";
 import { ACTIVE_AGENT_STATES } from "../../shared/types/agent.js";
 import {
   beginWindowRecreating,
@@ -42,6 +43,12 @@ import {
 const LOAD_TIMEOUT_MS = 10_000;
 const CRASH_LOOP_WINDOW_MS = 60_000;
 const CRASH_LOOP_THRESHOLD = 3;
+// Trailing-edge debounce on freeze entry: the lag-pressure path can flip
+// efficiency on/off without going through the 30 s downgrade hysteresis, so
+// a single spike-and-recover would otherwise freeze every cached view for no
+// observable benefit. Unfreeze is always immediate — keeping a view frozen
+// after we've decided to leave efficiency is the worst-of-both-worlds.
+const EFFICIENCY_FREEZE_DEBOUNCE_MS = 500;
 
 type ViewState = "loading" | "active" | "cached";
 
@@ -95,6 +102,8 @@ export class ProjectViewManager {
   private switchChain: Promise<void> = Promise.resolve();
   private resizeHandler: (() => void) | null = null;
   private evictionTimestamps = new Map<string, number>();
+  private efficiencyFreezeEnabled = false;
+  private efficiencyFreezeTimer: NodeJS.Timeout | null = null;
 
   constructor(win: BrowserWindow, opts: ProjectViewManagerOptions) {
     this.win = win;
@@ -321,6 +330,49 @@ export class ProjectViewManager {
     }
   }
 
+  /**
+   * Toggle CDP freeze on cached (non-active) project views. Called by
+   * ResourceProfileService when transitioning into / out of the efficiency
+   * profile. Freeze entry is trailing-edge debounced; unfreeze is immediate.
+   */
+  setEfficiencyFreeze(enabled: boolean): void {
+    if (enabled === this.efficiencyFreezeEnabled && this.efficiencyFreezeTimer === null) {
+      return;
+    }
+    this.efficiencyFreezeEnabled = enabled;
+    if (this.efficiencyFreezeTimer) {
+      clearTimeout(this.efficiencyFreezeTimer);
+      this.efficiencyFreezeTimer = null;
+    }
+    if (enabled) {
+      this.efficiencyFreezeTimer = setTimeout(() => {
+        this.efficiencyFreezeTimer = null;
+        if (!this.efficiencyFreezeEnabled) return;
+        this.freezeAllCached();
+      }, EFFICIENCY_FREEZE_DEBOUNCE_MS);
+    } else {
+      this.unfreezeAllCached();
+    }
+  }
+
+  private freezeAllCached(): void {
+    for (const [projectId, entry] of this.views) {
+      if (projectId === this.activeProjectId) continue;
+      const wc = entry.view.webContents;
+      if (wc.isDestroyed()) continue;
+      void freezeWebContents(wc);
+    }
+  }
+
+  private unfreezeAllCached(): void {
+    for (const [projectId, entry] of this.views) {
+      if (projectId === this.activeProjectId) continue;
+      const wc = entry.view.webContents;
+      if (wc.isDestroyed()) continue;
+      void unfreezeWebContents(wc);
+    }
+  }
+
   destroyView(projectId: string): void {
     const entry = this.views.get(projectId);
     if (!entry) return;
@@ -342,6 +394,12 @@ export class ProjectViewManager {
       this.win.removeListener("leave-full-screen", this.resizeHandler);
       this.resizeHandler = null;
     }
+
+    if (this.efficiencyFreezeTimer) {
+      clearTimeout(this.efficiencyFreezeTimer);
+      this.efficiencyFreezeTimer = null;
+    }
+    this.efficiencyFreezeEnabled = false;
 
     for (const projectId of Array.from(this.views.keys())) {
       this.cleanupEntry(projectId);
@@ -415,11 +473,31 @@ export class ProjectViewManager {
           )
           .catch(() => {});
       }
+
+      // Freeze AFTER GC scheduling — Page.setWebLifecycleState suspends the
+      // renderer event loop, so the requestIdleCallback above would never run
+      // if we froze first (lesson #4684).
+      if (this.efficiencyFreezeEnabled && !webContents.isDestroyed()) {
+        void freezeWebContents(webContents);
+      }
     }
   }
 
   private activateView(entry: ViewEntry): void {
     registerAppView(this.win, entry.view);
+
+    // Defensive unfreeze BEFORE setBackgroundThrottling(false): efficiency
+    // transitions and view activations are async, so an activating view may
+    // still be frozen even if we've left efficiency in the meantime. Chromium
+    // does not auto-resume on focus or re-attach — explicit "active" required.
+    // Fire-and-forget: there is a sub-millisecond window between addChildView
+    // making the view visible and Chromium processing the "active" CDP command.
+    // Awaiting would force activateView to be async and ripple through all
+    // call sites (performSwitch, rollback path) for a window that has not
+    // been observable in testing.
+    if (!entry.view.webContents.isDestroyed()) {
+      void unfreezeWebContents(entry.view.webContents);
+    }
 
     // Restore full priority before making visible
     if (!entry.view.webContents.isDestroyed()) {

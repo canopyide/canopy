@@ -86,6 +86,11 @@ vi.mock("../skeletonCss.js", () => ({
   injectSkeletonCss: vi.fn(),
 }));
 
+vi.mock("../../utils/webContentsLifecycle.js", () => ({
+  freezeWebContents: vi.fn().mockResolvedValue(undefined),
+  unfreezeWebContents: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { ProjectViewManager } from "../ProjectViewManager.js";
 
 function createMockWindow() {
