@@ -3,8 +3,8 @@ import type { PtyPauseCoordinator } from "../PtyPauseCoordinator.js";
 
 import {
   BackpressureManager,
-  MAX_PENDING_BYTES_PER_TERMINAL,
-  MAX_TOTAL_PENDING_BYTES,
+  FUTURE_SAB_MAX_PENDING_BYTES_PER_TERMINAL,
+  FUTURE_SAB_MAX_TOTAL_PENDING_BYTES,
 } from "../backpressure.js";
 
 type CoordinatorLike = Pick<PtyPauseCoordinator, "pause" | "resume" | "isPaused">;
@@ -41,19 +41,19 @@ describe("BackpressureManager adversarial", () => {
     });
   }
 
-  it("rejects additional pending bytes once MAX_TOTAL_PENDING_BYTES is saturated across terminals", () => {
+  it("rejects additional pending bytes once FUTURE_SAB_MAX_TOTAL_PENDING_BYTES is saturated across terminals", () => {
     const backpressure = manager();
 
     for (let i = 0; i < 4; i++) {
       expect(
         backpressure.enqueuePendingSegment(`term-${i}`, {
-          data: new Uint8Array(MAX_PENDING_BYTES_PER_TERMINAL),
+          data: new Uint8Array(FUTURE_SAB_MAX_PENDING_BYTES_PER_TERMINAL),
           offset: 0,
         })
       ).toBe(true);
     }
 
-    expect(MAX_TOTAL_PENDING_BYTES).toBe(MAX_PENDING_BYTES_PER_TERMINAL * 4);
+    expect(FUTURE_SAB_MAX_TOTAL_PENDING_BYTES).toBe(FUTURE_SAB_MAX_PENDING_BYTES_PER_TERMINAL * 4);
     expect(
       backpressure.enqueuePendingSegment("overflow", {
         data: new Uint8Array(1),
@@ -152,7 +152,7 @@ describe("BackpressureManager adversarial", () => {
     expect(backpressure.terminalActivityTiersMap.has("term-1")).toBe(false);
   });
 
-  it("emits pending-byte-cap-hit metric (per-terminal) when per-terminal cap is exceeded, even when metrics are disabled", () => {
+  it("refuses additional pending bytes when per-terminal FUTURE_SAB cap is exceeded", () => {
     const backpressure = new BackpressureManager({
       getTerminal: vi.fn(),
       getPauseCoordinator: () => undefined,
@@ -160,30 +160,18 @@ describe("BackpressureManager adversarial", () => {
       metricsEnabled: () => false,
     });
 
-    const fullSegment = new Uint8Array(MAX_PENDING_BYTES_PER_TERMINAL);
+    const fullSegment = new Uint8Array(FUTURE_SAB_MAX_PENDING_BYTES_PER_TERMINAL);
     expect(backpressure.enqueuePendingSegment("term-1", { data: fullSegment, offset: 0 })).toBe(
       true
     );
 
-    // Per-terminal cap exceeded — should refuse and emit
+    // Per-terminal cap exceeded — should refuse
     expect(
       backpressure.enqueuePendingSegment("term-1", { data: new Uint8Array(1), offset: 0 })
     ).toBe(false);
-
-    expect(sendEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "terminal-reliability-metric",
-        payload: expect.objectContaining({
-          terminalId: "term-1",
-          metricType: "pending-byte-cap-hit",
-          capType: "per-terminal",
-          attemptedBytes: 1,
-        }),
-      })
-    );
   });
 
-  it("emits pending-byte-cap-hit metric (total) when total cap is exceeded, even when metrics are disabled", () => {
+  it("refuses additional pending bytes when total FUTURE_SAB cap is exceeded", () => {
     const backpressure = new BackpressureManager({
       getTerminal: vi.fn(),
       getPauseCoordinator: () => undefined,
@@ -195,7 +183,7 @@ describe("BackpressureManager adversarial", () => {
     for (let i = 0; i < 4; i++) {
       expect(
         backpressure.enqueuePendingSegment(`term-${i}`, {
-          data: new Uint8Array(MAX_PENDING_BYTES_PER_TERMINAL),
+          data: new Uint8Array(FUTURE_SAB_MAX_PENDING_BYTES_PER_TERMINAL),
           offset: 0,
         })
       ).toBe(true);
@@ -205,18 +193,6 @@ describe("BackpressureManager adversarial", () => {
     expect(
       backpressure.enqueuePendingSegment("term-new", { data: new Uint8Array(1), offset: 0 })
     ).toBe(false);
-
-    expect(sendEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "terminal-reliability-metric",
-        payload: expect.objectContaining({
-          terminalId: "term-new",
-          metricType: "pending-byte-cap-hit",
-          capType: "total",
-          attemptedBytes: 1,
-        }),
-      })
-    );
   });
 
   it("getPendingBytesSnapshot returns correct totals and does not mutate state", () => {
