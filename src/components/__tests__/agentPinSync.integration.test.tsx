@@ -27,14 +27,20 @@ const dispatchMock = vi.fn();
 const refreshAvailabilityMock = vi.fn().mockResolvedValue(undefined);
 const toggleButtonVisibilityMock = vi.fn();
 
-vi.mock("@/store/agentSettingsStore", () => ({
-  useAgentSettingsStore: (
-    selector: (s: {
-      settings: AgentSettings | null;
-      setAgentPinned: typeof setAgentPinnedMock;
-    }) => unknown
-  ) => selector({ settings: sharedSettings, setAgentPinned: setAgentPinnedMock }),
-}));
+vi.mock("@/store/agentSettingsStore", () => {
+  type Slice = {
+    settings: AgentSettings | null;
+    setAgentPinned: typeof setAgentPinnedMock;
+  };
+  const getSlice = (): Slice => ({
+    settings: sharedSettings,
+    setAgentPinned: setAgentPinnedMock,
+  });
+  type Hook = ((selector: (s: Slice) => unknown) => unknown) & { getState: () => Slice };
+  const hook = ((selector: (s: Slice) => unknown) => selector(getSlice())) as Hook;
+  hook.getState = getSlice;
+  return { useAgentSettingsStore: hook };
+});
 
 vi.mock("@/store/actionMruStore", () => ({
   useActionMruStore: (
@@ -156,30 +162,32 @@ let sharedToolbarLayout = {
 };
 const sharedToolbarLauncher = { alwaysShowDevServer: false, defaultSelection: undefined };
 
-vi.mock("@/store", () => ({
-  useToolbarPreferencesStore: (
-    selector: (s: {
-      layout: typeof sharedToolbarLayout;
-      launcher: typeof sharedToolbarLauncher;
-      setLeftButtons: () => void;
-      setRightButtons: () => void;
-      toggleButtonVisibility: typeof toggleButtonVisibilityMock;
-      setAlwaysShowDevServer: () => void;
-      setDefaultSelection: () => void;
-      reset: () => void;
-    }) => unknown
-  ) =>
-    selector({
-      layout: sharedToolbarLayout,
-      launcher: sharedToolbarLauncher,
-      setLeftButtons: vi.fn(),
-      setRightButtons: vi.fn(),
-      toggleButtonVisibility: toggleButtonVisibilityMock,
-      setAlwaysShowDevServer: vi.fn(),
-      setDefaultSelection: vi.fn(),
-      reset: vi.fn(),
-    }),
-}));
+vi.mock("@/store", () => {
+  type Slice = {
+    layout: typeof sharedToolbarLayout;
+    launcher: typeof sharedToolbarLauncher;
+    setLeftButtons: () => void;
+    setRightButtons: () => void;
+    toggleButtonVisibility: typeof toggleButtonVisibilityMock;
+    setAlwaysShowDevServer: () => void;
+    setDefaultSelection: () => void;
+    reset: () => void;
+  };
+  const getSlice = (): Slice => ({
+    layout: sharedToolbarLayout,
+    launcher: sharedToolbarLauncher,
+    setLeftButtons: vi.fn(),
+    setRightButtons: vi.fn(),
+    toggleButtonVisibility: toggleButtonVisibilityMock,
+    setAlwaysShowDevServer: vi.fn(),
+    setDefaultSelection: vi.fn(),
+    reset: vi.fn(),
+  });
+  type Hook = ((selector: (s: Slice) => unknown) => unknown) & { getState: () => Slice };
+  const hook = ((selector: (s: Slice) => unknown) => selector(getSlice())) as Hook;
+  hook.getState = getSlice;
+  return { useToolbarPreferencesStore: hook };
+});
 
 vi.mock("@/hooks/usePluginToolbarButtons", () => ({
   usePluginToolbarButtons: () => ({ buttonIds: [], configs: new Map() }),
