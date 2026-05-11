@@ -375,7 +375,6 @@ function renderOutput(entries) {
 // Run \`npm run codegen:ipc\` to regenerate. Source: defineIpcNamespace blocks
 // in electron/ipc/handlers/. The hand-maintained IpcInvokeMap in maps.ts
 // extends this interface.
-/* eslint-disable */
 
 `;
 
@@ -414,7 +413,9 @@ async function loadPrettier() {
 async function format(content) {
   const prettier = await loadPrettier();
   if (!prettier) return content;
+  const options = await prettier.resolveConfig(OUTPUT_PATH);
   return prettier.format(content, {
+    ...options,
     parser: "typescript",
     filepath: OUTPUT_PATH,
   });

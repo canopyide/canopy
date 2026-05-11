@@ -2,7 +2,6 @@
 // Run `npm run codegen:ipc` to regenerate. Source: defineIpcNamespace blocks
 // in electron/ipc/handlers/. The hand-maintained IpcInvokeMap in maps.ts
 // extends this interface.
-/* eslint-disable */
 
 export interface GeneratedIpcInvokeMap {
   "accessibility:get-enabled": {
@@ -205,10 +204,7 @@ export interface GeneratedIpcInvokeMap {
     result: import("../plugin.js").PluginActionDescriptor[];
   };
   "plugin:actions-register": {
-    args: [
-      pluginId: string,
-      contribution: import("../plugin.js").PluginActionContribution,
-    ];
+    args: [pluginId: string, contribution: import("../plugin.js").PluginActionContribution];
     result: void;
   };
   "plugin:actions-unregister": {
@@ -221,10 +217,7 @@ export interface GeneratedIpcInvokeMap {
   };
   "plugin:menu-items": {
     args: [];
-    result: {
-      pluginId: string;
-      item: import("../plugin.js").MenuItemContribution;
-    }[];
+    result: { pluginId: string; item: import("../plugin.js").MenuItemContribution }[];
   };
   "plugin:panel-kinds-get": {
     args: [];
