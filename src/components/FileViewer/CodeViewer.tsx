@@ -141,10 +141,10 @@ export const CodeViewer = forwardRef<CodeViewerHandle, CodeViewerProps>(function
   useEffect(() => {
     const basename = filePath.split(/[/\\]/).filter(Boolean).pop() ?? filePath;
     const desc = LanguageDescription.matchFilename(CODEMIRROR_LANGUAGES, basename);
-    if (!desc) {
-      setLangExtension(null);
-      return;
-    }
+    // Clear any previously-loaded extension so a failed lazy chunk fetch
+    // doesn't leave the prior file's syntax highlighting on this file.
+    setLangExtension(null);
+    if (!desc) return;
     let cancelled = false;
     desc
       .load()

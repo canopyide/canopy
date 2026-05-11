@@ -421,7 +421,7 @@ export default defineConfig(({ command, mode }) => {
                 // grammar dependency) stays in its own async chunk instead
                 // of being swept into this catch-all (which is part of the
                 // eager closure). `@lezer/common`, `@lezer/lr`, and
-                // `@lezer/highlight` stay in vendor-editor because
+                // `@lezer/highlight` stay in this `vendor` group because
                 // `@codemirror/language` depends on them eagerly.
                 name: "vendor",
                 test: /node_modules[\\/](?!(refractor[\\/]lang[\\/]|@codemirror[\\/](lang-|legacy-modes)|@lezer[\\/](?!(common|lr|highlight)[\\/])))/,

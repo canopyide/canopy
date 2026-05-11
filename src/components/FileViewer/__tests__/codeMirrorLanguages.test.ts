@@ -95,4 +95,55 @@ describe("CODEMIRROR_LANGUAGES — matchFilename coverage for common file types"
     const desc = LanguageDescription.matchFilename(CODEMIRROR_LANGUAGES, "foo.m");
     expect(desc?.name).toBe("Mathematica");
   });
+
+  it("resolves .v to SystemVerilog (declared before Verilog)", () => {
+    const desc = LanguageDescription.matchFilename(CODEMIRROR_LANGUAGES, "foo.v");
+    expect(desc?.name).toBe("SystemVerilog");
+  });
+
+  it("resolves .sig to PGP (declared before SML)", () => {
+    const desc = LanguageDescription.matchFilename(CODEMIRROR_LANGUAGES, "foo.sig");
+    expect(desc?.name).toBe("PGP");
+  });
+});
+
+describe("CODEMIRROR_LANGUAGES — filename regex boundaries", () => {
+  it.each([
+    ["Dockerfile", "Dockerfile"],
+    ["Gemfile", "Ruby"],
+    ["Rakefile", "Ruby"],
+    ["Jenkinsfile", "Groovy"],
+    ["BUCK", "Python"],
+    ["BUILD", "Python"],
+    ["PKGBUILD", "Shell"],
+    ["CMakeLists.txt", "CMake"],
+    ["extensions.conf", "Asterisk"],
+    ["my-nginx.conf", "Nginx"],
+  ])("filename %s matches %s", (filename, expectedName) => {
+    const desc = LanguageDescription.matchFilename(CODEMIRROR_LANGUAGES, filename);
+    expect(desc?.name).toBe(expectedName);
+  });
+
+  it.each([["Dockerfile.dev"], ["myGemfile"], ["myJenkinsfile"]])(
+    "filename %s does NOT match a regex-only entry",
+    (filename) => {
+      // Anchors (`^...$`) prevent partial matches; these names should fall through to null.
+      const desc = LanguageDescription.matchFilename(CODEMIRROR_LANGUAGES, filename);
+      expect(desc).toBeNull();
+    }
+  );
+});
+
+describe("CODEMIRROR_LANGUAGES — load() round-trip for representative entries", () => {
+  // Guards against typos in legacy-modes export names (`m.csharp` vs `m.cSharp`)
+  // or dialect identifiers in lang-sql that `typeof load === "function"` can't catch.
+  // Targeted subset; full coverage would require loading every parser at test time.
+  const samples = ["TypeScript", "SQL", "CQL", "PLSQL", "C#", "TOML", "Shell", "Vue"];
+
+  it.each(samples)("%s loads without rejection", async (name) => {
+    const desc = CODEMIRROR_LANGUAGES.find((d) => d.name === name);
+    expect(desc).toBeDefined();
+    const support = await desc!.load();
+    expect(support).toBeDefined();
+  });
 });
