@@ -207,12 +207,70 @@ export default tseslint.config(
 
   // Panel-kind literal-compare guardrail — ratchets on shared/ and electron/
   // at warn level. src/ coverage lives in the renderer hygiene block below
-  // (also warn, to keep the ratchet consistent across the tree). See #7672.
+  // (also warn, to keep the ratchet consistent across the tree).
+  //
+  // This block also replicates the 4 global no-restricted-syntax selectors
+  // (instanceof Error ternary, void window.electron, raw error.message in
+  // notify, dangerouslySetInnerHTML) because flat config is last-write-wins
+  // per rule — without them the global error-level selectors are silently
+  // dropped for shared/ and electron/ files.
+  // See #7672.
   {
     files: ["shared/**/*.{ts,tsx}", "electron/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-syntax": [
         "warn",
+        {
+          selector:
+            "ConditionalExpression[test.type='BinaryExpression'][test.operator='instanceof'][test.right.name='Error'][consequent.type='MemberExpression'][consequent.property.name='message']",
+          message:
+            "Use formatErrorMessage(err, 'operation-specific fallback') from @shared/utils/errorMessage instead of the inline `instanceof Error ? .message : ...` ternary.",
+        },
+        {
+          // why: real IPC calls are `void window.electron.namespace.method()`
+          // at any depth. Constraining to `> MemberExpression :has(...)`
+          // restricts the descendant search to the callee chain so this
+          // doesn't false-positive on `void (async () => { await
+          // window.electron.X() })()` IIFE patterns where window.electron
+          // appears in the function body, not the callee.
+          selector:
+            "UnaryExpression[operator='void'] > CallExpression > MemberExpression:has(MemberExpression[object.name='window'][property.name='electron'])",
+          message:
+            "Don't use `void window.electron.X()` for fire-and-forget IPC — wrap the promise in safeFireAndForget(promise, { context }) from @/utils/safeFireAndForget so rejections reach reportRendererGlobalError with call-site context.",
+        },
+        {
+          // Block raw `error.message` / `err.message` / `e.message` /
+          // `result.error.message` inside notify({...}) /
+          // addNotification({...}) message properties. These calls go to
+          // user-facing toasts; raw library messages leak jargon (paths,
+          // errno strings, internal source IDs). Use humanizeAppError()
+          // from @shared/utils/errorMessage instead.
+          //
+          // The selector must match both bare-identifier calls
+          // (`notify({...})`) and member-call patterns
+          // (`useNotificationStore.getState().addNotification({...})`),
+          // hence the `:matches()` over `callee.name` and
+          // `callee.property.name`. The inner MemberExpression matches both
+          // single-hop (`error.message`) and tail-of-chain (`x.error.message`).
+          // See issue #6050.
+          selector:
+            "CallExpression:matches([callee.name=/^(notify|addNotification)$/], [callee.property.name=/^(notify|addNotification)$/]) ObjectExpression > Property[key.name='message'] MemberExpression[property.name='message']:matches([object.name=/^(error|err|e)$/], [object.property.name=/^(error|err|e)$/])",
+          message:
+            "Don't pipe raw error.message into user-facing notifications. Use humanizeAppError(error) from @shared/utils/errorMessage to produce a friendly title and body, and stash the raw message in a 'Copy details' action. See #6050.",
+        },
+        {
+          // why: Trusted Types CSP (`require-trusted-types-for 'script'`)
+          // means `dangerouslySetInnerHTML.__html` must be a `TrustedHTML`
+          // produced by the `daintree-svg` policy, not a raw string. The
+          // selector requires SOME CallExpression in the value (lint-level
+          // ratchet — the runtime CSP is the actual security boundary, and
+          // a stricter `callee.name='createTrustedHTML'` check breaks under
+          // re-exports / aliasing). See #6392.
+          selector:
+            "JSXAttribute[name.name='dangerouslySetInnerHTML'] > JSXExpressionContainer > ObjectExpression > Property[key.name='__html']:not(:has(CallExpression))",
+          message:
+            "Pass __html through createTrustedHTML(value) from @/lib/trustedTypesPolicy instead of a raw string. See #6392.",
+        },
         {
           // why: direct literal compares (kind === "browser") bypass the
           // panel-kind registry and silently diverge when capability flags
