@@ -299,7 +299,11 @@ export class HelpSessionController {
   private _snapshotBannerTimer: ReturnType<typeof setTimeout> | null = null;
   private _disposers: Array<() => void> = [];
   private _lastInputs: HelpSessionInputs | null = null;
-  private _hibernateArmedFor: { terminalId: string; agentId: string | null } | null = null;
+  private _hibernateArmedFor: {
+    terminalId: string;
+    agentId: string | null;
+    projectId: string | null;
+  } | null = null;
 
   // Bound for stable references across StrictMode re-subscribe.
   subscribe = (listener: () => void): (() => void) => {
@@ -432,8 +436,12 @@ export class HelpSessionController {
   /**
    * Hide the panel without tearing down. Called from the panel's
    * visibilitychange handler once it has confirmed the OS isn't suspended.
+   * Bumps `_launchGen` so any in-flight `agent.launch` dispatch resolves
+   * into a stale-gen branch and cleans itself up rather than rebinding a
+   * fresh terminal into the now-torn-down view.
    */
   tearDownForViewHidden(): void {
+    this._launchGen++;
     const state = useHelpPanelStore.getState();
     if (state.terminalId) {
       usePanelStore.getState().removePanel(state.terminalId);
@@ -760,6 +768,42 @@ export class HelpSessionController {
     }
   }
 
+  /**
+   * Called from every stale-gen early return inside the async launch flow.
+   * Cleans up the local synchronous reservation (reservedId paths) and
+   * revokes the provisioned session token (provision-succeeded paths)
+   * before the method exits, so neither a phantom `terminalId` nor a
+   * minted-but-orphaned session token survives the abort. Removing a
+   * spawned panel after a stale dispatch is the caller's responsibility
+   * — it has the result in scope.
+   */
+  private _abandonInFlightLaunch(
+    reservedId: string | null,
+    session: HelpSessionRef | null,
+    options: { resetAutoLaunch: boolean }
+  ): void {
+    if (reservedId) {
+      // Clear the reservation only if the store still points at our slot.
+      // Another launch may have already taken over and overwritten it.
+      if (this._pendingNewTerminalId === reservedId) {
+        this._pendingNewTerminalId = null;
+        const help = useHelpPanelStore.getState();
+        if (help.terminalId === reservedId) {
+          help.clearTerminal();
+        }
+      }
+    }
+    if (session) {
+      revokeHelpSession(session.sessionId);
+      if (this._pendingSessionId === session.sessionId) {
+        this._pendingSessionId = null;
+      }
+    }
+    if (options.resetAutoLaunch) {
+      this._hasAutoLaunched = false;
+    }
+  }
+
   private _clearTierMismatchIfStillCurrent(sessionId: string, toolId: string): void {
     const current = this._snapshot.tierMismatch;
     if (current && current.sessionId === sessionId && current.toolId === toolId) {
@@ -783,12 +827,18 @@ export class HelpSessionController {
       return;
     }
     this._clearHibernateTimer();
+    // Capture the project at arm time so a project switch between panel
+    // close and hibernate fire doesn't write project A's session into
+    // project B's slot. The fire path reads this captured value, never
+    // the live currentProject.
     this._hibernateArmedFor = {
       terminalId,
       agentId: useHelpPanelStore.getState().agentId,
+      projectId: useProjectStore.getState().currentProject?.id ?? null,
     };
     const initialTerminalId = terminalId;
     const initialAgentId = this._hibernateArmedFor.agentId;
+    const initialProjectId = this._hibernateArmedFor.projectId;
 
     safeFireAndForget(
       window.electron.helpAssistant
@@ -804,7 +854,7 @@ export class HelpSessionController {
           if (this._hibernateMinutes <= 0) return;
           this._clearHibernateTimer();
           this._hibernateTimer = setTimeout(
-            () => this._fireHibernate(initialTerminalId, initialAgentId),
+            () => this._fireHibernate(initialTerminalId, initialAgentId, initialProjectId),
             this._hibernateMinutes * 60 * 1000
           );
         })
@@ -814,7 +864,7 @@ export class HelpSessionController {
           this._hibernateMinutes = DEFAULT_HIBERNATE_MINUTES;
           this._clearHibernateTimer();
           this._hibernateTimer = setTimeout(
-            () => this._fireHibernate(initialTerminalId, initialAgentId),
+            () => this._fireHibernate(initialTerminalId, initialAgentId, initialProjectId),
             DEFAULT_HIBERNATE_MINUTES * 60 * 1000
           );
         }),
@@ -826,7 +876,11 @@ export class HelpSessionController {
     return this._hibernateArmedFor?.terminalId === terminalId;
   }
 
-  private _fireHibernate(initialTerminalId: string, initialAgentId: string | null): void {
+  private _fireHibernate(
+    initialTerminalId: string,
+    initialAgentId: string | null,
+    initialProjectId: string | null
+  ): void {
     this._hibernateTimer = null;
     if (!this._isStillArmedFor(initialTerminalId)) return;
 
@@ -843,13 +897,17 @@ export class HelpSessionController {
       // Re-check shortly without restarting the full hibernate countdown —
       // the user is presumably about to come back.
       this._hibernateTimer = setTimeout(
-        () => this._fireHibernate(initialTerminalId, initialAgentId),
+        () => this._fireHibernate(initialTerminalId, initialAgentId, initialProjectId),
         HIBERNATE_BUSY_RECHECK_MS
       );
       return;
     }
 
-    const projectId = useProjectStore.getState().currentProject?.id ?? null;
+    // Use the projectId captured at arm time, not the live currentProject.
+    // The user may have switched projects between panel close and timer
+    // fire — writing project A's session into project B's hibernate slot
+    // would resume the wrong conversation on next open.
+    const projectId = initialProjectId;
     const cwd = livePanel.cwd ?? "";
     const sessionToRevoke = helpState.sessionId;
     const liveAgentId = helpState.agentId ?? initialAgentId;
@@ -960,9 +1018,13 @@ export class HelpSessionController {
     launchAgentId: string,
     launchProject: HelpProjectRef
   ): Promise<void> {
+    let session: HelpSessionRef | null = null;
     try {
       const folderPath = await window.electron.help.getFolderPath();
-      if (gen !== this._launchGen) return;
+      if (gen !== this._launchGen) {
+        this._abandonInFlightLaunch(null, session, { resetAutoLaunch: true });
+        return;
+      }
       if (!folderPath) {
         this._hasAutoLaunched = false;
         notifyLaunchFailed(launchAgentId, "Help folder is not available.");
@@ -975,7 +1037,10 @@ export class HelpSessionController {
         launchAgentName,
         this._hasBlockedThisSession
       );
-      if (gen !== this._launchGen) return;
+      if (gen !== this._launchGen) {
+        this._abandonInFlightLaunch(null, session, { resetAutoLaunch: true });
+        return;
+      }
       if (versionBlock) {
         // Stale-agent guard: skip the block if the user changed
         // preferredAgentId while the probe was in flight — the new
@@ -994,7 +1059,11 @@ export class HelpSessionController {
       this._patch({ assistantVersionTooOld: null });
 
       const outcome = await provisionHelpSession(launchProject, launchAgentId);
-      if (gen !== this._launchGen) return;
+      if (gen !== this._launchGen) {
+        if (outcome.ok) session = outcome.session;
+        this._abandonInFlightLaunch(null, session, { resetAutoLaunch: true });
+        return;
+      }
       if (!outcome.ok) {
         this._hasAutoLaunched = false;
         if (outcome.code === "MCP_NOT_READY") {
@@ -1004,7 +1073,7 @@ export class HelpSessionController {
         }
         return;
       }
-      const session = outcome.session;
+      session = outcome.session;
       this._pendingSessionId = session.sessionId;
       const cwd = session.sessionPath;
       const env = buildHelpEnv(session, launchProject.id);
@@ -1014,6 +1083,7 @@ export class HelpSessionController {
         const resumedId = await this._spawnResumed(launchAgentId, hibernated, session, folderPath);
         if (gen !== this._launchGen) {
           if (resumedId) usePanelStore.getState().removePanel(resumedId);
+          this._abandonInFlightLaunch(null, session, { resetAutoLaunch: true });
           return;
         }
         if (resumedId) {
@@ -1041,7 +1111,10 @@ export class HelpSessionController {
       }
 
       const customLaunchFlags = await loadCustomLaunchFlags();
-      if (gen !== this._launchGen) return;
+      if (gen !== this._launchGen) {
+        this._abandonInFlightLaunch(null, session, { resetAutoLaunch: true });
+        return;
+      }
 
       const result = await actionService.dispatch<{ terminalId: string | null }>(
         "agent.launch",
@@ -1059,6 +1132,7 @@ export class HelpSessionController {
         if (result.ok && result.result?.terminalId) {
           usePanelStore.getState().removePanel(result.result.terminalId);
         }
+        this._abandonInFlightLaunch(null, session, { resetAutoLaunch: true });
         return;
       }
 
@@ -1113,10 +1187,14 @@ export class HelpSessionController {
   ): Promise<void> {
     const launchAgentId = options.agentId;
     const reservedId = options.requestedId ?? null;
+    const resetAutoLaunch = options.isAutoLaunch === true;
     let session: HelpSessionRef | null = null;
     try {
       const folderPath = await window.electron.help.getFolderPath();
-      if (gen !== this._launchGen) return;
+      if (gen !== this._launchGen) {
+        this._abandonInFlightLaunch(reservedId, session, { resetAutoLaunch });
+        return;
+      }
 
       // Empty-state launch (no reservedId) treats a null folder as a
       // hard fail. New-session and run-anyway already have a live
@@ -1139,7 +1217,10 @@ export class HelpSessionController {
           launchAgentName,
           this._hasBlockedThisSession
         );
-        if (gen !== this._launchGen) return;
+        if (gen !== this._launchGen) {
+          this._abandonInFlightLaunch(reservedId, session, { resetAutoLaunch });
+          return;
+        }
         if (versionBlock) {
           this._hasAutoLaunched = false;
           this._hasBlockedThisSession = true;
@@ -1151,7 +1232,11 @@ export class HelpSessionController {
       }
 
       const outcome = await provisionHelpSession(launchProject, launchAgentId);
-      if (gen !== this._launchGen) return;
+      if (gen !== this._launchGen) {
+        if (outcome.ok) session = outcome.session;
+        this._abandonInFlightLaunch(reservedId, session, { resetAutoLaunch });
+        return;
+      }
       if (!outcome.ok) {
         if (reservedId) {
           this._pendingNewTerminalId = null;
@@ -1188,6 +1273,7 @@ export class HelpSessionController {
           );
           if (gen !== this._launchGen) {
             if (resumedId) usePanelStore.getState().removePanel(resumedId);
+            this._abandonInFlightLaunch(reservedId, session, { resetAutoLaunch });
             return;
           }
           if (resumedId) {
@@ -1211,7 +1297,10 @@ export class HelpSessionController {
       }
 
       const customLaunchFlags = await loadCustomLaunchFlags();
-      if (gen !== this._launchGen) return;
+      if (gen !== this._launchGen) {
+        this._abandonInFlightLaunch(reservedId, session, { resetAutoLaunch });
+        return;
+      }
 
       const dispatchArgs: Record<string, unknown> = {
         agentId: launchAgentId,
@@ -1235,6 +1324,7 @@ export class HelpSessionController {
         if (result.ok && result.result?.terminalId) {
           usePanelStore.getState().removePanel(result.result.terminalId);
         }
+        this._abandonInFlightLaunch(reservedId, session, { resetAutoLaunch });
         return;
       }
 

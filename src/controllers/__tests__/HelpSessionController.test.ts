@@ -242,7 +242,7 @@ describe("HelpSessionController — subscribe / getSnapshot", () => {
     const unsubscribe = ctrl.subscribe(listener);
 
     // Simulate a tier-mismatch event firing
-    const fire = tierListeners[0];
+    const fire = tierListeners[0]!;
     fire({ sessionId: "s1", toolId: "t1", tier: "workbench", targetTier: "action" });
     expect(listener).toHaveBeenCalled();
     expect(ctrl.getSnapshot().tierMismatch).toEqual({
