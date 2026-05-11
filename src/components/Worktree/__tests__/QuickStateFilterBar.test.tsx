@@ -151,4 +151,78 @@ describe("QuickStateFilterBar", () => {
     render(<QuickStateFilterBar value="all" onChange={() => {}} />);
     expect(screen.getByText("All").getAttribute("aria-pressed")).toBe("true");
   });
+
+  it("renders a state icon on each non-All pill and no icon on All", () => {
+    render(
+      <QuickStateFilterBar
+        value="all"
+        onChange={() => {}}
+        counts={{ working: 1, waiting: 1, finished: 1 }}
+      />
+    );
+    const all = screen.getByRole("button", { name: /^All$/ });
+    const working = screen.getByRole("button", { name: /Working/ });
+    const waiting = screen.getByRole("button", { name: /Waiting/ });
+    const finished = screen.getByRole("button", { name: /Finished/ });
+    expect(all.querySelector("svg")).toBeNull();
+    expect(working.querySelector("svg")).not.toBeNull();
+    expect(waiting.querySelector("svg")).not.toBeNull();
+    expect(finished.querySelector("svg")).not.toBeNull();
+  });
+
+  it("applies state-color tokens to each pill's icon", () => {
+    render(
+      <QuickStateFilterBar
+        value="all"
+        onChange={() => {}}
+        counts={{ working: 1, waiting: 1, finished: 1 }}
+      />
+    );
+    const working = screen.getByRole("button", { name: /Working/ });
+    const waiting = screen.getByRole("button", { name: /Waiting/ });
+    const finished = screen.getByRole("button", { name: /Finished/ });
+    expect(working.querySelector("svg")?.getAttribute("class") ?? "").toContain(
+      "text-state-working"
+    );
+    expect(waiting.querySelector("svg")?.getAttribute("class") ?? "").toContain(
+      "text-state-waiting"
+    );
+    expect(finished.querySelector("svg")?.getAttribute("class") ?? "").toContain(
+      "text-status-success"
+    );
+  });
+
+  it("spins the working icon when counts.working > 0 even if Working is not the active filter", () => {
+    render(
+      <QuickStateFilterBar
+        value="all"
+        onChange={() => {}}
+        counts={{ working: 2, waiting: 0, finished: 0 }}
+      />
+    );
+    const working = screen.getByRole("button", { name: /Working/ });
+    const svgClass = working.querySelector("svg")?.getAttribute("class") ?? "";
+    expect(svgClass).toContain("animate-spin-slow");
+    expect(svgClass).toContain("motion-reduce:animate-none");
+  });
+
+  it("does not spin the working icon when counts.working is zero", () => {
+    render(
+      <QuickStateFilterBar
+        value="all"
+        onChange={() => {}}
+        counts={{ working: 0, waiting: 1, finished: 1 }}
+      />
+    );
+    const working = screen.getByRole("button", { name: /Working/ });
+    const svgClass = working.querySelector("svg")?.getAttribute("class") ?? "";
+    expect(svgClass).not.toContain("animate-spin-slow");
+  });
+
+  it("does not spin the working icon when counts prop is omitted", () => {
+    render(<QuickStateFilterBar value="all" onChange={() => {}} />);
+    const working = screen.getByRole("button", { name: /Working/ });
+    const svgClass = working.querySelector("svg")?.getAttribute("class") ?? "";
+    expect(svgClass).not.toContain("animate-spin-slow");
+  });
 });
