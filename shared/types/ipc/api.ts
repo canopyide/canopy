@@ -754,6 +754,8 @@ export interface ElectronAPI {
     }): Promise<import("../github.js").GitCommitListResponse>;
     stageFile(cwd: string, filePath: string): Promise<void>;
     unstageFile(cwd: string, filePath: string): Promise<void>;
+    stageFiles(cwd: string, filePaths: string[]): Promise<void>;
+    unstageFiles(cwd: string, filePaths: string[]): Promise<void>;
     stageAll(cwd: string): Promise<void>;
     unstageAll(cwd: string): Promise<void>;
     commit(cwd: string, message: string): Promise<{ hash: string; summary: string }>;

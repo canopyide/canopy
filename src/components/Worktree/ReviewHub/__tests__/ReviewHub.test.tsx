@@ -19,6 +19,11 @@ const {
   checkoutOursTheirsMock,
   openInEditorMock,
   stageFileMock,
+  unstageFileMock,
+  stageFilesMock,
+  unstageFilesMock,
+  stageAllMock,
+  unstageAllMock,
   commitMock,
   pushMock,
   pullRebaseMock,
@@ -39,6 +44,11 @@ const {
   checkoutOursTheirsMock: vi.fn().mockResolvedValue(undefined),
   openInEditorMock: vi.fn().mockResolvedValue(undefined),
   stageFileMock: vi.fn().mockResolvedValue(undefined),
+  unstageFileMock: vi.fn().mockResolvedValue(undefined),
+  stageFilesMock: vi.fn().mockResolvedValue(undefined),
+  unstageFilesMock: vi.fn().mockResolvedValue(undefined),
+  stageAllMock: vi.fn().mockResolvedValue(undefined),
+  unstageAllMock: vi.fn().mockResolvedValue(undefined),
   commitMock: vi.fn(),
   pushMock: vi.fn(),
   pullRebaseMock: vi.fn(),
@@ -381,6 +391,11 @@ describe("ReviewHub", () => {
     checkoutOursTheirsMock.mockReset().mockResolvedValue(undefined);
     openInEditorMock.mockReset().mockResolvedValue(undefined);
     stageFileMock.mockReset().mockResolvedValue(undefined);
+    unstageFileMock.mockReset().mockResolvedValue(undefined);
+    stageFilesMock.mockReset().mockResolvedValue(undefined);
+    unstageFilesMock.mockReset().mockResolvedValue(undefined);
+    stageAllMock.mockReset().mockResolvedValue(undefined);
+    unstageAllMock.mockReset().mockResolvedValue(undefined);
     commitMock.mockReset().mockResolvedValue({ hash: "abc123", summary: "commit" });
     pushMock.mockReset().mockResolvedValue(undefined);
     pullRebaseMock.mockReset().mockResolvedValue(undefined);
@@ -394,9 +409,11 @@ describe("ReviewHub", () => {
         git: {
           getStagingStatus: getStagingStatusMock,
           stageFile: stageFileMock,
-          unstageFile: vi.fn().mockResolvedValue(undefined),
-          stageAll: vi.fn().mockResolvedValue(undefined),
-          unstageAll: vi.fn().mockResolvedValue(undefined),
+          unstageFile: unstageFileMock,
+          stageFiles: stageFilesMock,
+          unstageFiles: unstageFilesMock,
+          stageAll: stageAllMock,
+          unstageAll: unstageAllMock,
           commit: commitMock,
           push: pushMock,
           pullRebase: pullRebaseMock,
@@ -2309,7 +2326,7 @@ describe("ReviewHub", () => {
 
       await waitFor(() => screen.getByText("index.ts"));
 
-      const stageAllBtn = screen.getByTestId("review-hub-stage-all");
+      const stageAllBtn = screen.getByTestId("review-hub-stage-section-button");
       fireEvent.click(stageAllBtn);
 
       await waitFor(() => {
@@ -2329,7 +2346,7 @@ describe("ReviewHub", () => {
 
       await waitFor(() => screen.getByText("Stage shown (1)"));
 
-      const stageBtn = screen.getByTestId("review-hub-stage-all");
+      const stageBtn = screen.getByTestId("review-hub-stage-section-button");
       fireEvent.click(stageBtn);
 
       await waitFor(() => {
@@ -2345,7 +2362,7 @@ describe("ReviewHub", () => {
 
       await waitFor(() => screen.getByText("index.ts"));
 
-      const unstageAllBtn = screen.getByTestId("review-hub-unstage-all");
+      const unstageAllBtn = screen.getByTestId("review-hub-unstage-section-button");
       fireEvent.click(unstageAllBtn);
 
       await waitFor(() => {
@@ -2377,9 +2394,9 @@ describe("ReviewHub", () => {
 
       await waitFor(() => screen.getByText("No unstaged changes"));
       // Stage all button (for Changes section) should be hidden when there are no unstaged files
-      expect(screen.queryByTestId("review-hub-stage-all")).toBeNull();
+      expect(screen.queryByTestId("review-hub-stage-section-button")).toBeNull();
       // Unstage all button (for Staged section) should be visible with 1 file
-      screen.getByTestId("review-hub-unstage-all");
+      screen.getByTestId("review-hub-unstage-section-button");
     });
 
     it("filter input uses ref for typing (no re-render on each keystroke)", async () => {
@@ -2851,6 +2868,373 @@ describe("ReviewHub", () => {
         name: "Mark src/index.ts as viewed",
       }) as HTMLInputElement;
       expect(reopened.checked).toBe(false);
+    });
+  });
+
+  describe("multi-select", () => {
+    const makeMultiFileStatus = (): StagingStatus =>
+      makeStatus({
+        staged: [
+          { path: "src/a.ts", status: "modified", insertions: 1, deletions: 0 },
+          { path: "src/b.ts", status: "modified", insertions: 1, deletions: 0 },
+          { path: "src/c.ts", status: "modified", insertions: 1, deletions: 0 },
+        ],
+        unstaged: [
+          { path: "src/x.ts", status: "modified", insertions: 1, deletions: 0 },
+          { path: "src/y.ts", status: "modified", insertions: 1, deletions: 0 },
+          { path: "src/z.ts", status: "modified", insertions: 1, deletions: 0 },
+        ],
+      });
+
+    const renderHub = async () => {
+      getStagingStatusMock.mockResolvedValue(makeMultiFileStatus());
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByTestId("file-stage-row-src/x.ts"));
+    };
+
+    it("renders the default Stage all / Unstage all labels with no selection", async () => {
+      await renderHub();
+      expect(screen.getByTestId("review-hub-stage-section-button").textContent).toMatch(
+        /Stage all/i
+      );
+      expect(screen.getByTestId("review-hub-unstage-section-button").textContent).toMatch(
+        /Unstage all/i
+      );
+    });
+
+    it("cmd-click selects an unstaged row and swaps button label to 'Stage selection (1)'", async () => {
+      await renderHub();
+      const row = screen.getByTestId("file-stage-row-src/x.ts");
+      fireEvent.click(row, { metaKey: true });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("review-hub-stage-section-button").textContent).toMatch(
+          /Stage selection \(1\)/i
+        );
+      });
+      expect(row.getAttribute("aria-selected")).toBe("true");
+    });
+
+    it("ctrl-click also selects (Windows/Linux modifier)", async () => {
+      await renderHub();
+      const row = screen.getByTestId("file-stage-row-src/x.ts");
+      fireEvent.click(row, { ctrlKey: true });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("review-hub-stage-section-button").textContent).toMatch(
+          /Stage selection \(1\)/i
+        );
+      });
+    });
+
+    it("cmd-click again on a selected row deselects it", async () => {
+      await renderHub();
+      const row = screen.getByTestId("file-stage-row-src/x.ts");
+
+      fireEvent.click(row, { metaKey: true });
+      await waitFor(() => expect(row.getAttribute("aria-selected")).toBe("true"));
+
+      fireEvent.click(row, { metaKey: true });
+      await waitFor(() => {
+        expect(row.getAttribute("aria-selected")).toBe("false");
+      });
+      expect(screen.getByTestId("review-hub-stage-section-button").textContent).toMatch(
+        /Stage all/i
+      );
+    });
+
+    it("shift-click extends the selection across a range", async () => {
+      await renderHub();
+      const x = screen.getByTestId("file-stage-row-src/x.ts");
+      const z = screen.getByTestId("file-stage-row-src/z.ts");
+
+      fireEvent.click(x, { metaKey: true });
+      fireEvent.click(z, { shiftKey: true });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("review-hub-stage-section-button").textContent).toMatch(
+          /Stage selection \(3\)/i
+        );
+      });
+      expect(screen.getByTestId("file-stage-row-src/y.ts").getAttribute("aria-selected")).toBe(
+        "true"
+      );
+    });
+
+    it("plain click clears an active selection (and does not toggle selection)", async () => {
+      await renderHub();
+      const x = screen.getByTestId("file-stage-row-src/x.ts");
+      const y = screen.getByTestId("file-stage-row-src/y.ts");
+
+      fireEvent.click(x, { metaKey: true });
+      fireEvent.click(y, { metaKey: true });
+      await waitFor(() => {
+        expect(screen.getByTestId("review-hub-stage-section-button").textContent).toMatch(
+          /Stage selection \(2\)/i
+        );
+      });
+
+      fireEvent.click(screen.getByTestId("file-stage-row-src/z.ts"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("review-hub-stage-section-button").textContent).toMatch(
+          /Stage all/i
+        );
+      });
+      expect(x.getAttribute("aria-selected")).toBe("false");
+      expect(y.getAttribute("aria-selected")).toBe("false");
+    });
+
+    it("clicking in the other section clears the existing selection (per-section scope)", async () => {
+      await renderHub();
+      fireEvent.click(screen.getByTestId("file-stage-row-src/x.ts"), { metaKey: true });
+      fireEvent.click(screen.getByTestId("file-stage-row-src/y.ts"), { metaKey: true });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("review-hub-stage-section-button").textContent).toMatch(
+          /Stage selection \(2\)/i
+        );
+      });
+
+      // Cmd-click in the staged section
+      fireEvent.click(screen.getByTestId("file-stage-row-src/a.ts"), { metaKey: true });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("review-hub-stage-section-button").textContent).toMatch(
+          /Stage all/i
+        );
+        expect(screen.getByTestId("review-hub-unstage-section-button").textContent).toMatch(
+          /Unstage selection \(1\)/i
+        );
+      });
+    });
+
+    it("'Stage selection (N)' invokes stageFiles once with all selected paths", async () => {
+      await renderHub();
+      fireEvent.click(screen.getByTestId("file-stage-row-src/x.ts"), { metaKey: true });
+      fireEvent.click(screen.getByTestId("file-stage-row-src/z.ts"), { shiftKey: true });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("review-hub-stage-section-button").textContent).toMatch(
+          /Stage selection \(3\)/i
+        );
+      });
+
+      fireEvent.click(screen.getByTestId("review-hub-stage-section-button"));
+
+      await waitFor(() => expect(stageFilesMock).toHaveBeenCalledTimes(1));
+      expect(stageFilesMock).toHaveBeenCalledWith(WORKTREE_PATH, [
+        "src/x.ts",
+        "src/y.ts",
+        "src/z.ts",
+      ]);
+      expect(stageFileMock).not.toHaveBeenCalled();
+      expect(stageAllMock).not.toHaveBeenCalled();
+    });
+
+    it("'Unstage selection (N)' invokes unstageFiles once with all selected paths", async () => {
+      await renderHub();
+      fireEvent.click(screen.getByTestId("file-stage-row-src/a.ts"), { metaKey: true });
+      fireEvent.click(screen.getByTestId("file-stage-row-src/b.ts"), { metaKey: true });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("review-hub-unstage-section-button").textContent).toMatch(
+          /Unstage selection \(2\)/i
+        );
+      });
+
+      fireEvent.click(screen.getByTestId("review-hub-unstage-section-button"));
+
+      await waitFor(() => expect(unstageFilesMock).toHaveBeenCalledTimes(1));
+      expect(unstageFilesMock).toHaveBeenCalledWith(WORKTREE_PATH, ["src/a.ts", "src/b.ts"]);
+      expect(unstageFileMock).not.toHaveBeenCalled();
+      expect(unstageAllMock).not.toHaveBeenCalled();
+    });
+
+    it("clears the selection after a successful batch stage", async () => {
+      await renderHub();
+      fireEvent.click(screen.getByTestId("file-stage-row-src/x.ts"), { metaKey: true });
+      fireEvent.click(screen.getByTestId("file-stage-row-src/y.ts"), { metaKey: true });
+
+      // Status will reflect the stage on refresh:
+      getStagingStatusMock.mockResolvedValueOnce(
+        makeStatus({
+          staged: [
+            { path: "src/x.ts", status: "modified", insertions: 1, deletions: 0 },
+            { path: "src/y.ts", status: "modified", insertions: 1, deletions: 0 },
+          ],
+          unstaged: [{ path: "src/z.ts", status: "modified", insertions: 1, deletions: 0 }],
+        })
+      );
+
+      fireEvent.click(screen.getByTestId("review-hub-stage-section-button"));
+
+      await waitFor(() => expect(stageFilesMock).toHaveBeenCalled());
+      await waitFor(() => {
+        expect(screen.getByTestId("review-hub-stage-section-button").textContent).toMatch(
+          /Stage all/i
+        );
+      });
+    });
+
+    it("guards against rapid double-clicks — only one IPC call is issued", async () => {
+      // Hold the resolution of stageFiles so a second click can land before it completes.
+      let resolveStageFiles!: () => void;
+      stageFilesMock.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveStageFiles = resolve;
+          })
+      );
+
+      await renderHub();
+      fireEvent.click(screen.getByTestId("file-stage-row-src/x.ts"), { metaKey: true });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("review-hub-stage-section-button").textContent).toMatch(
+          /Stage selection \(1\)/i
+        );
+      });
+
+      const btn = screen.getByTestId("review-hub-stage-section-button");
+      fireEvent.click(btn);
+      fireEvent.click(btn);
+
+      // Resolve the pending call so the test cleans up.
+      resolveStageFiles();
+      await waitFor(() => expect(stageFilesMock).toHaveBeenCalledTimes(1));
+    });
+
+    it("Escape clears an active selection before closing the modal", async () => {
+      const onClose = vi.fn();
+      getStagingStatusMock.mockResolvedValue(makeMultiFileStatus());
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={onClose} />);
+      await waitFor(() => screen.getByTestId("file-stage-row-src/x.ts"));
+
+      fireEvent.click(screen.getByTestId("file-stage-row-src/x.ts"), { metaKey: true });
+      await waitFor(() => {
+        expect(screen.getByTestId("review-hub-stage-section-button").textContent).toMatch(
+          /Stage selection \(1\)/i
+        );
+      });
+
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("review-hub-stage-section-button").textContent).toMatch(
+          /Stage all/i
+        );
+      });
+      expect(onClose).not.toHaveBeenCalled();
+
+      // Second Escape with no selection closes the modal.
+      fireEvent.keyDown(document, { key: "Escape" });
+      await waitFor(() => expect(onClose).toHaveBeenCalled());
+    });
+
+    it("removes a staged-then-no-longer-present path from the selection after refresh", async () => {
+      await renderHub();
+      fireEvent.click(screen.getByTestId("file-stage-row-src/a.ts"), { metaKey: true });
+      fireEvent.click(screen.getByTestId("file-stage-row-src/b.ts"), { metaKey: true });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("review-hub-unstage-section-button").textContent).toMatch(
+          /Unstage selection \(2\)/i
+        );
+      });
+
+      // Background refresh removes src/a.ts from the staged section.
+      const updated = makeStatus({
+        staged: [{ path: "src/b.ts", status: "modified", insertions: 1, deletions: 0 }],
+        unstaged: [
+          { path: "src/x.ts", status: "modified", insertions: 1, deletions: 0 },
+          { path: "src/y.ts", status: "modified", insertions: 1, deletions: 0 },
+          { path: "src/z.ts", status: "modified", insertions: 1, deletions: 0 },
+        ],
+      });
+      getStagingStatusMock.mockResolvedValue(updated);
+
+      await act(async () => {
+        capturedUpdateCallback!(makeWorktreeState());
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByTestId("file-stage-row-src/a.ts")).toBeNull();
+        expect(screen.getByTestId("review-hub-unstage-section-button").textContent).toMatch(
+          /Unstage selection \(1\)/i
+        );
+      });
+    });
+
+    it("reseats the anchor onto a surviving path when the original anchor is evicted by a refresh", async () => {
+      await renderHub();
+      // Anchor on src/a.ts, extend to b.ts — selection = {a, b}, anchor = a.
+      fireEvent.click(screen.getByTestId("file-stage-row-src/a.ts"), { metaKey: true });
+      fireEvent.click(screen.getByTestId("file-stage-row-src/b.ts"), { metaKey: true });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("review-hub-unstage-section-button").textContent).toMatch(
+          /Unstage selection \(2\)/i
+        );
+      });
+
+      // Background refresh drops src/a.ts (the anchor); b.ts and c.ts remain.
+      getStagingStatusMock.mockResolvedValue(
+        makeStatus({
+          staged: [
+            { path: "src/b.ts", status: "modified", insertions: 1, deletions: 0 },
+            { path: "src/c.ts", status: "modified", insertions: 1, deletions: 0 },
+          ],
+          unstaged: [
+            { path: "src/x.ts", status: "modified", insertions: 1, deletions: 0 },
+            { path: "src/y.ts", status: "modified", insertions: 1, deletions: 0 },
+            { path: "src/z.ts", status: "modified", insertions: 1, deletions: 0 },
+          ],
+        })
+      );
+
+      await act(async () => {
+        capturedUpdateCallback!(makeWorktreeState());
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByTestId("file-stage-row-src/a.ts")).toBeNull();
+        expect(screen.getByTestId("review-hub-unstage-section-button").textContent).toMatch(
+          /Unstage selection \(1\)/i
+        );
+      });
+
+      // Shift-click from b (the surviving anchor) to c — selection should extend.
+      fireEvent.click(screen.getByTestId("file-stage-row-src/c.ts"), { shiftKey: true });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("review-hub-unstage-section-button").textContent).toMatch(
+          /Unstage selection \(2\)/i
+        );
+      });
+      expect(screen.getByTestId("file-stage-row-src/b.ts").getAttribute("aria-selected")).toBe(
+        "true"
+      );
+      expect(screen.getByTestId("file-stage-row-src/c.ts").getAttribute("aria-selected")).toBe(
+        "true"
+      );
+    });
+
+    it("stage toggle button on a row does not start a selection", async () => {
+      await renderHub();
+      const row = screen.getByTestId("file-stage-row-src/x.ts");
+      const toggle = within(row).getByRole("button", { name: /Stage src\/x\.ts/i });
+
+      fireEvent.click(toggle);
+
+      // No selection started; the per-row toggle still fires single-file stage.
+      await waitFor(() => expect(stageFileMock).toHaveBeenCalledWith(WORKTREE_PATH, "src/x.ts"));
+      expect(row.getAttribute("aria-selected")).toBe("false");
+      expect(screen.getByTestId("review-hub-stage-section-button").textContent).toMatch(
+        /Stage all/i
+      );
     });
   });
 });

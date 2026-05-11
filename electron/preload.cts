@@ -1644,6 +1644,12 @@ const api: ElectronAPI = {
     unstageFile: (cwd: string, filePath: string) =>
       _unwrappingInvoke(CHANNELS.GIT_UNSTAGE_FILE, { cwd, filePath }),
 
+    stageFiles: (cwd: string, filePaths: string[]) =>
+      _unwrappingInvoke(CHANNELS.GIT_STAGE_FILES, { cwd, filePaths }),
+
+    unstageFiles: (cwd: string, filePaths: string[]) =>
+      _unwrappingInvoke(CHANNELS.GIT_UNSTAGE_FILES, { cwd, filePaths }),
+
     stageAll: (cwd: string) => _unwrappingInvoke(CHANNELS.GIT_STAGE_ALL, cwd),
 
     unstageAll: (cwd: string) => _unwrappingInvoke(CHANNELS.GIT_UNSTAGE_ALL, cwd),

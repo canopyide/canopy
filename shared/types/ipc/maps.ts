@@ -1116,6 +1116,14 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
     args: [payload: { cwd: string; filePath: string }];
     result: void;
   };
+  "git:stage-files": {
+    args: [payload: { cwd: string; filePaths: string[] }];
+    result: void;
+  };
+  "git:unstage-files": {
+    args: [payload: { cwd: string; filePaths: string[] }];
+    result: void;
+  };
   "git:stage-all": {
     args: [cwd: string];
     result: void;
