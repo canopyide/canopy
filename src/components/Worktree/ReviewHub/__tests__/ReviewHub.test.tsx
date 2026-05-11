@@ -2400,13 +2400,13 @@ describe("ReviewHub", () => {
       });
     });
 
-    it("rendered sort order changes when sort is set to status", async () => {
+    it("renders files sorted by path ascending by default", async () => {
       getStagingStatusMock.mockResolvedValue(
         makeStatus({
           staged: [
-            { path: "src/beta.ts", status: "added", insertions: null, deletions: null },
-            { path: "src/alpha.ts", status: "modified", insertions: null, deletions: null },
-            { path: "src/gamma.ts", status: "deleted", insertions: null, deletions: null },
+            { path: "ccc.ts", status: "added", insertions: null, deletions: null },
+            { path: "aaa.ts", status: "modified", insertions: null, deletions: null },
+            { path: "bbb.ts", status: "deleted", insertions: null, deletions: null },
           ],
           unstaged: [],
         })
@@ -2414,20 +2414,16 @@ describe("ReviewHub", () => {
 
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
 
-      await waitFor(() => screen.getByText("alpha.ts"));
+      await waitFor(() => screen.getByText("aaa.ts"));
 
-      // Default sort is path asc — alpha.ts should appear before beta.ts in the DOM
-      const baseNames = ["alpha.ts", "beta.ts", "gamma.ts"];
-      const indices = baseNames.map((name) => {
-        const el = screen.getByText(name);
-        return Array.from(el.closest(".flex.flex-col")?.children ?? []).indexOf(
-          el.closest(".group\\/stagerow")!
-        );
-      });
-      // With path asc sort, alpha < beta < gamma
-      expect(screen.getByText("alpha.ts")).toBeTruthy();
-      expect(screen.getByText("beta.ts")).toBeTruthy();
-      expect(screen.getByText("gamma.ts")).toBeTruthy();
+      // Path asc sort: aaa.ts DOM position < bbb.ts < ccc.ts
+      const rows = screen.getAllByText(/\.ts$/).filter((el) => el.tagName === "SPAN");
+      const texts = rows.map((el) => el.textContent);
+      const aaaIdx = texts.indexOf("aaa.ts");
+      const bbbIdx = texts.indexOf("bbb.ts");
+      const cccIdx = texts.indexOf("ccc.ts");
+      expect(aaaIdx).toBeLessThan(bbbIdx);
+      expect(bbbIdx).toBeLessThan(cccIdx);
     });
 
     it("detects lock files as generated", async () => {

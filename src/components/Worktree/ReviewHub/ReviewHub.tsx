@@ -419,7 +419,7 @@ function matchesFilter(path: string, query: string): boolean {
           regexStr += ch;
         }
       }
-      return new RegExp(regexStr, "i").test(path.replace(/\\/g, "/"));
+      return new RegExp(`^${regexStr}$`, "i").test(path.replace(/\\/g, "/"));
     } catch {
       // fall through to substring match
     }
@@ -537,11 +537,13 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
   }, []);
 
   const clearStagedFilter = useCallback(() => {
+    stagedDebounceRef.current?.cancel();
     if (stagedInputRef.current) stagedInputRef.current.value = "";
     setStagedView((prev) => ({ ...prev, filterQuery: "" }));
   }, []);
 
   const clearChangesFilter = useCallback(() => {
+    changesDebounceRef.current?.cancel();
     if (changesInputRef.current) changesInputRef.current.value = "";
     setChangesView((prev) => ({ ...prev, filterQuery: "" }));
   }, []);
@@ -627,9 +629,10 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       for (const path of paths) {
         await window.electron.git.stageFile(worktreePath, path);
       }
-      await refresh();
     } catch (err) {
       setActionError(formatErrorMessage(err, "Failed to stage files"));
+    } finally {
+      await refresh();
     }
   }, [worktreePath, refresh, derivedUnstaged]);
 
@@ -641,9 +644,10 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
       for (const path of paths) {
         await window.electron.git.unstageFile(worktreePath, path);
       }
-      await refresh();
     } catch (err) {
       setActionError(formatErrorMessage(err, "Failed to unstage files"));
+    } finally {
+      await refresh();
     }
   }, [worktreePath, refresh, derivedStaged]);
 
@@ -1646,7 +1650,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                               variant="ghost"
                               size="sm"
                               onClick={() =>
-                                stagedView.filterQuery
+                                stagedView.filterQuery || !stagedView.showGenerated
                                   ? void handleUnstageFiltered()
                                   : void handleUnstageAll()
                               }
@@ -1815,7 +1819,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
                               variant="ghost"
                               size="sm"
                               onClick={() =>
-                                changesView.filterQuery
+                                changesView.filterQuery || !changesView.showGenerated
                                   ? void handleStageFiltered()
                                   : void handleStageAll()
                               }
