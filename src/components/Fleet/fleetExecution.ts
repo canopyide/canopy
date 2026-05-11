@@ -2,6 +2,7 @@ import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { usePanelStore } from "@/store/panelStore";
 import { useFleetBroadcastProgressStore } from "@/store/fleetBroadcastProgressStore";
 import { terminalClient } from "@/clients";
+import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { isTerminalFleetEligible } from "@/store/fleetEligibility";
 import { replaceRecipeVariables, type RecipeContext } from "@/utils/recipeVariables";
 import type { TerminalInstance } from "@shared/types";
@@ -219,10 +220,33 @@ export async function executeFleetBroadcast(
         }
         const batch = resolved.slice(i, i + FLEET_LARGE_PASTE_BATCH_SIZE);
         dispatchedCount += batch.length;
+        // Enter `directing` on every target BEFORE submit dispatches —
+        // mirrors what xterm onData → onUserInput does for the origin.
+        // `notifyEnterPressed` alone would skip `directing` (it only fires
+        // the `directing → working` transition when the target is already
+        // `directing`), so the user-input call is the load-bearing step
+        // that makes the blue indicator render fleet-wide. Real payload
+        // (not "") preserves Phase 2 escalation for large pastes — see #3565.
+        for (const r of batch) terminalInstanceService.notifyUserInput(r.terminalId, r.payload);
         const batchResults = await Promise.allSettled(
           batch.map((r) => terminalClient.submit(r.terminalId, r.payload))
         );
-        for (const r of batchResults) results.push(r);
+        for (let j = 0; j < batchResults.length; j += 1) {
+          const r = batchResults[j]!;
+          results.push(r);
+          const terminalId = batch[j]!.terminalId;
+          if (r.status === "fulfilled") {
+            // Submit landed — close out directing and flip to working.
+            // `onEnterPressed` is a no-op if the canonical state machine has
+            // already transitioned the terminal to working from PTY echo.
+            terminalInstanceService.notifyEnterPressed(terminalId);
+          } else {
+            // Submit rejected — the PTY never received bytes, so revert
+            // the synthetic `directing` we set above rather than leaving
+            // it to age out on the 1.5s debounce timer.
+            terminalInstanceService.clearDirectingState(terminalId);
+          }
+        }
 
         const batchFailures = batchResults.filter((r) => r.status === "rejected").length;
         useFleetBroadcastProgressStore.getState().advance(batch.length, batchFailures);
@@ -233,10 +257,21 @@ export async function executeFleetBroadcast(
       }
     } else {
       dispatchedCount = resolved.length;
+      // Same ordering rule as the batched path — see comment above.
+      for (const r of resolved) terminalInstanceService.notifyUserInput(r.terminalId, r.payload);
       const all = await Promise.allSettled(
         resolved.map((r) => terminalClient.submit(r.terminalId, r.payload))
       );
-      for (const r of all) results.push(r);
+      for (let j = 0; j < all.length; j += 1) {
+        const r = all[j]!;
+        results.push(r);
+        const terminalId = resolved[j]!.terminalId;
+        if (r.status === "fulfilled") {
+          terminalInstanceService.notifyEnterPressed(terminalId);
+        } else {
+          terminalInstanceService.clearDirectingState(terminalId);
+        }
+      }
       const nonBatchedFailures = all.filter((r) => r.status === "rejected").length;
       useFleetBroadcastProgressStore.getState().advance(resolved.length, nonBatchedFailures);
     }

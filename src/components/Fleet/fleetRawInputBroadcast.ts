@@ -1,5 +1,6 @@
 import { terminalClient } from "@/clients";
 import { registerFleetInputBroadcastHandler } from "@/services/terminal/fleetInputRouter";
+import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { isFleetArmEligible, useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useFleetFailureStore } from "@/store/fleetFailureStore";
 import { usePanelStore } from "@/store/panelStore";
@@ -42,6 +43,14 @@ export function broadcastFleetRawInput(originId: string, data: string): boolean 
   if (targets.length < 2 || !targets.includes(originId)) return false;
 
   terminalClient.broadcast(targets, data);
+  // Mirror the origin's xterm onData → onUserInput path on every non-origin
+  // target so the `directing` indicator fires fleet-wide. Pass the raw
+  // payload (not "") so Phase 2 escalation still kicks in for large pastes —
+  // see #3565.
+  for (const id of targets) {
+    if (id === originId) continue;
+    terminalInstanceService.notifyUserInput(id, data);
+  }
   // Bump the broadcast signal so the ribbon can fire a one-shot commit
   // flash. Counter increments only; subscribers diff against their last
   // observed value to detect a new commit. Lives here (not in
@@ -109,6 +118,10 @@ export function applyFleetBroadcastResult(payload: BroadcastWriteResultPayload):
       // disarmId is a no-op for non-armed ids per fleetArmingStore semantics,
       // so a stale result for a manually-disarmed target is harmless.
       arming.disarmId(id);
+      // Clear the synthetic `directing` set when we mirrored the broadcast
+      // through notifyUserInput, so a dead-pipe target doesn't show the
+      // blue indicator for the full 1.5s debounce window.
+      terminalInstanceService.clearDirectingState(id);
     }
   }
 }
