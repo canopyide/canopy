@@ -949,7 +949,7 @@ function TerminalPaneComponent({
               <TerminalScrollIndicator terminalId={id} />
 
               {isFleetPrimary && (
-                <div className="absolute inset-0 z-30 pointer-events-none flex items-end justify-start pb-4 pl-[14px]">
+                <div className="absolute inset-0 z-30 pointer-events-none flex items-end justify-start pb-1.5 pl-[14px]">
                   <div className="pointer-events-auto">
                     <FleetDraftingPill />
                   </div>
