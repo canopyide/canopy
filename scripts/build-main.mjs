@@ -13,6 +13,7 @@ let buildReadyTimer = null;
 
 const external = [
   "electron",
+  "@parcel/watcher", // Native N-API module (FSEvents)
   "node-pty", // Native module
   "better-sqlite3", // Native module
   "win-job-object", // Native module — Windows-only help-session Job Object (#7526)

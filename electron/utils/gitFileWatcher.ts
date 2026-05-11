@@ -1,5 +1,6 @@
 import { watch as fsWatch, FSWatcher, readFileSync } from "fs";
 import { join as pathJoin, dirname, isAbsolute, basename, normalize as pathNormalize } from "path";
+import parcelWatcher from "@parcel/watcher";
 import { getGitDir } from "./gitUtils.js";
 import { OPERATION_SENTINEL_NAMES } from "./gitRepoOperationState.js";
 import { logWarn } from "./logger.js";
@@ -15,19 +16,27 @@ const MACOS_EMFILE_LIMIT_HELP =
   "Permanent fix: create /Library/LaunchDaemons/limit.maxfiles.plist (see launchd.plist(5)). " +
   "/etc/sysctl.conf may not be respected on macOS 14+.";
 
-const IGNORED_WORKTREE_DIRECTORY_NAMES = new Set([
-  "node_modules",
-  "dist",
-  "build",
-  ".next",
-  "target",
-  "coverage",
-  ".cache",
-  ".turbo",
-  "out",
-  "__pycache__",
-  ".venv",
-]);
+/**
+ * Native ignore globs for the parcel file watcher.
+ * Each bare directory name maps to a glob matching at any depth.
+ * .git is included for both the bare worktree pointer file and
+ * all child paths, replacing the old JS-side prefix check.
+ */
+const WORKTREE_IGNORE_GLOBS = [
+  "**/node_modules/**",
+  "**/dist/**",
+  "**/build/**",
+  "**/.next/**",
+  "**/target/**",
+  "**/coverage/**",
+  "**/.cache/**",
+  "**/.turbo/**",
+  "**/out/**",
+  "**/__pycache__/**",
+  "**/.venv/**",
+  "**/.git",
+  "**/.git/**",
+];
 
 export interface GitFileWatcherOptions {
   worktreePath: string;
@@ -62,6 +71,7 @@ export class GitFileWatcher {
   private worktreeMaxWaitTimer: NodeJS.Timeout | null = null;
   private worktreeBurstCount = 0;
   private disposed = false;
+  private worktreeSubscription: { unsubscribe(): Promise<void> } | null = null;
   private readonly worktreePath: string;
   private readonly debounceMs: number;
   private readonly worktreeMinDebounceMs: number;
@@ -133,14 +143,12 @@ export class GitFileWatcher {
       }
 
       if (this.watchWorktree) {
-        const worktreeWatcherStarted = this.startWorktreeWatcher(gitDir);
-        // Surface startup failure of the recursive watcher (e.g. Linux
-        // ENOSPC) so WorktreeMonitor routes into its retry branch instead
-        // of treating the watcher as healthy and disabling the retry loop.
-        if (!worktreeWatcherStarted) {
-          this.closeWatchers();
-          return false;
-        }
+        // Fire-and-forget: subscribe() schedules the native watcher
+        // asynchronously. Startup failures (ENOSPC, EMFILE) route through
+        // onWatcherFailed / onInotifyLimitReached / onEmfileLimitReached
+        // callbacks when the Promise rejects. WatcherController.handleWatcherFailed()
+        // is already designed for async callback delivery.
+        this.startWorktreeWatcher();
       }
 
       return true;
@@ -185,6 +193,13 @@ export class GitFileWatcher {
 
     this.watchers = [];
     this.watchedFilesByDirectory.clear();
+
+    if (this.worktreeSubscription) {
+      this.worktreeSubscription.unsubscribe().catch(() => {
+        // Subscription already torn down (double-close or native teardown race)
+      });
+      this.worktreeSubscription = null;
+    }
   }
 
   private resolveCommonDir(gitDir: string): string {
@@ -197,106 +212,78 @@ export class GitFileWatcher {
     }
   }
 
-  private startWorktreeWatcher(_gitDir: string): boolean {
-    try {
-      // Always filter ".git" — for linked worktrees the gitDir resolves to the
-      // main repo's .git/worktrees/<name>, but the worktree root still has a
-      // ".git" entry (a pointer file) that should be ignored.
-      const gitDirBase = ".git";
-      const watcher = fsWatch(
+  private startWorktreeWatcher(): void {
+    // The parcel file watcher silently drops overflow events on all platforms
+    // (macOS kFSEventStreamEventFlagMustScanSubDirs, Linux IN_Q_OVERFLOW,
+    // Windows ERROR_NOTIFY_ENUM_DIR). There is no equivalent to fs.watch's
+    // null-filename "global dirty" signal. Mitigation: WorktreeMonitor's
+    // 10s polling fallback catches missed events. On macOS, the primary
+    // overflow trigger — libuv FSEvents per-directory fd exhaustion — is
+    // eliminated by the single-stream-per-subtree design.
+    parcelWatcher
+      .subscribe(
         this.worktreePath,
-        { persistent: false, recursive: true },
-        (_eventType, changedFileName) => {
-          // Null filename is the canonical "global dirty" signal across platforms:
-          // Linux inotify overflow (IN_Q_OVERFLOW), macOS FSEvents coalescing,
-          // and Windows ReadDirectoryChangesW buffer overflow all produce null
-          // filenames when the system can't attribute changes to specific files.
-          // When this happens, treat the entire worktree as potentially changed.
-          if (!changedFileName) {
+        (err, events) => {
+          if (err) {
+            this.handleWorktreeWatcherError(err, "runtime");
+            return;
+          }
+          if (this.disposed || !events || events.length === 0) return;
+          // Per-event iteration preserves the burstCount-driven adaptive
+          // debounce ramp: 100 files in a batch -> burstCount=100 -> maxDebounce.
+          for (let i = 0; i < events.length; i++) {
             this.handleWorktreeChange();
-            return;
           }
-
-          const changedName = changedFileName.toString().replaceAll("\\", "/");
-
-          // Ignore all events inside .git directory
-          if (changedName === gitDirBase || changedName.startsWith(gitDirBase + "/")) {
-            return;
-          }
-
-          // Ignore common build-output and dependency directories at any depth
-          for (const ignored of IGNORED_WORKTREE_DIRECTORY_NAMES) {
-            if (
-              changedName === ignored ||
-              changedName.startsWith(ignored + "/") ||
-              changedName.includes("/" + ignored + "/") ||
-              changedName.endsWith("/" + ignored)
-            ) {
-              return;
-            }
-          }
-
-          this.handleWorktreeChange();
-        }
-      );
-
-      watcher.on("error", (error) => {
-        const errno = error as NodeJS.ErrnoException;
-        if (process.platform === "linux" && errno.code === "ENOSPC") {
-          logWarn(LINUX_INOTIFY_LIMIT_HELP, { path: this.worktreePath });
-          const idx = this.watchers.indexOf(watcher);
-          if (idx !== -1) {
-            this.watchers.splice(idx, 1);
-          }
-          try {
-            watcher.close();
-          } catch {
-            // Watcher already broken — close may throw EPERM on Windows
-            // (directory-deletion or double-close race)
-          }
-          this.onInotifyLimitReached?.();
-          this.onWatcherFailed?.();
-        } else if (process.platform === "darwin" && errno.code === "EMFILE") {
-          logWarn(MACOS_EMFILE_LIMIT_HELP, { path: this.worktreePath });
-          const idx = this.watchers.indexOf(watcher);
-          if (idx !== -1) {
-            this.watchers.splice(idx, 1);
-          }
-          try {
-            watcher.close();
-          } catch {
-            // Watcher already broken — close may throw EPERM on Windows
-            // (directory-deletion or double-close race)
-          }
-          this.onEmfileLimitReached?.();
-          this.onWatcherFailed?.();
+        },
+        { ignore: WORKTREE_IGNORE_GLOBS }
+      )
+      .then((sub) => {
+        if (this.disposed) {
+          sub.unsubscribe();
         } else {
-          logWarn("Worktree recursive watcher error", {
-            path: this.worktreePath,
-            error: error.message,
-          });
+          this.worktreeSubscription = sub;
         }
+      })
+      .catch((error: unknown) => {
+        this.handleWorktreeWatcherError(error, "startup");
       });
+  }
 
-      this.watchers.push(watcher);
-      return true;
-    } catch (error) {
-      const errno = error as NodeJS.ErrnoException;
-      if (process.platform === "linux" && errno.code === "ENOSPC") {
-        logWarn(LINUX_INOTIFY_LIMIT_HELP, { path: this.worktreePath });
-        this.onInotifyLimitReached?.();
-        this.onWatcherFailed?.();
-      } else if (process.platform === "darwin" && errno.code === "EMFILE") {
+  private handleWorktreeWatcherError(error: unknown, phase: "startup" | "runtime"): void {
+    if (this.disposed) return;
+    const err = error as NodeJS.ErrnoException;
+    const code = err?.code;
+    const message = err?.message ?? "";
+
+    if (process.platform === "linux" && code === "ENOSPC") {
+      logWarn(LINUX_INOTIFY_LIMIT_HELP, { path: this.worktreePath });
+      this.onInotifyLimitReached?.();
+      this.onWatcherFailed?.();
+      return;
+    }
+
+    if (process.platform === "darwin") {
+      // The parcel file watcher uses native FSEvents directly (no per-directory
+      // fd) so EMFILE from per-directory exhaustion is eliminated. The check
+      // stays for the rare case where the system-wide fd ceiling is hit
+      // (FSEventStreamStart returns a CoreServices error string, not an
+      // errno code). Primary gate on .code === 'EMFILE'; fallback to
+      // message matching for platform-error-string variants.
+      const isEmfile = code === "EMFILE" || /file.*descriptor|descriptor.*limit/i.test(message);
+      if (isEmfile) {
         logWarn(MACOS_EMFILE_LIMIT_HELP, { path: this.worktreePath });
         this.onEmfileLimitReached?.();
         this.onWatcherFailed?.();
-      } else {
-        logWarn("Failed to start recursive worktree watcher", {
-          path: this.worktreePath,
-          error: errno.message,
-        });
+        return;
       }
-      return false;
+    }
+
+    logWarn(`Worktree recursive watcher error (${phase})`, {
+      path: this.worktreePath,
+      error: message,
+    });
+    if (phase === "startup") {
+      this.onWatcherFailed?.();
     }
   }
 
