@@ -444,6 +444,21 @@ export function WorktreeCard({
     useUIStore.getState().clearPendingReviewHubWorktreeId();
   }, [pendingReviewHubWorktreeId, worktree.id]);
 
+  // Open Review Hub when an AgentCompletionBanner in this worktree fires its
+  // CustomEvent. TerminalPane is not in this component's React tree (it's
+  // rendered via the panel registry), so a window-scoped event is the only
+  // path. Filter by worktree.id so concurrent worktrees stay independent.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ worktreeId?: string }>).detail;
+      if (detail?.worktreeId === worktree.id) {
+        setShowReviewHub(true);
+      }
+    };
+    window.addEventListener("daintree:open-review-hub", handler);
+    return () => window.removeEventListener("daintree:open-review-hub", handler);
+  }, [worktree.id]);
+
   const handleAttachIssue = async (issue: GitHubIssue) => {
     await worktreeClient.attachIssue({
       worktreeId: worktree.id,

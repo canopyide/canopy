@@ -22,6 +22,8 @@ import { SpawnErrorBanner } from "./SpawnErrorBanner";
 import { ReconnectErrorBanner } from "./ReconnectErrorBanner";
 import { UpdateCwdDialog } from "./UpdateCwdDialog";
 import { ErrorBanner } from "../Errors/ErrorBanner";
+import { AgentCompletionBanner } from "./AgentCompletionBanner";
+import type { SnapshotInfo } from "@shared/types/ipc/git";
 import { ContentPanel } from "@/components/Panel";
 import { useIsDragging } from "@/components/DragDrop";
 import { MissingCliGate } from "./MissingCliGate";
@@ -165,6 +167,14 @@ function TerminalPaneComponent({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isUpdateCwdOpen, setIsUpdateCwdOpen] = useState(false);
   const [isAutoRestarting, setIsAutoRestarting] = useState(false);
+  // `undefined` = snapshot not yet fetched for the current completion run.
+  // `null` = fetch returned no snapshot (agent state machine never recorded
+  //   a working transition, or the entry was pruned). Distinct from "no
+  //   changes" so we don't render the zero-change pill prematurely.
+  const [completionSnapshot, setCompletionSnapshot] = useState<SnapshotInfo | null | undefined>(
+    undefined
+  );
+  const [completionBannerDismissed, setCompletionBannerDismissed] = useState(false);
   const autoRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoRestartAttemptRef = useRef(0);
   const processStartTimeRef = useRef<number>(0);
@@ -731,6 +741,56 @@ function TerminalPaneComponent({
     terminalInstanceService.setAgentState(id, agentState ?? "idle");
   }, [id, agentState]);
 
+  // Pre-agent snapshot lookup drives the review banner + zero-change pill.
+  // We re-fetch on every completion transition; non-completed states reset
+  // both the snapshot result and the per-pane dismissed flag so a rerun of
+  // the agent re-arms the UI from scratch.
+  // The snapshot service keys entries by the worktree's normalized absolute
+  // path. Prefer the explicit `worktreeId` prop (which matches WorktreeCard's
+  // `worktree.id`) over `cwd` in case the user has cd'd elsewhere.
+  const snapshotKey = worktreeId ?? cwd;
+  useEffect(() => {
+    if (agentState !== "completed") {
+      setCompletionSnapshot(undefined);
+      setCompletionBannerDismissed(false);
+      return;
+    }
+    if (!snapshotKey) return;
+    let ignore = false;
+    window.electron.git
+      .snapshotGet(snapshotKey)
+      .then((info) => {
+        if (!ignore) setCompletionSnapshot(info);
+      })
+      .catch(() => {
+        // Snapshot lookup is best-effort — failure means no banner, no pill.
+        if (!ignore) setCompletionSnapshot(null);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [agentState, snapshotKey]);
+
+  const completedWithChanges =
+    agentState === "completed" &&
+    completionSnapshot !== undefined &&
+    completionSnapshot !== null &&
+    completionSnapshot.hasChanges;
+  const completedWithNoChanges =
+    agentState === "completed" &&
+    completionSnapshot !== undefined &&
+    completionSnapshot !== null &&
+    !completionSnapshot.hasChanges;
+
+  const handleOpenReviewHub = () => {
+    if (snapshotKey) {
+      window.dispatchEvent(
+        new CustomEvent("daintree:open-review-hub", { detail: { worktreeId: snapshotKey } })
+      );
+    }
+    setCompletionBannerDismissed(true);
+  };
+
   const isWorking = agentState === "working";
   const allowPing = !isMaximized && (location !== "grid" || (gridPanelCount ?? 2) > 1);
 
@@ -782,6 +842,7 @@ function TerminalPaneComponent({
       exitCode={exitCode}
       isWorking={isWorking}
       agentState={agentState}
+      completedWithNoChanges={completedWithNoChanges}
       activity={activity}
       lastCommand={lastCommand}
       detectedProcessId={detectedProcessId}
@@ -978,6 +1039,13 @@ function TerminalPaneComponent({
                 </div>
               )}
             </div>
+
+            {completedWithChanges && !completionBannerDismissed && (
+              <AgentCompletionBanner
+                onReview={handleOpenReviewHub}
+                onDismiss={() => setCompletionBannerDismissed(true)}
+              />
+            )}
 
             {showHybridInputBar && (
               <Suspense fallback={null}>
