@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import type { AgentState } from "@/types";
 import type { TerminalInstance } from "@/store/panelStore";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { cn } from "@/lib/utils";
@@ -15,6 +14,7 @@ import {
   getEffectiveStateIcon,
   getEffectiveStateColor,
 } from "../terminalStateConfig";
+import { CollapsedSessionIndicators } from "./CollapsedSessionIndicators";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import { TruncatedTooltip } from "@/components/ui/TruncatedTooltip";
 import { useTruncationDetection } from "@/hooks/useTruncationDetection";
@@ -32,41 +32,6 @@ import {
 import { useDragHandle } from "@/components/DragDrop/DragHandleContext";
 import { useFleetArmingStore, isFleetArmEligible } from "@/store/fleetArmingStore";
 import { useKeybindingScope } from "@/hooks/useKeybinding";
-
-interface StateIconProps {
-  state: AgentState;
-  count: number;
-}
-
-function StateIcon({ state, count }: StateIconProps) {
-  const Icon = getEffectiveStateIcon(state);
-  const colorClass = getEffectiveStateColor(state);
-  const label = STATE_LABELS[state];
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span
-          className={cn("flex items-center gap-1 text-[11px]", colorClass)}
-          role="img"
-          aria-label={`${count} ${label}`}
-        >
-          <Icon
-            className={cn(
-              "w-3 h-3",
-              state === "working" && "animate-spin-slow motion-reduce:animate-none"
-            )}
-            aria-hidden
-          />
-          <span className="font-mono tabular-nums">{count}</span>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent side="top" className="text-xs">
-        {count} {label}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
 
 interface MarqueeBox {
   x: number;
@@ -191,7 +156,7 @@ function TerminalRow({ term, onClick }: TerminalRowProps) {
             ref={dragHandle?.setActivatorNodeRef}
             type="button"
             data-drag-handle
-            className="cursor-grab rounded text-text-muted transition-colors hover:text-text-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1 active:cursor-grabbing"
+            className="cursor-grab rounded text-text-muted opacity-0 group-hover/termrow:opacity-100 focus-visible:opacity-100 transition-colors transition-opacity hover:text-text-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1 active:cursor-grabbing"
             aria-label="Drag to move terminal"
             {...(dragHandle?.listeners as React.HTMLAttributes<HTMLElement> | undefined)}
           >
@@ -234,15 +199,17 @@ export function WorktreeTerminalSection({
   );
   const armedIdsSize = useFleetArmingStore((s) => s.armedIds.size);
 
-  const topTerminalState = ((): { state: AgentState; count: number } | null => {
-    for (const state of STATE_PRIORITY) {
-      const count = counts.byState[state];
-      if (count > 0) {
-        return { state, count };
-      }
-    }
-    return null;
-  })();
+  const { visibleTerminalStates, terminalSessionAriaLabel } = useMemo(() => {
+    const visible = STATE_PRIORITY.filter((s) => s !== "idle" && counts.byState[s] > 0).map(
+      (s) => ({
+        state: s,
+        count: counts.byState[s],
+      })
+    );
+    const parts = visible.map((v) => `${v.count} ${STATE_LABELS[v.state]}`);
+    const label = `${counts.total} session${counts.total !== 1 ? "s" : ""}: ${parts.join(", ")}`;
+    return { visibleTerminalStates: visible, terminalSessionAriaLabel: label };
+  }, [counts.byState, counts.total]);
 
   const SummaryIcon = useMemo(() => {
     if (terminals.length === 0) return null;
@@ -509,8 +476,11 @@ export function WorktreeTerminalSection({
             </span>
           </div>
 
-          {topTerminalState && (
-            <StateIcon state={topTerminalState.state} count={topTerminalState.count} />
+          {visibleTerminalStates.length > 0 && (
+            <CollapsedSessionIndicators
+              visibleStates={visibleTerminalStates}
+              sessionAriaLabel={terminalSessionAriaLabel}
+            />
           )}
         </button>
       )}
