@@ -61,14 +61,21 @@ describe("RotatingTip — count-biased selection (#6756)", () => {
     isAgentLaunchableMock.mockReturnValue(true);
   });
 
-  it("renders nothing while shortcutHintStore is not hydrated", () => {
+  it("reserves an invisible slot while shortcutHintStore is not hydrated (#7671)", () => {
+    // Returning null would pop the tip in once shortcutHints hydrates a few
+    // ticks after first paint, shifting the empty-state column. The
+    // placeholder is aria-hidden so screen readers skip it.
     const { container } = render(<RotatingTip />);
-    expect(container.firstChild).toBeNull();
+    const placeholder = container.firstChild as HTMLElement | null;
+    expect(placeholder).not.toBeNull();
+    expect(placeholder!.getAttribute("aria-hidden")).toBe("true");
+    expect(placeholder!.className).toContain("invisible");
+    expect(container.textContent ?? "").not.toMatch(/Tip:/);
   });
 
   it("renders a tip once hydrated", () => {
     const { container } = render(<RotatingTip />);
-    expect(container.firstChild).toBeNull();
+    expect(container.textContent ?? "").not.toMatch(/Tip:/);
     setHydrated();
     expect(container.querySelector("p")?.textContent).toMatch(/^Tip:/);
   });
