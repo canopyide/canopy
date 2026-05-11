@@ -355,20 +355,16 @@ function getActiveWorktreeId(): string | null {
  * out of the armed set automatically. Registered by `initStoreOrchestrator()`
  * so the subscription is scoped to the renderer lifecycle (HMR-safe via the
  * orchestrator's `DisposableStore`) rather than module evaluation.
+ *
+ * Runs an initial reconciliation pass before subscribing so any armed ids
+ * that became ineligible while the subscription was torn down (test
+ * destroy → mutate panels → re-init) get pruned on re-registration.
  */
 export function subscribeFleetArmingPanelPruning(): () => void {
-  let lastIds = usePanelStore.getState().panelIds;
-  let lastPanelsById = usePanelStore.getState().panelsById;
-
-  return usePanelStore.subscribe((state) => {
-    const currentIds = state.panelIds;
-    const currentById = state.panelsById;
-
-    if (currentIds === lastIds && currentById === lastPanelsById) return;
-
-    lastIds = currentIds;
-    lastPanelsById = currentById;
-
+  function reconcileAgainst(
+    currentIds: readonly string[],
+    currentById: Record<string, TerminalInstance>
+  ): void {
     const armed = useFleetArmingStore.getState().armedIds;
     if (armed.size === 0) return;
 
@@ -384,5 +380,21 @@ export function subscribeFleetArmingPanelPruning(): () => void {
         return;
       }
     }
+  }
+
+  let lastIds = usePanelStore.getState().panelIds;
+  let lastPanelsById = usePanelStore.getState().panelsById;
+  reconcileAgainst(lastIds, lastPanelsById);
+
+  return usePanelStore.subscribe((state) => {
+    const currentIds = state.panelIds;
+    const currentById = state.panelsById;
+
+    if (currentIds === lastIds && currentById === lastPanelsById) return;
+
+    lastIds = currentIds;
+    lastPanelsById = currentById;
+
+    reconcileAgainst(currentIds, currentById);
   });
 }

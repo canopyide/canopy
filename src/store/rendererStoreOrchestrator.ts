@@ -19,6 +19,7 @@ import {
   setFleetArmingClearAccessor,
   setFleetArmedIdsAccessor,
   setFleetLastArmedIdAccessor,
+  resetStoreAccessorsForTesting,
 } from "./storeAccessors";
 import { setActiveContextAccessors } from "@/lib/notify";
 import { debounce } from "@/utils/debounce";
@@ -254,4 +255,9 @@ export function destroyStoreOrchestrator(): void {
   // matching pre-refactor behavior.
   debouncedPersistMruList.cancel();
   cleanupFn?.();
+  // Clear cross-store accessor slots so any code path that consumes them
+  // between destroy and a subsequent init sees null (the documented
+  // unset-fallback behavior) rather than stale closures bound to a torn-down
+  // subscription set.
+  resetStoreAccessorsForTesting();
 }
