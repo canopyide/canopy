@@ -159,4 +159,19 @@ describe("safeStringify", () => {
     expect(parsed.user).toBe("alice");
     expect(result).toContain("\n");
   });
+
+  it("invokes replacer when space is omitted", () => {
+    const obj = { fn: function foo() {} };
+    const result = safeStringify(obj);
+    expect(result).toBe('{"fn":"[Function: foo]"}');
+  });
+
+  it("produces deterministic key order", () => {
+    const obj = { b: 1, a: 2, c: 3 };
+    expect(safeStringify(obj)).toBe('{"a":2,"b":1,"c":3}');
+  });
+
+  it("handles top-level BigInt", () => {
+    expect(safeStringify(BigInt(42))).toBe('"42"');
+  });
 });
