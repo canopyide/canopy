@@ -8,7 +8,7 @@ import {
   agentStateDotColor,
   getDominantAgentState,
 } from "../AgentStatusIndicator";
-import { STATE_PRIORITY } from "../terminalStateConfig";
+import { STATE_LABELS, STATE_PRIORITY } from "../terminalStateConfig";
 import type { AgentState } from "@/types";
 
 vi.mock("@/components/ui/tooltip", () => ({
@@ -32,7 +32,7 @@ describe("AgentStatusIndicator", () => {
     const { container } = render(<AgentStatusIndicator state={state} />);
     const el = container.querySelector('[role="img"]');
     expect(el).not.toBeNull();
-    expect(el?.getAttribute("aria-label")).toBe(`Agent status: ${state}`);
+    expect(el?.getAttribute("aria-label")).toBe(`Agent status: ${STATE_LABELS[state]}`);
     expect(el?.textContent).toBe(glyph);
   });
 

@@ -53,16 +53,18 @@ interface AgentPipDescriptor {
 // passive states for the worktree tray. Here the toolbar button is the only
 // chrome surfacing assistant state when the panel is closed, so working and
 // directing both earn the green pip alongside the yellow waiting pip.
+const AGENT_PIP_BY_STATE = {
+  working: { className: "bg-state-working", tooltip: "Assistant is working" },
+  directing: { className: "bg-state-working", tooltip: "Assistant is working" },
+  waiting: { className: "bg-state-waiting", tooltip: "Assistant is waiting" },
+} as const satisfies Record<
+  Extract<AgentState, "working" | "directing" | "waiting">,
+  AgentPipDescriptor
+>;
+
 function describeAgentPip(state: AgentState | null | undefined): AgentPipDescriptor | null {
-  switch (state) {
-    case "working":
-    case "directing":
-      return { className: "bg-state-working", tooltip: "Assistant is working" };
-    case "waiting":
-      return { className: "bg-state-waiting", tooltip: "Assistant is waiting" };
-    default:
-      return null;
-  }
+  if (state == null) return null;
+  return (AGENT_PIP_BY_STATE as Partial<Record<AgentState, AgentPipDescriptor>>)[state] ?? null;
 }
 
 export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
