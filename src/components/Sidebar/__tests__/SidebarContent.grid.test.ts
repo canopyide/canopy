@@ -128,7 +128,7 @@ describe("Worktree list keyboard grid — issue #6422", () => {
       expect(staticSource).toContain("tabIndex={-1}");
       // Ensure the static path also has a gridcell wrapper
       const staticRowMatch = staticSource.match(
-        /const StaticWorktreeRow[\s\S]*?<\/div>\s*\)\s*;\s*\}\s*\)\s*;/
+        /function StaticWorktreeRow[\s\S]*?<\/div>\s*\)\s*;\s*\}/
       );
       expect(staticRowMatch).toBeTruthy();
       expect(staticRowMatch?.[0]).toContain('role="gridcell"');
