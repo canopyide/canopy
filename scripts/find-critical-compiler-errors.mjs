@@ -33,9 +33,11 @@ for (const rel of files) {
       if (event.kind !== "CompileError") return;
       const detail = event.detail;
       if (!detail) return;
-      // Normalize to an array of detail entries: CompilerErrorDetail is a
-      // single object (severity on .severity directly), CompilerDiagnostic
-      // wraps multiple entries in .details (severity on each entry).
+      // Normalize to a single-element array. At runtime, both
+      // CompilerErrorDetail and CompilerDiagnostic carry severity on the
+      // parent object; CompilerDiagnostic stores child entries in
+      // this.options.details, not this.details, so the fallback path
+      // [detail] is what executes in practice for both shapes.
       const details = Array.isArray(detail.details) ? detail.details : [detail];
       for (const d of details) {
         if (!d || d.severity !== "Error") continue;
@@ -65,8 +67,9 @@ for (const rel of files) {
     });
   } catch (err) {
     // panic-threshold "none" shouldn't throw, but guard just in case.
+    const msg = (err?.message ?? String(err)).split("\n")[0];
     const entry = errorsByFile.get(rel) ?? [];
-    entry.push({ line: "?", reason: `[panic] ${err.message.split("\n")[0]}` });
+    entry.push({ line: "?", reason: `[panic] ${msg}` });
     errorsByFile.set(rel, entry);
   }
 }
