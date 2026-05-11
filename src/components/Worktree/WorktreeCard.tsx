@@ -471,13 +471,19 @@ export function WorktreeCard({
     return () => window.removeEventListener("daintree:open-review-hub", handler);
   }, [worktree.id]);
 
-  const aiNoteFirstLine = worktree.aiNote?.trim().split("\n")[0]?.trim() ?? "";
+  const aiNoteFirstLine = effectiveNote?.split("\n")[0]?.trim() ?? "";
   const lastCommitFirstLine =
     worktree.worktreeChanges?.lastCommitMessage?.trim().split("\n")[0]?.trim() ?? "";
   const commitMessageDefault = aiNoteFirstLine || lastCommitFirstLine;
   const hasCommitMessageSource = commitMessageDefault.length > 0;
 
   const clearCommitAndPushError = () => setCommitAndPushError(null);
+
+  useEffect(() => {
+    if (reviewState !== "has-changes") {
+      setCommitAndPushError(null);
+    }
+  }, [reviewState]);
 
   const handleCommitAndPush = async () => {
     if (commitAndPushInFlightRef.current) return;

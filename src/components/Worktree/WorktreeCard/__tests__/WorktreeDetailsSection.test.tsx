@@ -390,6 +390,38 @@ describe("WorktreeDetailsSection — reviewState surfaces", () => {
     fireEvent.click(screen.getByLabelText("Dismiss error"));
     expect(clearCommitError).toHaveBeenCalledTimes(1);
   });
+
+  it('does not render Commit & push or conflict callout when reviewState is "unpushed-clean"', () => {
+    renderSection({
+      reviewState: "unpushed-clean",
+      hasChanges: false,
+      hasCommitMessageSource: true,
+      onCommitAndPush: vi.fn(),
+      computedSubtitle: { text: "fix: stuff", tone: "muted" },
+      worktree: {
+        ...baseWorktree,
+        worktreeChanges: {
+          ...baseWorktree.worktreeChanges,
+          changedFileCount: 0,
+          ahead: 2,
+        } as WorktreeChanges,
+      },
+    });
+    expect(screen.queryByLabelText("Commit and push")).toBeNull();
+    expect(screen.queryByText("Conflicts need review")).toBeNull();
+    expect(screen.getByText("fix: stuff")).toBeDefined();
+  });
+
+  it("hides the error banner when expanded", () => {
+    renderSection({
+      isExpanded: true,
+      reviewState: "has-changes",
+      hasCommitMessageSource: true,
+      commitError: "Couldn't push to remote",
+      clearCommitError: vi.fn(),
+    });
+    expect(screen.queryByText("Couldn't push to remote")).toBeNull();
+  });
 });
 
 describe("WorktreeDetailsSection activity indicator", () => {
