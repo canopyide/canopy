@@ -121,6 +121,9 @@ const DURABLE_ALLOWLIST = new Set([
 
   // PresetColorPicker Done CTA (primary commit action) + focus-visible ring
   "src/components/Settings/PresetColorPicker.tsx",
+
+  // Current rebase step indicator in the conflict UI (single primary anchor per view)
+  "src/components/Worktree/ReviewHub/ConflictPanel.tsx",
 ]);
 
 // Files with accent usage that cleanup PRs #5978-5986 will address.
