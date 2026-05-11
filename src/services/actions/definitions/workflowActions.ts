@@ -426,13 +426,16 @@ export function registerWorkflowActions(
         // caller knows the worktree is already created and not lost.
         let terminalId: string | null;
         try {
-          terminalId = await callbacks.onLaunchAgent(agentId, {
-            location: "grid",
-            cwd: worktreePath,
-            worktreeId,
-            activateDockOnCreate: false,
-            spawnedBy,
-          });
+          terminalId =
+            (
+              await callbacks.onLaunchAgent(agentId, {
+                location: "grid",
+                cwd: worktreePath,
+                worktreeId,
+                activateDockOnCreate: false,
+                spawnedBy,
+              })
+            )?.terminalId ?? null;
         } catch (err) {
           throw partialSuccessError(
             `Agent '${agentId}' failed to launch in new worktree: ${formatErrorMessage(err, "unknown error")}`,

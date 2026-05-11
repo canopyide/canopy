@@ -33,7 +33,7 @@ import { registerAgentActions } from "../agentActions";
 
 function makeCallbacks() {
   return {
-    onLaunchAgent: vi.fn().mockResolvedValue("term-1"),
+    onLaunchAgent: vi.fn().mockResolvedValue({ terminalId: "term-1", location: "grid" }),
     onOpenQuickSwitcher: vi.fn(),
   } as unknown as ActionCallbacks & {
     onLaunchAgent: ReturnType<typeof vi.fn>;
@@ -113,7 +113,7 @@ describe("agentActions adversarial", () => {
       interactive: true,
       modelId: "gpt-5",
     });
-    expect(result).toEqual({ terminalId: "term-1" });
+    expect(result).toEqual({ terminalId: "term-1", location: "grid" });
   });
 
   it("one agent.<id> action is registered per AGENT_REGISTRY entry", () => {
@@ -133,9 +133,18 @@ describe("agentActions adversarial", () => {
     await callAction(actions, "agent.codex");
     await callAction(actions, "agent.terminal");
 
-    expect(callbacks.onLaunchAgent).toHaveBeenNthCalledWith(1, "claude");
-    expect(callbacks.onLaunchAgent).toHaveBeenNthCalledWith(2, "codex");
-    expect(callbacks.onLaunchAgent).toHaveBeenNthCalledWith(3, "terminal");
+    expect(callbacks.onLaunchAgent).toHaveBeenNthCalledWith(1, "claude", {
+      location: undefined,
+      spawnedBy: undefined,
+    });
+    expect(callbacks.onLaunchAgent).toHaveBeenNthCalledWith(2, "codex", {
+      location: undefined,
+      spawnedBy: undefined,
+    });
+    expect(callbacks.onLaunchAgent).toHaveBeenNthCalledWith(3, "terminal", {
+      location: undefined,
+      spawnedBy: undefined,
+    });
   });
 
   it("agent.palette only opens the quick switcher and does not launch", async () => {
@@ -442,7 +451,7 @@ describe("agent.launch dispatch integration", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.result).toEqual({ terminalId: "term-1" });
+      expect(result.result).toEqual({ terminalId: "term-1", location: "grid" });
     }
     expect(callbacks.onLaunchAgent).toHaveBeenCalledWith("claude", {
       location: "grid",
