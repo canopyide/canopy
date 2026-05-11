@@ -1,4 +1,5 @@
 import type { HydrateResult } from "../../shared/types/ipc/app.js";
+import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
 /**
  * Main-process cache of pre-built `HydrateResult` payloads, populated by hover
@@ -53,7 +54,8 @@ export function prefetchHydrateResult(
   if (existing) return existing;
 
   const versionAtStart = currentVersion(projectId);
-  const promise = (async () => {
+  let promise: Promise<HydrateResult | null> | null = null;
+  promise = (async () => {
     try {
       const result = await build(projectId);
       if (currentVersion(projectId) !== versionAtStart) {
@@ -64,11 +66,11 @@ export function prefetchHydrateResult(
     } catch (error) {
       console.warn(
         `[prefetchHydrateCache] Prefetch failed for project ${projectId}:`,
-        error instanceof Error ? error.message : error
+        formatErrorMessage(error, "prefetch failed")
       );
       return null;
     } finally {
-      if (inflight.get(projectId) === promise) {
+      if (promise && inflight.get(projectId) === promise) {
         inflight.delete(projectId);
       }
     }
