@@ -47,6 +47,12 @@ const LANG_LOADERS: Record<string, () => Promise<{ default: Syntax }>> = {
 };
 
 const langLoadPromises = new Map<string, Promise<void>>();
+const FAILED_LANGS = new Set<string>();
+
+export function _resetLangStateForTests(): void {
+  FAILED_LANGS.clear();
+  langLoadPromises.clear();
+}
 
 function ensureLanguage(language: string): Promise<void> {
   if (refractor.registered(language)) return Promise.resolve();
@@ -58,9 +64,10 @@ function ensureLanguage(language: string): Promise<void> {
       .then((mod) => {
         refractor.register(mod.default);
       })
-      // Intentional: no retry. A failed chunk load caches as a resolved
-      // no-op so the language renders as plain text and renders don't loop.
-      .catch(() => {});
+      .catch((err: unknown) => {
+        console.warn(`Failed to load refractor grammar for "${language}"`, err);
+        FAILED_LANGS.add(language);
+      });
     langLoadPromises.set(language, pending);
   }
   return pending;
@@ -74,25 +81,36 @@ export interface DiffViewerProps {
   rootPath?: string;
 }
 
-function useTokens(hunks: HunkData[], language: string): HunkTokens | null {
+function useTokens(
+  hunks: HunkData[],
+  language: string
+): {
+  tokens: HunkTokens | null;
+  langLoadFailed: boolean;
+} {
   const [langReady, setLangReady] = useState(() => refractor.registered(language));
+  const [langLoadFailed, setLangLoadFailed] = useState(() => FAILED_LANGS.has(language));
 
   useEffect(() => {
     if (refractor.registered(language)) {
       setLangReady(true);
+      setLangLoadFailed(false);
       return;
     }
     setLangReady(false);
     let cancelled = false;
     void ensureLanguage(language).then(() => {
-      if (!cancelled) setLangReady(refractor.registered(language));
+      if (!cancelled) {
+        setLangReady(refractor.registered(language));
+        setLangLoadFailed(FAILED_LANGS.has(language));
+      }
     });
     return () => {
       cancelled = true;
     };
   }, [language]);
 
-  return useMemo(() => {
+  const tokens = useMemo(() => {
     if (!hunks.length || !langReady) return null;
 
     const options: TokenizeOptions = {
@@ -108,6 +126,8 @@ function useTokens(hunks: HunkData[], language: string): HunkTokens | null {
       return null;
     }
   }, [hunks, language, langReady]);
+
+  return { tokens, langLoadFailed };
 }
 
 export function DiffViewer({ diff, filePath, viewType = "split", rootPath }: DiffViewerProps) {
@@ -176,7 +196,7 @@ interface FileDiffProps {
 }
 
 function FileDiff({ file, viewType, language, rootPath }: FileDiffProps) {
-  const tokens = useTokens(file.hunks ?? [], language);
+  const { tokens, langLoadFailed } = useTokens(file.hunks ?? [], language);
   const diffType: DiffType = file.type as DiffType;
 
   const { additions, deletions } = useMemo(() => {
@@ -227,6 +247,15 @@ function FileDiff({ file, viewType, language, rootPath }: FileDiffProps) {
           <TruncatedTooltip content={relPath}>
             <span className="truncate">{relPath}</span>
           </TruncatedTooltip>
+          {langLoadFailed && (
+            <span
+              className="text-xs text-text-muted"
+              role="status"
+              data-testid="diff-plain-text-badge"
+            >
+              Plain text
+            </span>
+          )}
           <div className="flex items-center gap-2 shrink-0">
             {(additions > 0 || deletions > 0) && (
               <span className="flex items-center gap-1">
