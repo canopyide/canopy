@@ -5,7 +5,7 @@ import type { RemoteInfo } from "@shared/types/ipc/github";
 interface GitHubTabProps {
   githubRemote: string | undefined;
   onGithubRemoteChange: (remote: string | undefined) => void;
-  projectPath: string;
+  projectPath: string | undefined;
 }
 
 export function GitHubTab({ githubRemote, onGithubRemoteChange, projectPath }: GitHubTabProps) {
@@ -39,6 +39,8 @@ export function GitHubTab({ githubRemote, onGithubRemoteChange, projectPath }: G
       cancelled = true;
     };
   }, [projectPath]);
+
+  if (!projectPath) return null;
 
   return (
     <div className="space-y-6">
