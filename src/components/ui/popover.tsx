@@ -2,7 +2,7 @@ import * as React from "react";
 import type * as PopoverPrimitiveType from "@radix-ui/react-popover";
 import { Slot } from "@radix-ui/react-slot";
 import { cn } from "@/lib/utils";
-import { primeOnEvent, primeRadix, useRadixPrimitives } from "./radix-loader";
+import { primeOnEvent, useRadixPrimitives } from "./radix-loader";
 
 let portalBoundary: HTMLDivElement | null = null;
 
@@ -38,7 +38,7 @@ const Popover = ({ children, open, defaultOpen, onOpenChange, ...rest }: Popover
 
   const requestOpen = React.useCallback(
     (next: boolean) => {
-      void primeRadix();
+      primeOnEvent();
       if (isControlled) {
         onOpenChange?.(next);
         return;
@@ -101,7 +101,7 @@ const PopoverTrigger = React.forwardRef<
 
     if (!radix) {
       const intentClick: React.MouseEventHandler<HTMLButtonElement> = (event) => {
-        void primeRadix();
+        primeOnEvent();
         requestOpen?.(true);
         onClick?.(event);
       };

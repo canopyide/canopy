@@ -2,7 +2,7 @@ import * as React from "react";
 import type * as SelectPrimitiveType from "@radix-ui/react-select";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { composeHandlers, primeOnEvent, primeRadix, useRadixPrimitives } from "./radix-loader";
+import { composeHandlers, primeOnEvent, useRadixPrimitives } from "./radix-loader";
 
 const SelectIntentContext = React.createContext<((next: boolean) => void) | null>(null);
 
@@ -15,7 +15,7 @@ const Select = ({ children, open, defaultOpen, onOpenChange, ...rest }: SelectRo
 
   const requestOpen = React.useCallback(
     (next: boolean) => {
-      void primeRadix();
+      primeOnEvent();
       if (isControlled) {
         onOpenChange?.(next);
         return;
@@ -92,7 +92,7 @@ const SelectTrigger = React.forwardRef<
 
   if (!radix) {
     const intentClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-      void primeRadix();
+      primeOnEvent();
       requestOpen?.(true);
       props.onClick?.(event);
     };

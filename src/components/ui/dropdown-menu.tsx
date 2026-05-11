@@ -4,7 +4,7 @@ import { Slot } from "@radix-ui/react-slot";
 import { Check, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useScrollShadowOverlays } from "@/components/ui/ScrollShadow";
-import { primeOnEvent, primeRadix, useRadixPrimitives } from "./radix-loader";
+import { primeOnEvent, useRadixPrimitives } from "./radix-loader";
 
 const DropdownMenuIntentContext = React.createContext<((next: boolean) => void) | null>(null);
 
@@ -23,7 +23,7 @@ const DropdownMenu = ({
 
   const requestOpen = React.useCallback(
     (next: boolean) => {
-      void primeRadix();
+      primeOnEvent();
       if (isControlled) {
         onOpenChange?.(next);
         return;
@@ -90,7 +90,7 @@ const DropdownMenuTrigger = React.forwardRef<
 
     if (!radix) {
       const intentClick: React.MouseEventHandler<HTMLButtonElement> = (event) => {
-        void primeRadix();
+        primeOnEvent();
         requestOpen?.(true);
         onClick?.(event);
       };
