@@ -8,11 +8,11 @@ import {
   forwardRef,
 } from "react";
 import CodeMirror from "@uiw/react-codemirror";
-import { languages } from "@codemirror/language-data";
 import { EditorView, Decoration, type DecorationSet, keymap } from "@codemirror/view";
 import { type Extension, StateEffect, StateField } from "@codemirror/state";
 import { LanguageDescription } from "@codemirror/language";
 import { search, openSearchPanel, gotoLine } from "@codemirror/search";
+import { CURATED_LANGUAGES } from "./editorLanguages";
 import { daintreeTheme } from "./editorTheme";
 import { editorSearchHighlightTheme } from "./editorSearchTheme";
 import { cn } from "@/lib/utils";
@@ -140,7 +140,7 @@ export const CodeViewer = forwardRef<CodeViewerHandle, CodeViewerProps>(function
 
   useEffect(() => {
     const basename = filePath.split(/[/\\]/).filter(Boolean).pop() ?? filePath;
-    const desc = LanguageDescription.matchFilename(languages, basename);
+    const desc = LanguageDescription.matchFilename(CURATED_LANGUAGES, basename);
     if (!desc) {
       setLangExtension(null);
       return;
