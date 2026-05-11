@@ -73,6 +73,15 @@ function formatButtonTitle(label: string, shortcut?: string | null): string {
   return shortcut ? `${label} (${shortcut})` : label;
 }
 
+const NO_MATCH_QUERY_MAX = 40;
+
+function truncateSearchQuery(trimmedQuery: string) {
+  const codepoints = Array.from(trimmedQuery);
+  return codepoints.length > NO_MATCH_QUERY_MAX
+    ? `${codepoints.slice(0, NO_MATCH_QUERY_MAX).join("")}…`
+    : trimmedQuery;
+}
+
 interface SidebarContentProps {
   onOpenOverview: () => void;
 }
@@ -843,7 +852,11 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
               ) : filteredWorktrees.length === 0 && hasFilters && hasNonMainWorktrees ? (
                 <EmptyState
                   variant="filtered-empty"
-                  title="No matching worktrees"
+                  title={
+                    hasQuery
+                      ? `No matches for "${truncateSearchQuery(query.trim())}"`
+                      : "No matching worktrees"
+                  }
                   action={
                     <button
                       onClick={clearAllFilters}
