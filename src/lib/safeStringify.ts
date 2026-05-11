@@ -11,10 +11,12 @@ function replacer(_key: string, val: unknown): unknown {
 }
 
 export function safeStringify(value: unknown, space?: string | number): string {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   if (value === undefined) return undefined as unknown as string;
 
   try {
-    return stringify(value, replacer, space);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return stringify(value, replacer, space) as string;
   } catch {
     try {
       return String(value);

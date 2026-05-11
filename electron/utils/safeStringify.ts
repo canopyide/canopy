@@ -14,7 +14,7 @@ export function safeStringify(value: unknown, space?: string | number): string {
   if (value === undefined) return undefined as unknown as string;
 
   try {
-    return stringify(value, replacer, space);
+    return stringify(value, replacer, space) as string;
   } catch {
     try {
       return String(value);

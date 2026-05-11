@@ -501,7 +501,7 @@ function safeStringify(value: unknown): string {
         return val;
       },
       2
-    );
+    ) as string;
   } catch (error) {
     return `[Unable to stringify: ${String(error)}]`;
   }
