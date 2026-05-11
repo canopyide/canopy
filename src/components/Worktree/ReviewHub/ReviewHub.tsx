@@ -843,7 +843,9 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
   useEffect(() => {
     if (!isOpen) return;
     requestAnimationFrame(() => {
-      dialogRef.current?.focus();
+      if (dialogRef.current && !dialogRef.current.contains(document.activeElement)) {
+        dialogRef.current.focus();
+      }
     });
   }, [isOpen]);
 
