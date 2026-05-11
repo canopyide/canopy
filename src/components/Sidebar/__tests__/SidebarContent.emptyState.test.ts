@@ -23,6 +23,20 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
     });
   });
 
+  describe("facet filter bypass gate", () => {
+    it("gates the alwaysShowActive and alwaysShowWaiting bypasses on hasFacetFiltersActive", () => {
+      // The bypass rules must additionally require !hasFacetFiltersActive so that
+      // selecting a popover facet filter (status/type/github/session/activity)
+      // suppresses bypass injection and makes the visible list agree with chip counts.
+      expect(source).toMatch(/quickStateFilter === "all" && !hasFacetFiltersActive/);
+      expect(source).toContain("hasFacetFilters");
+    });
+
+    it("subscribes to hasFacetFilters from the worktree filter store", () => {
+      expect(source).toContain("useWorktreeFilterStore((state) => state.hasFacetFilters)");
+    });
+  });
+
   describe("filteredWorktrees memo", () => {
     it("returns hasResultsWithoutQuickState alongside the filtered list", () => {
       expect(source).toContain("hasResultsWithoutQuickState");
