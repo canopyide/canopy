@@ -24,6 +24,7 @@ const {
   pullRebaseMock,
   forcePushWithLeaseMock,
   listRemoteCommitsMock,
+  listCommitsMock,
   actionDispatchMock,
   worktreeStoreData,
 } = vi.hoisted(() => ({
@@ -43,6 +44,7 @@ const {
   pullRebaseMock: vi.fn(),
   forcePushWithLeaseMock: vi.fn(),
   listRemoteCommitsMock: vi.fn(),
+  listCommitsMock: vi.fn().mockResolvedValue({ items: [], hasMore: false, total: 0 }),
   actionDispatchMock: vi.fn().mockResolvedValue({ ok: true }),
   worktreeStoreData: {
     current: new Map<string, Partial<WorktreeState>>([
@@ -376,6 +378,7 @@ describe("ReviewHub", () => {
     pullRebaseMock.mockReset().mockResolvedValue(undefined);
     forcePushWithLeaseMock.mockReset().mockResolvedValue(undefined);
     listRemoteCommitsMock.mockReset().mockResolvedValue([]);
+    listCommitsMock.mockReset().mockResolvedValue({ items: [], hasMore: false, total: 0 });
     actionDispatchMock.mockReset().mockResolvedValue({ ok: true });
 
     Object.defineProperty(window, "electron", {
@@ -391,6 +394,7 @@ describe("ReviewHub", () => {
           pullRebase: pullRebaseMock,
           forcePushWithLease: forcePushWithLeaseMock,
           listRemoteCommits: listRemoteCommitsMock,
+          listCommits: listCommitsMock,
           compareWorktrees: compareWorktreesMock,
           abortRepositoryOperation: abortRepositoryOperationMock,
           continueRepositoryOperation: continueRepositoryOperationMock,
@@ -2457,6 +2461,285 @@ describe("ReviewHub", () => {
         expect(screen.queryByText("yarn.lock")).toBeNull();
         screen.getByText("app.ts");
       });
+    });
+  });
+
+  describe("commit message overflow", () => {
+    it("shows warning when any line exceeds 72 characters", async () => {
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      const textarea = screen.getByPlaceholderText("Commit message…");
+      // Subject line within limit, but body line exceeds 72
+      fireEvent.change(textarea, {
+        target: {
+          value:
+            "feat: short subject\n\nThe quick brown fox jumps over the lazy dog and then some more text goes here yes indeed wow",
+        },
+      });
+
+      expect(screen.getByText("Line over 72 chars")).toBeTruthy();
+      expect(textarea.className).toContain("border-status-warning");
+    });
+
+    it("shows warning when subject line alone exceeds 72 characters", async () => {
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      const textarea = screen.getByPlaceholderText("Commit message…");
+      // Subject line exceeds 72 chars — should trigger overflow
+      fireEvent.change(textarea, {
+        target: {
+          value:
+            "feat: this is a very long subject line that goes way beyond seventy two characters and should trigger the warning",
+        },
+      });
+
+      expect(screen.getByText("Line over 72 chars")).toBeTruthy();
+      expect(textarea.className).toContain("border-status-warning");
+    });
+
+    it("does not show warning when all lines are 72 characters or fewer", async () => {
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      const textarea = screen.getByPlaceholderText("Commit message…");
+      fireEvent.change(textarea, {
+        target: { value: "feat: short subject\n\nA normal body line." },
+      });
+
+      expect(screen.queryByText("Line over 72 chars")).toBeNull();
+      expect(textarea.className).toContain("border-divider");
+      expect(textarea.className).not.toContain("border-status-warning");
+    });
+
+    it("shows subject line length counter", async () => {
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      const textarea = screen.getByPlaceholderText("Commit message…");
+      fireEvent.change(textarea, {
+        target: { value: "fix: resolve bug" },
+      });
+
+      expect(screen.getByText("16/72")).toBeTruthy();
+    });
+  });
+
+  describe("commit history arrow-key cycling", () => {
+    function renderOpen() {
+      return render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+    }
+
+    it("fetches and cycles through recent commits on ArrowUp from caret 0", async () => {
+      listCommitsMock.mockResolvedValue({
+        items: [
+          {
+            hash: "abc1234",
+            shortHash: "abc1234",
+            message: "feat: most recent commit",
+            author: { name: "Test", email: "test@example.com" },
+            date: "2026-05-10",
+          },
+          {
+            hash: "def5678",
+            shortHash: "def5678",
+            message: "fix: older commit",
+            body: "Detailed body text.",
+            author: { name: "Test", email: "test@example.com" },
+            date: "2026-05-09",
+          },
+        ],
+        hasMore: false,
+        total: 2,
+      });
+
+      renderOpen();
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      const textarea = screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
+
+      // Position cursor at 0 (empty textarea)
+      textarea.setSelectionRange(0, 0);
+
+      fireEvent.keyDown(textarea, { key: "ArrowUp" });
+      expect(listCommitsMock).toHaveBeenCalledWith({
+        cwd: WORKTREE_PATH,
+        limit: 8,
+      });
+
+      // Wait for the async fetch to resolve and re-render
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // After fetch, the textarea should show the most recent commit message
+      expect(textarea.value).toBe("feat: most recent commit");
+
+      // ArrowUp again → next older commit (with body)
+      textarea.setSelectionRange(0, 0);
+      fireEvent.keyDown(textarea, { key: "ArrowUp" });
+      expect(textarea.value).toBe("fix: older commit\n\nDetailed body text.");
+
+      // ArrowUp again → no more commits, stays at last
+      textarea.setSelectionRange(0, 0);
+      fireEvent.keyDown(textarea, { key: "ArrowUp" });
+      expect(textarea.value).toBe("fix: older commit\n\nDetailed body text.");
+    });
+
+    it("ArrowDown unwinds through history and restores original draft", async () => {
+      listCommitsMock.mockResolvedValue({
+        items: [
+          {
+            hash: "abc1234",
+            shortHash: "abc1234",
+            message: "feat: most recent commit",
+            author: { name: "Test", email: "test@example.com" },
+            date: "2026-05-10",
+          },
+        ],
+        hasMore: false,
+        total: 1,
+      });
+
+      renderOpen();
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      const textarea = screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
+
+      // Type a draft first
+      fireEvent.change(textarea, { target: { value: "my draft message" } });
+      textarea.setSelectionRange(0, 0);
+
+      fireEvent.keyDown(textarea, { key: "ArrowUp" });
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(textarea.value).toBe("feat: most recent commit");
+
+      // ArrowDown → back to draft
+      textarea.setSelectionRange(0, 0);
+      fireEvent.keyDown(textarea, { key: "ArrowDown" });
+      expect(textarea.value).toBe("my draft message");
+    });
+
+    it("does not intercept ArrowUp when caret is not at position 0", async () => {
+      renderOpen();
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      const textarea = screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
+
+      fireEvent.change(textarea, { target: { value: "some text" } });
+      // Caret in middle of text
+      textarea.setSelectionRange(4, 4);
+
+      fireEvent.keyDown(textarea, { key: "ArrowUp" });
+      expect(listCommitsMock).not.toHaveBeenCalled();
+    });
+
+    it("resets history index when user types manually after cycling", async () => {
+      listCommitsMock.mockResolvedValue({
+        items: [
+          {
+            hash: "abc1234",
+            shortHash: "abc1234",
+            message: "feat: first commit",
+            author: { name: "Test", email: "test@example.com" },
+            date: "2026-05-10",
+          },
+          {
+            hash: "def5678",
+            shortHash: "def5678",
+            message: "feat: second commit",
+            author: { name: "Test", email: "test@example.com" },
+            date: "2026-05-09",
+          },
+        ],
+        hasMore: false,
+        total: 2,
+      });
+
+      renderOpen();
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      const textarea = screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
+
+      textarea.setSelectionRange(0, 0);
+      fireEvent.keyDown(textarea, { key: "ArrowUp" });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(textarea.value).toBe("feat: first commit");
+
+      // Type manually — should reset history index and start fresh on next ArrowUp
+      fireEvent.change(textarea, { target: { value: "typed after cycling" } });
+
+      textarea.setSelectionRange(0, 0);
+      fireEvent.keyDown(textarea, { key: "ArrowUp" });
+      // Should show most recent again (cycling from start), not the second-oldest
+      expect(textarea.value).toBe("feat: first commit");
+
+      textarea.setSelectionRange(0, 0);
+      fireEvent.keyDown(textarea, { key: "ArrowUp" });
+      expect(textarea.value).toBe("feat: second commit");
+    });
+
+    it("ArrowUp does nothing when there is no commit history", async () => {
+      listCommitsMock.mockResolvedValue({ items: [], hasMore: false, total: 0 });
+
+      renderOpen();
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      const textarea = screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
+
+      textarea.setSelectionRange(0, 0);
+      fireEvent.keyDown(textarea, { key: "ArrowUp" });
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(textarea.value).toBe("");
+    });
+
+    it("ArrowDown does nothing when not in history mode", async () => {
+      renderOpen();
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      const textarea = screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
+
+      fireEvent.change(textarea, { target: { value: "no history here" } });
+      textarea.setSelectionRange(0, 0);
+
+      fireEvent.keyDown(textarea, { key: "ArrowDown" });
+      // Should remain unchanged
+      expect(textarea.value).toBe("no history here");
+    });
+
+    it("does not intercept ArrowUp with modifier keys", async () => {
+      renderOpen();
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      const textarea = screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
+
+      textarea.setSelectionRange(0, 0);
+
+      fireEvent.keyDown(textarea, { key: "ArrowUp", altKey: true });
+      expect(listCommitsMock).not.toHaveBeenCalled();
+    });
+
+    it("sets ruler background styling on textarea", async () => {
+      renderOpen();
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      const textarea = screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
+
+      const styleAttr = textarea.getAttribute("style") ?? "";
+      expect(styleAttr).toContain("linear-gradient");
+      expect(styleAttr).toContain("72ch");
+      expect(styleAttr).toContain("rgba");
+      expect(styleAttr).toContain("background-origin: content-box");
+      expect(styleAttr).toContain("background-attachment: local");
     });
   });
 });
