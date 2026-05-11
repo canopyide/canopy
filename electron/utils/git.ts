@@ -50,6 +50,111 @@ export function __clearPerFileDiffStatCacheForTesting(): void {
   PER_FILE_DIFF_STAT_CACHE.clear();
 }
 
+export type DiffStatMode = "staged" | "unstaged";
+
+// Cache for staging-view diff stats keyed on `(cwd, headOid, mode)`. The
+// dashboard's PER_FILE_DIFF_STAT_CACHE requires per-file (mtime, size) keys
+// to participate; for the staging view we issue a single batched numstat per
+// mode and the surrounding rate limit already gates refresh frequency, so a
+// short TTL keyed on cwd is sufficient.
+const STAGING_DIFF_STAT_CACHE = new Cache<string, Map<string, DiffStat>>({
+  maxSize: 64,
+  defaultTTL: 5_000,
+});
+
+function makeStagingCacheKey(cwd: string, headOid: string, mode: DiffStatMode): string {
+  return `${cwd}:${headOid}:${mode}`;
+}
+
+export function __clearStagingDiffStatCacheForTesting(): void {
+  STAGING_DIFF_STAT_CACHE.clear();
+}
+
+/**
+ * Invalidate cached staging churn for a worktree. Called after explicit stage
+ * or unstage operations so the next status refresh reflects the new index
+ * state immediately, without waiting for the 5s TTL.
+ */
+export function invalidateStagingDiffStatCache(cwd: string): void {
+  // Cache keys are `${cwd}:${headOid}:${mode}` — collect matches then drop
+  // them. forEach skips expired entries, so this won't see those, which is
+  // fine: they'd be re-fetched on the next read anyway.
+  const toDrop: string[] = [];
+  STAGING_DIFF_STAT_CACHE.forEach((_value, key) => {
+    if (key.startsWith(`${cwd}:`)) toDrop.push(key);
+  });
+  for (const key of toDrop) {
+    STAGING_DIFF_STAT_CACHE.invalidate(key);
+  }
+}
+
+/**
+ * Resolve per-file line stats for staging-view paths. Issues a single
+ * `git diff --numstat` call per mode (staged vs unstaged), parses with the
+ * shared `parseNumstat`, and caches the resulting map for ~5s keyed by cwd
+ * and head OID. Empty `paths` returns an empty map without spawning git.
+ *
+ * Binary files surface as `{ insertions: null, deletions: null }`, matching
+ * `parseNumstat`'s `-\t-` handling. Errors are swallowed and yield an empty
+ * map — callers leave the entries' churn `null`.
+ */
+export async function getPerFileDiffStats(
+  git: SimpleGit,
+  cwd: string,
+  headOid: string,
+  paths: string[],
+  mode: DiffStatMode
+): Promise<Map<string, DiffStat>> {
+  if (paths.length === 0) return new Map();
+  if (mode === "staged" && !headOid) return new Map();
+
+  const cacheKey = makeStagingCacheKey(cwd, headOid, mode);
+  const cached = STAGING_DIFF_STAT_CACHE.get(cacheKey);
+  if (cached) return cached;
+
+  // For the unstaged side, compare working tree vs index (no HEAD ref) so
+  // partially-staged files don't get their churn double-counted: lines that
+  // are already staged should appear only in the staged row, not also under
+  // unstaged. The staged side keeps `--cached` (index vs HEAD).
+  const args =
+    mode === "staged"
+      ? ["--no-ext-diff", "--no-renames", "--numstat", "--cached", "--", ...paths]
+      : ["--no-ext-diff", "--no-renames", "--numstat", "--", ...paths];
+
+  try {
+    const toplevel = (await git.revparse(["--show-toplevel"])).trim();
+    if (!toplevel) return new Map();
+    // Normalize to forward slashes on both sides so the absolute-to-relative
+    // re-keying works on Windows, where `realpathSync` returns backslashes
+    // but `status.files[].path` uses forward slashes.
+    const gitRoot = realpathSync(toplevel).replace(/\\/g, "/");
+    const diffOutput = await git.diff(args);
+    const byAbsolutePath = parseNumstat(diffOutput, gitRoot);
+
+    // Re-key by repo-relative path (matching status.files[].path). Callers
+    // don't carry absolute paths through the staging handler.
+    const byRelative = new Map<string, DiffStat>();
+    const rootPrefix = gitRoot.endsWith("/") ? gitRoot : `${gitRoot}/`;
+    for (const [absolutePath, stats] of byAbsolutePath) {
+      const normalized = absolutePath.replace(/\\/g, "/");
+      const relative = normalized.startsWith(rootPrefix)
+        ? normalized.slice(rootPrefix.length)
+        : normalized;
+      byRelative.set(relative, stats);
+    }
+
+    STAGING_DIFF_STAT_CACHE.set(cacheKey, byRelative);
+    return byRelative;
+  } catch (error) {
+    logWarn("Failed to read per-file diff stats; continuing without churn", {
+      cwd,
+      mode,
+      message: (error as Error).message,
+    });
+    return new Map();
+  }
+}
+
 function normalizeNumstatPath(rawPath: string): string {
   return rawPath.trim();
 }

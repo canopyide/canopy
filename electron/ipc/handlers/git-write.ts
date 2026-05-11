@@ -16,6 +16,7 @@ import type {
 } from "../../../shared/types/git.js";
 import { validateCwd, createHardenedGit, createAuthenticatedGit } from "../../utils/hardenedGit.js";
 import { readRebaseSequence } from "../../utils/parseRebaseTodo.js";
+import { getPerFileDiffStats, invalidateStagingDiffStatCache } from "../../utils/git.js";
 import { store } from "../../store.js";
 import { getSoundService } from "../../services/getSoundService.js";
 import type * as SoundServiceModule from "../../services/SoundService.js";
@@ -264,6 +265,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
 
     const git = createHardenedGit(payload.cwd);
     await git.add(["--", payload.filePath]);
+    invalidateStagingDiffStatCache(payload.cwd);
   };
   handlers.push(typedHandle(CHANNELS.GIT_STAGE_FILE, handleStageFile));
 
@@ -288,6 +290,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     } else {
       await git.raw(["rm", "--cached", "--", payload.filePath]);
     }
+    invalidateStagingDiffStatCache(payload.cwd);
   };
   handlers.push(typedHandle(CHANNELS.GIT_UNSTAGE_FILE, handleUnstageFile));
 
@@ -297,6 +300,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
 
     const git = createHardenedGit(cwd);
     await git.add("-A");
+    invalidateStagingDiffStatCache(cwd);
   };
   handlers.push(typedHandle(CHANNELS.GIT_STAGE_ALL, handleStageAll));
 
@@ -318,6 +322,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     } else {
       await git.raw(["rm", "--cached", "-r", "."]);
     }
+    invalidateStagingDiffStatCache(cwd);
   };
   handlers.push(typedHandle(CHANNELS.GIT_UNSTAGE_ALL, handleUnstageAll));
 
@@ -461,6 +466,44 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
           insertions: null,
           deletions: null,
         });
+      }
+    }
+
+    // Populate per-file churn from `git diff --numstat`. The handler is
+    // rate-limited to 20/10s and getPerFileDiffStats caches per (cwd, headOid,
+    // mode), so this adds at most two batched git invocations per refresh.
+    // Untracked entries don't appear in numstat output and keep insertions/
+    // deletions = null (renderer omits the churn span in that case).
+    let headOid = "";
+    try {
+      headOid = (await git.revparse(["HEAD"])).trim();
+    } catch {
+      // No HEAD (unborn branch / empty repo) — staged numstat would also throw;
+      // skip churn entirely below.
+    }
+
+    const stagedPaths = staged.map((entry) => entry.path);
+    const unstagedTrackedPaths = unstaged
+      .filter((entry) => entry.status !== "untracked")
+      .map((entry) => entry.path);
+
+    const [stagedStats, unstagedStats] = await Promise.all([
+      getPerFileDiffStats(git, cwd, headOid, stagedPaths, "staged"),
+      getPerFileDiffStats(git, cwd, headOid, unstagedTrackedPaths, "unstaged"),
+    ]);
+
+    for (const entry of staged) {
+      const stats = stagedStats.get(entry.path);
+      if (stats) {
+        entry.insertions = stats.insertions;
+        entry.deletions = stats.deletions;
+      }
+    }
+    for (const entry of unstaged) {
+      const stats = unstagedStats.get(entry.path);
+      if (stats) {
+        entry.insertions = stats.insertions;
+        entry.deletions = stats.deletions;
       }
     }
 
