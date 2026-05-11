@@ -63,7 +63,8 @@ async function getPanelId(panelLocator: Locator): Promise<string> {
   return id;
 }
 
-test.describe.serial("Resilience: background terminal preserves grid coherence across visibility", () => {
+test.describe
+  .serial("Resilience: background terminal preserves grid coherence across visibility", () => {
   test.beforeAll(async () => {
     const { dir, cleanup } = createFixtureRepo({ name: "bg-bulk-output" });
     fixtureDir = dir;
@@ -149,7 +150,7 @@ test.describe.serial("Resilience: background terminal preserves grid coherence a
     await runTerminalCommand(
       window,
       terminalPanel,
-      "for i in $(seq 1 200); do echo BG_LINE_${i}; done; echo BG_DONE",
+      "for i in $(seq 1 200); do echo BG_LINE_${i}; done; echo BG_DONE"
     );
     await waitForTerminalText(terminalPanel, "BG_LINE_1", T_LONG);
 
@@ -160,7 +161,7 @@ test.describe.serial("Resilience: background terminal preserves grid coherence a
     // Capture a slightly narrower geometry while the container is hidden.
     const dims = await getTerminalDimensions(terminalPanel);
     expect(dims).not.toBeNull();
-    const narrower = Math.max(200, Math.floor((dims!.cols * 8) * 0.7));
+    const narrower = Math.max(200, Math.floor(dims!.cols * 8 * 0.7));
     await simulateResize(window, panelId, narrower, 240);
 
     // Restore visibility — the wake path runs applyDeferredResize before
