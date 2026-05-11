@@ -218,6 +218,16 @@ function revokeHelpSession(sessionId: string | null): void {
   });
 }
 
+function asStringRecord(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (typeof v !== "string") return undefined;
+    out[k] = v;
+  }
+  return out;
+}
+
 function notifyLaunchFailed(agentId: string, reason: string): void {
   const cfg = getAgentConfig(agentId);
   const name = cfg?.name ?? agentId;
@@ -579,10 +589,7 @@ export class HelpSessionController {
       const previousSessionId = existing.sessionId;
       if (existingTerminalId) {
         const panel = usePanelStore.getState().panelsById[existingTerminalId];
-        const candidate = panel?.extensionState?.presetEnv;
-        if (candidate && typeof candidate === "object") {
-          presetEnv = candidate as Record<string, string>;
-        }
+        presetEnv = asStringRecord(panel?.extensionState?.presetEnv);
         usePanelStore.getState().removePanel(existingTerminalId);
         revokeHelpSession(previousSessionId);
         if (reservedId) this._revokePendingSession();
@@ -701,18 +708,20 @@ export class HelpSessionController {
   // --- internal ---
 
   private _patch(partial: Partial<HelpSessionSnapshot>): void {
-    let changed = false;
-    const next = { ...this._snapshot };
-    for (const key of Object.keys(partial) as Array<keyof HelpSessionSnapshot>) {
-      const value = partial[key];
-      if (value === undefined) continue;
-      if (next[key] !== value) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (next as any)[key] = value;
-        changed = true;
-      }
+    // Spread-merge first, then structurally compare per-field. Reusing the
+    // same snapshot reference when nothing changed keeps Object.is stable
+    // for useSyncExternalStore.
+    const next: HelpSessionSnapshot = { ...this._snapshot, ...partial };
+    if (
+      next.phase === this._snapshot.phase &&
+      next.showResumeBanner === this._snapshot.showResumeBanner &&
+      next.assistantVersionTooOld === this._snapshot.assistantVersionTooOld &&
+      next.tierMismatch === this._snapshot.tierMismatch &&
+      next.preflightSnapshot === this._snapshot.preflightSnapshot &&
+      next.isApprovingTier === this._snapshot.isApprovingTier
+    ) {
+      return;
     }
-    if (!changed) return;
     this._snapshot = Object.freeze(next);
     for (const listener of this._listeners) {
       try {
