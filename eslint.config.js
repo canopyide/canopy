@@ -205,6 +205,29 @@ export default tseslint.config(
     },
   },
 
+  // Panel-kind literal-compare guardrail — ratchets on shared/ and electron/
+  // at warn level. src/ coverage lives in the renderer hygiene block below
+  // (also warn, to keep the ratchet consistent across the tree). See #7672.
+  {
+    files: ["shared/**/*.{ts,tsx}", "electron/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-syntax": [
+        "warn",
+        {
+          // why: direct literal compares (kind === "browser") bypass the
+          // panel-kind registry and silently diverge when capability flags
+          // change. Use registry helpers (panelKindHasPty, etc.) or the
+          // sanctioned type guards (isPtyPanel, isBrowserPanel,
+          // isDevPreviewPanel) from @shared/types/panel. See #7672.
+          selector:
+            "BinaryExpression[operator=/^(!==|===)$/]:matches([left.name='kind'], [left.property.name='kind'])[right.type='Literal'][right.value=/^(terminal|browser|dev-preview)$/]",
+          message:
+            "Don't compare panel.kind against string literals. Use registry helpers (panelKindHasPty, panelKindCanRestart) or sanctioned type guards (isPtyPanel, isBrowserPanel, isDevPreviewPanel) from @shared/types/panel. See #7672.",
+        },
+      ],
+    },
+  },
+
   // Catch un-awaited promises in renderer code. `safeFireAndForget` is the
   // sanctioned escape hatch for fire-and-forget IPC — see issue #6029.
   {
@@ -317,6 +340,17 @@ export default tseslint.config(
             "CallExpression[callee.type='MemberExpression'][callee.property.name=/^(setTimeout|setInterval)$/][arguments.1.type='Literal'][arguments.1.value>0]",
           message:
             "Avoid magic numeric delays. Hoist the value into a named constant (e.g. `const FLUSH_INTERVAL_MS = 200`) so the intent is documented at the call site.",
+        },
+        {
+          // why: direct literal compares (kind === "browser") bypass the
+          // panel-kind registry and silently diverge when capability flags
+          // change. Use registry helpers (panelKindHasPty, etc.) or the
+          // sanctioned type guards (isPtyPanel, isBrowserPanel,
+          // isDevPreviewPanel) from @shared/types/panel. See #7672.
+          selector:
+            "BinaryExpression[operator=/^(!==|===)$/]:matches([left.name='kind'], [left.property.name='kind'])[right.type='Literal'][right.value=/^(terminal|browser|dev-preview)$/]",
+          message:
+            "Don't compare panel.kind against string literals. Use registry helpers (panelKindHasPty, panelKindCanRestart) or sanctioned type guards (isPtyPanel, isBrowserPanel, isDevPreviewPanel) from @shared/types/panel. See #7672.",
         },
       ],
     },
