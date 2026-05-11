@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect, useLayoutEffect, useState, useMemo } from "react";
+import { useCallback, useRef, useEffect, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { SortableContext, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { cn } from "@/lib/utils";
@@ -11,7 +11,10 @@ import { TwoPaneSplitDivider, DIVIDER_WIDTH_PX } from "./TwoPaneSplitDivider";
 import { MIN_TERMINAL_WIDTH_PX } from "@/lib/terminalLayout";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { isBrowserPanel, isDevPreviewPanel } from "@shared/types/panel";
-import { useResizeObserverRaf } from "@/hooks/useResizeObserverRaf";
+import {
+  isSidebarLayoutTransitionLocked,
+  subscribeSidebarLayoutTransitionUnlock,
+} from "@/lib/layoutTransitionLock";
 
 interface TwoPaneSplitLayoutProps {
   terminals: [TerminalInstance, TerminalInstance];
@@ -31,13 +34,13 @@ export function TwoPaneSplitLayout({
   onAddTabRight,
 }: TwoPaneSplitLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState<number>(0);
-  useLayoutEffect(() => {
-    setContainerEl(containerRef.current);
-  }, []);
   const [localRatio, setLocalRatio] = useState<number | null>(null);
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
+  const isDraggingDividerRef = useRef(false);
+  useEffect(() => {
+    isDraggingDividerRef.current = isDraggingDivider;
+  }, [isDraggingDivider]);
 
   // Refs for unmount cleanup (avoid closure/dependency issues)
   const localRatioRef = useRef<number | null>(null);
@@ -108,15 +111,73 @@ export function TwoPaneSplitLayout({
     return computeDefaultRatio();
   }, [localRatio, effectiveStoredRatio, computeDefaultRatio]);
 
-  useResizeObserverRaf(containerEl, (entry) => {
-    setContainerWidth(entry.contentRect.width);
-  });
-
+  // Observe container resizes with rAF deferral. Gate updates while the
+  // sidebar layout transition lock is active — the flex parent reflows every
+  // frame during the 250ms collapse and committing mid-animation widths into
+  // the inline `width` styles re-snaps the right pane edge and produces
+  // visible jitter (#7825, follow-up to #6979 which fixed the same class of
+  // regression for the multi-panel grid).
   useEffect(() => {
     const container = containerRef.current;
-    if (container) {
+    if (!container) return;
+
+    let rafId: number | null = null;
+    let latestEntry: ResizeObserverEntry | null = null;
+    let finalRafId: number | null = null;
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      latestEntry = entry;
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const entry = latestEntry;
+        latestEntry = null;
+        if (isSidebarLayoutTransitionLocked()) return;
+        if (entry) {
+          const width = entry.contentRect.width;
+          setContainerWidth((prev) => (prev === width ? prev : width));
+        }
+      });
+    });
+
+    observer.observe(container);
+    // Skip the initial measurement if a sidebar transition is in flight — the
+    // unlock subscriber below will resync once the animation completes.
+    if (!isSidebarLayoutTransitionLocked()) {
       setContainerWidth(container.clientWidth);
     }
+
+    // Force a single measurement after the sidebar transition completes so
+    // the pane widths land at their post-transition size even if no further
+    // RO entry fires.
+    const unsubscribe = subscribeSidebarLayoutTransitionUnlock(() => {
+      const node = containerRef.current;
+      if (!node) return;
+      if (finalRafId !== null) cancelAnimationFrame(finalRafId);
+      finalRafId = requestAnimationFrame(() => {
+        finalRafId = null;
+        // Re-check the lock — a second toggle may have started in the ~16ms
+        // between unlock and this rAF.
+        if (isSidebarLayoutTransitionLocked()) return;
+        // Don't override an in-progress divider drag — `localRatio` is
+        // driving widths directly and `containerWidth` is read only for
+        // clamping bounds.
+        if (isDraggingDividerRef.current) return;
+        const measureNode = containerRef.current;
+        if (!measureNode) return;
+        const width = measureNode.clientWidth;
+        setContainerWidth((prev) => (prev === width ? prev : width));
+      });
+    });
+
+    return () => {
+      observer.disconnect();
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      if (finalRafId !== null) cancelAnimationFrame(finalRafId);
+      unsubscribe();
+    };
   }, []);
 
   const handleRatioChange = useCallback((newRatio: number) => {
