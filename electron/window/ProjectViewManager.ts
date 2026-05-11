@@ -49,8 +49,27 @@ const CRASH_LOOP_THRESHOLD = 3;
 // observable benefit. Unfreeze is always immediate — keeping a view frozen
 // after we've decided to leave efficiency is the worst-of-both-worlds.
 const EFFICIENCY_FREEZE_DEBOUNCE_MS = 500;
+/**
+ * Maximum time to wait for the incoming view's renderer to signal
+ * `APP_VIEW_PAINTED` before unconditionally tearing down the outgoing
+ * view. Three seconds keeps a slow renderer from leaving the outgoing
+ * view attached indefinitely on a stuck or crashed cold start, while
+ * comfortably covering the realistic worst case (~1s on cold disk).
+ */
+const PAINT_GATE_TIMEOUT_MS = 3_000;
 
 type ViewState = "loading" | "active" | "cached";
+
+interface PaintGate {
+  webContentsId: number;
+  /**
+   * The view that was active when the gate opened — still attached during the
+   * wait. Resize events must reach it too so visible bounds stay in sync.
+   */
+  outgoingEntry: ViewEntry | null;
+  timeout: ReturnType<typeof setTimeout>;
+  resolve: (reason: "signal" | "timeout" | "cancelled") => void;
+}
 
 type EvictionReason = "lru" | "pressure" | "limit-change";
 
@@ -83,6 +102,12 @@ export interface ProjectViewManagerOptions {
   onViewCrashed?: (webContents: Electron.WebContents) => void;
   /** Number of project views to keep cached in memory (1–5, default: 1) */
   cachedProjectViews?: number;
+  /**
+   * Override the paint-gate fallback timeout (default 3000 ms). Lower values
+   * are useful in tests so the cold-start swap proceeds without waiting on
+   * a real renderer paint signal.
+   */
+  paintGateTimeoutMs?: number;
 }
 
 export class ProjectViewManager {
@@ -104,6 +129,8 @@ export class ProjectViewManager {
   private evictionTimestamps = new Map<string, number>();
   private efficiencyFreezeEnabled = false;
   private efficiencyFreezeTimer: NodeJS.Timeout | null = null;
+  private pendingPaintGate: PaintGate | null = null;
+  private paintGateTimeoutMs = PAINT_GATE_TIMEOUT_MS;
 
   constructor(win: BrowserWindow, opts: ProjectViewManagerOptions) {
     this.win = win;
@@ -117,16 +144,26 @@ export class ProjectViewManager {
     if (opts.cachedProjectViews != null) {
       this.maxCachedViews = opts.cachedProjectViews;
     }
+    if (opts.paintGateTimeoutMs != null) {
+      this.paintGateTimeoutMs = Math.max(0, opts.paintGateTimeoutMs);
+    }
 
     // Single resize handler that always updates the active view's bounds.
     // Before registerInitialView() is called, falls back to the first child view
-    // (the initial appView attached in createWindow.ts).
+    // (the initial appView attached in createWindow.ts). During a cold-start
+    // paint gate the outgoing view is still attached but no longer the
+    // active view, so resize it explicitly so its bounds stay in sync with
+    // the window while the gate is open.
     this.resizeHandler = () => {
       if (win.isDestroyed()) return;
+      const { width, height } = win.getContentBounds();
       const view = this.getActiveView() ?? win.contentView.children[0];
       if (view) {
-        const { width, height } = win.getContentBounds();
         (view as WebContentsView).setBounds({ x: 0, y: 0, width, height });
+      }
+      const outgoing = this.pendingPaintGate?.outgoingEntry;
+      if (outgoing && !outgoing.view.webContents.isDestroyed() && outgoing.view !== view) {
+        outgoing.view.setBounds({ x: 0, y: 0, width, height });
       }
     };
     win.on("resize", this.resizeHandler);
@@ -189,14 +226,15 @@ export class ProjectViewManager {
 
     // Snapshot previous state for rollback
     const previousProjectId = this.activeProjectId;
-    const previousEntry = previousProjectId ? this.views.get(previousProjectId) : null;
+    const previousEntry = previousProjectId ? (this.views.get(previousProjectId) ?? null) : null;
 
-    // Detach current active view (keep in cache)
-    this.deactivateCurrentView();
-
-    // Try to activate cached view
+    // Try to activate cached view (fast path — already painted, no skeleton gate needed)
     const cached = this.views.get(projectId);
     if (cached && !cached.view.webContents.isDestroyed()) {
+      // Detach current active view immediately for cached reactivations —
+      // the cached view is already rendered and there is no perceptible flash
+      // window to bridge.
+      this.deactivateCurrentView();
       // "revival" measures time since this projectId was last evicted — not time
       // since the current cached view (a cold-started successor) was last active.
       // Eviction destroys the original view, so any cache hit for a previously-
@@ -216,7 +254,9 @@ export class ProjectViewManager {
       return { view: cached.view, isNew: false };
     }
 
-    // Cold start — create new view
+    // Cold start — keep the outgoing view attached until the incoming view
+    // signals it has painted, so the swap is seamless instead of flashing
+    // through a blank-canvas frame while React mounts.
     if (cached) {
       this.cleanupEntry(projectId);
     }
@@ -246,32 +286,67 @@ export class ProjectViewManager {
       this.windowRegistry.registerAppViewWebContents(this.win.id, view.webContents.id);
     }
 
-    this.win.contentView.addChildView(view);
+    // Insert incoming view BEHIND the outgoing view (index 0). Chromium's
+    // `WebContentsView` child stack is z-ordered last-on-top, so this keeps
+    // the outgoing view visually on top while the incoming view boots.
+    this.win.contentView.addChildView(view, 0);
     this.updateViewBounds(view);
     this.activeProjectId = projectId;
     entry.state = "active";
 
+    // Arm the paint gate BEFORE `loadView()` so a signal arriving the moment
+    // the renderer's double-rAF lands (which can happen on the same tick as
+    // `did-finish-load`) is captured instead of dropped. The renderer fires
+    // `APP_VIEW_PAINTED` once per V8 context and never retries — without
+    // pre-arming, every fast cold switch would fall through to the timeout.
+    const paintGatePromise = this.waitForPaint(view.webContents.id, previousEntry);
+
+    let visibleAt = 0;
     try {
       // Load the renderer with projectId context
       await this.loadView(view, projectId);
+
+      // Wait for the renderer to confirm React has committed its first
+      // structural paint (sent via `APP_VIEW_PAINTED` after a double-rAF in
+      // `notifyViewPainted`). Bounded by `PAINT_GATE_TIMEOUT_MS` so a stuck
+      // renderer cannot leave the outgoing view attached forever.
+      const gateResult = await paintGatePromise;
+      visibleAt = performance.now();
+      if (gateResult === "timeout") {
+        logWarn("projectview.paintgate.timeout", {
+          projectId,
+          waitedMs: this.paintGateTimeoutMs,
+        });
+      }
+
+      // Paint signal received (or timed out) — safe to detach the outgoing view.
+      if (previousEntry && this.activeProjectId === projectId) {
+        this.deactivateEntry(previousEntry);
+      }
+
       logInfo("projectview.coldstart", {
         projectId,
         durationMs: Math.round(performance.now() - coldStartAt),
+        visibleMs: Math.round(visibleAt - coldStartAt),
+        paintGateOutcome: gateResult,
       });
     } catch (loadError) {
-      // Rollback: clean up the failed new view
+      // Cold-start failed before the swap happened — outgoing view is still
+      // attached and visible. Tear down the failed incoming view, restore the
+      // previous app-view registration (`registerAppView` was overwritten to
+      // point at the failed view), and let the still-attached outgoing view
+      // resume as the active view.
+      this.clearPaintGate("cancelled");
       this.cleanupEntry(projectId);
 
-      // Restore the previous view if it's still alive
+      this.activeProjectId = previousProjectId;
       if (previousEntry && !previousEntry.view.webContents.isDestroyed()) {
-        try {
-          this.activateView(previousEntry);
-        } catch {
-          // Window may be destroyed concurrently — don't mask the original error
-          this.activeProjectId = previousProjectId;
-        }
-      } else {
-        this.activeProjectId = previousProjectId;
+        // Restore app-view registration so getAppWebContents() resolves back
+        // to the still-visible previous project view instead of falling
+        // through to the bare BrowserWindow's webContents.
+        registerAppView(this.win, previousEntry.view);
+        previousEntry.state = "active";
+        previousEntry.lastUsed = Date.now();
       }
 
       notifyError(loadError, { source: "project-switch" });
@@ -279,7 +354,7 @@ export class ProjectViewManager {
       throw loadError;
     }
 
-    // Explicit focus after load
+    // Explicit focus after swap
     if (!view.webContents.isDestroyed()) {
       view.webContents.focus();
     }
@@ -288,6 +363,64 @@ export class ProjectViewManager {
     this.evictStaleViews("lru");
 
     return { view, isNew: true };
+  }
+
+  /**
+   * Resolve when the renderer with `webContentsId` posts `APP_VIEW_PAINTED`
+   * via {@link signalViewPainted}, or when `PAINT_GATE_TIMEOUT_MS` elapses,
+   * or when a superseding switch cancels the gate. Only one paint gate is
+   * tracked at a time — opening a new gate cancels any prior pending one.
+   */
+  private waitForPaint(
+    webContentsId: number,
+    outgoingEntry: ViewEntry | null
+  ): Promise<"signal" | "timeout" | "cancelled"> {
+    // Cancel any prior gate from a previous switch attempt. Should not
+    // normally occur (switchChain serializes), but guards against re-entry
+    // from rollback paths.
+    this.clearPaintGate("cancelled");
+
+    return new Promise((resolveOuter) => {
+      const gate: PaintGate = {
+        webContentsId,
+        outgoingEntry,
+        timeout: setTimeout(() => {
+          if (this.pendingPaintGate === gate) {
+            this.pendingPaintGate = null;
+            resolveOuter("timeout");
+          }
+        }, this.paintGateTimeoutMs),
+        resolve: (reason) => {
+          clearTimeout(gate.timeout);
+          if (this.pendingPaintGate === gate) {
+            this.pendingPaintGate = null;
+          }
+          resolveOuter(reason);
+        },
+      };
+      this.pendingPaintGate = gate;
+    });
+  }
+
+  private clearPaintGate(reason: "signal" | "timeout" | "cancelled"): void {
+    const gate = this.pendingPaintGate;
+    if (!gate) return;
+    this.pendingPaintGate = null;
+    clearTimeout(gate.timeout);
+    gate.resolve(reason);
+  }
+
+  /**
+   * Renderer-driven gate release. Called from the `APP_VIEW_PAINTED` IPC
+   * handler with the webContentsId of the renderer that just painted. A
+   * mismatch (e.g. signal arriving after a superseding switch already moved
+   * on) is silently ignored.
+   */
+  signalViewPainted(webContentsId: number): void {
+    const gate = this.pendingPaintGate;
+    if (!gate) return;
+    if (gate.webContentsId !== webContentsId) return;
+    gate.resolve("signal");
   }
 
   getActiveProjectId(): string | null {
@@ -401,6 +534,7 @@ export class ProjectViewManager {
     }
     this.efficiencyFreezeEnabled = false;
 
+    this.clearPaintGate("cancelled");
     for (const projectId of Array.from(this.views.keys())) {
       this.cleanupEntry(projectId);
     }
@@ -415,7 +549,12 @@ export class ProjectViewManager {
   private deactivateCurrentView(): void {
     if (!this.activeProjectId) return;
     const current = this.views.get(this.activeProjectId);
-    if (!current || this.win.isDestroyed()) return;
+    if (!current) return;
+    this.deactivateEntry(current);
+  }
+
+  private deactivateEntry(current: ViewEntry): void {
+    if (this.win.isDestroyed()) return;
 
     try {
       this.win.contentView.removeChildView(current.view);

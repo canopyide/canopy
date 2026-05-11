@@ -178,6 +178,22 @@ export interface ProjectSwitchPhaseResult {
     ptyWarmupMs: number;
     gitFetchMs: number;
     totalMs: number;
+    /**
+     * Time until the incoming view would be visible to the user (skeleton
+     * painted). With the decoupled cold-switch path this is when
+     * `ProjectViewManager` swaps the outgoing view for the incoming one.
+     * Modeled as the sum of phases 1-4 (serialize + pty hibernate + store
+     * reset + project load) since terminal restore / pty warmup / git fetch
+     * are post-visible hydration.
+     */
+    visibleMs: number;
+    /**
+     * Time until full data hydration completes (terminal restore, pty
+     * warmup, git fetch). Equal to `totalMs` — the alias exists so dashboards
+     * can plot visible-vs-hydrate latency without referencing two metric
+     * names with different semantics across scenarios.
+     */
+    hydrateMs: number;
   };
 }
 
@@ -262,6 +278,7 @@ export function simulateProjectSwitchPhased(params: {
   const gitFetchMs = Math.max(0, performance.now() - gitFetchStart);
 
   const totalMs = Math.max(0, performance.now() - totalStart);
+  const visibleMs = serializeMs + ptyHibernateMs + storeResetMs + projectLoadMs;
 
   return {
     checksum,
@@ -274,6 +291,8 @@ export function simulateProjectSwitchPhased(params: {
       ptyWarmupMs,
       gitFetchMs,
       totalMs,
+      visibleMs,
+      hydrateMs: totalMs,
     },
   };
 }

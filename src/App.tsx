@@ -40,7 +40,7 @@ import { useMcpBridge } from "./hooks/useMcpBridge";
 import { useFileDropGuard } from "./hooks/useFileDropGuard";
 import { useSoundPlaybackListener } from "./hooks/useSoundPlaybackListener";
 import { useHeldShortcutReveal } from "./hooks/useHeldShortcutReveal";
-import { removeStartupSkeleton } from "./utils/removeStartupSkeleton";
+import { notifyViewPainted, removeStartupSkeleton } from "./utils/removeStartupSkeleton";
 import { useCrashRecoveryGate } from "./hooks/app/useCrashRecoveryGate";
 import { CrashRecoveryDialog } from "./components/Recovery/CrashRecoveryDialog";
 import { SafeModeBanner } from "./components/Recovery/SafeModeBanner";
@@ -428,6 +428,24 @@ function App() {
   useEffect(() => {
     if (isStateLoaded) removeStartupSkeleton();
   }, [isStateLoaded]);
+  // Signal the main process that React has committed its first frame so
+  // ProjectViewManager can release the outgoing view of a cold project
+  // switch. Fires once per V8 context, before hydration completes — the
+  // inline app-shell skeleton has already painted by this point. Double
+  // rAF mirrors `removeStartupSkeleton`: first rAF lands after React's
+  // commit, second waits for Chromium to submit that frame. Cleanup only
+  // cancels the outer rAF — under React Strict Mode's intentional
+  // double-mount the inner rAF may still fire, but `notifyViewPainted`
+  // is idempotent (one-shot module-level guard) so the second call is a
+  // no-op.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        notifyViewPainted();
+      });
+    });
+    return () => cancelAnimationFrame(id);
+  }, []);
   // The skeleton is z-index 9999 and intercepts pointer events. The crash
   // recovery dialog is rendered before hydration completes, so without this
   // the dialog would be visible but unclickable until hydration finishes

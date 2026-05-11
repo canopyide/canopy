@@ -163,6 +163,7 @@ export const CHANNELS = {
   APP_FORCE_QUIT: "app:force-quit",
   APP_RESET_AND_RELAUNCH: "app:reset-and-relaunch",
   APP_FIRST_INTERACTIVE: "app:first-interactive",
+  APP_VIEW_PAINTED: "app:view-painted",
   MENU_ACTION: "menu:action",
   MENU_SHOW_CONTEXT: "menu:show-context",
 

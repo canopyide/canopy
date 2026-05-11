@@ -19,8 +19,10 @@ import { signalFirstInteractive } from "../../../window/deferredInitQueue.js";
 import { markPerformance } from "../../../utils/performance.js";
 import { PERF_MARKS } from "../../../../shared/perf/marks.js";
 import { consumePrefetchedHydrateResult } from "../../../services/prefetchHydrateCache.js";
+import { getWindowForWebContents } from "../../../window/webContentsRegistry.js";
+import type { HandlerDependencies } from "../../types.js";
 
-export function registerAppStateHandlers(): () => void {
+export function registerAppStateHandlers(deps?: HandlerDependencies): () => void {
   const handlers: Array<() => void> = [];
 
   const handleAppHydrate = async () => {
@@ -557,6 +559,21 @@ export function registerAppStateHandlers(): () => void {
         webContentsId: ctx.webContentsId,
       });
       signalFirstInteractive(ctx.webContentsId);
+    })
+  );
+
+  handlers.push(
+    typedHandleWithContext(CHANNELS.APP_VIEW_PAINTED, async (ctx) => {
+      // Route to the ProjectViewManager that owns the sending view so its
+      // pending paint gate can release. Mirrors the multi-window resolution
+      // pattern used by `project:switch`: prefer the per-window registry
+      // entry, fall back to the global PVM ref for single-window setups.
+      const senderWindow = getWindowForWebContents(ctx.event.sender);
+      const pvm =
+        (senderWindow &&
+          deps?.windowRegistry?.getByWindowId(senderWindow.id)?.services?.projectViewManager) ??
+        deps?.projectViewManager;
+      pvm?.signalViewPainted(ctx.webContentsId);
     })
   );
 

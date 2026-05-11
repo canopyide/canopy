@@ -13,6 +13,26 @@ type ViewTransitionDocument = Document & {
 };
 
 let firstInteractiveNotified = false;
+let viewPaintedNotified = false;
+
+/**
+ * Signal the main process that this view's React shell has committed its
+ * first structural paint. Distinct from {@link notifyFirstInteractive}
+ * because it fires *before* hydration so `ProjectViewManager` can swap
+ * outgoing → incoming WebContentsView without waiting for full data load.
+ * Idempotent across the V8 context lifetime.
+ */
+export function notifyViewPainted(): void {
+  if (viewPaintedNotified) return;
+  viewPaintedNotified = true;
+  try {
+    window.electron?.app?.notifyViewPainted?.().catch(() => {
+      // Main may have already taken the timeout fallback path — safe to ignore
+    });
+  } catch {
+    // Preload bridge may be unavailable in exotic test contexts — safe to ignore
+  }
+}
 
 function notifyFirstInteractive(): void {
   // Snapshot cumulative CLS at the renderer-side first-interactive boundary
