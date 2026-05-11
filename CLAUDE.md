@@ -183,7 +183,7 @@ Custom Daintree-specific icons live in `src/components/icons/custom/`. Lucide-st
 
 ## Documentation
 
-- `docs/development.md` — Architecture, IPC patterns, debugging
+- `docs/development.md` — Architecture, IPC patterns, debugging, compiler bailout tooling
 - `docs/themes/theme-system.md` — Theme pipeline, core model, component overrides, runtime
 - `docs/themes/theme-tokens.md` — Complete semantic token reference
 - `docs/e2e-testing.md` — Playwright E2E testing setup and patterns
