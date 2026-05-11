@@ -410,8 +410,10 @@ describe("PortBatcher", () => {
       expect(vi.getTimerCount()).toBe(2);
       expect(deps.postMessage).not.toHaveBeenCalled();
 
-      // Advance 0ms: t2's setImmediate fires → flush() drains both terminals.
-      // This proves t2 was not waiting for t1's 16ms throughput timer.
+      // Advance 0ms drains pending setImmediate handles without advancing the 16ms
+      // setTimeout — Vitest treats setImmediate as a 0-delay timer. (Use this rather
+      // than runAllTimers so the test fails if t2 was scheduled with setTimeout(16)
+      // instead of setImmediate.) t2's setImmediate fires → global flush drains both.
       vi.advanceTimersByTime(0);
 
       expect(deps.postMessage).toHaveBeenCalledTimes(2);
