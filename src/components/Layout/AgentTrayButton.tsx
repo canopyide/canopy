@@ -1,4 +1,6 @@
 import {
+  createContext,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -8,7 +10,7 @@ import {
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { Plug, Pin, Settings2, ChevronRight } from "lucide-react";
+import { Plug, Pin, Settings2, ChevronRight, Keyboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -44,6 +46,7 @@ import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 
 import { useKeybindingDisplay } from "@/hooks";
 import { useAgentDiscoveryOnboarding } from "@/hooks/app/useAgentDiscoveryOnboarding";
+import { AgentShortcutCapture } from "@/components/KeyboardShortcuts";
 import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds";
 import type { CliAvailability, AgentState } from "@shared/types";
 import { resolveEffectivePresetId } from "@shared/types";
@@ -60,6 +63,20 @@ interface AgentTrayButtonProps {
   agentAvailability?: CliAvailability;
   "data-toolbar-item"?: string;
 }
+
+// File-local context so DropdownMenuContent can guard onEscapeKeyDown when any
+// LaunchRow is in shortcut-capture mode (Radix DismissableLayer otherwise
+// closes the dropdown on Escape — see lesson #4588). Exclusivity is enforced
+// at the setter so two rows can't both be capturing at once.
+type AgentTrayCapturingContextValue = {
+  capturingId: BuiltInAgentId | null;
+  setCapturingId: (id: BuiltInAgentId | null) => void;
+};
+
+const AgentTrayCapturingContext = createContext<AgentTrayCapturingContextValue>({
+  capturingId: null,
+  setCapturingId: () => {},
+});
 
 type AgentRow = {
   id: BuiltInAgentId;
@@ -293,6 +310,18 @@ export function AgentTrayButton({
   } = useAgentDiscoveryOnboarding();
 
   const [open, setOpen] = useState(false);
+  const [capturingId, setCapturingId] = useState<BuiltInAgentId | null>(null);
+
+  const captureContextValue = useMemo<AgentTrayCapturingContextValue>(
+    () => ({ capturingId, setCapturingId }),
+    [capturingId]
+  );
+
+  // Reset capture state whenever the dropdown closes so a half-open capture
+  // doesn't persist into the next time the user opens the tray.
+  useEffect(() => {
+    if (!open) setCapturingId(null);
+  }, [open]);
 
   const panelsById = usePanelStore((s) => s.panelsById);
   const panelIds = usePanelStore((s) => s.panelIds);
@@ -585,142 +614,162 @@ export function AgentTrayButton({
   };
 
   return (
-    <DropdownMenu
-      open={open}
-      onOpenChange={(o) => {
-        setOpen(o);
-        handleOpenChange(o);
-      }}
-    >
-      <Tooltip open={tooltipOpen} onOpenChange={handleTooltipOpenChange}>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size={emptyTrayLabel ? "sm" : "icon"}
-              data-toolbar-item={dataToolbarItem}
-              className={`toolbar-agent-button${emptyTrayLabel ? "" : " text-daintree-text"}`}
-              aria-label={
-                emptyTrayLabel
-                  ? `Agent tray — ${emptyTrayLabel}`
-                  : showDiscoveryBadge
-                    ? "Agent tray — new agents detected"
-                    : "Agent tray"
-              }
-              onPointerEnter={clearFocusRestoreSuppression}
-            >
-              <span className="relative inline-flex items-center justify-center">
-                <Plug />
-                <span
-                  data-testid="agent-tray-discovery-badge"
-                  data-visible={showDiscoveryBadge}
-                  className="toolbar-badge absolute top-0 right-0 size-1.5 rounded-full bg-status-info ring-1 ring-daintree-sidebar"
-                  aria-hidden="true"
-                />
-              </span>
-              {emptyTrayLabel}
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Agent Tray</TooltipContent>
-      </Tooltip>
-      <DropdownMenuContent
-        align="start"
-        sideOffset={4}
-        className="min-w-[16rem]"
-        onPointerDownOutside={() => {
-          wasPointerCloseRef.current = true;
-        }}
-        onCloseAutoFocus={(e) => {
-          suppressTooltipDuringFocusRestore();
-          if (wasPointerCloseRef.current) {
-            e.preventDefault();
-            wasPointerCloseRef.current = false;
-          }
+    <AgentTrayCapturingContext.Provider value={captureContextValue}>
+      <DropdownMenu
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o);
+          handleOpenChange(o);
         }}
       >
-        {isAvailabilityLoading && (
-          <div className="px-2.5 py-1.5 text-xs text-daintree-text/60">Checking agents…</div>
-        )}
-
-        {launchable.length > 0 && (
-          <>
-            <DropdownMenuLabel>Launch</DropdownMenuLabel>
-            {hasNoPinnedAgents && !isAvailabilityLoading && (
-              <DropdownMenuLabel
-                data-testid="agent-tray-pin-hint"
-                className="text-daintree-text/50 font-normal text-[11px] -mt-1 pb-1.5"
+        <Tooltip open={tooltipOpen} onOpenChange={handleTooltipOpenChange}>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size={emptyTrayLabel ? "sm" : "icon"}
+                data-toolbar-item={dataToolbarItem}
+                className={`toolbar-agent-button${emptyTrayLabel ? "" : " text-daintree-text"}`}
+                aria-label={
+                  emptyTrayLabel
+                    ? `Agent tray — ${emptyTrayLabel}`
+                    : showDiscoveryBadge
+                      ? "Agent tray — new agents detected"
+                      : "Agent tray"
+                }
+                onPointerEnter={clearFocusRestoreSuppression}
               >
-                Hover an agent and click the pin to keep it on the toolbar.
-              </DropdownMenuLabel>
-            )}
-            {launchable.map((row) => renderLaunchItem(row))}
-          </>
-        )}
+                <span className="relative inline-flex items-center justify-center">
+                  <Plug />
+                  <span
+                    data-testid="agent-tray-discovery-badge"
+                    data-visible={showDiscoveryBadge}
+                    className="toolbar-badge absolute top-0 right-0 size-1.5 rounded-full bg-status-info ring-1 ring-daintree-sidebar"
+                    aria-hidden="true"
+                  />
+                </span>
+                {emptyTrayLabel}
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Agent Tray</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent
+          align="start"
+          sideOffset={4}
+          className="min-w-[16rem]"
+          onPointerDownOutside={(e) => {
+            // Keep the tray open during shortcut capture so a stray click on the
+            // capture row's inner controls doesn't tear down the in-progress
+            // recording session.
+            if (capturingId !== null) {
+              e.preventDefault();
+              return;
+            }
+            wasPointerCloseRef.current = true;
+          }}
+          onEscapeKeyDown={(e) => {
+            // Belt-and-suspenders: SettingsShortcutCapture's window-capture
+            // listener already swallows Escape during active recording, but
+            // between mounting the capture UI and entering recording state
+            // Escape would otherwise reach Radix's DismissableLayer and dismiss
+            // the dropdown (lesson #4588). Cancel the capture in-place instead.
+            if (capturingId !== null) {
+              e.preventDefault();
+              setCapturingId(null);
+            }
+          }}
+          onCloseAutoFocus={(e) => {
+            suppressTooltipDuringFocusRestore();
+            if (wasPointerCloseRef.current) {
+              e.preventDefault();
+              wasPointerCloseRef.current = false;
+            }
+          }}
+        >
+          {isAvailabilityLoading && (
+            <div className="px-2.5 py-1.5 text-xs text-daintree-text/60">Checking agents…</div>
+          )}
 
-        {needsSetup.length > 0 && (
-          <>
-            {launchable.length > 0 && <DropdownMenuSeparator />}
-            <DropdownMenuLabel>Needs Setup</DropdownMenuLabel>
-            {needsSetup.map((row) => (
-              <DropdownMenuItem
-                key={`setup-${row.id}`}
-                onSelect={() => handleSetup(row.id)}
-                className="group h-7"
-              >
-                <span className="mr-2 inline-flex h-4 w-4 items-center justify-center grayscale opacity-50">
-                  <BrandMark brandColor={getBrandColorHex(row.id)}>
-                    <row.Icon brandColor={getBrandColorHex(row.id)} />
-                  </BrandMark>
-                </span>
-                <span className="flex-1 text-daintree-text/70">{row.name}</span>
-                <span className="ml-2 shrink-0 rounded border border-daintree-text/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-daintree-text/50">
-                  Setup
-                </span>
-              </DropdownMenuItem>
-            ))}
-          </>
-        )}
+          {launchable.length > 0 && (
+            <>
+              <DropdownMenuLabel>Launch</DropdownMenuLabel>
+              {hasNoPinnedAgents && !isAvailabilityLoading && (
+                <DropdownMenuLabel
+                  data-testid="agent-tray-pin-hint"
+                  className="text-daintree-text/50 font-normal text-[11px] -mt-1 pb-1.5"
+                >
+                  Hover an agent and click the pin to keep it on the toolbar.
+                </DropdownMenuLabel>
+              )}
+              {launchable.map((row) => renderLaunchItem(row))}
+            </>
+          )}
 
-        {showFallback && (
-          <>
-            <DropdownMenuLabel>Available Agents</DropdownMenuLabel>
-            {fallbackSetup.map((row) => (
-              <DropdownMenuItem
-                key={`fallback-${row.id}`}
-                onSelect={() => handleSetup(row.id)}
-                className="group h-7"
-                data-testid={`agent-tray-fallback-${row.id}`}
-              >
-                <span className="mr-2 inline-flex h-4 w-4 items-center justify-center grayscale opacity-50">
-                  <BrandMark brandColor={getBrandColorHex(row.id)}>
-                    <row.Icon brandColor={getBrandColorHex(row.id)} />
-                  </BrandMark>
-                </span>
-                <span className="flex-1 text-daintree-text/70">{row.name}</span>
-                <span className="ml-2 shrink-0 rounded border border-daintree-text/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-daintree-text/50">
-                  Setup
-                </span>
-              </DropdownMenuItem>
-            ))}
-          </>
-        )}
+          {needsSetup.length > 0 && (
+            <>
+              {launchable.length > 0 && <DropdownMenuSeparator />}
+              <DropdownMenuLabel>Needs Setup</DropdownMenuLabel>
+              {needsSetup.map((row) => (
+                <DropdownMenuItem
+                  key={`setup-${row.id}`}
+                  onSelect={() => handleSetup(row.id)}
+                  className="group h-7"
+                >
+                  <span className="mr-2 inline-flex h-4 w-4 items-center justify-center grayscale opacity-50">
+                    <BrandMark brandColor={getBrandColorHex(row.id)}>
+                      <row.Icon brandColor={getBrandColorHex(row.id)} />
+                    </BrandMark>
+                  </span>
+                  <span className="flex-1 text-daintree-text/70">{row.name}</span>
+                  <span className="ml-2 shrink-0 rounded border border-daintree-text/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-daintree-text/50">
+                    Setup
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </>
+          )}
 
-        {(hasAnyContent || showFallback) && <DropdownMenuSeparator />}
-        <DropdownMenuItem onSelect={handleManageAgents} className="h-7">
-          <Settings2 className="mr-2 h-3.5 w-3.5 opacity-60" />
-          Manage Agents
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={handleCustomizeToolbar} className="h-7">
-          <Settings2 className="mr-2 h-3.5 w-3.5 opacity-60" />
-          Customize Toolbar
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={handleOpenAgentSetupWizard} className="h-7">
-          <Plug className="mr-2 h-3.5 w-3.5" />
-          Set Up Agents
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          {showFallback && (
+            <>
+              <DropdownMenuLabel>Available Agents</DropdownMenuLabel>
+              {fallbackSetup.map((row) => (
+                <DropdownMenuItem
+                  key={`fallback-${row.id}`}
+                  onSelect={() => handleSetup(row.id)}
+                  className="group h-7"
+                  data-testid={`agent-tray-fallback-${row.id}`}
+                >
+                  <span className="mr-2 inline-flex h-4 w-4 items-center justify-center grayscale opacity-50">
+                    <BrandMark brandColor={getBrandColorHex(row.id)}>
+                      <row.Icon brandColor={getBrandColorHex(row.id)} />
+                    </BrandMark>
+                  </span>
+                  <span className="flex-1 text-daintree-text/70">{row.name}</span>
+                  <span className="ml-2 shrink-0 rounded border border-daintree-text/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-daintree-text/50">
+                    Setup
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </>
+          )}
+
+          {(hasAnyContent || showFallback) && <DropdownMenuSeparator />}
+          <DropdownMenuItem onSelect={handleManageAgents} className="h-7">
+            <Settings2 className="mr-2 h-3.5 w-3.5 opacity-60" />
+            Manage Agents
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={handleCustomizeToolbar} className="h-7">
+            <Settings2 className="mr-2 h-3.5 w-3.5 opacity-60" />
+            Customize Toolbar
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={handleOpenAgentSetupWizard} className="h-7">
+            <Plug className="mr-2 h-3.5 w-3.5" />
+            Set Up Agents
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </AgentTrayCapturingContext.Provider>
   );
 }
 
@@ -738,6 +787,51 @@ function LaunchRow({
   stopPointer: (e: ReactPointerEvent) => void;
 }) {
   const displayCombo = useKeybindingDisplay(`agent.${row.id}`);
+  const { capturingId, setCapturingId } = useContext(AgentTrayCapturingContext);
+  const isCapturing = capturingId === row.id;
+
+  const handleShortcutSave = useCallback(
+    async (combo: string) => {
+      const result = await actionService.dispatch(
+        "keybinding.setOverride",
+        { actionId: `agent.${row.id}`, combo: combo === "" ? [] : [combo] },
+        { source: "user" }
+      );
+      if (!result.ok) {
+        // Stay open on failure so the user can retry — the capture widget
+        // will surface a follow-up error via existing notify() paths.
+        return;
+      }
+      setCapturingId(null);
+    },
+    [row.id, setCapturingId]
+  );
+
+  if (isCapturing) {
+    return (
+      <div
+        data-testid={`agent-tray-capture-${row.id}`}
+        // Sidestep DropdownMenuItem semantics during capture — Radix would try
+        // to interpret keystrokes inside as menu navigation.
+        className="px-2.5 py-2 space-y-2"
+        onKeyDown={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 text-xs text-daintree-text/70">
+          <span className="inline-flex h-4 w-4 items-center justify-center shrink-0">
+            <BrandMark brandColor={getBrandColorHex(row.id)}>
+              <row.Icon brandColor={getBrandColorHex(row.id)} />
+            </BrandMark>
+          </span>
+          <span>Set shortcut for {row.name}</span>
+        </div>
+        <AgentShortcutCapture
+          agentId={row.id}
+          onCapture={(combo) => void handleShortcutSave(combo)}
+          onCancel={() => setCapturingId(null)}
+        />
+      </div>
+    );
+  }
 
   return (
     <DropdownMenuItem
@@ -767,6 +861,22 @@ function LaunchRow({
       {displayCombo && <DropdownMenuShortcut>{displayCombo}</DropdownMenuShortcut>}
 
       <span className="sr-only">Press P to {row.pinned ? "unpin from" : "pin to"} toolbar</span>
+
+      <span
+        role="presentation"
+        aria-hidden="true"
+        data-testid={`agent-tray-shortcut-edit-${row.id}`}
+        title={displayCombo ? "Change keyboard shortcut" : "Assign keyboard shortcut"}
+        onPointerDown={stopPointer}
+        onPointerUp={stopPointer}
+        onClick={(e) => {
+          e.stopPropagation();
+          setCapturingId(row.id);
+        }}
+        className="ml-1 inline-flex h-5 w-5 items-center justify-center rounded-sm text-daintree-text/50 opacity-0 transition-opacity hover:bg-overlay-emphasis hover:text-daintree-text group-data-[highlighted]:opacity-100"
+      >
+        <Keyboard className="h-3 w-3" />
+      </span>
 
       <span
         role="presentation"

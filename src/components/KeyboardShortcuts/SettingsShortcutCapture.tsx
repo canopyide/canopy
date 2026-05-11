@@ -24,6 +24,14 @@ export interface SettingsShortcutCaptureProps {
    * Defaults to "global" (the conservative behavior — flags any overlap).
    */
   scope?: KeyScope;
+  /**
+   * Optional validator for the captured combo. Receives the full captured
+   * combo string (e.g. "Cmd+Alt+K") and returns an error message to display
+   * inline, or null when the combo is acceptable. When non-null, the Save
+   * button is disabled. Use to enforce domain rules like "agent shortcuts
+   * must use Cmd+Alt+letter" without baking domain copy into this widget.
+   */
+  validateCombo?: (combo: string) => string | null;
 }
 
 export function SettingsShortcutCapture({
@@ -31,6 +39,7 @@ export function SettingsShortcutCapture({
   onCancel,
   excludeActionId,
   scope = "global",
+  validateCombo,
 }: SettingsShortcutCaptureProps) {
   const [recording, setRecording] = useState(false);
   const [capturedCombos, setCapturedCombos] = useState<string[]>([]);
@@ -41,6 +50,11 @@ export function SettingsShortcutCapture({
   const [isUnbinding, setIsUnbinding] = useState(false);
 
   const capturedCombo = capturedCombos.length > 0 ? capturedCombos.join(" ") : null;
+
+  const validationError = useMemo(() => {
+    if (!capturedCombo || !validateCombo) return null;
+    return validateCombo(capturedCombo);
+  }, [capturedCombo, validateCombo]);
 
   const conflicts = useMemo(() => {
     if (!capturedCombo) return [];
@@ -117,9 +131,21 @@ export function SettingsShortcutCapture({
       }
     };
 
+    const handleBlur = () => {
+      // If the window loses focus mid-recording, held modifier state can't be
+      // observed reliably on return — bail out rather than ship a stuck combo.
+      clearChordTimeout();
+      chordTokenRef.current += 1;
+      setRecording(false);
+      setCapturedCombos([]);
+      setChordStep("first");
+    };
+
     window.addEventListener("keydown", handler, { capture: true });
+    window.addEventListener("blur", handleBlur);
     return () => {
       window.removeEventListener("keydown", handler, { capture: true });
+      window.removeEventListener("blur", handleBlur);
       clearChordTimeout();
     };
   }, [recording, clearChordTimeout, finishRecording]);
@@ -131,7 +157,7 @@ export function SettingsShortcutCapture({
   };
 
   const handleSave = () => {
-    if (capturedCombo) {
+    if (capturedCombo && !validationError) {
       clearChordTimeout();
       setRecording(false);
       onCapture(capturedCombo);
@@ -307,6 +333,17 @@ export function SettingsShortcutCapture({
         )}
       </div>
 
+      {validationError && (
+        <div
+          className="flex items-start gap-2 text-status-error text-sm"
+          role="alert"
+          data-testid="shortcut-capture-validation-error"
+        >
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>{validationError}</span>
+        </div>
+      )}
+
       {conflicts.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-start gap-2 text-status-warning text-sm">
@@ -362,7 +399,8 @@ export function SettingsShortcutCapture({
         {capturedCombo && (
           <button
             onClick={handleSave}
-            className="px-3 py-1.5 text-sm bg-daintree-accent text-daintree-bg rounded hover:bg-daintree-accent/90 transition-colors"
+            disabled={Boolean(validationError)}
+            className="px-3 py-1.5 text-sm bg-daintree-accent text-daintree-bg rounded hover:bg-daintree-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Save
           </button>
