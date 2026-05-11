@@ -430,9 +430,14 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       // to "all". Short-circuit once we find any match — only the boolean
       // matters for the empty-state branch.
       if (!withoutQuickStateMatch && quickStateFilter !== "all") {
-        if (alwaysShowActive && isActive && !hasActiveQuery) {
+        if (alwaysShowActive && isActive && !hasActiveQuery && !hasFacetFiltersActive) {
           withoutQuickStateMatch = true;
-        } else if (alwaysShowWaiting && derived.hasWaitingAgent && !hasActiveQuery) {
+        } else if (
+          alwaysShowWaiting &&
+          derived.hasWaitingAgent &&
+          !hasActiveQuery &&
+          !hasFacetFiltersActive
+        ) {
           withoutQuickStateMatch = true;
         } else if (matchesFilters(worktree, filters, derived, isActive)) {
           withoutQuickStateMatch = true;
@@ -907,7 +912,10 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                     </button>
                   }
                 />
-              ) : filteredWorktrees.length === 0 && hasFilters && hasNonMainWorktrees ? (
+              ) : filteredWorktrees.length === 0 &&
+                hasFilters &&
+                hasNonMainWorktrees &&
+                !(mainVisible || integrationVisible) ? (
                 <EmptyState
                   variant="filtered-empty"
                   title={

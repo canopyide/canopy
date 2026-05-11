@@ -28,7 +28,7 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       // The bypass rules must additionally require !hasFacetFiltersActive so that
       // selecting a popover facet filter (status/type/github/session/activity)
       // suppresses bypass injection and makes the visible list agree with chip counts.
-      expect(source).toMatch(/quickStateFilter === "all" && !hasFacetFiltersActive/);
+      expect(source).toMatch(/quickStateFilter === "all"\s*&&\s*!hasFacetFiltersActive/);
       expect(source).toContain("hasFacetFilters");
     });
 
@@ -54,9 +54,9 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       // doesn't claim "would match without quick state" for worktrees that
       // are only ever shown via the bypass — and it must run matchesFilters
       // for the rest.
-      expect(source).toMatch(/if \(alwaysShowActive && isActive && !hasActiveQuery\)/);
+      expect(source).toMatch(/if \(alwaysShowActive && isActive && !hasActiveQuery/);
       expect(source).toMatch(
-        /else if \(alwaysShowWaiting && derived\.hasWaitingAgent && !hasActiveQuery\)/
+        /else if \(alwaysShowWaiting && derived\.hasWaitingAgent && !hasActiveQuery/
       );
       expect(source).toMatch(
         /else if \(matchesFilters\(worktree, filters, derived, isActive\)\) \{\s*withoutQuickStateMatch = true;/
@@ -79,7 +79,7 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
     it("renders the quick-state empty state before the generic filter-mismatch branch", () => {
       const quickStateIdx = source.indexOf("showQuickStateEmptyState ?");
       const genericIdx = source.indexOf(
-        "filteredWorktrees.length === 0 && hasFilters && hasNonMainWorktrees ?"
+        "filteredWorktrees.length === 0 && hasFilters && hasNonMainWorktrees"
       );
       expect(quickStateIdx).toBeGreaterThan(0);
       expect(genericIdx).toBeGreaterThan(0);
@@ -137,7 +137,7 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
 
     it("renders the popover-filtered empty state via the EmptyState primitive with a noun-phrase title", () => {
       const branchStart = source.indexOf(
-        "filteredWorktrees.length === 0 && hasFilters && hasNonMainWorktrees ?"
+        "filteredWorktrees.length === 0 && hasFilters && hasNonMainWorktrees"
       );
       const branchEnd = source.indexOf("groupedSections ?", branchStart);
       const branch = source.slice(branchStart, branchEnd);
