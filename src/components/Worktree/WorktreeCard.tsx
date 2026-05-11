@@ -11,6 +11,7 @@ import { useIsWorktreeSortDragging } from "../DragDrop/DndProvider";
 import { GripVertical } from "lucide-react";
 import { useErrorStore, usePanelStore, type RetryAction, type TerminalInstance } from "../../store";
 import { useRecipeStore } from "../../store/recipeStore";
+import { useUIStore } from "../../store/uiStore";
 import { useWorktreeSelectionStore } from "../../store/worktreeStore";
 import {
   useProjectSettingsStore,
@@ -435,6 +436,13 @@ export function WorktreeCard({
 
   const onCloseReviewHub = () => setShowReviewHub(false);
   const onClosePlanViewer = () => setShowPlanViewer(false);
+
+  const pendingReviewHubWorktreeId = useUIStore((s) => s.pendingReviewHubWorktreeId);
+  useEffect(() => {
+    if (pendingReviewHubWorktreeId !== worktree.id) return;
+    setShowReviewHub(true);
+    useUIStore.getState().clearPendingReviewHubWorktreeId();
+  }, [pendingReviewHubWorktreeId, worktree.id]);
 
   const handleAttachIssue = async (issue: GitHubIssue) => {
     await worktreeClient.attachIssue({
