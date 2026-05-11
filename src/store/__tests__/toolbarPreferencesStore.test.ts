@@ -112,6 +112,32 @@ describe("toolbarPreferencesStore", () => {
       expect(after.leftButtons).toEqual(before.left);
       expect(after.rightButtons).toEqual(before.right);
     });
+
+    it("round-trips a pre-seeded `pinnedButtons[id] = true` through false → undefined", async () => {
+      // Seeds the forward-compat case where a downgrade-then-upgrade or a
+      // future explicit-pin write leaves `true` in the map — the toggle must
+      // still flip cleanly to `false` and then to omission.
+      setStoredState(
+        {
+          layout: {
+            leftButtons: ["terminal"],
+            rightButtons: ["settings"],
+            pinnedButtons: { terminal: true },
+          },
+          launcher: { alwaysShowDevServer: false },
+        },
+        8
+      );
+
+      const store = await loadStore();
+      expect(store.getState().layout.pinnedButtons["terminal"]).toBe(true);
+
+      store.getState().toggleButtonVisibility("terminal", "left");
+      expect(store.getState().layout.pinnedButtons["terminal"]).toBe(false);
+
+      store.getState().toggleButtonVisibility("terminal", "left");
+      expect(store.getState().layout.pinnedButtons["terminal"]).toBeUndefined();
+    });
   });
 
   describe("moveButton preserves pinnedButtons", () => {

@@ -223,6 +223,17 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
     expect(setAgentPinnedMock).not.toHaveBeenCalled();
   });
 
+  it("dispatches `'right'` as the side argument for right-side non-agent toggles", () => {
+    // Locks the side argument so future side-aware store changes can't
+    // silently swallow the right-side branch — both handlers (left, right)
+    // are nominally identical today but each is independently wired.
+    const { getByLabelText } = render(<ToolbarSettingsTab />);
+    fireEvent.click(getByLabelText("Toggle Copy Context visibility"));
+
+    expect(toggleButtonVisibilityMock).toHaveBeenCalledTimes(1);
+    expect(toggleButtonVisibilityMock).toHaveBeenCalledWith("copy-tree", "right");
+  });
+
   it("reflects pinned agents in the section visible-count summary", () => {
     mockAgentSettings = agentSettings({
       claude: { pinned: true },

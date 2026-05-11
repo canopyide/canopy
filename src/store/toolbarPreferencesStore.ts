@@ -252,12 +252,13 @@ export const useToolbarPreferencesStore = create<ToolbarPreferencesState>()(
           // visibility uses the same tri-state semantics as agent pinning
           // (#7666). Existing hides translate to explicit `false` entries.
           const layout = state.layout as
-            | { hiddenButtons?: string[]; pinnedButtons?: Record<string, boolean> }
+            | { hiddenButtons?: unknown; pinnedButtons?: Record<string, boolean> }
             | undefined;
           if (layout) {
             const pinned: Record<string, boolean> = { ...(layout.pinnedButtons ?? {}) };
-            for (const id of layout.hiddenButtons ?? []) {
-              pinned[id] = false;
+            const hidden = Array.isArray(layout.hiddenButtons) ? layout.hiddenButtons : [];
+            for (const id of hidden) {
+              if (typeof id === "string") pinned[id] = false;
             }
             layout.pinnedButtons = pinned;
             delete layout.hiddenButtons;
