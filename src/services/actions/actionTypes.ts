@@ -63,6 +63,8 @@ export interface ActionCallbacks {
       ephemeral?: boolean;
       agentLaunchFlags?: string[];
       spawnedBy?: TerminalSpawnSource;
+      requestedId?: string;
+      force?: boolean;
     }
   ) => Promise<string | null>;
   onInject: (worktreeId: string) => void;

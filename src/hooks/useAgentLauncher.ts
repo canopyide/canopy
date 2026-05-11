@@ -78,6 +78,13 @@ export interface LaunchAgentOptions {
    * (#6959).
    */
   spawnedBy?: TerminalSpawnSource;
+  /**
+   * Pre-reserved terminal ID passed through to `addPanel` so the dock filter
+   * is active the moment the panel commits, preventing a one-frame visual
+   * flash. Used by the help panel's `+` new-session and run-anyway paths
+   * (#6951, #7651).
+   */
+  requestedId?: string;
 }
 
 export interface UseAgentLauncherReturn {
@@ -461,6 +468,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               activateDockOnCreate: launchOptions?.activateDockOnCreate,
               ephemeral: launchOptions?.ephemeral,
               spawnedBy,
+              requestedId: launchOptions?.requestedId,
             }
           : {
               kind: "terminal",
@@ -472,6 +480,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               activateDockOnCreate: launchOptions?.activateDockOnCreate,
               ephemeral: launchOptions?.ephemeral,
               spawnedBy,
+              requestedId: launchOptions?.requestedId,
             };
 
         // Soft launch gate: intercept when the CLI is not launchable (missing,
