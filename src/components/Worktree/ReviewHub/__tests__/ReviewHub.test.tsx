@@ -2162,6 +2162,7 @@ describe("ReviewHub", () => {
       repoState: "DIRTY",
       rebaseStep: null,
       rebaseTotalSteps: null,
+      rebaseSequence: null,
     });
 
     it("renders filter input in both section headers", async () => {
