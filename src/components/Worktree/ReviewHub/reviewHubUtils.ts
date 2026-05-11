@@ -1,0 +1,326 @@
+import type { GitStatus, StagingFileEntry } from "@shared/types";
+import type { GitOperationReason } from "@shared/types/ipc/errors";
+import { getGitRecoveryHint } from "@shared/utils/gitOperationErrors";
+
+export type DiffMode = "working-tree" | "base-branch";
+
+export interface PushErrorState {
+  reason: GitOperationReason;
+  rawMessage: string;
+  /** Captured `refs/remotes/origin/<branch>` SHA at push-rejection time. */
+  leaseSha?: string;
+  /** Local branch name resolved at push-rejection time. */
+  branchName?: string;
+}
+
+export type PushBannerCta =
+  | { kind: "settings-github"; label: string }
+  | { kind: "retry"; label: string }
+  | { kind: "pull-rebase"; label: string }
+  | { kind: "force-push"; label: string };
+
+/**
+ * "hide" — raw stderr is suppressed entirely (auth/network/transient — raw
+ * output is jargon-y and not actionable to the user).
+ * "collapse" — raw stderr lives behind a "Show details" toggle (policy/hook/
+ * unknown — the server-side text often contains the only actionable signal).
+ */
+export type PushDetailPolicy = "hide" | "collapse";
+
+export interface PushBannerConfig {
+  message: string;
+  detailPolicy: PushDetailPolicy;
+  cta?: PushBannerCta;
+  /** Optional secondary CTA rendered alongside the primary. */
+  secondaryCta?: PushBannerCta;
+}
+
+/**
+ * Map each `GitOperationReason` to a banner config. Hint copy comes from the
+ * shared `getGitRecoveryHint` (so it stays consistent with notification-store
+ * and other surfaces); only the `unknown` fallback inlines its own copy.
+ *
+ * CTAs are limited to actions the renderer can actually dispatch:
+ *  - `app.settings.openTab` (real BuiltInActionId) for `auth-failed`
+ *  - inline `handleRetryPush` for `network-unavailable` / `system-io-error`
+ *  - inline `handlePullRebase` / force-push dialog for `push-rejected-outdated`
+ * `RECOVERY_ACTIONS` in `shared/utils/gitOperationErrors.ts` references several
+ * actionIds that aren't registered (`git.pull`, `github.auth`,
+ * `git.resolveConflicts`, `git.trustRepository`) — wiring those would surface
+ * broken buttons. A clear hint with no CTA is better than a broken CTA.
+ */
+export const PUSH_BANNER_CONFIGS: Record<GitOperationReason, PushBannerConfig> = {
+  "auth-failed": {
+    message: getGitRecoveryHint("auth-failed") ?? "Authentication failed.",
+    detailPolicy: "hide",
+    cta: { kind: "settings-github", label: "Open GitHub settings" },
+  },
+  "network-unavailable": {
+    message: getGitRecoveryHint("network-unavailable") ?? "Could not reach the remote.",
+    detailPolicy: "hide",
+    cta: { kind: "retry", label: "Retry" },
+  },
+  "system-io-error": {
+    message: getGitRecoveryHint("system-io-error") ?? "A filesystem error blocked the push.",
+    detailPolicy: "hide",
+    cta: { kind: "retry", label: "Retry" },
+  },
+  "push-rejected-outdated": {
+    message:
+      getGitRecoveryHint("push-rejected-outdated") ??
+      "The remote has new commits. Pull and rebase before pushing.",
+    detailPolicy: "hide",
+    cta: { kind: "pull-rebase", label: "Pull and rebase" },
+  },
+  "push-rejected-policy": {
+    message:
+      getGitRecoveryHint("push-rejected-policy") ??
+      "The remote rejected this push (protected branch or repository rule).",
+    detailPolicy: "collapse",
+  },
+  "hook-rejected": {
+    message: getGitRecoveryHint("hook-rejected") ?? "A server-side hook rejected the push.",
+    detailPolicy: "collapse",
+  },
+  "repository-not-found": {
+    message: getGitRecoveryHint("repository-not-found") ?? "The remote repository is unreachable.",
+    detailPolicy: "hide",
+  },
+  "not-a-repository": {
+    message: getGitRecoveryHint("not-a-repository") ?? "This folder is not a git repository.",
+    detailPolicy: "hide",
+  },
+  "dubious-ownership": {
+    message:
+      getGitRecoveryHint("dubious-ownership") ?? "Git refuses to operate on this repository.",
+    detailPolicy: "collapse",
+  },
+  "config-missing": {
+    message:
+      getGitRecoveryHint("config-missing") ?? "The current branch is missing upstream config.",
+    detailPolicy: "hide",
+  },
+  "worktree-dirty": {
+    message:
+      getGitRecoveryHint("worktree-dirty") ?? "You have local changes that would be overwritten.",
+    detailPolicy: "collapse",
+  },
+  "conflict-unresolved": {
+    message:
+      getGitRecoveryHint("conflict-unresolved") ?? "Resolve merge conflicts before continuing.",
+    detailPolicy: "collapse",
+  },
+  "pathspec-invalid": {
+    message: getGitRecoveryHint("pathspec-invalid") ?? "The specified ref or path does not exist.",
+    detailPolicy: "collapse",
+  },
+  "lfs-missing": {
+    message: getGitRecoveryHint("lfs-missing") ?? "Git LFS objects are missing.",
+    detailPolicy: "collapse",
+  },
+  "lfs-quota-exceeded": {
+    message:
+      getGitRecoveryHint("lfs-quota-exceeded") ?? "This repository exceeded its Git LFS quota.",
+    detailPolicy: "hide",
+  },
+  unknown: {
+    message: "See details for more.",
+    detailPolicy: "collapse",
+  },
+};
+
+/**
+ * Pulls the divergence-recovery fields off a thrown value. `GitOperationError`
+ * promotes `gitReason`/`leaseSha`/`branchName` to top-level fields on the
+ * serialized error envelope (`SerializedError`), and the preload's
+ * `_unwrappingInvoke` reattaches them onto the reconstructed Error before it
+ * reaches the renderer. Each field is runtime-checked before use.
+ */
+export function readGitErrorFields(err: unknown): {
+  gitReason?: GitOperationReason;
+  leaseSha?: string;
+  branchName?: string;
+} {
+  if (typeof err !== "object" || err === null) return {};
+  const gitReason = Reflect.get(err, "gitReason");
+  const leaseSha = Reflect.get(err, "leaseSha");
+  const branchName = Reflect.get(err, "branchName");
+  return {
+    // GitOperationReason is a closed string union — runtime-validated via the
+    // typeof string check; the cast narrows the union for downstream consumers.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    gitReason: typeof gitReason === "string" ? (gitReason as GitOperationReason) : undefined,
+    leaseSha: typeof leaseSha === "string" ? leaseSha : undefined,
+    branchName: typeof branchName === "string" ? branchName : undefined,
+  };
+}
+
+export function getPushBannerConfig(state: PushErrorState, behindCount?: number): PushBannerConfig {
+  const base = PUSH_BANNER_CONFIGS[state.reason];
+  // `push-rejected-outdated` is the only reason whose copy and CTAs depend on
+  // runtime state (behindCount + whether we captured a lease SHA). Override the
+  // table entry with a dynamic message and an optional force-push secondary
+  // CTA — the latter only when we have a captured `refs/remotes/origin/<branch>`
+  // SHA. Without that lease, `--force-with-lease` would silently degrade to
+  // `--force` if a background fetch advanced the local remote-tracking ref
+  // between rejection and click.
+  if (state.reason === "push-rejected-outdated") {
+    const remoteCount = behindCount && behindCount > 0 ? behindCount : null;
+    const message = remoteCount
+      ? `Remote has ${remoteCount} new commit${remoteCount === 1 ? "" : "s"}. Pull and rebase, or force push to overwrite.`
+      : "The remote has new commits. Pull and rebase, or force push to overwrite.";
+    return {
+      ...base,
+      message,
+      secondaryCta:
+        state.leaseSha && state.branchName
+          ? { kind: "force-push", label: "Force push" }
+          : undefined,
+    };
+  }
+  return base;
+}
+
+/**
+ * Extracts a `GH###` code (e.g. `GH006`, `GH013`) from raw stderr — these are
+ * GitHub's stable, googleable identifiers for protected-branch and ruleset
+ * rejections. Surfacing them above the collapsed details gives users a search
+ * key without making them open the raw output.
+ */
+export function extractGitHubErrorCode(rawMessage: string): string | undefined {
+  const match = /\bGH\d{3,}\b/.exec(rawMessage);
+  return match ? match[0] : undefined;
+}
+
+export function statusLabel(status: string): { label: string; className: string } {
+  switch (status) {
+    case "A":
+      return { label: "A", className: "text-status-success" };
+    case "D":
+      return { label: "D", className: "text-status-error" };
+    case "M":
+      return { label: "M", className: "text-status-warning" };
+    case "R":
+      return { label: "R", className: "text-status-info" };
+    case "C":
+      return { label: "C", className: "text-github-merged" };
+    default:
+      return { label: status, className: "text-text-muted" };
+  }
+}
+
+export type SortKey = "path" | "status";
+export type SortDirection = "asc" | "desc";
+export type Density = "comfortable" | "compact";
+
+export interface SectionViewState {
+  filterQuery: string;
+  sortKey: SortKey;
+  sortDir: SortDirection;
+  density: Density;
+  showGenerated: boolean;
+}
+
+export const DEFAULT_SECTION_STATE: SectionViewState = {
+  filterQuery: "",
+  sortKey: "path",
+  sortDir: "asc",
+  density: "comfortable",
+  showGenerated: true,
+};
+
+const GENERATED_FILE_PATTERNS = [
+  /(^|\/)package-lock\.json$/,
+  /(^|\/)pnpm-lock\.yaml$/,
+  /(^|\/)yarn\.lock$/,
+  /(^|\/)bun\.lockb?$/,
+  /(^|\/)Cargo\.lock$/,
+  /(^|\/)Gemfile\.lock$/,
+  /(^|\/)composer\.lock$/,
+  /(^|\/)poetry\.lock$/,
+  /\.gen\.\w+$/,
+  /\.generated\.\w+$/,
+  /__generated__\//,
+];
+
+export function isGeneratedFile(path: string): boolean {
+  const normalized = path.replace(/\\/g, "/");
+  return GENERATED_FILE_PATTERNS.some((re) => re.test(normalized));
+}
+
+export function matchesFilter(path: string, query: string): boolean {
+  const trimmed = query.trim().replace(/\\/g, "/");
+  if (!trimmed) return true;
+
+  const globChars = /[*?[\]{}()]/;
+  if (globChars.test(trimmed)) {
+    try {
+      let regexStr = "";
+      for (let i = 0; i < trimmed.length; i++) {
+        const ch = trimmed.charAt(i);
+        if (ch === "*") {
+          regexStr += i + 1 < trimmed.length && trimmed.charAt(i + 1) === "*" ? ".*" : "[^/]*";
+          if (i + 1 < trimmed.length && trimmed.charAt(i + 1) === "*") i++;
+        } else if (ch === "?") {
+          regexStr += "[^/]";
+        } else if ("[]{}()".includes(ch)) {
+          regexStr += "\\" + ch;
+        } else if (".+^$|\\".includes(ch)) {
+          regexStr += "\\" + ch;
+        } else {
+          regexStr += ch;
+        }
+      }
+      return new RegExp(`^${regexStr}$`, "i").test(path.replace(/\\/g, "/"));
+    } catch {
+      // fall through to substring match
+    }
+  }
+
+  return path.toLowerCase().includes(trimmed.toLowerCase());
+}
+
+export function sortFiles(
+  files: StagingFileEntry[],
+  key: SortKey,
+  dir: SortDirection
+): StagingFileEntry[] {
+  const sorted = [...files];
+  const statusOrder: GitStatus[] = [
+    "modified",
+    "added",
+    "deleted",
+    "renamed",
+    "copied",
+    "untracked",
+    "conflicted",
+    "ignored",
+  ];
+
+  sorted.sort((a, b) => {
+    let cmp: number;
+    if (key === "path") {
+      cmp = a.path.localeCompare(b.path);
+    } else {
+      const ai = statusOrder.indexOf(a.status);
+      const bi = statusOrder.indexOf(b.status);
+      cmp = (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      if (cmp === 0) {
+        cmp = a.path.localeCompare(b.path);
+      }
+    }
+    return dir === "desc" ? -cmp : cmp;
+  });
+
+  return sorted;
+}
+
+export const FILTER_DEBOUNCE_MS = 200;
+
+export function isSortKey(v: string): v is SortKey {
+  return v === "path" || v === "status";
+}
+
+export function isDensity(v: string): v is Density {
+  return v === "comfortable" || v === "compact";
+}
