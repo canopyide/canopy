@@ -1231,6 +1231,9 @@ const api: ElectronAPI = {
       outgoingState?: import("../shared/types/ipc/project.js").ProjectSwitchOutgoingState
     ) => _unwrappingInvoke(CHANNELS.PROJECT_SWITCH, projectId, outgoingState),
 
+    prefetchHydrate: (projectId: string) =>
+      _unwrappingInvoke(CHANNELS.PROJECT_PREFETCH_HYDRATE, projectId),
+
     openDialog: () => _unwrappingInvoke(CHANNELS.PROJECT_OPEN_DIALOG),
 
     onSwitch: (

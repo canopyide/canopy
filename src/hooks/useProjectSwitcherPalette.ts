@@ -54,6 +54,15 @@ export interface UseProjectSwitcherPaletteReturn {
   selectPrevious: () => void;
   selectNext: () => void;
   selectProject: (project: SearchableProject) => void;
+  /**
+   * Schedule a 150ms trailing-edge hover prefetch that primes the
+   * main-process hydrate cache for `projectId`. Mouse-only — touch and pen
+   * pointers are ignored. Does nothing for the currently active project or
+   * for projects flagged as missing.
+   */
+  onHoverProject: (projectId: string, pointerType: string) => void;
+  /** Cancel any pending hover prefetch for `projectId`. */
+  onHoverProjectEnd: (pointerType: string) => void;
   confirmSelection: () => void;
   addProject: () => Promise<void>;
   cloneRepo: () => void;
@@ -97,6 +106,23 @@ export interface UseProjectSwitcherPaletteReturn {
 
 const MAX_RESULTS = 15;
 
+/**
+ * Trailing-edge debounce window for the project hover prefetch. Matches the
+ * GitHub-stats toolbar pattern (#6282) — long enough to filter cursor
+ * traversal across the list, short enough to feel "instant" on intentional
+ * dwell.
+ */
+const PROJECT_HOVER_PREFETCH_DELAY_MS = 150;
+
+/**
+ * Renderer-side freshness gate. If the cache was primed for this project less
+ * than this many milliseconds ago, the hover handler skips re-prefetching.
+ * Shorter than the main-process TTL (30s) so re-hover after a back-and-forth
+ * sweep doesn't keep firing the same IPC, but generous enough to span the
+ * realistic time between hover and click.
+ */
+const PROJECT_PREFETCH_FRESHNESS_MS = 15_000;
+
 export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
   const modalIsOpen = usePaletteStore((state) => state.activePaletteId === "project-switcher");
   const [dropdownIsOpen, setDropdownIsOpen] = useState(false);
@@ -114,6 +140,10 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
   } | null>(null);
   const [isDeletingOriginalScratch, setIsDeletingOriginalScratch] = useState(false);
   const selectedProjectIdRef = useRef<string | null>(null);
+
+  const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prefetchInFlightRef = useRef<Set<string>>(new Set());
+  const prefetchLastAtRef = useRef<Map<string, number>>(new Map());
 
   const projects = useProjectStore((state) => state.projects);
   const currentProject = useProjectStore((state) => state.currentProject);
@@ -307,6 +337,67 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
     },
     [close, switchProject, reopenProject]
   );
+
+  const clearPendingPrefetchTimer = useCallback(() => {
+    if (prefetchTimerRef.current !== null) {
+      clearTimeout(prefetchTimerRef.current);
+      prefetchTimerRef.current = null;
+    }
+  }, []);
+
+  const runPrefetch = useCallback((projectId: string) => {
+    if (prefetchInFlightRef.current.has(projectId)) return;
+    const lastAt = prefetchLastAtRef.current.get(projectId) ?? 0;
+    if (lastAt > 0 && Date.now() - lastAt < PROJECT_PREFETCH_FRESHNESS_MS) return;
+
+    prefetchInFlightRef.current.add(projectId);
+    // projectClient.prefetchHydrate swallows errors (fire-and-forget), so this
+    // .then() runs whether the main-process build succeeded or failed. We mark
+    // the freshness ref either way: a hover-induced retry-storm against a
+    // genuinely failing build is worse than a 15s window where the user gets
+    // the normal (uncached) hydrate. The click-time hydrate falls through to
+    // the full read path on a cache miss with no user-visible difference.
+    void projectClient
+      .prefetchHydrate(projectId)
+      .then(() => {
+        prefetchLastAtRef.current.set(projectId, Date.now());
+      })
+      .finally(() => {
+        prefetchInFlightRef.current.delete(projectId);
+      });
+  }, []);
+
+  const onHoverProject = useCallback(
+    (projectId: string, pointerType: string) => {
+      if (pointerType !== "mouse") return;
+      const project = searchableProjects.find((p) => p.id === projectId);
+      if (!project || project.isActive || project.isMissing) return;
+      clearPendingPrefetchTimer();
+      prefetchTimerRef.current = setTimeout(() => {
+        prefetchTimerRef.current = null;
+        runPrefetch(projectId);
+      }, PROJECT_HOVER_PREFETCH_DELAY_MS);
+    },
+    [searchableProjects, clearPendingPrefetchTimer, runPrefetch]
+  );
+
+  const onHoverProjectEnd = useCallback(
+    (pointerType: string) => {
+      if (pointerType !== "mouse") return;
+      clearPendingPrefetchTimer();
+    },
+    [clearPendingPrefetchTimer]
+  );
+
+  // Cancel any pending prefetch when the palette closes — the user has either
+  // committed to a project (whose hydrate will run via the click path) or
+  // bailed out (no need to keep filling the cache).
+  useEffect(() => {
+    if (isOpen) return;
+    clearPendingPrefetchTimer();
+  }, [isOpen, clearPendingPrefetchTimer]);
+
+  useEffect(() => () => clearPendingPrefetchTimer(), [clearPendingPrefetchTimer]);
 
   const confirmSelection = useCallback(() => {
     if (results.length > 0 && selectedIndex >= 0 && selectedIndex < results.length) {
@@ -599,6 +690,8 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
     selectPrevious,
     selectNext,
     selectProject,
+    onHoverProject,
+    onHoverProjectEnd,
     confirmSelection,
     addProject,
     cloneRepo,

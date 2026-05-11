@@ -1005,6 +1005,8 @@ export function Toolbar({
             onSelectPrevious={projectSwitcher.selectPrevious}
             onSelectNext={projectSwitcher.selectNext}
             onSelect={projectSwitcher.selectProject}
+            onHoverProject={projectSwitcher.onHoverProject}
+            onHoverProjectEnd={projectSwitcher.onHoverProjectEnd}
             onClose={handleDropdownClose}
             onAddProject={projectSwitcher.addProject}
             onCloneRepo={projectSwitcher.cloneRepo}

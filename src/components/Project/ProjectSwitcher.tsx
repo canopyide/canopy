@@ -175,6 +175,8 @@ export function ProjectSwitcher() {
             onCopyPath={handleCopyPath}
             onSelectBackground={handleSelectBackground}
             onSelectNewWindow={handleSelectNewWindow}
+            onHoverProject={projectSwitcher.onHoverProject}
+            onHoverProjectEnd={projectSwitcher.onHoverProjectEnd}
             removeConfirmProject={projectSwitcher.removeConfirmProject}
             onRemoveConfirmClose={() => projectSwitcher.setRemoveConfirmProject(null)}
             onConfirmRemove={projectSwitcher.confirmRemoveProject}
@@ -242,6 +244,8 @@ export function ProjectSwitcher() {
         onOpenProjectSettings={handleOpenSettings}
         onCopyPath={handleCopyPath}
         onSelectBackground={handleSelectBackground}
+        onHoverProject={projectSwitcher.onHoverProject}
+        onHoverProjectEnd={projectSwitcher.onHoverProjectEnd}
         removeConfirmProject={projectSwitcher.removeConfirmProject}
         onRemoveConfirmClose={() => projectSwitcher.setRemoveConfirmProject(null)}
         onConfirmRemove={projectSwitcher.confirmRemoveProject}

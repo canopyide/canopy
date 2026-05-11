@@ -122,6 +122,15 @@ export const projectClient = {
     return window.electron.project.switch(projectId, outgoingState);
   },
 
+  /**
+   * Hover-prefetch the main-process `HydrateResult` cache for `projectId`.
+   * Fire-and-forget: errors are swallowed so a failed prefetch never surfaces
+   * to the user — the click-time hydrate falls through to the normal read path.
+   */
+  prefetchHydrate: (projectId: string): Promise<void> => {
+    return window.electron.project.prefetchHydrate(projectId).catch(() => undefined);
+  },
+
   openDialog: (): Promise<string | null> => {
     return window.electron.project.openDialog();
   },
