@@ -8,6 +8,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import { SplitButton } from "@/components/ui/split-button";
 
 const MAX_SUBJECT_LENGTH = 72;
+const HISTORY_FETCH_POLL_INTERVAL_MS = 10;
 
 interface CommitPanelProps {
   stagedCount: number;
@@ -102,7 +103,7 @@ export function CommitPanel({
     if (historyMessagesRef.current !== null) return historyMessagesRef.current;
     if (isFetchingHistoryRef.current) {
       while (isFetchingHistoryRef.current) {
-        await new Promise((r) => setTimeout(r, 10));
+        await new Promise((r) => setTimeout(r, HISTORY_FETCH_POLL_INTERVAL_MS));
       }
       return historyMessagesRef.current ?? [];
     }
