@@ -20,8 +20,21 @@ vi.mock("@/lib/utils", () => ({
 }));
 
 describe("AgentCompletionBanner", () => {
-  it("renders the artifact-first copy", () => {
-    render(<AgentCompletionBanner onReview={() => {}} onDismiss={() => {}} />);
+  it("renders artifact-first copy with file count and plural noun", () => {
+    render(<AgentCompletionBanner fileCount={3} onReview={() => {}} onDismiss={() => {}} />);
+    expect(screen.getByText("3 files changed, review when ready")).toBeTruthy();
+  });
+
+  it("uses singular 'file' when exactly one file changed", () => {
+    render(<AgentCompletionBanner fileCount={1} onReview={() => {}} onDismiss={() => {}} />);
+    expect(screen.getByText("1 file changed, review when ready")).toBeTruthy();
+  });
+
+  it("falls back to generic copy when fileCount is omitted or zero", () => {
+    const { rerender } = render(<AgentCompletionBanner onReview={() => {}} onDismiss={() => {}} />);
+    expect(screen.getByText("Files changed, review when ready")).toBeTruthy();
+
+    rerender(<AgentCompletionBanner fileCount={0} onReview={() => {}} onDismiss={() => {}} />);
     expect(screen.getByText("Files changed, review when ready")).toBeTruthy();
   });
 

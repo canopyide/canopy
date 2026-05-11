@@ -444,10 +444,18 @@ export function WorktreeCard({
     useUIStore.getState().clearPendingReviewHubWorktreeId();
   }, [pendingReviewHubWorktreeId, worktree.id]);
 
-  // Open Review Hub when an AgentCompletionBanner in this worktree fires its
-  // CustomEvent. TerminalPane is not in this component's React tree (it's
-  // rendered via the panel registry), so a window-scoped event is the only
-  // path. Filter by worktree.id so concurrent worktrees stay independent.
+  // All Review Hub open paths (banner button, menu, header, terminal section)
+  // route through this window-scoped event so any open also dismisses pane
+  // completion banners for the same worktree. TerminalPane is rendered via
+  // the panel registry — not in this component's React tree — so an event
+  // bridge is the only practical channel.
+  const openReviewHubForThisWorktree = () => {
+    window.dispatchEvent(
+      new CustomEvent("daintree:open-review-hub", { detail: { worktreeId: worktree.id } })
+    );
+  };
+
+
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ worktreeId?: string }>).detail;
@@ -758,7 +766,7 @@ export function WorktreeCard({
                   onOpenPRExternal: worktree.prUrl ? handleOpenPRExternal : undefined,
                   onAttachIssue: () => setShowIssuePicker(true),
                   onViewPlan: () => setShowPlanViewer(true),
-                  onOpenReviewHub: () => setShowReviewHub(true),
+                  onOpenReviewHub: openReviewHubForThisWorktree,
                   onCompareDiff: () =>
                     useWorktreeSelectionStore.getState().openCrossWorktreeDiff(worktree.id),
                   onRunRecipe: (recipeId) => void handleRunRecipe(recipeId),
@@ -838,7 +846,7 @@ export function WorktreeCard({
                     onPathClick={handlePathClick}
                     onDismissError={dismissError}
                     onRetryError={handleErrorRetry}
-                    onOpenReviewHub={() => setShowReviewHub(true)}
+                    onOpenReviewHub={openReviewHubForThisWorktree}
                     isLifecycleRunning={isLifecycleRunning}
                     lifecycleLabel={lifecycleLabel}
                     hasResourceConfig={hasResourceConfig}
@@ -916,7 +924,7 @@ export function WorktreeCard({
           onOpenPRExternal={worktree.prUrl ? handleOpenPRExternal : undefined}
           onAttachIssue={() => setShowIssuePicker(true)}
           onViewPlan={() => setShowPlanViewer(true)}
-          onOpenReviewHub={() => setShowReviewHub(true)}
+          onOpenReviewHub={openReviewHubForThisWorktree}
           onCompareDiff={() =>
             useWorktreeSelectionStore.getState().openCrossWorktreeDiff(worktree.id)
           }

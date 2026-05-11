@@ -23,8 +23,8 @@ import { ReconnectErrorBanner } from "./ReconnectErrorBanner";
 import { UpdateCwdDialog } from "./UpdateCwdDialog";
 import { ErrorBanner } from "../Errors/ErrorBanner";
 import { AgentCompletionBanner } from "./AgentCompletionBanner";
-import type { SnapshotInfo } from "@shared/types/ipc/git";
 import { ContentPanel } from "@/components/Panel";
+import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import { useIsDragging } from "@/components/DragDrop";
 import { MissingCliGate } from "./MissingCliGate";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
@@ -167,13 +167,6 @@ function TerminalPaneComponent({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isUpdateCwdOpen, setIsUpdateCwdOpen] = useState(false);
   const [isAutoRestarting, setIsAutoRestarting] = useState(false);
-  // `undefined` = snapshot not yet fetched for the current completion run.
-  // `null` = fetch returned no snapshot (agent state machine never recorded
-  //   a working transition, or the entry was pruned). Distinct from "no
-  //   changes" so we don't render the zero-change pill prematurely.
-  const [completionSnapshot, setCompletionSnapshot] = useState<SnapshotInfo | null | undefined>(
-    undefined
-  );
   const [completionBannerDismissed, setCompletionBannerDismissed] = useState(false);
   const autoRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoRestartAttemptRef = useRef(0);
@@ -741,54 +734,49 @@ function TerminalPaneComponent({
     terminalInstanceService.setAgentState(id, agentState ?? "idle");
   }, [id, agentState]);
 
-  // Pre-agent snapshot lookup drives the review banner + zero-change pill.
-  // We re-fetch on every completion transition; non-completed states reset
-  // both the snapshot result and the per-pane dismissed flag so a rerun of
-  // the agent re-arms the UI from scratch.
-  // The snapshot service keys entries by the worktree's normalized absolute
-  // path. Prefer the explicit `worktreeId` prop (which matches WorktreeCard's
-  // `worktree.id`) over `cwd` in case the user has cd'd elsewhere.
-  const snapshotKey = worktreeId ?? cwd;
+  // Per-pane dismiss state resets when the agent leaves the completed phase —
+  // a rerun should re-arm the banner from scratch.
   useEffect(() => {
     if (agentState !== "completed") {
-      setCompletionSnapshot(undefined);
       setCompletionBannerDismissed(false);
-      return;
     }
-    if (!snapshotKey) return;
-    let ignore = false;
-    window.electron.git
-      .snapshotGet(snapshotKey)
-      .then((info) => {
-        if (!ignore) setCompletionSnapshot(info);
-      })
-      .catch(() => {
-        // Snapshot lookup is best-effort — failure means no banner, no pill.
-        if (!ignore) setCompletionSnapshot(null);
-      });
-    return () => {
-      ignore = true;
-    };
-  }, [agentState, snapshotKey]);
+  }, [agentState]);
 
-  const completedWithChanges =
-    agentState === "completed" &&
-    completionSnapshot !== undefined &&
-    completionSnapshot !== null &&
-    completionSnapshot.hasChanges;
-  const completedWithNoChanges =
-    agentState === "completed" &&
-    completionSnapshot !== undefined &&
-    completionSnapshot !== null &&
-    !completionSnapshot.hasChanges;
+  // The current worktree's changed-file count drives the review strip and
+  // the zero-change pill. We prefer the explicit `worktreeId` prop (matches
+  // `worktree.id` in WorktreeCard) over `cwd` so a user-initiated `cd` away
+  // from the worktree root doesn't break the lookup.
+  const reviewWorktreeId = worktreeId ?? cwd;
+  const changedFileCount = useWorktreeStore((s) =>
+    reviewWorktreeId
+      ? (s.worktrees.get(reviewWorktreeId)?.worktreeChanges?.changedFileCount ?? 0)
+      : 0
+  );
+
+  const completedWithChanges = agentState === "completed" && changedFileCount > 0;
+  const completedWithNoChanges = agentState === "completed" && changedFileCount === 0;
+
+  // All "open Review Hub" entry points (banner button, menu, header) flow
+  // through this event so any open path auto-dismisses sibling banners for
+  // the same worktree. WorktreeCard listens for the same event to open the
+  // hub itself.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ worktreeId?: string }>).detail;
+      if (detail?.worktreeId === reviewWorktreeId) {
+        setCompletionBannerDismissed(true);
+      }
+    };
+    window.addEventListener("daintree:open-review-hub", handler);
+    return () => window.removeEventListener("daintree:open-review-hub", handler);
+  }, [reviewWorktreeId]);
 
   const handleOpenReviewHub = () => {
-    if (snapshotKey) {
+    if (reviewWorktreeId) {
       window.dispatchEvent(
-        new CustomEvent("daintree:open-review-hub", { detail: { worktreeId: snapshotKey } })
+        new CustomEvent("daintree:open-review-hub", { detail: { worktreeId: reviewWorktreeId } })
       );
     }
-    setCompletionBannerDismissed(true);
   };
 
   const isWorking = agentState === "working";
@@ -1042,6 +1030,7 @@ function TerminalPaneComponent({
 
             {completedWithChanges && !completionBannerDismissed && (
               <AgentCompletionBanner
+                fileCount={changedFileCount}
                 onReview={handleOpenReviewHub}
                 onDismiss={() => setCompletionBannerDismissed(true)}
               />

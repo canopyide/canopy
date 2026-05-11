@@ -2,12 +2,28 @@ import { FileEdit, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface AgentCompletionBannerProps {
+  /**
+   * Number of changed files in the worktree. Drives the artifact-first copy
+   * ("3 files changed, review when ready"). When omitted or zero, falls back
+   * to a generic phrasing so the banner stays sensible if the count isn't
+   * available yet.
+   */
+  fileCount?: number;
   onReview: () => void;
   onDismiss: () => void;
   className?: string;
 }
 
+function formatBannerCopy(fileCount: number | undefined): string {
+  if (fileCount == null || fileCount <= 0) {
+    return "Files changed, review when ready";
+  }
+  const noun = fileCount === 1 ? "file" : "files";
+  return `${fileCount} ${noun} changed, review when ready`;
+}
+
 export function AgentCompletionBanner({
+  fileCount,
   onReview,
   onDismiss,
   className,
@@ -24,9 +40,7 @@ export function AgentCompletionBanner({
     >
       <div className="flex items-center gap-2 min-w-0">
         <FileEdit className="w-4 h-4 shrink-0 text-daintree-text/60" aria-hidden="true" />
-        <span className="text-sm text-daintree-text truncate">
-          Files changed, review when ready
-        </span>
+        <span className="text-sm text-daintree-text truncate">{formatBannerCopy(fileCount)}</span>
       </div>
 
       <div className="flex items-center gap-1 shrink-0">
