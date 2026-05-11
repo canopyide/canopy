@@ -71,6 +71,24 @@ export function __clearStagingDiffStatCacheForTesting(): void {
 }
 
 /**
+ * Invalidate cached staging churn for a worktree. Called after explicit stage
+ * or unstage operations so the next status refresh reflects the new index
+ * state immediately, without waiting for the 5s TTL.
+ */
+export function invalidateStagingDiffStatCache(cwd: string): void {
+  // Cache keys are `${cwd}:${headOid}:${mode}` — collect matches then drop
+  // them. forEach skips expired entries, so this won't see those, which is
+  // fine: they'd be re-fetched on the next read anyway.
+  const toDrop: string[] = [];
+  STAGING_DIFF_STAT_CACHE.forEach((_value, key) => {
+    if (key.startsWith(`${cwd}:`)) toDrop.push(key);
+  });
+  for (const key of toDrop) {
+    STAGING_DIFF_STAT_CACHE.invalidate(key);
+  }
+}
+
+/**
  * Resolve per-file line stats for staging-view paths. Issues a single
  * `git diff --numstat` call per mode (staged vs unstaged), parses with the
  * shared `parseNumstat`, and caches the resulting map for ~5s keyed by cwd
@@ -94,25 +112,34 @@ export async function getPerFileDiffStats(
   const cached = STAGING_DIFF_STAT_CACHE.get(cacheKey);
   if (cached) return cached;
 
+  // For the unstaged side, compare working tree vs index (no HEAD ref) so
+  // partially-staged files don't get their churn double-counted: lines that
+  // are already staged should appear only in the staged row, not also under
+  // unstaged. The staged side keeps `--cached` (index vs HEAD).
   const args =
     mode === "staged"
       ? ["--no-ext-diff", "--no-renames", "--numstat", "--cached", "--", ...paths]
-      : ["--no-ext-diff", "--no-renames", "--numstat", "HEAD", "--", ...paths];
+      : ["--no-ext-diff", "--no-renames", "--numstat", "--", ...paths];
 
   try {
     const toplevel = (await git.revparse(["--show-toplevel"])).trim();
     if (!toplevel) return new Map();
-    const gitRoot = realpathSync(toplevel);
+    // Normalize to forward slashes on both sides so the absolute-to-relative
+    // re-keying works on Windows, where `realpathSync` returns backslashes
+    // but `status.files[].path` uses forward slashes.
+    const gitRoot = realpathSync(toplevel).replace(/\\/g, "/");
     const diffOutput = await git.diff(args);
     const byAbsolutePath = parseNumstat(diffOutput, gitRoot);
 
     // Re-key by repo-relative path (matching status.files[].path). Callers
     // don't carry absolute paths through the staging handler.
     const byRelative = new Map<string, DiffStat>();
+    const rootPrefix = gitRoot.endsWith("/") ? gitRoot : `${gitRoot}/`;
     for (const [absolutePath, stats] of byAbsolutePath) {
-      const relative = absolutePath.startsWith(gitRoot + "/")
-        ? absolutePath.slice(gitRoot.length + 1)
-        : absolutePath;
+      const normalized = absolutePath.replace(/\\/g, "/");
+      const relative = normalized.startsWith(rootPrefix)
+        ? normalized.slice(rootPrefix.length)
+        : normalized;
       byRelative.set(relative, stats);
     }
 

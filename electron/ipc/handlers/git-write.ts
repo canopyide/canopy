@@ -16,7 +16,7 @@ import type {
 } from "../../../shared/types/git.js";
 import { validateCwd, createHardenedGit, createAuthenticatedGit } from "../../utils/hardenedGit.js";
 import { readRebaseSequence } from "../../utils/parseRebaseTodo.js";
-import { getPerFileDiffStats } from "../../utils/git.js";
+import { getPerFileDiffStats, invalidateStagingDiffStatCache } from "../../utils/git.js";
 import { store } from "../../store.js";
 import { getSoundService } from "../../services/getSoundService.js";
 import type * as SoundServiceModule from "../../services/SoundService.js";
@@ -265,6 +265,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
 
     const git = createHardenedGit(payload.cwd);
     await git.add(["--", payload.filePath]);
+    invalidateStagingDiffStatCache(payload.cwd);
   };
   handlers.push(typedHandle(CHANNELS.GIT_STAGE_FILE, handleStageFile));
 
@@ -289,6 +290,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     } else {
       await git.raw(["rm", "--cached", "--", payload.filePath]);
     }
+    invalidateStagingDiffStatCache(payload.cwd);
   };
   handlers.push(typedHandle(CHANNELS.GIT_UNSTAGE_FILE, handleUnstageFile));
 
@@ -298,6 +300,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
 
     const git = createHardenedGit(cwd);
     await git.add("-A");
+    invalidateStagingDiffStatCache(cwd);
   };
   handlers.push(typedHandle(CHANNELS.GIT_STAGE_ALL, handleStageAll));
 
@@ -319,6 +322,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     } else {
       await git.raw(["rm", "--cached", "-r", "."]);
     }
+    invalidateStagingDiffStatCache(cwd);
   };
   handlers.push(typedHandle(CHANNELS.GIT_UNSTAGE_ALL, handleUnstageAll));
 
