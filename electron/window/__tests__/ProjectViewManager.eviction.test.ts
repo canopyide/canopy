@@ -1231,6 +1231,7 @@ describe("ProjectViewManager — low-memory eviction", () => {
     win = createMockWindow();
     manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
     });
   });
