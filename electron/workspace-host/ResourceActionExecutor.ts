@@ -137,6 +137,17 @@ export class ResourceActionExecutor {
         console.log(
           `[WorktreeLifecycle] Provision no-op for worktree ${worktreeId}: already ${currentStatus}`
         );
+        // Re-fetch monitor — it may have been removed during loadConfig await.
+        // Without this, emitUpdate broadcasts a snapshot that the renderer would
+        // resurrect via its monotonic version counter (worktree-update arriving
+        // after worktree-removed re-inserts the entry).
+        const liveMonitor = this.ctx.getMonitor(worktreeId);
+        if (liveMonitor) {
+          // applyResourceConfigToMonitor already ran above and may have updated
+          // resourceConnectCommand (e.g. when the config file changed on disk
+          // since the last provision). Emit so the renderer store sees it.
+          this.ctx.emitUpdate(liveMonitor);
+        }
         this.ctx.sendEvent({
           type: "resource-action-result",
           requestId,

@@ -134,7 +134,7 @@ test.describe.serial("Core: Terminal Context Menu", () => {
       const { window } = ctx;
 
       await selectAllTerminalText(panel);
-      await openTerminalContextMenu(panel);
+      await openTerminalContextMenu(panel, { preserveSelection: true });
 
       const copyItem = window.getByRole("menuitem", { name: "Copy" });
       await expect(copyItem).toBeVisible({ timeout: T_SHORT });

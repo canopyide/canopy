@@ -1017,6 +1017,53 @@ describe("WorkspaceService.runResourceAction", () => {
       expect(runCommandsSpy).toHaveBeenCalledTimes(0);
     });
 
+    it("no-op provision broadcasts updated resourceConnectCommand to renderer", async () => {
+      const monitor = createAndRegisterMonitor({ branch: "feature/remote" });
+      await setupConfig({
+        resource: {
+          provision: ["terraform apply"],
+          connect: "ssh root@{{branch}}.dev.example.com",
+        },
+      });
+      monitor.setResourceStatus({ lastStatus: "ready", lastCheckedAt: Date.now() });
+
+      await service.runResourceAction("req-prov-noop-emit", "/test/worktree", "provision");
+
+      expect(monitor.resourceConnectCommand).toBe("ssh root@'feature/remote'.dev.example.com");
+      expect(mockSendEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "worktree-update",
+          worktree: expect.objectContaining({
+            resourceConnectCommand: "ssh root@'feature/remote'.dev.example.com",
+          }),
+        })
+      );
+    });
+
+    it("no-op provision skips worktree-update when monitor removed during config load", async () => {
+      const monitor = createAndRegisterMonitor();
+      monitor.setResourceStatus({ lastStatus: "ready", lastCheckedAt: Date.now() });
+
+      // Mock loadConfig to remove the monitor mid-await, simulating a concurrent
+      // worktree removal (e.g. user deletes the worktree while provision is in flight).
+      const lifecycleService = service["lifecycleService"];
+      vi.spyOn(lifecycleService, "loadConfig").mockImplementation(async () => {
+        service["monitors"].delete(monitor.id);
+        return { resource: { provision: ["terraform apply"] } } as never;
+      });
+
+      await service.runResourceAction("req-prov-removed", "/test/worktree", "provision");
+
+      // resource-action-result still sent (it carries no monitor data — no resurrection risk),
+      // but worktree-update must NOT fire for a removed monitor.
+      expect(mockSendEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "resource-action-result", success: true })
+      );
+      expect(mockSendEvent).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: "worktree-update" })
+      );
+    });
+
     it("provision routes to resume when status is `paused`", async () => {
       const monitor = createAndRegisterMonitor();
       await setupConfig({
