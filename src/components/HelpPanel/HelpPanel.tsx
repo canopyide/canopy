@@ -99,15 +99,12 @@ export function HelpPanel({
   const [visibilityEpoch, setVisibilityEpoch] = useState(0);
   const activeWorktreeId = useWorktreeSelectionStore((s) => s.activeWorktreeId);
 
-  // useRef null-guard for the controller instance — `useMemo` does not
-  // guarantee a single instantiation in React 19, so we use the canonical
-  // mutable-ref pattern. The constructor is pure; side effects live in
-  // `start()` which fires from the lifecycle effect below.
-  const controllerRef = useRef<HelpSessionController | null>(null);
-  if (controllerRef.current === null) {
-    controllerRef.current = new HelpSessionController();
-  }
-  const controller = controllerRef.current;
+  // useState lazy initializer guarantees a single instantiation across
+  // renders and StrictMode double-mount, and unlike a ref it doesn't trip
+  // React Compiler's "no ref access during render" rule. The constructor is
+  // pure; side effects live in `start()` which fires from the lifecycle
+  // effect below.
+  const [controller] = useState(() => new HelpSessionController());
 
   const session = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
 

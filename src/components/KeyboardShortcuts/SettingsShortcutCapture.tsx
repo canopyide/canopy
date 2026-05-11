@@ -57,12 +57,12 @@ export function SettingsShortcutCapture({
   }, [capturedCombo, validateCombo]);
 
   const conflicts = useMemo(() => {
-    if (!capturedCombo) return [];
-    return keybindingService.findConflicts(capturedCombo, excludeActionId, scope);
     // conflictRefreshKey forces the memo to re-evaluate after a successful
     // Unbind so the dismissed conflict row disappears immediately. Without it,
     // the memoized result persists against the unchanged capturedCombo.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void conflictRefreshKey;
+    if (!capturedCombo) return [];
+    return keybindingService.findConflicts(capturedCombo, excludeActionId, scope);
   }, [capturedCombo, excludeActionId, scope, conflictRefreshKey]);
 
   const clearChordTimeout = useCallback(() => {
