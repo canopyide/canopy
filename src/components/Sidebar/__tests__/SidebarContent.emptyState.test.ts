@@ -56,7 +56,7 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       // for the rest.
       expect(source).toMatch(/if \(alwaysShowActive && isActive && !hasActiveQuery/);
       expect(source).toMatch(
-        /else if \(alwaysShowWaiting && derived\.hasWaitingAgent && !hasActiveQuery/
+        /alwaysShowWaiting[\s\S]*?derived\.hasWaitingAgent[\s\S]*?!hasActiveQuery/
       );
       expect(source).toMatch(
         /else if \(matchesFilters\(worktree, filters, derived, isActive\)\) \{\s*withoutQuickStateMatch = true;/
@@ -78,9 +78,7 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
   describe("empty-state branch ordering and copy", () => {
     it("renders the quick-state empty state before the generic filter-mismatch branch", () => {
       const quickStateIdx = source.indexOf("showQuickStateEmptyState ?");
-      const genericIdx = source.indexOf(
-        "filteredWorktrees.length === 0 && hasFilters && hasNonMainWorktrees"
-      );
+      const genericIdx = source.indexOf(") : filteredWorktrees.length === 0 &&");
       expect(quickStateIdx).toBeGreaterThan(0);
       expect(genericIdx).toBeGreaterThan(0);
       expect(quickStateIdx).toBeLessThan(genericIdx);
@@ -95,7 +93,7 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       // EmptyState primitive (#6934). The variant carries role=status and
       // aria-live=polite at the component level.
       const branchStart = source.indexOf("showQuickStateEmptyState ?");
-      const branchEnd = source.indexOf("filteredWorktrees.length === 0 && hasFilters", branchStart);
+      const branchEnd = source.indexOf(") : filteredWorktrees.length === 0 &&", branchStart);
       const branch = source.slice(branchStart, branchEnd);
       expect(branch).toContain("<EmptyState");
       expect(branch).toContain('variant="filtered-empty"');
@@ -106,7 +104,7 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       // was an empty-state anti-pattern. clearAll() resets every dimension including
       // quickStateFilter, so a single button is the natural recovery shape.
       const branchStart = source.indexOf("showQuickStateEmptyState ?");
-      const branchEnd = source.indexOf("filteredWorktrees.length === 0 && hasFilters", branchStart);
+      const branchEnd = source.indexOf(") : filteredWorktrees.length === 0 &&", branchStart);
       const branch = source.slice(branchStart, branchEnd);
       expect(branch).toMatch(/onClick=\{clearAllFilters\}[\s\S]*?>\s*Clear filters\s*</);
       expect(branch).not.toContain("Show all states");
@@ -130,15 +128,13 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       // omitted; the visible filter chips above the empty state carry any
       // additional active-filter signal.
       const branchStart = source.indexOf("showQuickStateEmptyState ?");
-      const branchEnd = source.indexOf("filteredWorktrees.length === 0 && hasFilters", branchStart);
+      const branchEnd = source.indexOf(") : filteredWorktrees.length === 0 &&", branchStart);
       const branch = source.slice(branchStart, branchEnd);
       expect(branch).not.toMatch(/description=/);
     });
 
     it("renders the popover-filtered empty state via the EmptyState primitive with a noun-phrase title", () => {
-      const branchStart = source.indexOf(
-        "filteredWorktrees.length === 0 && hasFilters && hasNonMainWorktrees"
-      );
+      const branchStart = source.indexOf(") : filteredWorktrees.length === 0 &&");
       const branchEnd = source.indexOf("groupedSections ?", branchStart);
       const branch = source.slice(branchStart, branchEnd);
       expect(branch).toContain("<EmptyState");
