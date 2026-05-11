@@ -288,15 +288,40 @@ test.describe.serial("Core: Fleet terminal broadcast", () => {
     });
 
     await test.step("Disarm and verify broadcast indicator disappears", async () => {
-      for (const agent of agents) {
+      // Disarm the first panel and verify its indicator vanishes but the
+      // other two still show theirs — guards against store bugs that clear
+      // the entire armedIds set on a single disarm.
+      const disarm0 = await dispatchAction(
+        window,
+        "terminal.disarm",
+        { terminalId: agents[0]!.id },
+        { source: "user" }
+      );
+      expect(disarm0.ok, disarm0.error?.message).toBe(true);
+      await expect(agents[0]!.panel.getByTestId("panel-armed-broadcast-indicator")).not.toBeVisible(
+        {
+          timeout: T_MEDIUM,
+        }
+      );
+      await expect(agents[1]!.panel.getByTestId("panel-armed-broadcast-indicator")).toBeVisible({
+        timeout: T_MEDIUM,
+      });
+      await expect(agents[2]!.panel.getByTestId("panel-armed-broadcast-indicator")).toBeVisible({
+        timeout: T_MEDIUM,
+      });
+
+      // Disarm the remaining two.
+      for (let i = 1; i < agents.length; i++) {
         const disarm = await dispatchAction(
           window,
           "terminal.disarm",
-          { terminalId: agent.id },
+          { terminalId: agents[i]!.id },
           { source: "user" }
         );
         expect(disarm.ok, disarm.error?.message).toBe(true);
-        await expect(agent.panel.getByTestId("panel-armed-broadcast-indicator")).not.toBeVisible({
+        await expect(
+          agents[i]!.panel.getByTestId("panel-armed-broadcast-indicator")
+        ).not.toBeVisible({
           timeout: T_MEDIUM,
         });
       }
