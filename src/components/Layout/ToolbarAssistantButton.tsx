@@ -112,9 +112,17 @@ export const ToolbarAssistantButton = memo(function ToolbarAssistantButton({
 
   const handleClick = useCallback(() => {
     suppressSidebarResizes();
+    // When the gesture hides a logically-open panel the button reads as
+    // "Open"; clearing the gesture alone reveals it. Calling toggle() on
+    // top would flip isOpen to false and re-hide what the user just asked
+    // to reveal. Only toggle when clearing the gesture wouldn't already
+    // restore visibility.
+    const wasGestureHidden = useFocusStore.getState().gestureAssistantHidden;
     useFocusStore.getState().clearAssistantGesture();
-    toggle();
-  }, [toggle]);
+    if (!wasGestureHidden || !isOpen) {
+      toggle();
+    }
+  }, [toggle, isOpen]);
 
   const pip = describePip(mcp);
   const agentPip = describeAgentPip(agentState);

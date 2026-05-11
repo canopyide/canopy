@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, act } from "@testing-library/react";
+import { render, act, fireEvent } from "@testing-library/react";
 import { ToolbarAssistantButton } from "../ToolbarAssistantButton";
 import { useHelpPanelStore } from "@/store/helpPanelStore";
 import { usePanelStore } from "@/store";
@@ -59,13 +59,20 @@ vi.mock("@/hooks/useMcpReadiness", () => ({
 }));
 
 let mockGestureAssistantHidden = false;
-const clearAssistantGestureMock = vi.fn();
+const clearAssistantGestureMock = vi.fn(() => {
+  mockGestureAssistantHidden = false;
+});
 
 vi.mock("@/store/focusStore", () => ({
   useFocusStore: Object.assign(
     (selector: (s: { gestureAssistantHidden: boolean }) => unknown) =>
       selector({ gestureAssistantHidden: mockGestureAssistantHidden }),
-    { getState: () => ({ clearAssistantGesture: clearAssistantGestureMock }) }
+    {
+      getState: () => ({
+        gestureAssistantHidden: mockGestureAssistantHidden,
+        clearAssistantGesture: clearAssistantGestureMock,
+      }),
+    }
   ),
 }));
 
@@ -357,6 +364,42 @@ describe("ToolbarAssistantButton — agent state pip", () => {
       const pip2 = queryByTestId("assistant-working-pip");
       expect(pip2).not.toBeNull();
       expect(pip2!.className).toMatch(/bg-state-waiting/);
+    });
+
+    it("click reveals the panel without toggling isOpen when gesture-hidden", () => {
+      // Button labelled "Open" must actually open. Clearing the gesture
+      // already restores visibility; calling toggle() on top would flip
+      // isOpen to false and re-hide what the user just asked to reveal.
+      mockGestureAssistantHidden = true;
+      setHelpPanel({ isOpen: true, terminalId: "t-gh-click-1" });
+
+      const { container } = render(<ToolbarAssistantButton />);
+      fireEvent.click(container.querySelector("button")!);
+
+      expect(clearAssistantGestureMock).toHaveBeenCalledTimes(1);
+      expect(useHelpPanelStore.getState().isOpen).toBe(true);
+      expect(mockGestureAssistantHidden).toBe(false);
+    });
+
+    it("click toggles isOpen when the panel is visible (no gesture)", () => {
+      mockGestureAssistantHidden = false;
+      setHelpPanel({ isOpen: true, terminalId: "t-gh-click-2" });
+
+      const { container } = render(<ToolbarAssistantButton />);
+      fireEvent.click(container.querySelector("button")!);
+
+      expect(clearAssistantGestureMock).toHaveBeenCalledTimes(1);
+      expect(useHelpPanelStore.getState().isOpen).toBe(false);
+    });
+
+    it("click opens the panel when isOpen=false regardless of gesture flag", () => {
+      mockGestureAssistantHidden = false;
+      setHelpPanel({ isOpen: false, terminalId: null });
+
+      const { container } = render(<ToolbarAssistantButton />);
+      fireEvent.click(container.querySelector("button")!);
+
+      expect(useHelpPanelStore.getState().isOpen).toBe(true);
     });
   });
 
