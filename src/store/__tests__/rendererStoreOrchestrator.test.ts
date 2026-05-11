@@ -878,9 +878,8 @@ describe("rendererStoreOrchestrator", () => {
 
   describe("storeAccessors wiring", () => {
     it("populates accessor slots so projectStore.switchProject can read panel + worktree state", async () => {
-      const { getPanelStoreSnapshot, getWorktreeSelectionSnapshot } = await import(
-        "../storeAccessors"
-      );
+      const { getPanelStoreSnapshot, getWorktreeSelectionSnapshot } =
+        await import("../storeAccessors");
 
       usePanelStore.setState({
         panelsById: {
