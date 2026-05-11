@@ -501,7 +501,7 @@ describe("WorkspaceService external worktree removal", () => {
           // Remove the active monitor (simulating syncMonitors pruning it)
           const monitor = service["monitors"].get("/test/active");
           if (monitor) {
-            service["cleanupResourceActionState"]("/test/active");
+            service.resourceActionExecutor["cleanupResourceActionState"]("/test/active");
             monitor.stop();
             service["monitors"].delete("/test/active");
           }
