@@ -279,11 +279,14 @@ describe("initGlobalServices task ordering", () => {
     expect(initSpy).not.toHaveBeenCalled();
 
     const sleepIndex = registeredTaskNames.indexOf("system-sleep-service");
+    const dbMaintIndex = registeredTaskNames.indexOf("database-maintenance");
     const snapshotIndex = registeredTaskNames.indexOf("pre-agent-snapshot-service");
 
     expect(sleepIndex).toBeGreaterThanOrEqual(0);
+    expect(dbMaintIndex).toBeGreaterThanOrEqual(0);
     expect(snapshotIndex).toBeGreaterThanOrEqual(0);
     expect(snapshotIndex).toBeGreaterThan(sleepIndex);
+    expect(snapshotIndex).toBeGreaterThan(dbMaintIndex);
   });
 
   it("registers ccr-config and plugin-service as deferred tasks", async () => {
