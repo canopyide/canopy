@@ -244,8 +244,8 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
     asChild ? <>{children}</> : <button type="button">{children}</button>,
   DropdownMenuContent: ({
     children,
-    align,
-    className,
+    align: _align,
+    className: _className,
   }: {
     children: ReactNode;
     align?: string;
@@ -254,13 +254,13 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
   DropdownMenuRadioGroup: ({
     children,
     value,
-    onValueChange,
+    onValueChange: _onValueChange,
   }: {
     children: ReactNode;
     value: string;
     onValueChange: (v: string) => void;
   }) => <div data-value={value}>{children}</div>,
-  DropdownMenuRadioItem: ({ children, value }: { children: ReactNode; value: string }) => (
+  DropdownMenuRadioItem: ({ children, value: _value }: { children: ReactNode; value: string }) => (
     <div role="menuitemradio">{children}</div>
   ),
   DropdownMenuCheckboxItem: ({
@@ -2217,7 +2217,7 @@ describe("ReviewHub", () => {
 
       const filters = screen.getAllByPlaceholderText("Filter…");
       // Type in the Changes filter to find only legacy.ts
-      fireEvent.change(filters[1], { target: { value: "legacy" } });
+      fireEvent.change(filters[1]!, { target: { value: "legacy" } });
 
       await waitFor(() => {
         expect(screen.queryByText("app.ts")).toBeNull();
@@ -2234,7 +2234,7 @@ describe("ReviewHub", () => {
       await waitFor(() => screen.getByText("index.ts"));
 
       const filters = screen.getAllByPlaceholderText("Filter…");
-      fireEvent.change(filters[1], { target: { value: "legacy" } });
+      fireEvent.change(filters[1]!, { target: { value: "legacy" } });
 
       await waitFor(() => screen.getByText("Stage shown (1)"));
     });
@@ -2247,7 +2247,7 @@ describe("ReviewHub", () => {
       await waitFor(() => screen.getByText("index.ts"));
 
       const filters = screen.getAllByPlaceholderText("Filter…");
-      fireEvent.change(filters[0], { target: { value: "zzz_nonexistent" } });
+      fireEvent.change(filters[0]!, { target: { value: "zzz_nonexistent" } });
 
       await waitFor(() => screen.getByTestId("empty-state-filtered-empty"));
       screen.getByText('No staged files matching "zzz_nonexistent"');
@@ -2261,7 +2261,7 @@ describe("ReviewHub", () => {
       await waitFor(() => screen.getByText("index.ts"));
 
       const filters = screen.getAllByPlaceholderText("Filter…");
-      fireEvent.change(filters[1], { target: { value: "zzz" } });
+      fireEvent.change(filters[1]!, { target: { value: "zzz" } });
 
       await waitFor(() => screen.getByText("Clear filter"));
     });
@@ -2281,7 +2281,7 @@ describe("ReviewHub", () => {
       // finding the checkbox item and clicking it
       const checkboxes = screen.getAllByRole("menuitemcheckbox");
       // First checkbox is for Staged section "Show generated files"
-      fireEvent.click(checkboxes[0]);
+      fireEvent.click(checkboxes[0]!);
 
       await waitFor(() => {
         expect(screen.queryByText("package-lock.json")).toBeNull();
@@ -2311,7 +2311,7 @@ describe("ReviewHub", () => {
       await waitFor(() => screen.getByText("index.ts"));
 
       const filters = screen.getAllByPlaceholderText("Filter…");
-      fireEvent.change(filters[1], { target: { value: "legacy" } });
+      fireEvent.change(filters[1]!, { target: { value: "legacy" } });
 
       await waitFor(() => screen.getByText("Stage shown (1)"));
 
@@ -2377,11 +2377,11 @@ describe("ReviewHub", () => {
 
       const filters = screen.getAllByPlaceholderText("Filter…");
       // Just typing should not crash or cause focus loss — the debounce ref handles it
-      fireEvent.change(filters[0], { target: { value: "src" } });
+      fireEvent.change(filters[0]!, { target: { value: "src" } });
 
       // The input value is set via ref, not state, so it shouldn't cause thrashing
       // Verify the input has the value
-      expect((filters[0] as HTMLInputElement).value).toBe("src");
+      expect((filters[0]! as HTMLInputElement).value).toBe("src");
     });
 
     it("shows No staged files when section is empty but filter is not active", async () => {
@@ -2448,7 +2448,7 @@ describe("ReviewHub", () => {
 
       // Toggle showGenerated off in Staged section
       const checkboxes = screen.getAllByRole("menuitemcheckbox");
-      fireEvent.click(checkboxes[0]);
+      fireEvent.click(checkboxes[0]!);
 
       await waitFor(() => {
         expect(screen.queryByText("package-lock.json")).toBeNull();
