@@ -124,8 +124,14 @@ export interface Worktree {
   /** Pull request title */
   prTitle?: string;
 
+  /** Timestamp when the PR state was last updated by the workspace-host */
+  prLastUpdatedAt?: number;
+
   /** GitHub issue title */
   issueTitle?: string;
+
+  /** Timestamp when the issue title was last updated by the workspace-host */
+  issueLastUpdatedAt?: number;
 
   /** Worktree changes snapshot */
   worktreeChanges?: WorktreeChanges | null;

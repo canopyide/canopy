@@ -24,6 +24,8 @@ export interface PRIntegrationCallbacks {
       prTitle?: string;
       issueNumber?: number;
       issueTitle?: string;
+      prLastUpdatedAt?: number;
+      issueLastUpdatedAt?: number;
     }
   ): void;
   onPRCleared(worktreeId: string): void;
@@ -32,6 +34,7 @@ export interface PRIntegrationCallbacks {
     data: {
       issueNumber: number;
       issueTitle: string;
+      issueLastUpdatedAt?: number;
     }
   ): void;
   onIssueNotFound(worktreeId: string, issueNumber: number): void;
@@ -78,6 +81,8 @@ export class PRIntegrationService {
           prTitle: data.prTitle,
           issueNumber: data.issueNumber,
           issueTitle: data.issueTitle,
+          prLastUpdatedAt: Date.now(),
+          issueLastUpdatedAt: data.issueTitle !== undefined ? Date.now() : undefined,
         });
       })
     );
@@ -87,6 +92,7 @@ export class PRIntegrationService {
         this.callbacks.onIssueDetected(data.worktreeId, {
           issueNumber: data.issueNumber,
           issueTitle: data.issueTitle,
+          issueLastUpdatedAt: Date.now(),
         });
       })
     );

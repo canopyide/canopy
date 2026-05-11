@@ -129,6 +129,8 @@ export class WorkspaceService {
           prState: data.prState,
           prTitle: data.prTitle,
           issueTitle: data.issueTitle,
+          prLastUpdatedAt: data.prLastUpdatedAt,
+          issueLastUpdatedAt: data.issueLastUpdatedAt,
         });
         if (monitor.hasInitialStatus) {
           this.emitUpdate(monitor);
@@ -143,6 +145,8 @@ export class WorkspaceService {
           prTitle: data.prTitle,
           issueNumber: data.issueNumber,
           issueTitle: data.issueTitle,
+          prLastUpdatedAt: data.prLastUpdatedAt,
+          issueLastUpdatedAt: data.issueLastUpdatedAt,
         });
       },
       onPRCleared: (worktreeId) => {
@@ -164,6 +168,9 @@ export class WorkspaceService {
         if (!monitor) return;
 
         monitor.setIssueTitle(data.issueTitle);
+        if (data.issueLastUpdatedAt !== undefined) {
+          monitor.setIssueLastUpdatedAt(data.issueLastUpdatedAt);
+        }
         if (monitor.hasInitialStatus) {
           this.emitUpdate(monitor);
         }
@@ -173,6 +180,7 @@ export class WorkspaceService {
           worktreeId,
           issueNumber: data.issueNumber,
           issueTitle: data.issueTitle,
+          issueLastUpdatedAt: data.issueLastUpdatedAt,
         });
       },
       onIssueNotFound: (worktreeId, issueNumber) => {

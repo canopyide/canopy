@@ -104,6 +104,8 @@ export class WorktreeMonitor {
   private prState: "open" | "closed" | "merged" | undefined;
   private prTitle: string | undefined;
   private issueTitle: string | undefined;
+  private prLastUpdatedAt: number | undefined;
+  private issueLastUpdatedAt: number | undefined;
 
   // Polling state
   private pollingTimer: NodeJS.Timeout | null = null;
@@ -500,6 +502,10 @@ export class WorktreeMonitor {
     this.issueTitle = title;
   }
 
+  setIssueLastUpdatedAt(ms: number | undefined): void {
+    this.issueLastUpdatedAt = ms;
+  }
+
   setPRTitle(title: string | undefined): void {
     this.prTitle = title;
   }
@@ -510,12 +516,16 @@ export class WorktreeMonitor {
     prState?: "open" | "closed" | "merged";
     prTitle?: string;
     issueTitle?: string;
+    prLastUpdatedAt?: number;
+    issueLastUpdatedAt?: number;
   }): void {
     this.prNumber = info.prNumber;
     this.prUrl = info.prUrl;
     this.prState = info.prState;
     if (info.prTitle !== undefined) this.prTitle = info.prTitle;
     if (info.issueTitle !== undefined) this.issueTitle = info.issueTitle;
+    if (info.prLastUpdatedAt !== undefined) this.prLastUpdatedAt = info.prLastUpdatedAt;
+    if (info.issueLastUpdatedAt !== undefined) this.issueLastUpdatedAt = info.issueLastUpdatedAt;
   }
 
   clearPRInfo(): void {
@@ -826,6 +836,8 @@ export class WorktreeMonitor {
       prState: this.prState,
       prTitle: this.prTitle,
       issueTitle: this.issueTitle,
+      prLastUpdatedAt: this.prLastUpdatedAt,
+      issueLastUpdatedAt: this.issueLastUpdatedAt,
       worktreeChanges: this.worktreeChanges,
       worktreeId: this.id,
       timestamp: Date.now(),

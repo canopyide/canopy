@@ -1,9 +1,11 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { CircleDot } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import { useIssueTooltip } from "@/hooks/useGitHubTooltip";
 import { useGitHubBadgeTooltip } from "./hooks/useGitHubBadgeTooltip";
+import { useGitHubBadgeFreshness } from "./hooks/useGitHubBadgeFreshness";
+import { freshnessOpacityClass, freshnessSuffix } from "@/components/Layout/FreshnessUtils";
 import { IssueTooltipContent, TooltipLoading, TokenMissingTooltip } from "./GitHubTooltipContent";
 
 interface IssueBadgeProps {
@@ -14,6 +16,7 @@ interface IssueBadgeProps {
   isHeadline?: boolean;
   isActive?: boolean;
   underlineOnHover?: boolean;
+  rowLastUpdatedAt?: number;
 }
 
 export const IssueBadge = memo(function IssueBadge({
@@ -24,6 +27,7 @@ export const IssueBadge = memo(function IssueBadge({
   isHeadline,
   isActive,
   underlineOnHover,
+  rowLastUpdatedAt,
 }: IssueBadgeProps) {
   const { data, loading, error, missingToken, fetchTooltip, reset } = useIssueTooltip(
     worktreePath,
@@ -38,8 +42,17 @@ export const IssueBadge = memo(function IssueBadge({
     onOpen,
   });
 
+  const { freshnessLevel, cacheLastUpdatedAt, now } = useGitHubBadgeFreshness(
+    "issue",
+    rowLastUpdatedAt
+  );
+
+  const freshnessSuffixStr = useMemo(
+    () => freshnessSuffix(freshnessLevel, cacheLastUpdatedAt, now),
+    [freshnessLevel, cacheLastUpdatedAt, now]
+  );
+
   return (
-    // 300ms matches GitHub's hovercard entry latency — keeps perceived delay consistent with github.com
     <Tooltip open={isOpen} onOpenChange={handleOpenChange} delayDuration={300}>
       <TooltipTrigger asChild>
         <button
@@ -48,6 +61,7 @@ export const IssueBadge = memo(function IssueBadge({
           data-no-dnd
           className={cn(
             "flex items-center gap-1.5 text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent min-w-0",
+            freshnessOpacityClass(freshnessLevel),
             isHeadline ? "text-[13px]" : "text-xs",
             missingToken && "opacity-60"
           )}
@@ -90,6 +104,9 @@ export const IssueBadge = memo(function IssueBadge({
           <span className="text-xs text-text-secondary">Failed to load issue details</span>
         ) : (
           <span className="text-xs text-text-secondary">Issue #{issueNumber}</span>
+        )}
+        {freshnessSuffixStr && (
+          <span className="block text-[11px] text-text-muted mt-1">{freshnessSuffixStr}</span>
         )}
       </TooltipContent>
     </Tooltip>

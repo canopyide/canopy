@@ -31,6 +31,8 @@ interface PRDetectedEvent {
   prTitle?: string;
   issueNumber?: number;
   issueTitle?: string;
+  prLastUpdatedAt?: number;
+  issueLastUpdatedAt?: number;
 }
 
 interface PRClearedEvent {
@@ -43,6 +45,7 @@ interface IssueDetectedEvent {
   worktreeId: string;
   issueNumber: number;
   issueTitle: string;
+  issueLastUpdatedAt?: number;
 }
 
 interface IssueNotFoundEvent {
@@ -203,6 +206,8 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
             prTitle: event.prTitle ?? existing.prTitle,
             issueNumber: event.issueNumber ?? existing.issueNumber,
             issueTitle: event.issueTitle ?? existing.issueTitle,
+            prLastUpdatedAt: event.prLastUpdatedAt ?? existing.prLastUpdatedAt,
+            issueLastUpdatedAt: event.issueLastUpdatedAt ?? existing.issueLastUpdatedAt,
           },
           store.getState().nextVersion()
         );
@@ -239,6 +244,7 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
             ...existing,
             issueNumber: event.issueNumber,
             issueTitle: event.issueTitle,
+            issueLastUpdatedAt: event.issueLastUpdatedAt ?? existing.issueLastUpdatedAt,
           },
           store.getState().nextVersion()
         );
