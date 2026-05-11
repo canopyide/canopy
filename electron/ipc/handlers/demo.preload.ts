@@ -37,6 +37,15 @@ export type DemoPreloadBindings = {
 
 type Invoker = (channel: string, ...args: unknown[]) => Promise<unknown>;
 
+/**
+ * NOT used in production preload.cts — exported for symmetry with the other
+ * namespace builders and exercised by `leafPreloadNamespaces.test.ts`.
+ *
+ * The renderer-facing `window.electron.demo` API takes positional args
+ * (e.g. `moveTo(x, y, durationMs)`) while channels carry a single payload
+ * object. The translation layer stays inline in `preload.cts` so the user-
+ * facing shape matches the declared `ElectronAPI.demo` signature.
+ */
 export function buildDemoPreloadBindings(invoke: Invoker): DemoPreloadBindings {
   const out: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
   for (const method of Object.keys(DEMO_METHOD_CHANNELS) as Array<keyof Methods>) {
