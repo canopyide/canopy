@@ -306,6 +306,7 @@ export const CHANNELS = {
   GIT_PULL_REBASE: "git:pull-rebase",
   GIT_FORCE_PUSH_WITH_LEASE: "git:force-push-with-lease",
   GIT_LIST_REMOTE_COMMITS: "git:list-remote-commits",
+  GIT_PUSH_PROGRESS: "git:push-progress",
   GIT_GET_STAGING_STATUS: "git:get-staging-status",
   GIT_COMPARE_WORKTREES: "git:compare-worktrees",
   GIT_GET_USERNAME: "git:get-username",

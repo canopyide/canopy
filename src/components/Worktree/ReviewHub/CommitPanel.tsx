@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from "react";
+import type { PushProgressEvent } from "@shared/types/ipc/gitPush";
 import { cn } from "@/lib/utils";
 import { GitCommit, ArrowUpFromLine, Check, CircleX } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
@@ -18,6 +19,9 @@ interface CommitPanelProps {
   onCommit: (message: string) => Promise<void>;
   onCommitAndPush: (message: string) => Promise<void>;
   onFocusBlocker?: (blocker: "conflicts" | "staged-files") => void;
+  isPushing: boolean;
+  pushProgress: Map<string, PushProgressEvent>;
+  pushTargetBranch: string | null;
 }
 
 export function CommitPanel({
@@ -30,9 +34,11 @@ export function CommitPanel({
   onCommit,
   onCommitAndPush,
   onFocusBlocker,
+  isPushing,
+  pushProgress,
+  pushTargetBranch,
 }: CommitPanelProps) {
   const [isCommitting, setIsCommitting] = useState(false);
-  const [isPushing, setIsPushing] = useState(false);
 
   const actionInFlightRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -96,14 +102,12 @@ export function CommitPanel({
     if (!canCommit || isBusy) return;
     if (actionInFlightRef.current) return;
     actionInFlightRef.current = true;
-    setIsPushing(true);
     try {
       await onCommitAndPush(commitMessage);
       onCommitMessageChange("");
     } catch {
       // Error is handled by the parent via setActionError
     } finally {
-      setIsPushing(false);
       actionInFlightRef.current = false;
     }
   }, [canCommit, isBusy, commitMessage, onCommitAndPush, onCommitMessageChange]);
@@ -119,6 +123,9 @@ export function CommitPanel({
       void handleCommit();
     }
   }, [isBlocked, hasRemote, focusBlocker, handleCommitAndPush, handleCommit]);
+
+  const progressEntries = [...pushProgress.values()];
+  const hasProgress = progressEntries.length > 0;
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -202,6 +209,34 @@ export function CommitPanel({
           </span>
         </div>
       </div>
+
+      {isPushing && pushTargetBranch && (
+        <div className="text-[10px] text-daintree-text/50 truncate">
+          Pushing to <span className="text-daintree-text/70 font-mono">{pushTargetBranch}</span>
+        </div>
+      )}
+
+      {isPushing && hasProgress && (
+        <div className="space-y-1">
+          {progressEntries.map((e) => (
+            <div
+              key={e.stage}
+              className="flex items-center gap-2 text-[10px] text-daintree-text/70"
+            >
+              <span className="w-20 truncate capitalize">{e.stage}</span>
+              <div className="flex-1 h-1 bg-daintree-bg rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full transition-[width] duration-300 ease-out"
+                  style={{ width: `${Math.min(100, Math.max(0, e.progress ?? 0))}%` }}
+                />
+              </div>
+              {e.progress != null && (
+                <span className="tabular-nums w-8 text-right">{e.progress}%</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         {hasRemote ? (
