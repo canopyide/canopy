@@ -191,7 +191,7 @@ export function CommitPanel({
             if (pendingFirstApplyRef.current) {
               pendingFirstApplyRef.current = false;
               historyIndexRef.current = 0;
-              onCommitMessageChange(messages[0]);
+              onCommitMessageChange(messages[0]!);
             } else if (historyIndexRef.current < messages.length - 1) {
               historyIndexRef.current++;
               onCommitMessageChange(messages[historyIndexRef.current]!);
@@ -207,7 +207,7 @@ export function CommitPanel({
               if (pendingFirstApplyRef.current) {
                 pendingFirstApplyRef.current = false;
                 historyIndexRef.current = 0;
-                onCommitMessageChange(msgs[0]);
+                onCommitMessageChange(msgs[0]!);
               }
 
               requestAnimationFrame(() => {
