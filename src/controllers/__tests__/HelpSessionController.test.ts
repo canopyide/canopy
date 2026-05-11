@@ -1,0 +1,371 @@
+// @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const {
+  mockMcpOnTierNotPermitted,
+  mockMcpSetSessionTier,
+  mockSystemSleepOnSuspend,
+  mockSystemSleepOnWake,
+  systemSleepListeners,
+  tierListeners,
+  helpPanelState,
+  panelStoreState,
+  projectStoreState,
+} = vi.hoisted(() => ({
+  mockMcpOnTierNotPermitted: vi.fn(),
+  mockMcpSetSessionTier: vi.fn().mockResolvedValue(undefined),
+  mockSystemSleepOnSuspend: vi.fn(),
+  mockSystemSleepOnWake: vi.fn(),
+  systemSleepListeners: {
+    suspend: [] as Array<() => void>,
+    wake: [] as Array<() => void>,
+  },
+  tierListeners: [] as Array<(payload: unknown) => void>,
+  helpPanelState: {
+    isOpen: false,
+    terminalId: null as string | null,
+    agentId: null as string | null,
+    preferredAgentId: null as string | null,
+    sessionId: null as string | null,
+    hibernateSessions: {} as Record<string, unknown>,
+    setTerminal: vi.fn(),
+    clearTerminal: vi.fn(),
+    setHibernateSession: vi.fn(),
+    clearHibernateSession: vi.fn(),
+  },
+  panelStoreState: {
+    panelIds: [] as string[],
+    panelsById: {} as Record<string, unknown>,
+    removePanel: vi.fn(),
+    addPanel: vi.fn().mockResolvedValue(""),
+  },
+  projectStoreState: {
+    currentProject: null as { id: string; path: string } | null,
+  },
+}));
+
+vi.mock("@/config/agents", () => ({
+  getAgentConfig: (id: string) =>
+    ({ claude: { name: "Claude", assistantMinVersion: "1.0.0" } })[id],
+}));
+
+vi.mock("@/services/ActionService", () => ({
+  actionService: { dispatch: vi.fn() },
+}));
+
+vi.mock("@/store/helpPanelStore", () => {
+  const store = (selector?: (s: typeof helpPanelState) => unknown) =>
+    selector ? selector(helpPanelState) : helpPanelState;
+  store.getState = () => helpPanelState;
+  return { useHelpPanelStore: store };
+});
+
+vi.mock("@/store", () => {
+  const panelStore = (selector?: (s: typeof panelStoreState) => unknown) =>
+    selector ? selector(panelStoreState) : panelStoreState;
+  panelStore.getState = () => panelStoreState;
+
+  const projectStore = (selector?: (s: typeof projectStoreState) => unknown) =>
+    selector ? selector(projectStoreState) : projectStoreState;
+  projectStore.getState = () => projectStoreState;
+
+  return { usePanelStore: panelStore, useProjectStore: projectStore };
+});
+
+vi.mock("@/clients/projectClient", () => ({
+  projectClient: {
+    getSettings: vi.fn().mockResolvedValue({}),
+    saveSettings: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+vi.mock("@/lib/notify", () => ({ notify: vi.fn() }));
+vi.mock("@/utils/logger", () => ({ logError: vi.fn() }));
+vi.mock("@/utils/safeFireAndForget", () => ({
+  safeFireAndForget: (p: Promise<unknown>) => p,
+}));
+
+import { HelpSessionController } from "../HelpSessionController";
+
+function resetState() {
+  helpPanelState.isOpen = false;
+  helpPanelState.terminalId = null;
+  helpPanelState.agentId = null;
+  helpPanelState.preferredAgentId = null;
+  helpPanelState.sessionId = null;
+  helpPanelState.hibernateSessions = {};
+  helpPanelState.setTerminal = vi.fn();
+  helpPanelState.clearTerminal = vi.fn();
+  helpPanelState.setHibernateSession = vi.fn();
+  helpPanelState.clearHibernateSession = vi.fn();
+  panelStoreState.panelIds = [];
+  panelStoreState.panelsById = {};
+  panelStoreState.removePanel = vi.fn();
+  panelStoreState.addPanel = vi.fn().mockResolvedValue("");
+  projectStoreState.currentProject = null;
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  resetState();
+  systemSleepListeners.suspend.length = 0;
+  systemSleepListeners.wake.length = 0;
+  tierListeners.length = 0;
+
+  mockMcpOnTierNotPermitted.mockReset();
+  mockMcpOnTierNotPermitted.mockImplementation((cb: (payload: unknown) => void) => {
+    tierListeners.push(cb);
+    return () => {
+      const idx = tierListeners.indexOf(cb);
+      if (idx >= 0) tierListeners.splice(idx, 1);
+    };
+  });
+  mockMcpSetSessionTier.mockReset();
+  mockMcpSetSessionTier.mockResolvedValue(undefined);
+  mockSystemSleepOnSuspend.mockReset();
+  mockSystemSleepOnSuspend.mockImplementation((cb: () => void) => {
+    systemSleepListeners.suspend.push(cb);
+    return () => {
+      const idx = systemSleepListeners.suspend.indexOf(cb);
+      if (idx >= 0) systemSleepListeners.suspend.splice(idx, 1);
+    };
+  });
+  mockSystemSleepOnWake.mockReset();
+  mockSystemSleepOnWake.mockImplementation((cb: () => void) => {
+    systemSleepListeners.wake.push(cb);
+    return () => {
+      const idx = systemSleepListeners.wake.indexOf(cb);
+      if (idx >= 0) systemSleepListeners.wake.splice(idx, 1);
+    };
+  });
+
+  Object.defineProperty(globalThis, "window", {
+    value: {
+      electron: {
+        help: {
+          getFolderPath: vi.fn().mockResolvedValue("/help"),
+          markTerminal: vi.fn().mockResolvedValue(undefined),
+          provisionSession: vi.fn().mockResolvedValue(null),
+          revokeSession: vi.fn().mockResolvedValue(undefined),
+        },
+        helpAssistant: {
+          getSettings: vi.fn().mockResolvedValue({ idleHibernateMinutes: 30 }),
+        },
+        system: {
+          getAgentVersion: vi
+            .fn()
+            .mockResolvedValue({ installedVersion: null, latestVersion: null }),
+        },
+        systemSleep: {
+          getMetrics: vi.fn().mockResolvedValue({ isCurrentlySleeping: false }),
+          onSuspend: mockSystemSleepOnSuspend,
+          onWake: mockSystemSleepOnWake,
+        },
+        mcpServer: {
+          onTierNotPermitted: mockMcpOnTierNotPermitted,
+          setSessionTier: mockMcpSetSessionTier,
+        },
+        git: { snapshotGet: vi.fn().mockResolvedValue(null) },
+        terminal: { gracefulKill: vi.fn().mockResolvedValue(null) },
+      },
+    },
+    writable: true,
+    configurable: true,
+  });
+});
+
+afterEach(() => {
+  // Defensive: any test that didn't stop its controller would leak listeners.
+});
+
+describe("HelpSessionController — lifecycle", () => {
+  it("start() arms tier-mismatch and system-sleep subscriptions", () => {
+    const ctrl = new HelpSessionController();
+    ctrl.start();
+    expect(mockMcpOnTierNotPermitted).toHaveBeenCalledTimes(1);
+    expect(mockSystemSleepOnSuspend).toHaveBeenCalledTimes(1);
+    expect(mockSystemSleepOnWake).toHaveBeenCalledTimes(1);
+    ctrl.stop();
+  });
+
+  it("start() is idempotent across StrictMode double-mount (no duplicate listeners)", () => {
+    const ctrl = new HelpSessionController();
+    ctrl.start();
+    ctrl.start();
+    ctrl.start();
+    expect(mockMcpOnTierNotPermitted).toHaveBeenCalledTimes(1);
+    expect(mockSystemSleepOnSuspend).toHaveBeenCalledTimes(1);
+    ctrl.stop();
+  });
+
+  it("stop() unsubscribes every disposer registered by start()", () => {
+    const ctrl = new HelpSessionController();
+    ctrl.start();
+    expect(tierListeners).toHaveLength(1);
+    expect(systemSleepListeners.suspend).toHaveLength(1);
+    expect(systemSleepListeners.wake).toHaveLength(1);
+    ctrl.stop();
+    expect(tierListeners).toHaveLength(0);
+    expect(systemSleepListeners.suspend).toHaveLength(0);
+    expect(systemSleepListeners.wake).toHaveLength(0);
+  });
+
+  it("stop() is safe to call when start() has not run", () => {
+    const ctrl = new HelpSessionController();
+    expect(() => ctrl.stop()).not.toThrow();
+  });
+});
+
+describe("HelpSessionController — subscribe / getSnapshot", () => {
+  it("snapshot is initially in the idle state with no banners", () => {
+    const ctrl = new HelpSessionController();
+    const snap = ctrl.getSnapshot();
+    expect(snap.phase).toBe("idle");
+    expect(snap.showResumeBanner).toBe(false);
+    expect(snap.assistantVersionTooOld).toBeNull();
+    expect(snap.tierMismatch).toBeNull();
+    expect(snap.preflightSnapshot).toBeNull();
+    expect(snap.isApprovingTier).toBe(false);
+  });
+
+  it("returns the same snapshot reference when no state changes (Object.is stable)", () => {
+    const ctrl = new HelpSessionController();
+    const a = ctrl.getSnapshot();
+    const b = ctrl.getSnapshot();
+    expect(a).toBe(b);
+  });
+
+  it("notifies listeners when state changes via patch", () => {
+    const ctrl = new HelpSessionController();
+    ctrl.start();
+    const listener = vi.fn();
+    const unsubscribe = ctrl.subscribe(listener);
+
+    // Simulate a tier-mismatch event firing
+    const fire = tierListeners[0];
+    fire({ sessionId: "s1", toolId: "t1", tier: "workbench", targetTier: "action" });
+    expect(listener).toHaveBeenCalled();
+    expect(ctrl.getSnapshot().tierMismatch).toEqual({
+      sessionId: "s1",
+      toolId: "t1",
+      tier: "workbench",
+      targetTier: "action",
+      projectId: null,
+    });
+
+    listener.mockClear();
+    ctrl.dismissTierMismatch();
+    expect(listener).toHaveBeenCalled();
+    expect(ctrl.getSnapshot().tierMismatch).toBeNull();
+
+    unsubscribe();
+    ctrl.stop();
+  });
+
+  it("subscribe returns a stable unsubscribe function that removes only that listener", () => {
+    const ctrl = new HelpSessionController();
+    const a = vi.fn();
+    const b = vi.fn();
+    const unsubA = ctrl.subscribe(a);
+    ctrl.subscribe(b);
+    unsubA();
+    ctrl.dismissTierMismatch(); // currently null → no notify
+    ctrl["_patch"]({ showResumeBanner: true });
+    expect(a).not.toHaveBeenCalled();
+    expect(b).toHaveBeenCalled();
+  });
+});
+
+describe("HelpSessionController — syncInputs", () => {
+  it("clears the version block when preferredAgentId changes", () => {
+    const ctrl = new HelpSessionController();
+    ctrl.start();
+    ctrl["_patch"]({
+      assistantVersionTooOld: {
+        agentId: "claude",
+        agentName: "Claude",
+        installedVersion: "0.9.0",
+        requiredVersion: "1.0.0",
+      },
+    });
+    expect(ctrl.getSnapshot().assistantVersionTooOld).not.toBeNull();
+
+    ctrl.syncInputs({
+      isOpen: false,
+      isReadyToLaunch: false,
+      currentProject: null,
+      terminalId: null,
+      preferredAgentId: "claude",
+      supportedInstalledAgentIds: [],
+      visibilityEpoch: 0,
+    });
+    expect(ctrl.getSnapshot().assistantVersionTooOld).not.toBeNull();
+
+    ctrl.syncInputs({
+      isOpen: false,
+      isReadyToLaunch: false,
+      currentProject: null,
+      terminalId: null,
+      preferredAgentId: "codex",
+      supportedInstalledAgentIds: [],
+      visibilityEpoch: 0,
+    });
+    expect(ctrl.getSnapshot().assistantVersionTooOld).toBeNull();
+    ctrl.stop();
+  });
+});
+
+describe("HelpSessionController — tier-mismatch handlers", () => {
+  it("approveTierOnce() calls setSessionTier and clears banner on success", async () => {
+    const ctrl = new HelpSessionController();
+    ctrl.start();
+    tierListeners[0]?.({
+      sessionId: "s1",
+      toolId: "t1",
+      tier: "workbench",
+      targetTier: "action",
+    });
+    expect(ctrl.getSnapshot().tierMismatch).not.toBeNull();
+
+    ctrl.approveTierOnce();
+    expect(ctrl.getSnapshot().isApprovingTier).toBe(true);
+    expect(mockMcpSetSessionTier).toHaveBeenCalledWith("s1", "action");
+
+    await vi.waitFor(() => {
+      expect(ctrl.getSnapshot().isApprovingTier).toBe(false);
+      expect(ctrl.getSnapshot().tierMismatch).toBeNull();
+    });
+    ctrl.stop();
+  });
+
+  it("approveTierOnce() is a no-op while another approval is in flight", () => {
+    const ctrl = new HelpSessionController();
+    ctrl.start();
+    tierListeners[0]?.({
+      sessionId: "s1",
+      toolId: "t1",
+      tier: "workbench",
+      targetTier: "action",
+    });
+    ctrl.approveTierOnce();
+    const callsBefore = mockMcpSetSessionTier.mock.calls.length;
+    ctrl.approveTierOnce();
+    expect(mockMcpSetSessionTier.mock.calls.length).toBe(callsBefore);
+    ctrl.stop();
+  });
+
+  it("dismissTierMismatch() clears the banner immediately", () => {
+    const ctrl = new HelpSessionController();
+    ctrl.start();
+    tierListeners[0]?.({
+      sessionId: "s1",
+      toolId: "t1",
+      tier: "workbench",
+      targetTier: null,
+    });
+    expect(ctrl.getSnapshot().tierMismatch).not.toBeNull();
+    ctrl.dismissTierMismatch();
+    expect(ctrl.getSnapshot().tierMismatch).toBeNull();
+    ctrl.stop();
+  });
+});
