@@ -6,7 +6,7 @@ import type { GitOperationReason } from "@shared/types/ipc/errors";
 import { getGitRecoveryHint } from "@shared/utils/gitOperationErrors";
 import { isClientAppError } from "@/utils/clientAppError";
 import { cn } from "@/lib/utils";
-import { getVisibleTabbableElements } from "@/lib/accessibility";
+
 import { useOverlayState } from "@/hooks";
 import { TruncatedTooltip } from "@/components/ui/TruncatedTooltip";
 import {
@@ -843,12 +843,7 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
   useEffect(() => {
     if (!isOpen) return;
     requestAnimationFrame(() => {
-      const first = dialogRef.current ? getVisibleTabbableElements(dialogRef.current)[0] : null;
-      if (first) {
-        first.focus();
-      } else {
-        dialogRef.current?.focus();
-      }
+      dialogRef.current?.focus();
     });
   }, [isOpen]);
 
