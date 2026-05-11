@@ -396,6 +396,7 @@ export interface ElectronAPI {
     forceQuit(): Promise<void>;
     resetAndRelaunch(): Promise<void>;
     notifyFirstInteractive(): Promise<void>;
+    notifyViewPainted(): Promise<void>;
     onMenuAction(callback: (action: string) => void): () => void;
     reloadConfig(): Promise<{ success: boolean }>;
     onConfigReloaded(callback: () => void): () => void;

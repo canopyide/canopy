@@ -1111,6 +1111,8 @@ const api: ElectronAPI = {
 
     notifyFirstInteractive: () => _unwrappingInvoke(CHANNELS.APP_FIRST_INTERACTIVE),
 
+    notifyViewPainted: () => _unwrappingInvoke(CHANNELS.APP_VIEW_PAINTED),
+
     onMenuAction: (callback: (action: string) => void) => _typedOn(CHANNELS.MENU_ACTION, callback),
 
     reloadConfig: () => _unwrappingInvoke(CHANNELS.APP_RELOAD_CONFIG),

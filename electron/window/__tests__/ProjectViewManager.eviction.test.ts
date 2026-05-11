@@ -126,6 +126,7 @@ vi.mock("../../utils/webContentsLifecycle.js", () => ({
 
 vi.mock("../../utils/logger.js", () => ({
   logInfo: vi.fn(),
+  logWarn: vi.fn(),
   createLogger: vi.fn(() => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -175,6 +176,7 @@ describe("ProjectViewManager — eviction safety", () => {
     win = createMockWindow();
     manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
     });
   });
@@ -218,6 +220,7 @@ describe("ProjectViewManager — eviction safety", () => {
     // Create a manager with cachedProjectViews: 2
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -250,6 +253,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("skips LRU candidate when its project has an active agent", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -282,6 +286,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("falls back to evicting an active-agent view when all candidates are protected", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -314,6 +319,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("evicts LRU-ordered active-agent views when all candidates are protected", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
     });
 
@@ -353,6 +359,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("evicts the largest-privateBytes cached view first, not the LRU one", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -384,6 +391,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("falls back to LRU when no candidate has measured memory", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -408,6 +416,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("missing-metric views sort below measured ones (LRU as the deeper fallback)", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -435,6 +444,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("active-agent views are still evicted last regardless of memory rank", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -470,6 +480,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("logs memoryKb in projectview.eviction when measured", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -494,6 +505,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("falls back to LRU when app.getAppMetrics() throws", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -519,6 +531,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("evicts in descending privateBytes order when limit shrinks past multiple views", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 4,
     });
 
@@ -555,6 +568,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("calls forgetBlinkSample with the evicted webContents id", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -571,6 +585,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("calls forgetEluSample with the evicted webContents id", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -602,6 +617,7 @@ describe("ProjectViewManager — telemetry", () => {
   it("emits projectview.eviction with reason=lru when switch overflows the cache", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -633,6 +649,7 @@ describe("ProjectViewManager — telemetry", () => {
   it("emits projectview.eviction with reason=limit-change when setCachedViewLimit shrinks the cache", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
     });
 
@@ -674,6 +691,7 @@ describe("ProjectViewManager — telemetry", () => {
     //   6. switchTo a   → cache hit on a; evictionTimestamps has {a: t1} → revival fires
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -706,6 +724,7 @@ describe("ProjectViewManager — telemetry", () => {
   it("does not emit projectview.revival a second time for the same project without a new eviction (timestamp is consumed on read)", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -739,6 +758,7 @@ describe("ProjectViewManager — telemetry", () => {
   it("emits projectview.coldstart on successful view creation", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -764,6 +784,7 @@ describe("ProjectViewManager — telemetry", () => {
   it("dispose tears down cleanly after an eviction recorded a timestamp", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -795,6 +816,7 @@ describe("ProjectViewManager — onViewCached (freeze risk mitigation)", () => {
     const onViewCached = vi.fn();
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
       onViewCached,
     });
@@ -819,6 +841,7 @@ describe("ProjectViewManager — onViewCached (freeze risk mitigation)", () => {
     const onViewCached = vi.fn();
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
       onViewCached,
     });
@@ -841,6 +864,7 @@ describe("ProjectViewManager — onViewCached (freeze risk mitigation)", () => {
     const onViewCached = vi.fn();
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
       onViewCached,
     });
@@ -866,6 +890,7 @@ describe("ProjectViewManager — onViewCached (freeze risk mitigation)", () => {
     const onViewCached = vi.fn();
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
       onViewCached,
     });
@@ -882,6 +907,7 @@ describe("ProjectViewManager — onViewCached (freeze risk mitigation)", () => {
     const onViewCached = vi.fn();
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
       onViewCached,
     });
@@ -899,6 +925,7 @@ describe("ProjectViewManager — onViewCached (freeze risk mitigation)", () => {
     const onViewCached = vi.fn();
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
       onViewCached,
     });
@@ -923,6 +950,7 @@ describe("ProjectViewManager — onViewCached (freeze risk mitigation)", () => {
     });
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
       onViewCached,
     });
@@ -942,6 +970,7 @@ describe("ProjectViewManager — onViewCached (freeze risk mitigation)", () => {
   it("manager works without onViewCached configured (option is optional)", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
     });
 
@@ -980,6 +1009,7 @@ describe("ProjectViewManager — listener cleanup", () => {
   it("cleanupEntry removes all 6 persistent webContents listeners and detaches console capture before close()", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -1033,6 +1063,7 @@ describe("ProjectViewManager — listener cleanup", () => {
   it("cleanupHandlers is idempotent — disposing twice does not throw or double-remove", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -1067,6 +1098,7 @@ describe("ProjectViewManager — listener cleanup", () => {
     const onViewReady = vi.fn();
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
       onViewReady,
     });
@@ -1103,6 +1135,7 @@ describe("ProjectViewManager — listener cleanup", () => {
   it("detachRendererConsoleCapture runs before webContents.close()", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -1126,6 +1159,7 @@ describe("ProjectViewManager — listener cleanup", () => {
   it("dispose() removes listeners from every registered view", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
     });
 
