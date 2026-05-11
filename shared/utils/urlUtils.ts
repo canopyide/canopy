@@ -1,4 +1,6 @@
 /* eslint-disable no-control-regex */
+import ipaddr from "ipaddr.js";
+
 const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "::1"];
 const ALLOWED_PROTOCOLS = ["http:", "https:"];
 // Exclude C0 controls (\x00-\x1f), DEL (\x7f), and C1 controls (\x80-\x9f) from the URL
@@ -33,39 +35,17 @@ function isLoopbackHost(hostname: string): boolean {
   return LOOPBACK_HOSTS.includes(hostname);
 }
 
-function isRfc1918Ipv4(hostname: string): boolean {
-  const match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (!match) return false;
-  const a = Number(match[1]);
-  const b = Number(match[2]);
-  const c = Number(match[3]);
-  const d = Number(match[4]);
-  if ([a, b, c, d].some((o) => !Number.isFinite(o) || o < 0 || o > 255)) return false;
-  // 10.0.0.0/8
-  if (a === 10) return true;
-  // 172.16.0.0/12
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  // 192.168.0.0/16
-  if (a === 192 && b === 168) return true;
-  // 169.254.0.0/16 link-local
-  if (a === 169 && b === 254) return true;
-  return false;
-}
+// ipaddr.process() normalizes IPv4-mapped IPv6 to IPv4 before classification,
+// so ::ffff:127.0.0.1 → loopback, ::ffff:8.8.8.8 → unicast (denied).
+// No explicit "ipv4Mapped" entry needed — process() handles it implicitly.
+const PRIVATE_IP_RANGES = new Set(["loopback", "private", "linkLocal", "uniqueLocal"]);
 
-function isPrivateIpv6(hostname: string): boolean {
-  // Link-local (fe80::/10) or unique-local (fc00::/7). Loopback ::1 handled by isLoopbackHost.
-  if (!hostname.includes(":")) return false;
-  const lower = hostname.toLowerCase();
-  if (
-    lower.startsWith("fe8") ||
-    lower.startsWith("fe9") ||
-    lower.startsWith("fea") ||
-    lower.startsWith("feb")
-  ) {
-    return true;
+function isPrivateIp(hostname: string): boolean {
+  try {
+    return PRIVATE_IP_RANGES.has(ipaddr.process(hostname).range());
+  } catch {
+    return false;
   }
-  if (lower.startsWith("fc") || lower.startsWith("fd")) return true;
-  return false;
 }
 
 /**
@@ -79,8 +59,7 @@ export function isImplicitlyAllowedHost(hostname: string): boolean {
   for (const suffix of LOCAL_TLD_SUFFIXES) {
     if (host === suffix.slice(1) || host.endsWith(suffix)) return true;
   }
-  if (isRfc1918Ipv4(host)) return true;
-  if (isPrivateIpv6(host)) return true;
+  if (isPrivateIp(host)) return true;
   return false;
 }
 
