@@ -118,7 +118,15 @@ describe("ProjectViewManager — efficiency freeze", () => {
     vi.clearAllMocks();
     nextWebContentsId = 100;
     win = createMockWindow();
-    manager = new ProjectViewManager(win as never, { dirname: "/test", cachedProjectViews: 3 });
+    manager = new ProjectViewManager(win as never, {
+      dirname: "/test",
+      cachedProjectViews: 3,
+      paintGateTimeoutMs: 0,
+    });
+    // Stub the paint gate to resolve immediately — this suite uses fake timers
+    // so the gate's setTimeout cannot fire on its own.
+    (manager as unknown as { waitForPaint: () => Promise<string> }).waitForPaint = () =>
+      Promise.resolve("signal");
     initialWc = createMockWebContents();
     const initialView = { webContents: initialWc, setBounds: vi.fn() };
     manager.registerInitialView(initialView as never, "proj-a", "/path/a");

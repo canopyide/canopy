@@ -44,9 +44,7 @@ function ciStatusLabel(status: ProjectHealthData["ciStatus"]): string {
   }
 }
 
-export function MainWorktreeSummaryRows({
-  health,
-}: MainWorktreeSummaryRowsProps) {
+export function MainWorktreeSummaryRows({ health }: MainWorktreeSummaryRowsProps) {
   if (!health) return null;
 
   return (

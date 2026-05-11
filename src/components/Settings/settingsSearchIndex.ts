@@ -83,6 +83,7 @@ function deriveSettingsSearchIndex(): SettingsSearchEntry[] {
   const entries: SettingsSearchEntry[] = [];
 
   for (const tab of SETTINGS_REGISTRY as readonly AnySettingsTabEntry[]) {
+    if (tab.scope === "project") continue;
     entries.push(
       ...buildEntriesForTab(
         tab.id,
@@ -97,6 +98,7 @@ function deriveSettingsSearchIndex(): SettingsSearchEntry[] {
 
   for (const projectTabId of PROJECT_TAB_IDS) {
     const meta = PROJECT_SETTINGS_SECTIONS[projectTabId];
+    if (!meta) continue;
     entries.push(
       ...buildEntriesForTab(
         projectTabId,
