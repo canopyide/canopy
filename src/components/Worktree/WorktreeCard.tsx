@@ -455,7 +455,6 @@ export function WorktreeCard({
     );
   };
 
-
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ worktreeId?: string }>).detail;
