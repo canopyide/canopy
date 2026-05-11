@@ -153,14 +153,26 @@ export class ResourceGovernor {
     if (!this.deps.getThroughputSnapshot) return;
 
     const snapshot = this.deps.getThroughputSnapshot();
-    if (!snapshot || snapshot.totalBytes <= 0) return;
+    if (!snapshot) return;
+
+    // First tick: seed baselines without emitting. Prevents epoch-scale
+    // division on the first real interval (prevThroughputTimestamp starts at 0).
+    if (this.prevThroughputTimestamp === 0) {
+      this.prevThroughputTimestamp = snapshot.timestamp;
+      this.prevPauseCount = snapshot.pauseCount;
+      return;
+    }
+
+    // Always track pauseCount baseline so idle ticks don't accumulate deltas
+    // that get misattributed to the next byte-producing tick.
+    const pauseCountDelta = snapshot.pauseCount - this.prevPauseCount;
+    this.prevPauseCount = snapshot.pauseCount;
+
+    if (snapshot.totalBytes <= 0) return;
 
     const elapsedMs = snapshot.timestamp - this.prevThroughputTimestamp;
     const elapsedSec = elapsedMs > 0 ? elapsedMs / 1000 : 2;
     const totalBytesPerSecond = Math.round(snapshot.totalBytes / elapsedSec);
-    const avgPacketSizeBytes =
-      snapshot.totalPackets > 0 ? Math.round(snapshot.totalBytes / snapshot.totalPackets) : 0;
-    const pauseCountDelta = snapshot.pauseCount - this.prevPauseCount;
 
     const perTerminalThroughput = snapshot.perTerminal.map((entry) => ({
       terminalId: entry.terminalId,
@@ -182,7 +194,6 @@ export class ResourceGovernor {
     });
 
     this.prevThroughputTimestamp = snapshot.timestamp;
-    this.prevPauseCount = snapshot.pauseCount;
   }
 
   private engageThrottle(currentUsageMb: number, percent: number): void {

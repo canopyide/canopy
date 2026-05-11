@@ -454,22 +454,30 @@ describe("ResourceGovernor", () => {
   });
 
   describe("throughput rate gauge", () => {
-    it("emits throughput-rate when metrics enabled and bytes accumulated", () => {
+    it("emits throughput-rate with exact rates on second tick (first tick seeds baselines)", () => {
       vi.mocked(metricsEnabled).mockReturnValue(true);
 
+      let call = 0;
       const deps = createMockDeps({
-        getThroughputSnapshot: vi.fn().mockReturnValue({
-          timestamp: 2000,
-          totalBytes: 2048,
-          totalPackets: 4,
-          perTerminal: [{ terminalId: "t1", byteCount: 2048, packetCount: 4 }],
-          pauseCount: 2,
+        getThroughputSnapshot: vi.fn().mockImplementation(() => {
+          call++;
+          return {
+            timestamp: call * 2000,
+            totalBytes: 2048,
+            totalPackets: 4,
+            perTerminal: [{ terminalId: "t1", byteCount: 2048, packetCount: 4 }],
+            pauseCount: call * 2,
+          };
         }),
       });
 
       const governor = new ResourceGovernor(deps);
       governor.start();
 
+      // First tick: seeds baselines, no emission
+      vi.advanceTimersByTime(2000);
+
+      // Second tick: emits with computed rates (2048 bytes / 2s = 1024 B/s)
       vi.advanceTimersByTime(2000);
 
       expect(deps.sendEvent).toHaveBeenCalledWith(
@@ -478,15 +486,15 @@ describe("ResourceGovernor", () => {
           payload: expect.objectContaining({
             terminalId: "resource-governor",
             metricType: "throughput-rate",
-            totalBytesPerSecond: expect.any(Number),
-            pauseCountDelta: expect.any(Number),
-            perTerminalThroughput: expect.arrayContaining([
-              expect.objectContaining({
+            totalBytesPerSecond: 1024,
+            pauseCountDelta: 2,
+            perTerminalThroughput: [
+              {
                 terminalId: "t1",
-                bytesPerSecond: expect.any(Number),
-                avgPacketSizeBytes: expect.any(Number),
-              }),
-            ]),
+                bytesPerSecond: 1024,
+                avgPacketSizeBytes: 512,
+              },
+            ],
           }),
         })
       );
@@ -609,9 +617,11 @@ describe("ResourceGovernor", () => {
       const governor = new ResourceGovernor(deps);
       governor.start();
 
-      // First tick
+      // First tick: seeds baselines (no emission)
       vi.advanceTimersByTime(2000);
-      // Second tick
+      // Second tick: emits with delta from seeded baseline
+      vi.advanceTimersByTime(2000);
+      // Third tick: emits delta since last update
       vi.advanceTimersByTime(2000);
 
       const calls = (deps.sendEvent as ReturnType<typeof vi.fn>).mock.calls;
@@ -622,12 +632,15 @@ describe("ResourceGovernor", () => {
             "throughput-rate"
       );
 
-      // First call: pauseCountDelta = 3 - 0 = 3
+      // Two emissions (ticks 2 and 3)
+      expect(gaugeCalls).toHaveLength(2);
+
+      // First emission: pauseCount seeded at 3, current = 6, delta = 3
       expect((gaugeCalls[0][0] as Record<string, unknown>).payload).toMatchObject({
         pauseCountDelta: 3,
       });
 
-      // Second call: pauseCountDelta = 6 - 3 = 3
+      // Second emission: prev = 6, current = 9, delta = 3
       expect((gaugeCalls[1][0] as Record<string, unknown>).payload).toMatchObject({
         pauseCountDelta: 3,
       });

@@ -271,12 +271,14 @@ const resourceGovernor = new ResourceGovernor({
     return { totalPendingBytes, perTerminal };
   },
   getThroughputSnapshot: () => {
-    if (!metricsEnabled()) return null;
+    // Clear the accumulator on every tick so stale entries from toggled-off
+    // intervals aren't replayed with misleading elapsed times later.
     const acc = throughputAccumulator;
+    throughputAccumulator = new Map();
+    if (!metricsEnabled()) return null;
     let totalBytes = 0;
     let totalPackets = 0;
     if (acc.size === 0) return null;
-    throughputAccumulator = new Map();
     const perTerminal: Array<{ terminalId: string; byteCount: number; packetCount: number }> = [];
     for (const [terminalId, entry] of acc) {
       totalBytes += entry.totalBytes;
@@ -304,6 +306,21 @@ function toStringForIpc(data: string | Uint8Array): string {
 
 // Wire up PtyManager events
 ptyManager.on("data", (id: string, data: string | Uint8Array) => {
+  // Throughput-rate gauge accumulation — raw PTY byte/packet counts before
+  // any path routing, suspension gating, or chunk wrapping. Gated so the hot
+  // path is untouched when metrics are disabled (the default).
+  if (metricsEnabled()) {
+    const rawByteCount =
+      typeof data === "string" ? Buffer.byteLength(data, "utf8") : data.byteLength;
+    let acc = throughputAccumulator.get(id);
+    if (!acc) {
+      acc = { totalBytes: 0, packetCount: 0 };
+      throughputAccumulator.set(id, acc);
+    }
+    acc.totalBytes += rawByteCount;
+    acc.packetCount += 1;
+  }
+
   // Terminal output always updates headless state; visual streaming can be suspended under backpressure.
   const isSuspended = backpressureManager.isSuspended(id);
   const terminalInfo = ptyManager.getTerminal(id);
@@ -328,21 +345,6 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
     rendererConnections.size > 0 &&
     !isSmokeTestTerminalId(id)
   ) {
-    // Throughput-rate gauge accumulation — raw PTY byte/packet counts before
-    // any path routing or chunk wrapping. Gated so the hot path is untouched
-    // when metrics are disabled (the default).
-    if (metricsEnabled()) {
-      const rawByteCount =
-        typeof data === "string" ? Buffer.byteLength(data, "utf8") : data.byteLength;
-      let acc = throughputAccumulator.get(id);
-      if (!acc) {
-        acc = { totalBytes: 0, packetCount: 0 };
-        throughputAccumulator.set(id, acc);
-      }
-      acc.totalBytes += rawByteCount;
-      acc.packetCount += 1;
-    }
-
     // Carry raw bytes on the hot MessagePort path so the renderer receives a
     // transferred ArrayBuffer instead of a structured-cloned UTF-8 string.
     // Wrap with `new Uint8Array(...)` to escape node-pty's Buffer pool slab —
