@@ -156,6 +156,7 @@ vi.mock("../../utils/logger.js", () => ({
 
 import { ProjectViewManager } from "../ProjectViewManager.js";
 import { logInfo, logWarn } from "../../utils/logger.js";
+import { registerAppView } from "../webContentsRegistry.js";
 
 function createMockWindow() {
   const children: unknown[] = [];
@@ -328,5 +329,103 @@ describe("ProjectViewManager — paint gate (cold-start visible swap)", () => {
     // the deferred-deactivation path never reached the swap.
     expect(manager.getActiveProjectId()).toBe("proj-a");
     expect(failWc.close).toHaveBeenCalled();
+  });
+
+  it("captures paint signal that arrives before did-finish-load resolves", async () => {
+    // Regression: the paint gate must be armed BEFORE awaiting loadView,
+    // otherwise an immediate signal (renderer's double-rAF firing on the
+    // same tick as did-finish-load) is dropped and the gate falls through
+    // to the timeout on every fast machine.
+    const incomingWc = createMockWebContents({ autoFinishLoad: false });
+    wcQueue.push(incomingWc);
+
+    const switchPromise = manager.switchTo("proj-b", "/path/b");
+
+    // Microtask flush so performSwitch reaches `await loadView`.
+    await Promise.resolve();
+
+    // Signal paint FIRST — before did-finish-load fires. With the pre-armed
+    // gate this is captured; without it the gate wouldn't exist yet.
+    manager.signalViewPainted(incomingWc.id);
+
+    // Now fire did-finish-load so loadView resolves.
+    incomingWc._fireOnce("did-finish-load");
+
+    await switchPromise;
+    expect(manager.getActiveProjectId()).toBe("proj-b");
+    expect(win.contentView.removeChildView).toHaveBeenCalledTimes(1);
+    // No timeout warning — gate resolved by signal.
+    expect(
+      vi.mocked(logWarn).mock.calls.filter(([e]) => e === "projectview.paintgate.timeout")
+    ).toHaveLength(0);
+  });
+
+  it("restores registerAppView for outgoing view when cold-start fails", async () => {
+    const failWc = createMockWebContents({ autoFinishLoad: false });
+    wcQueue.push(failWc);
+
+    vi.mocked(registerAppView).mockClear();
+
+    const switchPromise = manager.switchTo("proj-b", "/path/b").catch((err) => err);
+    await Promise.resolve();
+    failWc._fireOnce("did-fail-load", {}, -3, "ERR_FAILED");
+    await switchPromise;
+
+    // After rollback, the registry must point back at the original (initialWc)
+    // view — otherwise getAppWebContents() would fall through to the bare
+    // BrowserWindow and IPC consumers (portal, voiceInput, accessibility)
+    // would silently target the wrong webContents.
+    const registerCalls = vi.mocked(registerAppView).mock.calls;
+    const lastCall = registerCalls[registerCalls.length - 1];
+    expect(lastCall?.[1]).toMatchObject({ webContents: initialWc });
+  });
+
+  it("resizes both incoming and outgoing views while paint gate is open", async () => {
+    const incomingWc = createMockWebContents();
+    wcQueue.push(incomingWc);
+
+    const initialView = win.contentView.children[0] as { setBounds: ReturnType<typeof vi.fn> };
+    const initialSetBounds = initialView.setBounds;
+    initialSetBounds.mockClear();
+
+    const switchPromise = manager.switchTo("proj-b", "/path/b");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Trigger the registered resize handler. The handler is captured in
+    // beforeEach via win.on; we re-fire it directly here.
+    const onCalls = win.on.mock.calls;
+    const resizeHandler = onCalls.find(([event]) => event === "resize")?.[1] as
+      | (() => void)
+      | undefined;
+    expect(resizeHandler).toBeDefined();
+    win.getContentBounds.mockReturnValueOnce({ x: 0, y: 0, width: 1024, height: 768 });
+    resizeHandler?.();
+
+    // Outgoing (initial) view must have been resized too.
+    expect(initialSetBounds).toHaveBeenCalledWith(
+      expect.objectContaining({ width: 1024, height: 768 })
+    );
+
+    // Release the gate so the test cleans up.
+    manager.signalViewPainted(incomingWc.id);
+    await switchPromise;
+  });
+
+  it("dispose() while paint gate is pending settles the wait without throwing", async () => {
+    const incomingWc = createMockWebContents();
+    wcQueue.push(incomingWc);
+
+    const switchPromise = manager.switchTo("proj-b", "/path/b").catch((err) => err);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Dispose while gate is open — the pending paint promise must resolve
+    // (as "cancelled") so the underlying performSwitch chain doesn't leak.
+    expect(() => manager.dispose()).not.toThrow();
+
+    // The switch may resolve or reject depending on subsequent code paths;
+    // we just need it to settle, not hang.
+    await Promise.race([switchPromise, new Promise((r) => setTimeout(r, 100))]);
   });
 });

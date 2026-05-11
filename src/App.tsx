@@ -433,7 +433,11 @@ function App() {
   // switch. Fires once per V8 context, before hydration completes — the
   // inline app-shell skeleton has already painted by this point. Double
   // rAF mirrors `removeStartupSkeleton`: first rAF lands after React's
-  // commit, second waits for Chromium to submit that frame.
+  // commit, second waits for Chromium to submit that frame. Cleanup only
+  // cancels the outer rAF — under React Strict Mode's intentional
+  // double-mount the inner rAF may still fire, but `notifyViewPainted`
+  // is idempotent (one-shot module-level guard) so the second call is a
+  // no-op.
   useEffect(() => {
     const id = requestAnimationFrame(() => {
       requestAnimationFrame(() => {
