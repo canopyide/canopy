@@ -29,6 +29,7 @@ export function FileDiffModal({
 
   const fetchDiff = useCallback(async () => {
     const requestId = ++requestRef.current;
+    setDiff(undefined);
     try {
       const result = await actionService.dispatch(
         "git.getFileDiff",
@@ -40,8 +41,8 @@ export function FileDiffModal({
         setDiff("ERROR");
         return;
       }
-      const diffResult = result.result as string;
-      setDiff(diffResult || "NO_CHANGES");
+      const diffResult = result.result;
+      setDiff(typeof diffResult === "string" ? diffResult || "NO_CHANGES" : "ERROR");
     } catch {
       if (requestRef.current !== requestId) return;
       setDiff("ERROR");
@@ -51,7 +52,7 @@ export function FileDiffModal({
   useEffect(() => {
     if (!isOpen) {
       setDiff(undefined);
-      requestRef.current = 0;
+      requestRef.current++;
       return;
     }
 

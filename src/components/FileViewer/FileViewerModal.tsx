@@ -118,7 +118,7 @@ export function FileViewerModal({
       setErrorCode(null);
       setDiffCopied(false);
       setSanitizedSvg(null);
-      requestRef.current = 0;
+      requestRef.current++;
       hasSwitchedToDiffRef.current = false;
       const nextMode = defaultMode ?? (hasDiff && !initialLine ? "diff" : "view");
       setMode(nextMode);

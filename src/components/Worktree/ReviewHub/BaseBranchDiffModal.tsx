@@ -29,6 +29,7 @@ export function BaseBranchDiffModal({
 
   const fetchDiff = useCallback(async () => {
     const requestId = ++requestRef.current;
+    setDiff(undefined);
     try {
       const result = await window.electron.git.compareWorktrees(
         worktreePath,
