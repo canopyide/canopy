@@ -416,8 +416,8 @@ describe("voice tab coverage", () => {
     expect(results.length).toBeGreaterThan(0);
   });
 
-  it("returns results for 'deepgram' query", () => {
-    const results = filterSettings(SETTINGS_SEARCH_INDEX, "deepgram");
+  it("returns results for 'whisper' query", () => {
+    const results = filterSettings(SETTINGS_SEARCH_INDEX, "whisper");
     expect(results.some((r) => r.tab === "voice")).toBe(true);
   });
 
@@ -675,7 +675,7 @@ describe("requiresEnabled metadata", () => {
 
   it("Voice speech-to-text sub-settings reference voice-enable", () => {
     for (const id of [
-      "voice-deepgram-key",
+      "voice-stt-openai-key",
       "voice-language",
       "voice-transcription-model",
       "voice-paragraph-breaks",

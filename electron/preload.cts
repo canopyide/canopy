@@ -2322,7 +2322,7 @@ const api: ElectronAPI = {
         openaiApiKey: string;
         language: string;
         customDictionary: string[];
-        transcriptionModel: "nova-3" | "nova-2";
+        transcriptionModel: "gpt-realtime-whisper";
         correctionEnabled: boolean;
         correctionModel: "gpt-5-nano" | "gpt-5-mini";
         correctionCustomInstructions: string;

@@ -90,7 +90,7 @@ vi.mock("../../../store.js", () => ({
           customDictionary: [],
           correctionCustomInstructions: "",
           language: "en",
-          transcriptionModel: "nova-3",
+          transcriptionModel: "gpt-realtime-whisper",
           paragraphingStrategy: "spoken-command",
           resolveFileLinks: true,
         };
@@ -99,12 +99,6 @@ vi.mock("../../../store.js", () => ({
     }),
     set: vi.fn(),
   },
-}));
-
-vi.mock("../../../services/voiceContextKeyterms.js", () => ({
-  assembleKeyterms: vi.fn(({ customDictionary }: { customDictionary: string[] }) =>
-    Promise.resolve(customDictionary)
-  ),
 }));
 
 vi.mock("../../channels.js", () => ({
@@ -249,7 +243,7 @@ describe("getVoiceSettings migration", () => {
       correctionApiKey: "sk-correction",
       language: "en",
       customDictionary: [],
-      transcriptionModel: "nova-3",
+      transcriptionModel: "gpt-realtime-whisper",
       correctionEnabled: false,
       correctionModel: "gpt-5-mini",
       correctionCustomInstructions: "",

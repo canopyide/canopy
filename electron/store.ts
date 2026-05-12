@@ -358,7 +358,7 @@ const storeOptions = {
       openaiApiKey: "",
       language: "en",
       customDictionary: [],
-      transcriptionModel: "nova-3",
+      transcriptionModel: "gpt-realtime-whisper",
       correctionEnabled: false,
       correctionModel: "gpt-5-mini",
       correctionCustomInstructions: "",

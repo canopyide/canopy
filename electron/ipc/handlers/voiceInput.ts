@@ -7,8 +7,7 @@ import { VoiceTranscriptionService } from "../../services/VoiceTranscriptionServ
 import { VoiceCorrectionService } from "../../services/VoiceCorrectionService.js";
 import type { HandlerDependencies, IpcContext } from "../types.js";
 import type { VoiceInputSettings } from "../../../shared/types/ipc/api.js";
-import { logDebug, logWarn } from "../../utils/logger.js";
-import { assembleKeyterms } from "../../services/voiceContextKeyterms.js";
+import { logDebug } from "../../utils/logger.js";
 import { applyDictationCommands } from "../../services/voiceDictationCommands.js";
 import { getAppWebContents } from "../../window/webContentsRegistry.js";
 import { voiceFileLinkResolver } from "../../services/VoiceFileLinkResolver.js";
@@ -26,7 +25,7 @@ const VOICE_INPUT_DEFAULTS: VoiceInputSettings = {
   openaiApiKey: "",
   language: "en",
   customDictionary: [],
-  transcriptionModel: "nova-3",
+  transcriptionModel: "gpt-realtime-whisper",
   correctionEnabled: false,
   correctionModel: "gpt-5-mini",
   correctionCustomInstructions: "",
@@ -201,22 +200,6 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
     // Capture project info at session start.
     sessionProjectInfo = getProjectInfo();
 
-    // Assemble dynamic keyterms from project context (branch, terminal output, etc.)
-    let sessionSettings = settings;
-    try {
-      const assembledKeyterms = await assembleKeyterms({
-        customDictionary: settings.customDictionary,
-        projectName: sessionProjectInfo.name,
-        projectPath: sessionProjectInfo.path,
-        ptyClient: deps.ptyClient,
-      });
-      sessionSettings = { ...settings, customDictionary: assembledKeyterms };
-    } catch (err) {
-      logWarn("[VoiceInput] Failed to assemble dynamic keyterms, using static dictionary", {
-        error: (err as Error).message,
-      });
-    }
-
     const unsubscribe = svc.onEvent((voiceEvent) => {
       const win = deps.mainWindow;
       if (!win || win.isDestroyed()) return;
@@ -228,20 +211,18 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
         const liveSettings = getVoiceSettings();
 
         // OpenAI Realtime emits spoken dictation commands ("new paragraph",
-        // "period", etc.) as literal text. Deepgram dictation mode rewrites
-        // them upstream; here we reproduce that behavior post-hoc, gated on
-        // the session-snapshotted paragraphing strategy (matches the
-        // transcription-settings convention documented at handleStart).
+        // "period", etc.) as literal text. applyDictationCommands rewrites
+        // them post-hoc to \n\n / "." / \n etc., gated on the session-
+        // snapshotted paragraphing strategy.
         const processedText =
           settings.paragraphingStrategy === "spoken-command"
             ? applyDictationCommands(rawText)
             : rawText;
 
         // Split on \n\n and emit one complete event per non-empty part with a
-        // paragraph_boundary between them — mirrors the Deepgram path in
-        // VoiceTranscriptionService.emitCompleteWithParagraphDetection.
-        // .filter(Boolean) ensures command-only utterances (e.g. "new paragraph"
-        // alone produces "\n\n" → ["", ""]) emit nothing, consistent with Deepgram.
+        // paragraph_boundary between them. .filter(Boolean) ensures command-
+        // only utterances (e.g. "new paragraph" alone → "\n\n" → ["", ""])
+        // emit nothing.
         const parts = processedText
           .split(/\n\n+/)
           .map((p) => p.trim())
@@ -324,7 +305,7 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
     ctx.event.sender.once("destroyed", onDestroyed);
     activeDestroyListener = { sender: ctx.event.sender, fn: onDestroyed };
 
-    const result = await svc.start(sessionSettings);
+    const result = await svc.start(settings);
     if (!result.ok) {
       // Failed to start — clean up subscription immediately
       if (activeEventUnsubscribe === unsubscribe) {
@@ -347,7 +328,8 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
     const controller = sessionController;
 
     if (service) {
-      // Drain Deepgram first (waits for pending transcriptions, fires remaining complete events).
+      // Drain the transcription service first (waits for pending transcriptions,
+      // fires remaining complete events).
       await service.stopGracefully();
     }
 

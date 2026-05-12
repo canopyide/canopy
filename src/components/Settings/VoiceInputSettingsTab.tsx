@@ -72,14 +72,9 @@ const TRANSCRIPTION_MODELS: {
   description: string;
 }[] = [
   {
-    value: "nova-3",
-    label: "Nova-3",
-    description: "Latest · best accuracy · $0.0077/min",
-  },
-  {
-    value: "nova-2",
-    label: "Nova-2",
-    description: "Stable fallback · $0.0043/min",
+    value: "gpt-realtime-whisper",
+    label: "Whisper (Realtime)",
+    description: "OpenAI Realtime · $0.017/min",
   },
 ];
 
@@ -88,7 +83,7 @@ const DEFAULT_SETTINGS: VoiceInputSettings = {
   openaiApiKey: "",
   language: "en",
   customDictionary: [],
-  transcriptionModel: "nova-3",
+  transcriptionModel: "gpt-realtime-whisper",
   correctionEnabled: false,
   correctionModel: "gpt-5-mini",
   correctionCustomInstructions: "",
