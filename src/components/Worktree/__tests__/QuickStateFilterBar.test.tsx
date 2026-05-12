@@ -93,12 +93,12 @@ describe("QuickStateFilterBar", () => {
     expect(active.className).toContain("ring-1");
     expect(active.className).toContain("ring-inset");
     expect(active.className).toContain("ring-border-strong");
-    expect(active.className).toContain("bg-overlay-strong");
+    expect(active.className).toContain("bg-filter-selected-bg-soft");
     expect(active.className).toContain("font-medium");
 
     const inactive = screen.getByRole("button", { name: /Waiting/ });
     expect(inactive.className).not.toContain("ring-border-strong");
-    expect(inactive.className).not.toContain("bg-overlay-strong");
+    expect(inactive.className).not.toContain("bg-filter-selected-bg-soft");
   });
 
   it("marks the active pill with aria-pressed=true", () => {
@@ -218,7 +218,7 @@ describe("QuickStateFilterBar", () => {
     );
     const working = screen.getByRole("button", { name: /Working/ });
     expect(working.getAttribute("aria-pressed")).toBe("true");
-    expect(working.className).toContain("bg-overlay-strong");
+    expect(working.className).toContain("bg-filter-selected-bg-soft");
     const svg = working.querySelector("svg");
     expect(svg).not.toBeNull();
     expect(svg?.getAttribute("class") ?? "").toContain("animate-spin-slow");
