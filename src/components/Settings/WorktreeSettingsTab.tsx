@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
 import { AlertCircle, Check, RotateCcw } from "lucide-react";
-import { Spinner } from "@/components/ui/Spinner";
 import { FolderGit2 } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -150,15 +149,6 @@ export function WorktreeSettingsTab() {
   // already in flight.
   useSettingsTabFlush("worktree", handleSave, hasChanges);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Spinner size="lg" />
-        <span className="ml-2 text-sm text-daintree-text/60">Loading settings...</span>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <SettingsSection
@@ -180,6 +170,7 @@ export function WorktreeSettingsTab() {
                   setPattern(e.target.value);
                   setError(null);
                 }}
+                disabled={isLoading}
                 className={cn(
                   "flex-1 px-3 py-1.5 bg-daintree-bg border rounded-[var(--radius-md)] text-daintree-text font-mono text-sm",
                   "focus:outline-hidden focus:ring-2 focus:ring-daintree-accent",
@@ -201,7 +192,7 @@ export function WorktreeSettingsTab() {
               </Tooltip>
             </div>
 
-            {!validation.valid && validation.error && (
+            {!isLoading && !validation.valid && validation.error && (
               <div className="flex items-start gap-2 text-xs text-status-error">
                 <AlertCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />
                 <span>{validation.error}</span>

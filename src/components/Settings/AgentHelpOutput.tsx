@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Copy, RefreshCw } from "lucide-react";
-import { Spinner } from "@/components/ui/Spinner";
 import { agentHelpClient } from "@/clients";
 
 import type { AgentHelpResult } from "@shared/types/ipc/agent";
@@ -182,8 +181,14 @@ export function AgentHelpOutput({
       </div>
 
       {isLoading && (
-        <div className="flex items-center justify-center py-8">
-          <Spinner size="lg" className="text-daintree-text/40" />
+        <div className="rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg p-3 animate-pulse-delayed">
+          <div className="space-y-2">
+            <div className="h-3 bg-daintree-border/50 rounded w-3/4" />
+            <div className="h-3 bg-daintree-border/50 rounded w-1/2" />
+            <div className="h-3 bg-daintree-border/50 rounded w-5/6" />
+            <div className="h-3 bg-daintree-border/50 rounded w-2/3" />
+            <div className="h-3 bg-daintree-border/50 rounded w-1/3" />
+          </div>
         </div>
       )}
 
