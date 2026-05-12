@@ -220,6 +220,31 @@ describe("CommitComposerDialog", () => {
     expect(submit.disabled).toBe(false);
   });
 
+  it("treats 'development' as a protected branch", () => {
+    const { container } = render(
+      <CommitComposerDialog
+        {...makeProps({ branch: "development", commitMessage: "chore: bump" })}
+      />
+    );
+    expect(container.textContent).toContain("Committing directly to");
+    expect(
+      (screen.getByRole("button", { name: /Commit & push/ }) as HTMLButtonElement).disabled
+    ).toBe(true);
+  });
+
+  it("normalizes mixed-case branch names when checking protection", () => {
+    const mainCase = render(
+      <CommitComposerDialog {...makeProps({ branch: "Main", commitMessage: "x" })} />
+    );
+    expect(mainCase.container.textContent).toContain("Committing directly to");
+    cleanup();
+
+    render(<CommitComposerDialog {...makeProps({ branch: "DEVELOP", commitMessage: "x" })} />);
+    expect(
+      (screen.getByRole("button", { name: /Commit & push/ }) as HTMLButtonElement).disabled
+    ).toBe(true);
+  });
+
   it("treats main and master as protected branches", () => {
     const mainRender = render(
       <CommitComposerDialog {...makeProps({ branch: "main", commitMessage: "x" })} />

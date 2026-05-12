@@ -438,11 +438,18 @@ export function WorktreeCard({
   const [isCommittingAndPushing, setIsCommittingAndPushing] = useState(false);
   const [commitAndPushError, setCommitAndPushError] = useState<string | null>(null);
   const commitAndPushInFlightRef = useRef(false);
+  // Tracks whether `commit` already succeeded for the currently-open composer
+  // session. If it did and `push` failed, a retry must skip stage+commit
+  // (which would no-op then fail "nothing to commit") and go straight to push.
+  const commitSucceededRef = useRef(false);
   const [showCommitComposer, setShowCommitComposer] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
   const [commitComposerDiff, setCommitComposerDiff] = useState<string | null>(null);
   const [isDiffLoading, setIsDiffLoading] = useState(false);
   const [diffError, setDiffError] = useState<string | null>(null);
+  // Monotonic ID per open — late responses from a prior open are dropped
+  // even when the worktree path stays the same.
+  const diffRequestIdRef = useRef(0);
 
   const onCloseReviewHub = () => setShowReviewHub(false);
   const onClosePlanViewer = () => setShowPlanViewer(false);
@@ -494,19 +501,20 @@ export function WorktreeCard({
     setIsDiffLoading(true);
     setDiffError(null);
     setCommitAndPushError(null);
+    commitSucceededRef.current = false;
     setShowCommitComposer(true);
 
+    const requestId = ++diffRequestIdRef.current;
     const requestPath = worktree.path;
     void window.electron.git
       .getWorkingDiff(requestPath, "unstaged")
       .then((raw) => {
-        // Drop late responses from a previous worktree path or after close.
-        if (requestPath !== worktree.path) return;
+        if (requestId !== diffRequestIdRef.current) return;
         setCommitComposerDiff(raw ?? "");
         setIsDiffLoading(false);
       })
       .catch((err) => {
-        if (requestPath !== worktree.path) return;
+        if (requestId !== diffRequestIdRef.current) return;
         setDiffError(formatErrorMessage(err, "Couldn't load diff preview"));
         setIsDiffLoading(false);
       });
@@ -514,6 +522,7 @@ export function WorktreeCard({
 
   const handleCloseCommitComposer = () => {
     if (commitAndPushInFlightRef.current) return;
+    commitSucceededRef.current = false;
     setShowCommitComposer(false);
   };
 
@@ -525,17 +534,20 @@ export function WorktreeCard({
     setIsCommittingAndPushing(true);
     setCommitAndPushError(null);
     try {
-      try {
-        await window.electron.git.stageAll(worktree.path);
-      } catch (err) {
-        setCommitAndPushError(formatErrorMessage(err, "Couldn't stage changes"));
-        return;
-      }
-      try {
-        await window.electron.git.commit(worktree.path, trimmed);
-      } catch (err) {
-        setCommitAndPushError(formatErrorMessage(err, "Couldn't commit changes"));
-        return;
+      if (!commitSucceededRef.current) {
+        try {
+          await window.electron.git.stageAll(worktree.path);
+        } catch (err) {
+          setCommitAndPushError(formatErrorMessage(err, "Couldn't stage changes"));
+          return;
+        }
+        try {
+          await window.electron.git.commit(worktree.path, trimmed);
+        } catch (err) {
+          setCommitAndPushError(formatErrorMessage(err, "Couldn't commit changes"));
+          return;
+        }
+        commitSucceededRef.current = true;
       }
       try {
         await window.electron.git.push(worktree.path);
@@ -543,6 +555,7 @@ export function WorktreeCard({
         setCommitAndPushError(formatErrorMessage(err, "Couldn't push to remote"));
         return;
       }
+      commitSucceededRef.current = false;
       setShowCommitComposer(false);
     } finally {
       setIsCommittingAndPushing(false);
