@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, ChevronUp, X } from "lucide-react";
 import { useReducedMotion } from "framer-motion";
 import { DURATION_200 } from "@/lib/animationUtils";
 import { cn } from "@/lib/utils";
 import { actionService } from "@/services/ActionService";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { useEscapeStack } from "@/hooks/useEscapeStack";
 import { AnimatedLabel } from "@/components/ui/AnimatedLabel";
 import type { ChecklistState, ChecklistItemId } from "@shared/types/ipc/maps";
 import { CHECKLIST_ITEMS } from "./checklistItems";
@@ -133,6 +135,15 @@ export function GettingStartedChecklist({
   const counterLabel = allComplete ? "All set" : `${completedCount}/${totalCount}`;
   const counterAnimateKey = allComplete ? "all-set" : String(completedCount);
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [isFocusWithin, setIsFocusWithin] = useState(false);
+
+  const handleEscape = useCallback(() => {
+    onToggleCollapse();
+  }, [onToggleCollapse]);
+
+  useEscapeStack(isFocusWithin, handleEscape);
+
   return createPortal(
     <div
       className={cn(
@@ -142,9 +153,16 @@ export function GettingStartedChecklist({
       style={{ right: "calc(var(--right-obstruction-offset, 0px))" }}
     >
       <div
+        ref={panelRef}
         role="region"
         aria-label="Getting started checklist"
         data-getting-started-checklist=""
+        onFocus={() => setIsFocusWithin(true)}
+        onBlur={(e) => {
+          if (!panelRef.current?.contains(e.relatedTarget as Node | null)) {
+            setIsFocusWithin(false);
+          }
+        }}
         className={cn(
           "pointer-events-auto relative w-full",
           "rounded-[var(--radius-sm)] border",
@@ -164,44 +182,54 @@ export function GettingStartedChecklist({
       >
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2.5">
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            aria-expanded={!collapsed}
-            aria-controls={CHECKLIST_BODY_ID}
-            className="flex items-center gap-2 text-left flex-1 min-w-0"
-          >
-            <h4 className="font-medium leading-tight tracking-tight text-xs font-mono text-daintree-accent">
-              Getting Started
-            </h4>
-            <AnimatedLabel
-              label={counterLabel}
-              animateKey={counterAnimateKey}
-              textClassName={cn(
-                "text-[10px] font-mono tabular-nums",
-                allComplete ? "text-daintree-accent" : "text-daintree-text/50"
-              )}
-            />
-            {collapsed ? (
-              <ChevronUp className="h-3 w-3 text-daintree-text/50 shrink-0" />
-            ) : (
-              <ChevronDown className="h-3 w-3 text-daintree-text/50 shrink-0" />
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={onDismiss}
-            aria-label="Dismiss checklist"
-            className={cn(
-              "rounded-[var(--radius-xs)]",
-              "h-6 w-6 flex items-center justify-center shrink-0",
-              "text-daintree-text/60 transition-colors",
-              "hover:text-daintree-text/90 hover:bg-tint/10",
-              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
-            )}
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                aria-expanded={!collapsed}
+                aria-controls={CHECKLIST_BODY_ID}
+                className="flex items-center gap-2 text-left flex-1 min-w-0"
+              >
+                <h4 className="font-medium leading-tight tracking-tight text-xs font-mono text-daintree-accent">
+                  Getting Started
+                </h4>
+                <AnimatedLabel
+                  label={counterLabel}
+                  animateKey={counterAnimateKey}
+                  textClassName={cn(
+                    "text-[10px] font-mono tabular-nums",
+                    allComplete ? "text-daintree-accent" : "text-daintree-text/50"
+                  )}
+                />
+                {collapsed ? (
+                  <ChevronUp className="h-3 w-3 text-daintree-text/50 shrink-0" />
+                ) : (
+                  <ChevronDown className="h-3 w-3 text-daintree-text/50 shrink-0" />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{collapsed ? "Expand" : "Collapse"}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onDismiss}
+                aria-label="Dismiss checklist"
+                className={cn(
+                  "rounded-[var(--radius-xs)]",
+                  "h-6 w-6 flex items-center justify-center shrink-0",
+                  "text-daintree-text/60 transition-colors",
+                  "hover:text-daintree-text/90 hover:bg-tint/10",
+                  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+                )}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Hide checklist</TooltipContent>
+          </Tooltip>
         </div>
 
         {/* Collapsible body */}

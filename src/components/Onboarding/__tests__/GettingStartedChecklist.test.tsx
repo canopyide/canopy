@@ -1,10 +1,16 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { dispatchEscape, _resetForTests } from "@/lib/escapeStack";
 
 const { dispatchMock, useReducedMotionMock } = vi.hoisted(() => ({
   dispatchMock: vi.fn(() => Promise.resolve()),
   useReducedMotionMock: vi.fn(() => false),
+}));
+
+vi.mock("@/components/ui/radix-loader", () => ({
+  useRadixPrimitives: () => null,
+  primeOnEvent: () => {},
 }));
 
 vi.mock("@/services/ActionService", () => ({
@@ -67,6 +73,7 @@ describe("GettingStartedChecklist", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetForTests();
   });
 
   it("renders incomplete steps as buttons", () => {
@@ -261,6 +268,108 @@ describe("GettingStartedChecklist", () => {
       const accented = screen.getByText("All set");
       expect(accented.className).toContain("text-daintree-accent");
       expect(accented.className).not.toContain("text-daintree-text/50");
+    });
+  });
+
+  describe("dismiss button", () => {
+    it("calls onDismiss when the dismiss button is clicked", () => {
+      render(<GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />);
+      const dismissBtn = screen.getByRole("button", { name: "Dismiss checklist" });
+      fireEvent.click(dismissBtn);
+      expect(defaultProps.onDismiss).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not call onToggleCollapse when dismiss button is clicked", () => {
+      render(<GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />);
+      const dismissBtn = screen.getByRole("button", { name: "Dismiss checklist" });
+      fireEvent.click(dismissBtn);
+      expect(defaultProps.onToggleCollapse).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Escape key", () => {
+    it("calls onToggleCollapse when Escape is pressed while focus is inside the panel", () => {
+      render(<GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />);
+      const region = screen.getByRole("region", { name: "Getting started checklist" });
+
+      act(() => {
+        region.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+      });
+
+      act(() => {
+        dispatchEscape();
+      });
+
+      expect(defaultProps.onToggleCollapse).toHaveBeenCalledTimes(1);
+      expect(defaultProps.onDismiss).not.toHaveBeenCalled();
+    });
+
+    it("does nothing when Escape is pressed while focus is outside the panel", () => {
+      render(<GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />);
+
+      act(() => {
+        dispatchEscape();
+      });
+
+      expect(defaultProps.onToggleCollapse).not.toHaveBeenCalled();
+      expect(defaultProps.onDismiss).not.toHaveBeenCalled();
+    });
+
+    it("does nothing when Escape is pressed after focus has left the panel", () => {
+      render(<GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />);
+      const region = screen.getByRole("region", { name: "Getting started checklist" });
+
+      act(() => {
+        region.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+      });
+
+      act(() => {
+        region.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      });
+
+      act(() => {
+        dispatchEscape();
+      });
+
+      expect(defaultProps.onToggleCollapse).not.toHaveBeenCalled();
+      expect(defaultProps.onDismiss).not.toHaveBeenCalled();
+    });
+
+    it("cleans up its escape handler on unmount", () => {
+      const { unmount } = render(
+        <GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />
+      );
+      const region = screen.getByRole("region", { name: "Getting started checklist" });
+
+      act(() => {
+        region.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+      });
+
+      unmount();
+
+      act(() => {
+        dispatchEscape();
+      });
+
+      expect(defaultProps.onToggleCollapse).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("tooltip structure", () => {
+    it("preserves aria-expanded and aria-controls on the toggle button after tooltip wrapping", () => {
+      render(
+        <GettingStartedChecklist {...defaultProps} checklist={allIncomplete} collapsed={false} />
+      );
+      const toggle = screen.getByRole("button", { name: /getting started/i });
+      expect(toggle.getAttribute("aria-expanded")).toBe("true");
+      expect(toggle.getAttribute("aria-controls")).toBe("getting-started-checklist-body");
+    });
+
+    it("preserves aria-label on the dismiss button after tooltip wrapping", () => {
+      render(<GettingStartedChecklist {...defaultProps} checklist={allIncomplete} />);
+      const dismissBtn = screen.getByRole("button", { name: "Dismiss checklist" });
+      expect(dismissBtn).toBeTruthy();
+      expect(dismissBtn.getAttribute("aria-label")).toBe("Dismiss checklist");
     });
   });
 
