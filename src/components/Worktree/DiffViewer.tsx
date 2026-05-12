@@ -139,7 +139,13 @@ export const DiffViewer = forwardRef<HTMLDivElement, DiffViewerProps>(function D
 ) {
   const files = useMemo(() => {
     try {
-      return parseDiff(diff);
+      const parsed = parseDiff(diff);
+      // parseDiff is forgiving — nonsense input yields a synthetic file with
+      // empty paths and no hunks. Treat that shape as a parse failure.
+      const allEmpty = parsed.every(
+        (file) => !file.oldPath && !file.newPath && file.hunks.length === 0
+      );
+      return allEmpty ? [] : parsed;
     } catch {
       return [];
     }
