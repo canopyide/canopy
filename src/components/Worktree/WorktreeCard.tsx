@@ -438,6 +438,11 @@ export function WorktreeCard({
   const [isCommittingAndPushing, setIsCommittingAndPushing] = useState(false);
   const [commitAndPushError, setCommitAndPushError] = useState<string | null>(null);
   const commitAndPushInFlightRef = useRef(false);
+  const [showCommitComposer, setShowCommitComposer] = useState(false);
+  const [commitMessage, setCommitMessage] = useState("");
+  const [commitComposerDiff, setCommitComposerDiff] = useState<string | null>(null);
+  const [isDiffLoading, setIsDiffLoading] = useState(false);
+  const [diffError, setDiffError] = useState<string | null>(null);
 
   const onCloseReviewHub = () => setShowReviewHub(false);
   const onClosePlanViewer = () => setShowPlanViewer(false);
@@ -472,10 +477,7 @@ export function WorktreeCard({
   }, [worktree.id]);
 
   const aiNoteFirstLine = effectiveNote?.split("\n")[0]?.trim() ?? "";
-  const lastCommitFirstLine =
-    worktree.worktreeChanges?.lastCommitMessage?.trim().split("\n")[0]?.trim() ?? "";
-  const commitMessageDefault = aiNoteFirstLine || lastCommitFirstLine;
-  const hasCommitMessageSource = commitMessageDefault.length > 0;
+  const commitMessageDefault = aiNoteFirstLine;
 
   const clearCommitAndPushError = () => setCommitAndPushError(null);
 
@@ -485,9 +487,40 @@ export function WorktreeCard({
     }
   }, [reviewState]);
 
-  const handleCommitAndPush = async () => {
+  const handleOpenCommitComposer = () => {
     if (commitAndPushInFlightRef.current) return;
-    if (!commitMessageDefault) return;
+    setCommitMessage(commitMessageDefault);
+    setCommitComposerDiff(null);
+    setIsDiffLoading(true);
+    setDiffError(null);
+    setCommitAndPushError(null);
+    setShowCommitComposer(true);
+
+    const requestPath = worktree.path;
+    void window.electron.git
+      .getWorkingDiff(requestPath, "unstaged")
+      .then((raw) => {
+        // Drop late responses from a previous worktree path or after close.
+        if (requestPath !== worktree.path) return;
+        setCommitComposerDiff(raw ?? "");
+        setIsDiffLoading(false);
+      })
+      .catch((err) => {
+        if (requestPath !== worktree.path) return;
+        setDiffError(formatErrorMessage(err, "Couldn't load diff preview"));
+        setIsDiffLoading(false);
+      });
+  };
+
+  const handleCloseCommitComposer = () => {
+    if (commitAndPushInFlightRef.current) return;
+    setShowCommitComposer(false);
+  };
+
+  const handleConfirmCommitAndPush = async (message: string) => {
+    if (commitAndPushInFlightRef.current) return;
+    const trimmed = message.trim();
+    if (!trimmed) return;
     commitAndPushInFlightRef.current = true;
     setIsCommittingAndPushing(true);
     setCommitAndPushError(null);
@@ -499,7 +532,7 @@ export function WorktreeCard({
         return;
       }
       try {
-        await window.electron.git.commit(worktree.path, commitMessageDefault);
+        await window.electron.git.commit(worktree.path, trimmed);
       } catch (err) {
         setCommitAndPushError(formatErrorMessage(err, "Couldn't commit changes"));
         return;
@@ -510,6 +543,7 @@ export function WorktreeCard({
         setCommitAndPushError(formatErrorMessage(err, "Couldn't push to remote"));
         return;
       }
+      setShowCommitComposer(false);
     } finally {
       setIsCommittingAndPushing(false);
       commitAndPushInFlightRef.current = false;
@@ -897,11 +931,10 @@ export function WorktreeCard({
                     onDismissError={dismissError}
                     onRetryError={handleErrorRetry}
                     onOpenReviewHub={openReviewHubForThisWorktree}
-                    onCommitAndPush={() => void handleCommitAndPush()}
+                    onCommitAndPush={handleOpenCommitComposer}
                     isCommitting={isCommittingAndPushing}
                     commitError={commitAndPushError}
                     clearCommitError={clearCommitAndPushError}
-                    hasCommitMessageSource={hasCommitMessageSource}
                     isLifecycleRunning={isLifecycleRunning}
                     lifecycleLabel={lifecycleLabel}
                     hasResourceConfig={hasResourceConfig}
@@ -941,6 +974,16 @@ export function WorktreeCard({
                 onCloseReviewHub={onCloseReviewHub}
                 showPlanViewer={showPlanViewer}
                 onClosePlanViewer={onClosePlanViewer}
+                showCommitComposer={showCommitComposer}
+                onCloseCommitComposer={handleCloseCommitComposer}
+                onConfirmCommitAndPush={(msg) => void handleConfirmCommitAndPush(msg)}
+                commitMessage={commitMessage}
+                onCommitMessageChange={setCommitMessage}
+                commitComposerDiff={commitComposerDiff}
+                isCommitComposerDiffLoading={isDiffLoading}
+                commitComposerDiffError={diffError}
+                isCommittingAndPushing={isCommittingAndPushing}
+                commitAndPushSubmitError={commitAndPushError}
               />
             </div>
           </div>

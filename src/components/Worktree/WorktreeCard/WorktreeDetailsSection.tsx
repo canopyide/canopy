@@ -51,7 +51,6 @@ export interface WorktreeDetailsSectionProps {
   isCommitting?: boolean;
   commitError?: string | null;
   clearCommitError?: () => void;
-  hasCommitMessageSource?: boolean;
   isLifecycleRunning?: boolean;
   lifecycleLabel?: string;
 
@@ -85,7 +84,6 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
     isCommitting,
     commitError,
     clearCommitError,
-    hasCommitMessageSource,
     reviewState,
     isLifecycleRunning,
     lifecycleLabel,
@@ -134,7 +132,7 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
 
   const isConflicted = reviewState === "conflicted";
   const showCommitAndPushButton =
-    !!onCommitAndPush && !!hasCommitMessageSource && reviewState === "has-changes" && !isCommitting;
+    !!onCommitAndPush && reviewState === "has-changes" && !isCommitting;
   const showReviewHubButton = !!onOpenReviewHub && hasChanges;
   const rightButtonGroupShown = showReviewHubButton || showCommitAndPushButton || !!isCommitting;
 

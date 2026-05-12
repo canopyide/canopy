@@ -304,11 +304,10 @@ describe("WorktreeDetailsSection — reviewState surfaces", () => {
     expect(screen.queryByText(/files/)).toBeNull();
   });
 
-  it("renders the Commit & push button when gated", () => {
+  it("renders the Commit & push button when there are changes", () => {
     const onCommitAndPush = vi.fn();
     renderSection({
       reviewState: "has-changes",
-      hasCommitMessageSource: true,
       onCommitAndPush,
     });
     const button = screen.getByLabelText("Commit and push");
@@ -317,19 +316,19 @@ describe("WorktreeDetailsSection — reviewState surfaces", () => {
     expect(onCommitAndPush).toHaveBeenCalledTimes(1);
   });
 
-  it("hides the Commit & push button when there is no commit message source", () => {
+  it("renders the Commit & push button even when no AI note is present", () => {
     renderSection({
       reviewState: "has-changes",
-      hasCommitMessageSource: false,
       onCommitAndPush: vi.fn(),
     });
-    expect(screen.queryByLabelText("Commit and push")).toBeNull();
+    // The composer dialog now collects the message, so the button must show
+    // whenever there are changes — even without a prefilled message source.
+    expect(screen.queryByLabelText("Commit and push")).not.toBeNull();
   });
 
   it('hides the Commit & push button when reviewState is "conflicted"', () => {
     renderSection({
       reviewState: "conflicted",
-      hasCommitMessageSource: true,
       onCommitAndPush: vi.fn(),
       worktree: withChanges({
         changedFileCount: 2,
@@ -342,7 +341,6 @@ describe("WorktreeDetailsSection — reviewState surfaces", () => {
   it("swaps the button for a spinner while committing", () => {
     renderSection({
       reviewState: "has-changes",
-      hasCommitMessageSource: true,
       onCommitAndPush: vi.fn(),
       isCommitting: true,
     });
@@ -353,7 +351,6 @@ describe("WorktreeDetailsSection — reviewState surfaces", () => {
   it("renders an inline error banner with commitError", () => {
     renderSection({
       reviewState: "has-changes",
-      hasCommitMessageSource: true,
       onCommitAndPush: vi.fn(),
       commitError: "Couldn't push to remote",
       clearCommitError: vi.fn(),
@@ -368,7 +365,6 @@ describe("WorktreeDetailsSection — reviewState surfaces", () => {
     const onOpenReviewHub = vi.fn();
     renderSection({
       reviewState: "has-changes",
-      hasCommitMessageSource: true,
       onCommitAndPush: vi.fn(),
       commitError: "Couldn't push to remote",
       clearCommitError,
@@ -383,7 +379,6 @@ describe("WorktreeDetailsSection — reviewState surfaces", () => {
     const clearCommitError = vi.fn();
     renderSection({
       reviewState: "has-changes",
-      hasCommitMessageSource: true,
       commitError: "Couldn't push to remote",
       clearCommitError,
     });
@@ -395,7 +390,6 @@ describe("WorktreeDetailsSection — reviewState surfaces", () => {
     renderSection({
       reviewState: "unpushed-clean",
       hasChanges: false,
-      hasCommitMessageSource: true,
       onCommitAndPush: vi.fn(),
       computedSubtitle: { text: "fix: stuff", tone: "muted" },
       worktree: {
@@ -416,7 +410,6 @@ describe("WorktreeDetailsSection — reviewState surfaces", () => {
     renderSection({
       isExpanded: true,
       reviewState: "has-changes",
-      hasCommitMessageSource: true,
       commitError: "Couldn't push to remote",
       clearCommitError: vi.fn(),
     });
