@@ -677,7 +677,6 @@ describe("requiresEnabled metadata", () => {
     for (const id of [
       "voice-stt-openai-key",
       "voice-language",
-      "voice-transcription-model",
       "voice-paragraph-breaks",
       "voice-custom-dictionary",
       "voice-ai-correction-enable",
@@ -691,7 +690,7 @@ describe("requiresEnabled metadata", () => {
   });
 
   it("Voice AI correction sub-settings reference voice-ai-correction-enable", () => {
-    for (const id of ["voice-openai-key", "voice-correction-model", "voice-custom-instructions"]) {
+    for (const id of ["voice-correction-model", "voice-custom-instructions"]) {
       const entry = byId(id);
       expect(
         entry?.requiresEnabled?.settingId,
@@ -725,8 +724,8 @@ describe("requiresEnabled metadata", () => {
   });
 
   it("two-level dependency chain is fully connected", () => {
-    const openaiKey = byId("voice-openai-key");
-    expect(openaiKey?.requiresEnabled?.settingId).toBe("voice-ai-correction-enable");
+    const correctionModel = byId("voice-correction-model");
+    expect(correctionModel?.requiresEnabled?.settingId).toBe("voice-ai-correction-enable");
     const aiCorrection = byId("voice-ai-correction-enable");
     expect(aiCorrection?.requiresEnabled?.settingId).toBe("voice-enable");
     const voiceEnable = byId("voice-enable");

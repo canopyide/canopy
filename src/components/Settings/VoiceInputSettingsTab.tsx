@@ -31,7 +31,6 @@ import { CORE_CORRECTION_PROMPT } from "@shared/config/voiceCorrection";
 import type {
   VoiceInputSettings,
   MicPermissionStatus,
-  VoiceTranscriptionModel,
   VoiceCorrectionModel,
   VoiceParagraphingStrategy,
 } from "@shared/types";
@@ -63,18 +62,6 @@ const CORRECTION_MODELS: {
     value: "gpt-5-nano",
     label: "GPT-5 Nano",
     description: "Faster · lower cost",
-  },
-];
-
-const TRANSCRIPTION_MODELS: {
-  value: VoiceTranscriptionModel;
-  label: string;
-  description: string;
-}[] = [
-  {
-    value: "gpt-realtime-whisper",
-    label: "Whisper (Realtime)",
-    description: "OpenAI Realtime · $0.017/min",
   },
 ];
 
@@ -245,17 +232,6 @@ export function VoiceInputSettingsTab() {
               value={settings.language}
               onValueChange={(v) => update({ language: v })}
               options={LANGUAGES.map(({ code, label }) => ({ value: code, label }))}
-            />
-
-            <SettingsSelect
-              label="Transcription Model"
-              value={settings.transcriptionModel}
-              onValueChange={(v) => update({ transcriptionModel: v as VoiceTranscriptionModel })}
-              options={TRANSCRIPTION_MODELS.map(({ value, label, description }) => ({
-                value,
-                label,
-                description,
-              }))}
             />
 
             <ParagraphingStrategyRow
