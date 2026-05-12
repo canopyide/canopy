@@ -15,7 +15,6 @@ import type {
   MonitorConfig,
   CreateWorktreeOptions,
   BranchInfo,
-  PRServiceStatus,
 } from "../../shared/types/workspace-host.js";
 import { invalidateGitStatusCache } from "../utils/git.js";
 import { detectWslPath, listFirstWslDistro } from "../utils/wsl.js";
@@ -26,7 +25,6 @@ import {
   clearGitCommonDirCache,
 } from "../utils/gitUtils.js";
 import { extractIssueNumberSync, extractIssueNumber } from "../services/issueExtractor.js";
-import { GitHubAuth } from "../services/github/GitHubAuth.js";
 import { pullRequestService } from "../services/PullRequestService.js";
 import { events } from "../services/events.js";
 import { WorktreeLifecycleService, type WorkspaceHostContext } from "./WorktreeLifecycleService.js";
@@ -1762,7 +1760,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
   pause(): void {
     console.log("[WorkspaceService] Pausing (backgrounded)");
     this.setPollingEnabled(false);
-    pullRequestService.stop();
+    this.prService.pause();
     try {
       os.setPriority(process.pid, os.constants.priority.PRIORITY_LOW);
     } catch {
@@ -1778,32 +1776,20 @@ ${lines.map((l) => "+" + l).join("\n")}`;
       // Sandboxed environments may deny setpriority — non-fatal
     }
     this.setPollingEnabled(true);
-    pullRequestService.start();
+    this.prService.resume();
   }
 
   getPRStatus(requestId: string): void {
-    const status = pullRequestService.getStatus();
-    const prStatus: PRServiceStatus = {
-      isRunning: status.isPolling,
-      candidateCount: status.candidateCount,
-      resolvedPRCount: status.resolvedCount,
-      lastCheckTime: undefined,
-      circuitBreakerTripped: !status.isEnabled,
-    };
+    const prStatus = this.prService.getStatus();
     this.sendEvent({ type: "get-pr-status-result", requestId, status: prStatus });
   }
 
   resetPRState(requestId: string): void {
-    pullRequestService.reset();
-    if (this.projectRootPath) {
-      pullRequestService.initialize(this.projectRootPath);
-      pullRequestService.start();
-    }
+    this.prService.resetPRState(this.projectRootPath);
     this.sendEvent({ type: "reset-pr-state-result", requestId, success: true });
   }
 
   updateGitHubToken(token: string | null): void {
-    GitHubAuth.setMemoryToken(token);
     if (token) {
       // A new token may resolve previously-failing auth — drop suspensions so
       // the next scheduled fetch retries. Network/transient entries stay so we
@@ -1816,14 +1802,8 @@ ${lines.map((l) => "+" + l).join("\n")}`;
           void monitor.triggerFetchNow();
         }
       }
-      pullRequestService.refresh();
-    } else {
-      pullRequestService.reset();
-      if (this.projectRootPath) {
-        pullRequestService.initialize(this.projectRootPath);
-        pullRequestService.start();
-      }
     }
+    this.prService.updateToken(token, this.projectRootPath);
   }
 
   private initializePRService(): Promise<void> {

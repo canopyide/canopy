@@ -1,10 +1,12 @@
 import type { TypedEventBus } from "../services/events.js";
 import type { GitHubPRCIStatus } from "../../shared/types/github.js";
-import type { WorktreeSnapshot } from "../../shared/types/workspace-host.js";
+import type { PRServiceStatus, WorktreeSnapshot } from "../../shared/types/workspace-host.js";
+import { GitHubAuth } from "../services/github/GitHubAuth.js";
 
 interface PullRequestServiceLike {
   initialize(rootPath: string): void;
   start(): Promise<void>;
+  stop(): void;
   reset(): void;
   refresh(): void;
   getStatus(): {
@@ -127,6 +129,46 @@ export class PRIntegrationService {
     }
 
     return this.prService.start();
+  }
+
+  getStatus(): PRServiceStatus {
+    const status = this.prService.getStatus();
+    return {
+      isRunning: status.isPolling,
+      candidateCount: status.candidateCount,
+      resolvedPRCount: status.resolvedCount,
+      lastCheckTime: undefined,
+      circuitBreakerTripped: !status.isEnabled,
+    };
+  }
+
+  resetPRState(projectRootPath: string | null): void {
+    this.prService.reset();
+    if (projectRootPath) {
+      this.prService.initialize(projectRootPath);
+      void this.prService.start();
+    }
+  }
+
+  pause(): void {
+    this.prService.stop();
+  }
+
+  resume(): void {
+    void this.prService.start();
+  }
+
+  updateToken(token: string | null, projectRootPath: string | null): void {
+    GitHubAuth.setMemoryToken(token);
+    if (token) {
+      this.prService.refresh();
+    } else {
+      this.prService.reset();
+      if (projectRootPath) {
+        this.prService.initialize(projectRootPath);
+        void this.prService.start();
+      }
+    }
   }
 
   cleanup(): void {
