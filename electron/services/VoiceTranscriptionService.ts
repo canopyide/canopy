@@ -5,7 +5,9 @@ import { logDebug, logInfo, logWarn, logError } from "../utils/logger.js";
 
 const P = "[VoiceTranscription]";
 
-const OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime?model=gpt-realtime-whisper";
+const OPENAI_REALTIME_URL =
+  process.env.DAINTREE_REALTIME_WS_URL ??
+  "wss://api.openai.com/v1/realtime?model=gpt-realtime-whisper";
 const OPENAI_TRANSCRIPTION_MODEL = "gpt-realtime-whisper";
 const CONNECT_TIMEOUT_MS = 10_000;
 const DRAIN_TIMEOUT_MS = 3_000;
