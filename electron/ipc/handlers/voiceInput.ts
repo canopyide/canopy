@@ -177,8 +177,7 @@ let sessionProjectInfo: { name?: string; path?: string } = {};
 
 const VOICE_INPUT_DEFAULTS: VoiceInputSettings = {
   enabled: false,
-  deepgramApiKey: "",
-  correctionApiKey: "",
+  openaiApiKey: "",
   language: "en",
   customDictionary: [],
   transcriptionModel: "nova-3",
@@ -190,18 +189,33 @@ const VOICE_INPUT_DEFAULTS: VoiceInputSettings = {
 };
 
 /** Read voiceInput settings with defaults for fields added after initial store creation. */
-function getVoiceSettings(): VoiceInputSettings {
+export function getVoiceSettings(): VoiceInputSettings {
   const stored = store.get("voiceInput") as
-    | (Partial<VoiceInputSettings> & { apiKey?: string })
+    | (Partial<VoiceInputSettings> & {
+        apiKey?: string;
+        deepgramApiKey?: string;
+        correctionApiKey?: string;
+      })
     | undefined;
-  const merged = { ...VOICE_INPUT_DEFAULTS, ...stored };
 
-  // Migrate legacy apiKey (OpenAI sk-* key) to correctionApiKey.
-  // The deepgramApiKey field is new and must be set explicitly by the user.
-  if (stored?.apiKey && !stored.deepgramApiKey && !stored.correctionApiKey) {
-    if (stored.apiKey.startsWith("sk-")) {
-      merged.correctionApiKey = stored.apiKey;
+  // Pluck legacy fields so they don't leak into the merged object via spread.
+  const { apiKey, deepgramApiKey, correctionApiKey, ...rest } = stored ?? {};
+  const merged: VoiceInputSettings = { ...VOICE_INPUT_DEFAULTS, ...rest };
+
+  // Migrate prior OpenAI keys into the unified field. The Deepgram key is
+  // dropped — it belonged to a different provider.
+  if (!merged.openaiApiKey) {
+    if (correctionApiKey?.startsWith("sk-")) {
+      merged.openaiApiKey = correctionApiKey;
+    } else if (apiKey?.startsWith("sk-")) {
+      merged.openaiApiKey = apiKey;
     }
+  }
+
+  // Persist the cleaned object on first read after upgrade so the legacy
+  // fields disappear from disk. `store.set` with a full object replaces.
+  if (apiKey !== undefined || deepgramApiKey !== undefined || correctionApiKey !== undefined) {
+    store.set("voiceInput", merged);
   }
 
   return merged;
@@ -264,37 +278,6 @@ function openMicSettings(): void {
         error: (err as Error)?.message ?? String(err),
       });
     }
-  }
-}
-
-async function validateDeepgramKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
-  if (!apiKey.trim()) {
-    return { valid: false, error: "API key is required" };
-  }
-
-  try {
-    const response = await fetch("https://api.deepgram.com/v1/auth/token", {
-      method: "GET",
-      headers: {
-        Authorization: `Token ${apiKey.trim()}`,
-      },
-      signal: AbortSignal.timeout(10_000),
-    });
-
-    if (response.ok) {
-      return { valid: true };
-    }
-
-    if (response.status === 401 || response.status === 403) {
-      return { valid: false, error: "Invalid API key" };
-    }
-
-    return { valid: false, error: `API returned status ${response.status}` };
-  } catch (error) {
-    if (error instanceof Error && error.name === "TimeoutError") {
-      return { valid: false, error: "Connection timed out" };
-    }
-    return { valid: false, error: "Failed to connect to Deepgram" };
   }
 }
 
@@ -417,7 +400,7 @@ function fireMicroCorrection(
       },
       {
         model: liveSettings.correctionModel,
-        apiKey: liveSettings.correctionApiKey,
+        apiKey: liveSettings.openaiApiKey,
         customDictionary: liveSettings.customDictionary,
         customInstructions: liveSettings.correctionCustomInstructions,
         projectName: projectInfo.name,
@@ -537,7 +520,7 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
 
         // Feed word-level data into the streaming correction buffer
         const correctionEnabled = !!(
-          liveSettings.correctionEnabled && liveSettings.correctionApiKey
+          liveSettings.correctionEnabled && liveSettings.openaiApiKey
         );
         if (
           correctionEnabled &&
@@ -560,7 +543,7 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
           rawText.length > 0
         ) {
           const projectPath = sessionProjectInfo.path;
-          const apiKey = liveSettings.correctionApiKey;
+          const apiKey = liveSettings.openaiApiKey;
           if (projectPath && apiKey) {
             const signal = sessionController?.signal;
             correctionPool.add(async () => {
@@ -697,10 +680,6 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
   };
 
   const handleValidateApiKey = async (apiKey: string) => {
-    return validateDeepgramKey(apiKey);
-  };
-
-  const handleValidateCorrectionApiKey = async (apiKey: string) => {
     return validateOpenAIKey(apiKey);
   };
 
@@ -714,7 +693,6 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
     typedHandle(CHANNELS.VOICE_INPUT_REQUEST_MIC_PERMISSION, handleRequestMicPermission),
     typedHandle(CHANNELS.VOICE_INPUT_OPEN_MIC_SETTINGS, handleOpenMicSettings),
     typedHandle(CHANNELS.VOICE_INPUT_VALIDATE_API_KEY, handleValidateApiKey),
-    typedHandle(CHANNELS.VOICE_INPUT_VALIDATE_CORRECTION_API_KEY, handleValidateCorrectionApiKey),
     typedHandle(CHANNELS.VOICE_INPUT_FLUSH_PARAGRAPH, handleFlushParagraph),
   ];
 

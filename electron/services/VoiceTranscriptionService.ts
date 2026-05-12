@@ -108,9 +108,9 @@ export class VoiceTranscriptionService {
   }
 
   async start(settings: VoiceInputSettings): Promise<VoiceStartResult> {
-    if (!settings.deepgramApiKey) {
-      logWarn(`${P} No Deepgram API key configured`);
-      return { ok: false, error: "Deepgram API key not configured" };
+    if (!settings.openaiApiKey) {
+      logWarn(`${P} No OpenAI API key configured`);
+      return { ok: false, error: "OpenAI API key not configured" };
     }
 
     const mySessionId = this.sessionId + 1;
@@ -130,7 +130,7 @@ export class VoiceTranscriptionService {
       this.pendingStart = { sessionId: mySessionId, resolve };
 
       const keyterms = settings.customDictionary;
-      const deepgram = createClient(settings.deepgramApiKey);
+      const deepgram = createClient(settings.openaiApiKey);
 
       logDebug(`${P} Opening Deepgram live connection`, {
         model: settings.transcriptionModel || "nova-3",

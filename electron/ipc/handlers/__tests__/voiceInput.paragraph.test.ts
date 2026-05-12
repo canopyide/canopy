@@ -114,8 +114,7 @@ vi.mock("../../../store.js", () => ({
       if (key === "voiceInput") {
         return {
           enabled: true,
-          deepgramApiKey: "dg-test-key",
-          correctionApiKey: "sk-test",
+          openaiApiKey: "sk-test",
           correctionEnabled: true,
           correctionModel: "gpt-5-mini",
           customDictionary: [],
@@ -154,14 +153,13 @@ vi.mock("../../channels.js", () => ({
     VOICE_INPUT_REQUEST_MIC_PERMISSION: "voice-input:request-mic-permission",
     VOICE_INPUT_OPEN_MIC_SETTINGS: "voice-input:open-mic-settings",
     VOICE_INPUT_VALIDATE_API_KEY: "voice-input:validate-api-key",
-    VOICE_INPUT_VALIDATE_CORRECTION_API_KEY: "voice-input:validate-correction-api-key",
     VOICE_INPUT_FLUSH_PARAGRAPH: "voice-input:flush-paragraph",
     VOICE_INPUT_PARAGRAPH_BOUNDARY: "voice-input:paragraph-boundary",
   },
 }));
 
 // ── Module import (once) ───────────────────────────────────────────────────
-import { registerVoiceInputHandlers } from "../voiceInput.js";
+import { registerVoiceInputHandlers, getVoiceSettings } from "../voiceInput.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -463,8 +461,7 @@ describe("voiceInput — streaming word-level correction", () => {
     const { store } = await import("../../../store.js");
     const disabledSettings = {
       enabled: true,
-      deepgramApiKey: "dg-test-key",
-      correctionApiKey: "",
+      openaiApiKey: "sk-test",
       correctionEnabled: false,
       correctionModel: "gpt-5-mini",
       customDictionary: [],
@@ -624,5 +621,99 @@ describe("voiceInput — streaming word-level correction", () => {
     expect(shared.correctionWordCalls[0].request.leftContext).toBe("I love");
     expect(shared.correctionWordCalls[0].request.rawSpan).toBe("racked");
     expect(shared.correctionWordCalls[0].request.rightContext).toBe("is a great");
+  });
+});
+
+describe("getVoiceSettings migration", () => {
+  beforeEach(async () => {
+    const { store } = await import("../../../store.js");
+    vi.mocked(store.set).mockReset();
+    vi.mocked(store.get).mockReset();
+  });
+
+  it("migrates legacy correctionApiKey (sk-*) into openaiApiKey and persists cleanup", async () => {
+    const { store } = await import("../../../store.js");
+    vi.mocked(store.get).mockReturnValueOnce({
+      enabled: true,
+      correctionApiKey: "sk-correction",
+      language: "en",
+      customDictionary: [],
+      transcriptionModel: "nova-3",
+      correctionEnabled: false,
+      correctionModel: "gpt-5-mini",
+      correctionCustomInstructions: "",
+      paragraphingStrategy: "spoken-command",
+    });
+
+    const settings = getVoiceSettings();
+
+    expect(settings.openaiApiKey).toBe("sk-correction");
+    expect(vi.mocked(store.set)).toHaveBeenCalledWith(
+      "voiceInput",
+      expect.objectContaining({ openaiApiKey: "sk-correction" })
+    );
+    // Persisted object should not retain legacy keys.
+    const persisted = (
+      vi.mocked(store.set).mock.calls[0] as unknown as [string, Record<string, unknown>]
+    )[1];
+    expect(persisted).not.toHaveProperty("correctionApiKey");
+    expect(persisted).not.toHaveProperty("deepgramApiKey");
+    expect(persisted).not.toHaveProperty("apiKey");
+  });
+
+  it("migrates first-generation apiKey (sk-*) into openaiApiKey", async () => {
+    const { store } = await import("../../../store.js");
+    vi.mocked(store.get).mockReturnValueOnce({
+      enabled: true,
+      apiKey: "sk-original",
+    });
+
+    const settings = getVoiceSettings();
+
+    expect(settings.openaiApiKey).toBe("sk-original");
+    expect(vi.mocked(store.set)).toHaveBeenCalledOnce();
+  });
+
+  it("drops deepgramApiKey without carrying it into openaiApiKey", async () => {
+    const { store } = await import("../../../store.js");
+    vi.mocked(store.get).mockReturnValueOnce({
+      enabled: true,
+      deepgramApiKey: "dg-xxx",
+    });
+
+    const settings = getVoiceSettings();
+
+    expect(settings.openaiApiKey).toBe("");
+    // Cleanup is still persisted so the dropped key disappears from disk.
+    expect(vi.mocked(store.set)).toHaveBeenCalledOnce();
+    const persisted = (
+      vi.mocked(store.set).mock.calls[0] as unknown as [string, Record<string, unknown>]
+    )[1];
+    expect(persisted).not.toHaveProperty("deepgramApiKey");
+  });
+
+  it("does not overwrite an existing openaiApiKey when legacy fields are present", async () => {
+    const { store } = await import("../../../store.js");
+    vi.mocked(store.get).mockReturnValueOnce({
+      enabled: true,
+      openaiApiKey: "sk-new",
+      correctionApiKey: "sk-old",
+    });
+
+    const settings = getVoiceSettings();
+
+    expect(settings.openaiApiKey).toBe("sk-new");
+  });
+
+  it("does not write to disk when no legacy fields are present", async () => {
+    const { store } = await import("../../../store.js");
+    vi.mocked(store.get).mockReturnValueOnce({
+      enabled: true,
+      openaiApiKey: "sk-present",
+    });
+
+    getVoiceSettings();
+
+    expect(vi.mocked(store.set)).not.toHaveBeenCalled();
   });
 });
