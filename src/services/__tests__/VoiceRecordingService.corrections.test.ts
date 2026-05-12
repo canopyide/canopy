@@ -141,8 +141,7 @@ function buildElectronStub() {
     onStatus: vi.fn(() => () => {}),
     getSettings: vi.fn().mockResolvedValue({
       enabled: true,
-      deepgramApiKey: "dg-key",
-      correctionApiKey: "sk-key",
+      openaiApiKey: "sk-key",
       correctionEnabled: true,
     }),
     checkMicPermission: vi.fn().mockResolvedValue("granted"),

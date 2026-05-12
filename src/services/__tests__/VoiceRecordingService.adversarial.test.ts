@@ -154,8 +154,7 @@ const runtime = vi.hoisted(() => ({
     getSettings: vi.fn<
       () => Promise<{
         enabled: boolean;
-        deepgramApiKey: string;
-        correctionApiKey: string;
+        openaiApiKey: string;
         correctionEnabled: boolean;
       }>
     >(),
@@ -278,8 +277,7 @@ function resetRuntime(): void {
 
   runtime.voiceInput.getSettings.mockResolvedValue({
     enabled: true,
-    deepgramApiKey: "dg-key",
-    correctionApiKey: "corr-key",
+    openaiApiKey: "sk-key",
     correctionEnabled: true,
   });
   runtime.voiceInput.checkMicPermission.mockImplementation(async () => {

@@ -85,8 +85,7 @@ const TRANSCRIPTION_MODELS: {
 
 const DEFAULT_SETTINGS: VoiceInputSettings = {
   enabled: false,
-  deepgramApiKey: "",
-  correctionApiKey: "",
+  openaiApiKey: "",
   language: "en",
   customDictionary: [],
   transcriptionModel: "nova-3",
@@ -214,7 +213,7 @@ export function VoiceInputSettingsTab() {
       <SettingsSection
         icon={Mic}
         title="Speech-to-Text"
-        description="Real-time transcription via Deepgram Nova. Requires a Deepgram API key and microphone access."
+        description="Real-time transcription. Requires an OpenAI API key and microphone access."
         id="voice-speech-to-text"
       >
         <SettingsSwitchCard
@@ -237,12 +236,12 @@ export function VoiceInputSettingsTab() {
             />
 
             <ApiKeyRow
-              label="Deepgram API Key"
-              value={settings.deepgramApiKey}
-              placeholder="dg_..."
-              onSave={(key) => update({ deepgramApiKey: key })}
+              label="OpenAI API Key"
+              value={settings.openaiApiKey}
+              placeholder="sk-..."
+              onSave={(key) => update({ openaiApiKey: key })}
               onValidate={(key) => window.electron?.voiceInput?.validateApiKey(key)}
-              helpUrl="https://console.deepgram.com/project/api-keys"
+              helpUrl="https://platform.openai.com/api-keys"
               helpLabel="Get API key"
             />
 
@@ -301,16 +300,6 @@ export function VoiceInputSettingsTab() {
 
           {settings.correctionEnabled && (
             <div className="space-y-4">
-              <ApiKeyRow
-                label="OpenAI API Key"
-                value={settings.correctionApiKey}
-                placeholder="sk-..."
-                onSave={(key) => update({ correctionApiKey: key })}
-                onValidate={(key) => window.electron?.voiceInput?.validateCorrectionApiKey(key)}
-                helpUrl="https://platform.openai.com/api-keys"
-                helpLabel="Get API key"
-              />
-
               <SettingsSelect
                 label="Correction Model"
                 value={settings.correctionModel}
@@ -322,7 +311,7 @@ export function VoiceInputSettingsTab() {
                 }))}
               />
 
-              {settings.correctionApiKey && (
+              {settings.openaiApiKey && (
                 <>
                   <SettingsSwitchCard
                     icon={FileSearch}
@@ -750,7 +739,7 @@ function DictionarySection({
         </div>
       ) : (
         <p className="text-xs text-daintree-text/40 select-text">
-          Domain-specific terms sent to Deepgram to boost recognition accuracy.
+          Domain-specific terms sent to the transcription service to boost recognition accuracy.
         </p>
       )}
     </div>

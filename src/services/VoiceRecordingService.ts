@@ -436,17 +436,17 @@ class VoiceRecordingService {
 
   async refreshConfiguration(): Promise<boolean> {
     const settings = await window.electron.voiceInput.getSettings();
-    const isConfigured = settings.enabled && !!settings.deepgramApiKey;
+    const isConfigured = settings.enabled && !!settings.openaiApiKey;
     logDebug(`${LOG_PREFIX} refreshConfiguration`, {
       enabled: settings.enabled,
-      hasApiKey: !!settings.deepgramApiKey,
+      hasApiKey: !!settings.openaiApiKey,
       isConfigured,
       correctionEnabled: settings.correctionEnabled,
     });
     // Keep correction state in sync for live-segment dimming
     useVoiceRecordingStore
       .getState()
-      .setCorrectionEnabled(!!(settings.correctionEnabled && settings.correctionApiKey));
+      .setCorrectionEnabled(!!(settings.correctionEnabled && settings.openaiApiKey));
     useVoiceRecordingStore.getState().setConfigured(isConfigured);
     return isConfigured;
   }

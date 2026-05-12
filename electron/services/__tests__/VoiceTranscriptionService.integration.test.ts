@@ -25,8 +25,7 @@ describe("VoiceTranscriptionService integration", () => {
 
       const result = await service.start({
         enabled: true,
-        deepgramApiKey: DEEPGRAM_API_KEY,
-        correctionApiKey: "",
+        openaiApiKey: DEEPGRAM_API_KEY,
         language: "en",
         customDictionary: [],
         transcriptionModel: "nova-3",

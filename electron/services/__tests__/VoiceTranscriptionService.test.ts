@@ -75,8 +75,7 @@ import { VoiceTranscriptionService } from "../VoiceTranscriptionService.js";
 
 const BASE_SETTINGS: VoiceInputSettings = {
   enabled: true,
-  deepgramApiKey: "dg-test-key",
-  correctionApiKey: "",
+  openaiApiKey: "sk-test",
   language: "en",
   customDictionary: [],
   transcriptionModel: "nova-3",
@@ -135,10 +134,10 @@ describe("VoiceTranscriptionService", () => {
     expect(statuses.at(-1)).toBe("recording");
   });
 
-  it("fails to start when no Deepgram API key is configured", async () => {
+  it("fails to start when no OpenAI API key is configured", async () => {
     const service = new VoiceTranscriptionService();
-    const result = await service.start({ ...BASE_SETTINGS, deepgramApiKey: "" });
-    expect(result).toEqual({ ok: false, error: "Deepgram API key not configured" });
+    const result = await service.start({ ...BASE_SETTINGS, openaiApiKey: "" });
+    expect(result).toEqual({ ok: false, error: "OpenAI API key not configured" });
   });
 
   it("settles a pending start when the session is stopped before connect completes", async () => {

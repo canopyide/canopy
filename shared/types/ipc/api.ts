@@ -1290,7 +1290,6 @@ export interface ElectronAPI {
     requestMicPermission(): Promise<boolean>;
     openMicSettings(): Promise<void>;
     validateApiKey(apiKey: string): Promise<{ valid: boolean; error?: string }>;
-    validateCorrectionApiKey(apiKey: string): Promise<{ valid: boolean; error?: string }>;
     onFileTokenResolved(
       callback: (payload: { description: string; replacement: string; resolved: boolean }) => void
     ): () => void;
@@ -1540,8 +1539,7 @@ export type VoiceParagraphingStrategy = "spoken-command" | "manual";
 
 export interface VoiceInputSettings {
   enabled: boolean;
-  deepgramApiKey: string;
-  correctionApiKey: string;
+  openaiApiKey: string;
   language: string;
   customDictionary: string[];
   transcriptionModel: VoiceTranscriptionModel;

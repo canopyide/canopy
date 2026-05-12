@@ -114,8 +114,7 @@ vi.mock("../../../store.js", () => ({
       if (key === "voiceInput") {
         return {
           enabled: true,
-          deepgramApiKey: "dg-test-key",
-          correctionApiKey: "sk-test",
+          openaiApiKey: "sk-test",
           correctionEnabled: true,
           correctionModel: "gpt-5-mini",
           customDictionary: [],
@@ -154,7 +153,6 @@ vi.mock("../../channels.js", () => ({
     VOICE_INPUT_REQUEST_MIC_PERMISSION: "voice-input:request-mic-permission",
     VOICE_INPUT_OPEN_MIC_SETTINGS: "voice-input:open-mic-settings",
     VOICE_INPUT_VALIDATE_API_KEY: "voice-input:validate-api-key",
-    VOICE_INPUT_VALIDATE_CORRECTION_API_KEY: "voice-input:validate-correction-api-key",
     VOICE_INPUT_FLUSH_PARAGRAPH: "voice-input:flush-paragraph",
     VOICE_INPUT_PARAGRAPH_BOUNDARY: "voice-input:paragraph-boundary",
   },
@@ -463,8 +461,7 @@ describe("voiceInput — streaming word-level correction", () => {
     const { store } = await import("../../../store.js");
     const disabledSettings = {
       enabled: true,
-      deepgramApiKey: "dg-test-key",
-      correctionApiKey: "",
+      openaiApiKey: "sk-test",
       correctionEnabled: false,
       correctionModel: "gpt-5-mini",
       customDictionary: [],
