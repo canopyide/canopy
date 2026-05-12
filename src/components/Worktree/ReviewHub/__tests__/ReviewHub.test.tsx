@@ -2224,9 +2224,156 @@ describe("ReviewHub", () => {
       // Verify the section headers show "Staged" and "Changes" labels with counts
       screen.getByText("Staged");
       screen.getByText("Changes");
+      // Pluralized count appears in the chip ("3 files" — both sections have 3 entries).
+      expect(screen.getAllByText("3 files").length).toBe(2);
       // Both sections have 3 files each, and the bulk buttons also show counts
       screen.getByText("Stage all (3)");
       screen.getByText("Unstage all (3)");
+    });
+
+    it("includes aggregate +X -Y churn in section header chips when available", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeStatus({
+          staged: [
+            { path: "src/a.ts", status: "modified", insertions: 5, deletions: 2 },
+            { path: "src/b.ts", status: "modified", insertions: 10, deletions: 1 },
+          ],
+          unstaged: [{ path: "src/c.ts", status: "modified", insertions: 3, deletions: 4 }],
+        })
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("a.ts"));
+      // Exact full-text match: catches misordered/duplicate/missing segments.
+      const stagedChip = screen.getByTestId("staged-section-count-chip");
+      expect(stagedChip.textContent).toBe("2 files·+15-3");
+      const changesChip = screen.getByTestId("changes-section-count-chip");
+      expect(changesChip.textContent).toBe("1 file·+3-4");
+    });
+
+    it("renders only +N when deletions are zero in the chip", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeStatus({
+          staged: [{ path: "new.ts", status: "added", insertions: 10, deletions: 0 }],
+          unstaged: [],
+        })
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByText("new.ts"));
+      const stagedChip = screen.getByTestId("staged-section-count-chip");
+      expect(stagedChip.textContent).toBe("1 file·+10");
+    });
+
+    it("omits churn suffix when all insertions/deletions are null", async () => {
+      getStagingStatusMock.mockResolvedValue(multiFileStatus());
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByText("index.ts"));
+      const stagedChip = screen.getByTestId("staged-section-count-chip");
+      expect(stagedChip.textContent).toBe("3 files");
+      const changesChip = screen.getByTestId("changes-section-count-chip");
+      expect(changesChip.textContent).toBe("3 files");
+    });
+
+    it("renders base-branch files in sorted path order", async () => {
+      compareWorktreesMock.mockResolvedValue({
+        branch1: "main",
+        branch2: "feature/test",
+        files: [
+          { status: "M", path: "z-last.ts" },
+          { status: "A", path: "a-first.ts" },
+          { status: "M", path: "m-middle.ts" },
+        ],
+      });
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByText("index.ts"));
+
+      act(() => fireEvent.click(screen.getByRole("button", { name: /vs main/i })));
+
+      await waitFor(() => screen.getByText("a-first.ts"));
+
+      // Query the rendered filename spans in DOM order.
+      const baseSpans = screen.getAllByTestId("base-branch-file-row-base");
+      expect(baseSpans.map((el) => el.textContent)).toEqual([
+        "a-first.ts",
+        "m-middle.ts",
+        "z-last.ts",
+      ]);
+    });
+
+    it("sorts base-branch files by directory prefix then filename", async () => {
+      compareWorktreesMock.mockResolvedValue({
+        branch1: "main",
+        branch2: "feature/test",
+        files: [
+          { status: "M", path: "z/a.ts" },
+          { status: "A", path: "a/z.ts" },
+          { status: "M", path: "a/a.ts" },
+        ],
+      });
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByText("index.ts"));
+
+      act(() => fireEvent.click(screen.getByRole("button", { name: /vs main/i })));
+
+      await waitFor(() =>
+        expect(screen.getAllByTestId("base-branch-file-row-base")).toHaveLength(3)
+      );
+
+      const rows = screen.getAllByTestId("base-branch-file-row-dir");
+      const bases = screen.getAllByTestId("base-branch-file-row-base");
+      // Expected order: a/a.ts, a/z.ts, z/a.ts
+      expect(rows.map((el) => el.textContent)).toEqual(["a/", "a/", "z/"]);
+      expect(bases.map((el) => el.textContent)).toEqual(["a.ts", "z.ts", "a.ts"]);
+    });
+
+    it("splits base-branch row into dir and base spans for nested paths", async () => {
+      compareWorktreesMock.mockResolvedValue({
+        branch1: "main",
+        branch2: "feature/test",
+        files: [{ status: "M", path: "src/components/button.tsx" }],
+      });
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByText("index.ts"));
+
+      act(() => fireEvent.click(screen.getByRole("button", { name: /vs main/i })));
+
+      await waitFor(() => screen.getByText("button.tsx"));
+
+      const dirSpans = screen.getAllByTestId("base-branch-file-row-dir");
+      expect(dirSpans).toHaveLength(1);
+      expect(dirSpans[0]!.textContent).toBe("src/components/");
+
+      const baseSpans = screen.getAllByTestId("base-branch-file-row-base");
+      expect(baseSpans.map((el) => el.textContent)).toEqual(["button.tsx"]);
+    });
+
+    it("omits the dir span for root-level base-branch files", async () => {
+      compareWorktreesMock.mockResolvedValue({
+        branch1: "main",
+        branch2: "feature/test",
+        files: [{ status: "M", path: "rootfile.md" }],
+      });
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByText("index.ts"));
+
+      act(() => fireEvent.click(screen.getByRole("button", { name: /vs main/i })));
+
+      await waitFor(() =>
+        expect(screen.getAllByTestId("base-branch-file-row-base")).toHaveLength(1)
+      );
+
+      // Root-level path has no dir prefix.
+      expect(screen.queryByTestId("base-branch-file-row-dir")).toBeNull();
+      const baseSpans = screen.getAllByTestId("base-branch-file-row-base");
+      expect(baseSpans[0]!.textContent).toBe("rootfile.md");
     });
 
     it("renders Stage all (N) button with correct count", async () => {
