@@ -146,7 +146,19 @@ describe("ConfirmDialog inverse-label dev guard", () => {
     vi.unstubAllEnvs();
   });
 
-  it.each(["OK", "Confirm", "Yes", "Save", "Continue", "Proceed", "Done", "Got it", "Accept", "Apply", "Submit"])(
+  it.each([
+    "OK",
+    "Confirm",
+    "Yes",
+    "Save",
+    "Continue",
+    "Proceed",
+    "Done",
+    "Got it",
+    "Accept",
+    "Apply",
+    "Submit",
+  ])(
     "warns when variant is destructive and confirmLabel is a generic recovery label: %s",
     (label) => {
       render(
@@ -515,6 +527,7 @@ describe("ConfirmDialog — typed-name gate", () => {
 
   it("warns in dev when typedNameTarget is set with a non-destructive variant", () => {
     render(
+      // @ts-expect-error — intentionally violates the discriminated union to exercise the runtime fallback guard
       <ConfirmDialog
         isOpen={true}
         onClose={() => {}}
@@ -522,15 +535,14 @@ describe("ConfirmDialog — typed-name gate", () => {
         confirmLabel="Continue"
         onConfirm={() => {}}
         variant="default"
-        // @ts-expect-error — intentionally violates the discriminated union to exercise the runtime fallback guard
         typedNameTarget="thing"
       />
     );
 
     expect(errorSpy).toHaveBeenCalled();
-    const messages = errorSpy.mock.calls.map((call) => String(call[0] ?? ""));
-    expect(messages.some((m) => m.includes("typedNameTarget"))).toBe(true);
-    expect(messages.some((m) => m.includes('variant="default"'))).toBe(true);
+    const messages = errorSpy.mock.calls.map((call: unknown[]) => String(call[0] ?? ""));
+    expect(messages.some((m: string) => m.includes("typedNameTarget"))).toBe(true);
+    expect(messages.some((m: string) => m.includes('variant="default"'))).toBe(true);
   });
 
   it("is silent for typedNameTarget on a destructive variant", () => {
@@ -553,6 +565,7 @@ describe("ConfirmDialog — typed-name gate", () => {
     vi.stubEnv("DEV", false);
 
     render(
+      // @ts-expect-error — intentionally violates the discriminated union to exercise the runtime fallback guard
       <ConfirmDialog
         isOpen={true}
         onClose={() => {}}
@@ -560,7 +573,6 @@ describe("ConfirmDialog — typed-name gate", () => {
         confirmLabel="Continue"
         onConfirm={() => {}}
         variant="default"
-        // @ts-expect-error — intentionally violates the discriminated union to exercise the runtime fallback guard
         typedNameTarget="thing"
       />
     );
@@ -591,12 +603,7 @@ describe("TypedNameConfirmInput preamble prop", () => {
 
   it("links the preamble id into aria-describedby alongside the instructions id", () => {
     render(
-      <TypedNameConfirmInput
-        target="my-thing"
-        value=""
-        onChange={() => {}}
-        preamble="Heads up."
-      />
+      <TypedNameConfirmInput target="my-thing" value="" onChange={() => {}} preamble="Heads up." />
     );
 
     const input = screen.getByLabelText(/^Type my-thing to confirm$/i);
@@ -610,7 +617,9 @@ describe("TypedNameConfirmInput preamble prop", () => {
   it("renders only the default instruction when preamble is absent", () => {
     render(<TypedNameConfirmInput target="my-thing" value="" onChange={() => {}} />);
 
-    expect(screen.queryByText("Force-deleting this protected worktree is irreversible.")).toBeNull();
+    expect(
+      screen.queryByText("Force-deleting this protected worktree is irreversible.")
+    ).toBeNull();
     expect(screen.getByText(/to confirm\.?/)).toBeDefined();
   });
 
