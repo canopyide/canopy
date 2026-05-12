@@ -98,6 +98,27 @@ export function installTerminalBoundListeners(
     deps.onBufferModeChange(id, true);
   }
 
+  // Suppress xterm's wheel→arrow-key translation for agent terminals that
+  // are in the alt-screen buffer with no mouse tracking active. Without
+  // this, scrolling in Copilot/Crush/opencode (Ink-based TUIs using
+  // CSI ?1049h) sends Up/Down arrow sequences to the agent — visibly
+  // navigating its command history instead of revealing prior output.
+  // Returning `false` skips the synthetic arrow sequences but leaves the
+  // native WheelEvent intact so xterm's viewport still scrolls. Plain
+  // shells (vim, tmux, htop) keep their default behavior because they
+  // have no `runtimeAgentId`; mouse-reporting TUIs are passed through so
+  // wheel-as-mouse-event still works.
+  terminal.attachCustomWheelEventHandler(() => {
+    if (
+      managed.runtimeAgentId &&
+      managed.isAltBuffer &&
+      terminal.modes.mouseTrackingMode === "none"
+    ) {
+      return false;
+    }
+    return true;
+  });
+
   const oscDisposable = terminal.parser.registerOscHandler(11, () => {
     if (managed.isAltBuffer) {
       for (const callback of managed.altBufferListeners) {
