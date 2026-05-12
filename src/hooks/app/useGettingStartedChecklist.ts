@@ -64,9 +64,6 @@ function reconcileCurrentState(
   }
 }
 
-// Hold the panel visible briefly after the final tick so AnimatedLabel can
-// crossfade the counter to a milestone label before the panel exits.
-const PENDING_DISMISS_HOLD_MS = 800;
 const CELEBRATION_CLEAR_MS = 1500;
 
 export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStartedChecklistState {
@@ -75,16 +72,10 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
   const [collapsed, setCollapsed] = useState(false);
   const [forceShow, setForceShow] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
-  const [pendingDismiss, setPendingDismiss] = useState(false);
   const checklistRef = useRef(checklist);
-  // Mirror pendingDismiss into a ref so the onChecklistPush merge (which runs
-  // inside a setChecklist functional updater and can't read React state) can
-  // gate the incoming dismissed:true during the hold window.
-  const pendingDismissRef = useRef(false);
 
   const prefersReducedMotion = useReducedMotion();
   const celebrationClearMs = prefersReducedMotion ? 0 : CELEBRATION_CLEAR_MS;
-  const pendingDismissHoldMs = prefersReducedMotion ? 0 : PENDING_DISMISS_HOLD_MS;
 
   useEffect(() => {
     checklistRef.current = checklist;
@@ -104,9 +95,6 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
 
     const updatedItems = { ...prev.items, [item]: true };
     const allDone = Object.values(updatedItems).every(Boolean);
-    // Defer local `dismissed: true` until the hold timer fires so the panel
-    // can show the milestone beat. Persistence via dismissChecklist() runs
-    // immediately for restart safety.
     const next: ChecklistState = allDone
       ? { ...prev, items: updatedItems, celebrationShown: true }
       : { ...prev, items: updatedItems };
@@ -114,18 +102,11 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
     setChecklist(next);
     checklistRef.current = next;
 
-    if (allDone) {
-      pendingDismissRef.current = true;
-      setPendingDismiss(true);
-      safeFireAndForget(window.electron.onboarding.dismissChecklist(), {
-        context: "Dismissing onboarding checklist",
+    if (allDone && !prev.celebrationShown) {
+      setShowCelebration(true);
+      safeFireAndForget(window.electron.onboarding.markChecklistCelebrationShown(), {
+        context: "Marking onboarding celebration shown",
       });
-      if (!prev.celebrationShown) {
-        setShowCelebration(true);
-        safeFireAndForget(window.electron.onboarding.markChecklistCelebrationShown(), {
-          context: "Marking onboarding celebration shown",
-        });
-      }
     }
   }, []);
 
@@ -134,8 +115,6 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
     safeFireAndForget(window.electron.onboarding.dismissChecklist(), {
       context: "Dismissing onboarding checklist (user action)",
     });
-    pendingDismissRef.current = false;
-    setPendingDismiss(false);
     const prev = checklistRef.current;
     if (prev) {
       const next = { ...prev, dismissed: true };
@@ -181,13 +160,10 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
         for (const key of Object.keys(next.items) as Array<keyof typeof next.items>) {
           if (next.items[key] || prev.items[key]) mergedItems[key] = true;
         }
-        // Suppress incoming dismissed:true during the milestone-beat hold —
-        // the timer below applies the local dismissal once the beat finishes.
-        const incomingDismissed = pendingDismissRef.current ? false : next.dismissed;
         const merged: ChecklistState = {
           ...next,
           items: mergedItems,
-          dismissed: prev.dismissed || incomingDismissed,
+          dismissed: prev.dismissed || next.dismissed,
           celebrationShown: prev.celebrationShown || next.celebrationShown,
         };
         checklistRef.current = merged;
@@ -286,26 +262,8 @@ export function useGettingStartedChecklist(isStateLoaded: boolean): GettingStart
     return () => clearTimeout(timer);
   }, [showCelebration, celebrationClearMs]);
 
-  // Hold the panel for a brief milestone beat after the final tick, then
-  // commit the local dismissal so the panel exits.
-  useEffect(() => {
-    if (!pendingDismiss) return;
-    const timer = setTimeout(() => {
-      pendingDismissRef.current = false;
-      setPendingDismiss(false);
-      setChecklist((prev) => (prev ? { ...prev, dismissed: true } : prev));
-      // forceShow keeps `visible` true even after `dismissed:true`. If the
-      // user reached completion via Help > Getting Started, clear it here
-      // so the panel exits with the rest of the beat.
-      setForceShow(false);
-    }, pendingDismissHoldMs);
-    return () => clearTimeout(timer);
-  }, [pendingDismiss, pendingDismissHoldMs]);
-
-  const allDone = checklist ? Object.values(checklist.items).every(Boolean) : false;
   const visible =
-    checklist !== null &&
-    (forceShow || (onboardingCompleted && !checklist.dismissed && (!allDone || pendingDismiss)));
+    checklist !== null && (forceShow || (onboardingCompleted && !checklist.dismissed));
 
   return {
     visible,
