@@ -282,6 +282,11 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
                   apiKey,
                   signal,
                 });
+                // Guard the IPC send: voiceFileLinkResolver may return on a
+                // local-only match without ever consulting `signal`, so a session
+                // stopped mid-resolution could otherwise leak FILE_TOKEN_RESOLVED
+                // events into a new session's panel.
+                if (signal?.aborted) return;
                 const replacement = resolved ? `@${resolved}` : `@?${description}`;
                 if (!win.isDestroyed()) {
                   getAppWebContents(win).send(CHANNELS.VOICE_INPUT_FILE_TOKEN_RESOLVED, {
@@ -328,6 +333,11 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
       unsubscribe();
       ctx.event.sender.removeListener("destroyed", onDestroyed);
       activeDestroyListener = null;
+      // Tear down the session controller so an orphaned signal isn't left
+      // attached to correctionService for the next session.
+      sessionController?.abort();
+      correctionService?.setSessionSignal(null);
+      sessionController = null;
     }
     return result;
   };
