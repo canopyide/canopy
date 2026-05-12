@@ -14,7 +14,7 @@ Before tagging a real release, run the workflow in dry-run mode to validate the 
 gh workflow run release.yml --ref develop -f dry_run=true
 ```
 
-A dry run executes every gate and build job — checks, unit tests, every E2E bucket (`core`, all six `full-*`, `online`), and the full `build-daintree` matrix (macOS sign + notarize, Linux, Windows including Store package + WACK) — but **skips** the side effects that matter for an actual release:
+A dry run executes every gate and build job — checks, unit tests, every E2E bucket (`core` and `online` on macOS + Linux + Windows; the six `full-*` buckets on macOS + Linux only), and the full `build-daintree` matrix (macOS sign + notarize, Linux, Windows including Store package + WACK) — but **skips** the side effects that matter for an actual release:
 
 - No R2 upload (binaries or metadata)
 - No Microsoft Store submission (`Submit to Microsoft Store` is gated by `inputs.dry_run != true`)

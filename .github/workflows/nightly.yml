@@ -407,13 +407,17 @@ jobs:
         run: npm run knip
 
   # Nightly runs the safety net without paying the Windows full-suite cost:
-  # `core` and `online` run across macOS, Linux, AND Windows; the six full-*
-  # domain buckets and the memory-leak `nightly` project stay on non-windows
-  # because a Windows full run takes ~5–6 hours. Windows confidence for
-  # release comes from core, online, and the Windows build/package jobs.
+  # on the scheduled trigger (no `inputs.platform`), `core` and `online` run
+  # across macOS, Linux, AND Windows; the six full-* domain buckets and the
+  # memory-leak `nightly` project stay on non-windows because a Windows full
+  # run takes ~5–6 hours. Windows confidence for release comes from core,
+  # online, and the Windows build/package jobs.
+  #
   # Every job is a call into the unified e2e.yml runner, parameterised by
-  # `suite`. Manual dispatch with `platform: windows` overrides the default
-  # so individual buckets can still be exercised on Windows when needed.
+  # `suite`. Manual dispatch with an explicit `platform` value overrides the
+  # defaults — e.g. `platform: windows` runs only Windows, `platform: all`
+  # includes Windows for the full and nightly buckets too (the 5–6 hour
+  # cost is intentional in that case).
   e2e-core:
     needs: [check, test]
     uses: ./.github/workflows/e2e.yml
