@@ -731,6 +731,15 @@ describe("requiresEnabled metadata", () => {
     const voiceEnable = byId("voice-enable");
     expect(voiceEnable?.requiresEnabled).toBeUndefined();
   });
+
+  it("legacy voice registry IDs are not re-introduced", () => {
+    for (const id of ["voice-transcription-model", "voice-openai-key"]) {
+      expect(
+        byId(id),
+        `${id} was removed for the OpenAI-only rebuild and must not return`
+      ).toBeUndefined();
+    }
+  });
 });
 
 describe("help dock discoverability", () => {
