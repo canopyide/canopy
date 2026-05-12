@@ -14,6 +14,7 @@ vi.mock("@xterm/xterm", () => ({
     this.options = { scrollback: 5000 };
     this.rows = 24;
     this.cols = 80;
+    this.modes = { mouseTrackingMode: "none" };
     this.buffer = {
       active: { length: 0, type: "normal", baseY: 0, viewportY: 0 },
       onBufferChange: vi.fn(() => ({ dispose: vi.fn() })),
@@ -21,6 +22,7 @@ vi.mock("@xterm/xterm", () => ({
     this.parser = {
       registerOscHandler: vi.fn(() => ({ dispose: vi.fn() })),
     };
+    this.attachCustomWheelEventHandler = vi.fn();
     this.dispose = vi.fn();
     this.open = freshTerminalOpenMock;
     this.onData = vi.fn(() => ({ dispose: vi.fn() }));
@@ -75,6 +77,7 @@ function makeMockTerminal() {
     options: { scrollback: 5000 },
     rows: 24,
     cols: 80,
+    modes: { mouseTrackingMode: "none" as const },
     buffer: {
       active: { length: 100, type: "normal", baseY: 0, viewportY: 0 },
       onBufferChange: vi.fn(() => ({ dispose: vi.fn() })),
@@ -82,6 +85,7 @@ function makeMockTerminal() {
     parser: {
       registerOscHandler: vi.fn(() => ({ dispose: vi.fn() })),
     },
+    attachCustomWheelEventHandler: vi.fn(),
     dispose: vi.fn(),
     open: vi.fn(),
     onData: vi.fn(() => ({ dispose: vi.fn() })),

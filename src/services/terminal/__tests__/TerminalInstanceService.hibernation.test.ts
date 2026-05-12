@@ -88,6 +88,7 @@ function makeMockManaged(overrides: Record<string, unknown> = {}) {
     options: { scrollback: 5000 },
     rows: 24,
     cols: 80,
+    modes: { mouseTrackingMode: "none" as const },
     buffer: {
       active: { length: 100, type: "normal", baseY: 0, viewportY: 0 },
       onBufferChange: vi.fn(() => ({ dispose: vi.fn() })),
@@ -95,6 +96,7 @@ function makeMockManaged(overrides: Record<string, unknown> = {}) {
     parser: {
       registerOscHandler: vi.fn(() => ({ dispose: vi.fn() })),
     },
+    attachCustomWheelEventHandler: vi.fn(),
     refresh: vi.fn(),
     loadAddon: vi.fn(),
     registerLinkProvider: vi.fn(() => ({ dispose: vi.fn() })),
