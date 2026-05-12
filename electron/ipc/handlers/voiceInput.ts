@@ -13,6 +13,7 @@ import type { VoiceInputSettings } from "../../../shared/types/ipc/api.js";
 import { CONFIDENCE_TAG_THRESHOLD } from "../../../shared/config/voiceCorrection.js";
 import { logDebug, logWarn } from "../../utils/logger.js";
 import { assembleKeyterms } from "../../services/voiceContextKeyterms.js";
+import { applyDictationCommands } from "../../services/voiceDictationCommands.js";
 import { getAppWebContents } from "../../window/webContentsRegistry.js";
 import { voiceFileLinkResolver } from "../../services/VoiceFileLinkResolver.js";
 import { typedHandle, typedHandleWithContext } from "../utils.js";
@@ -500,15 +501,41 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
         getAppWebContents(win).send(CHANNELS.VOICE_INPUT_TRANSCRIPTION_DELTA, voiceEvent.text);
       } else if (voiceEvent.type === "complete") {
         const rawText = voiceEvent.text.trim();
+        const liveSettings = getVoiceSettings();
 
-        // Notify the renderer so it can finalize the utterance in the draft.
-        getAppWebContents(win).send(CHANNELS.VOICE_INPUT_TRANSCRIPTION_COMPLETE, {
-          text: rawText,
-          willCorrect: false,
-        });
+        // OpenAI Realtime emits spoken dictation commands ("new paragraph",
+        // "period", etc.) as literal text. Deepgram dictation mode rewrites
+        // them upstream; here we reproduce that behavior post-hoc, gated on
+        // the session-snapshotted paragraphing strategy (matches the
+        // transcription-settings convention documented at handleStart).
+        const processedText =
+          settings.paragraphingStrategy === "spoken-command"
+            ? applyDictationCommands(rawText)
+            : rawText;
+
+        // Split on \n\n and emit one complete event per non-empty part with a
+        // paragraph_boundary between them — mirrors the Deepgram path in
+        // VoiceTranscriptionService.emitCompleteWithParagraphDetection.
+        // .filter(Boolean) ensures command-only utterances (e.g. "new paragraph"
+        // alone produces "\n\n" → ["", ""]) emit nothing, consistent with Deepgram.
+        const parts = processedText
+          .split(/\n\n+/)
+          .map((p) => p.trim())
+          .filter(Boolean);
+        for (let i = 0; i < parts.length; i++) {
+          getAppWebContents(win).send(CHANNELS.VOICE_INPUT_TRANSCRIPTION_COMPLETE, {
+            text: parts[i],
+            willCorrect: false,
+          });
+          if (i < parts.length - 1) {
+            getAppWebContents(win).send(CHANNELS.VOICE_INPUT_PARAGRAPH_BOUNDARY, {
+              rawText: null,
+              correctionId: null,
+            });
+          }
+        }
 
         // Feed word-level data into the streaming correction buffer
-        const liveSettings = getVoiceSettings();
         const correctionEnabled = !!(
           liveSettings.correctionEnabled && liveSettings.correctionApiKey
         );
