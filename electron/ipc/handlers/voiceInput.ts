@@ -57,9 +57,13 @@ export function getVoiceSettings(): VoiceInputSettings {
     }
   }
 
+  // Migrate legacy Deepgram model values ('nova-3' / 'nova-2') to the unified OpenAI model.
+  const staleModel = merged.transcriptionModel !== "gpt-realtime-whisper";
+  if (staleModel) merged.transcriptionModel = "gpt-realtime-whisper";
+
   // Persist the cleaned object on first read after upgrade so the legacy
   // fields disappear from disk. `store.set` with a full object replaces.
-  if (apiKey !== undefined || deepgramApiKey !== undefined || correctionApiKey !== undefined) {
+  if (apiKey !== undefined || deepgramApiKey !== undefined || correctionApiKey !== undefined || staleModel) {
     store.set("voiceInput", merged);
   }
 
