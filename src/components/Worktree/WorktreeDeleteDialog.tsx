@@ -7,6 +7,7 @@ import { FolderGit2 } from "@/components/icons";
 import { useWorktreeTerminals } from "@/hooks/useWorktreeTerminals";
 import { actionService } from "@/services/ActionService";
 import type { WorktreeState } from "@/types";
+import { cn } from "@/lib/utils";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 interface WorktreeDeleteDialogProps {
@@ -136,24 +137,52 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
           </div>
         ) : (
           <div className="space-y-4">
-            <p className="text-sm text-daintree-text/80">
-              This will permanently delete the worktree directory
-              {deleteBranch && worktree.branch && (
-                <>
-                  {" "}
-                  and branch{" "}
-                  <span className="font-mono font-medium text-daintree-text">
-                    {worktree.branch}
-                  </span>
-                </>
-              )}
-              .
-              {closeTerminals &&
-                hasTerminals &&
-                ` ${terminalCounts.total} terminal${terminalCounts.total === 1 ? "" : "s"} will be closed.`}
-              {hasChanges && " Uncommitted changes will be lost."}
-              {" This cannot be undone."}
-            </p>
+            <div>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-daintree-text/60">
+                What will happen
+              </span>
+              <ul className="mt-2 space-y-1">
+                <li className="text-sm text-daintree-text">Worktree directory will be deleted</li>
+                <li
+                  className={cn(
+                    "text-sm",
+                    closeTerminals && hasTerminals
+                      ? "text-daintree-text"
+                      : "text-daintree-text/40 line-through"
+                  )}
+                >
+                  {terminalCounts.total} terminal{terminalCounts.total === 1 ? "" : "s"} will be
+                  closed
+                </li>
+                <li
+                  className={cn(
+                    "text-sm",
+                    force && hasChanges ? "text-status-error" : "text-daintree-text/40 line-through"
+                  )}
+                >
+                  Uncommitted changes will be lost
+                </li>
+                <li
+                  className={cn(
+                    "text-sm",
+                    deleteBranch && canDeleteBranch && force
+                      ? "text-status-warning"
+                      : deleteBranch && canDeleteBranch
+                        ? "text-daintree-text"
+                        : "text-daintree-text/40 line-through"
+                  )}
+                >
+                  {worktree.branch ? (
+                    <>
+                      Branch <span className="font-mono">{worktree.branch}</span> will be deleted
+                    </>
+                  ) : (
+                    "Branch will be deleted"
+                  )}
+                </li>
+              </ul>
+            </div>
+            <p className="text-xs text-daintree-text/50">This cannot be undone.</p>
 
             <div className="text-xs text-daintree-text/60 bg-daintree-bg/50 p-3 rounded border border-daintree-border font-mono break-all">
               {worktree.path}
