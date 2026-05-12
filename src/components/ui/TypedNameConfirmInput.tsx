@@ -23,7 +23,7 @@ export function TypedNameConfirmInput({
   const instructionsId = useId();
   const preambleId = useId();
   const isMatched = value === target;
-  const hasPreamble = preamble !== undefined && preamble !== null && !instructions;
+  const hasPreamble = preamble != null && instructions == null;
 
   const defaultInstructions = (
     <>

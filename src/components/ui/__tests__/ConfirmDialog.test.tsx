@@ -600,8 +600,11 @@ describe("TypedNameConfirmInput preamble prop", () => {
     );
 
     const input = screen.getByLabelText(/^Type my-thing to confirm$/i);
-    const describedBy = input.getAttribute("aria-describedby") ?? "";
-    expect(describedBy.split(" ").length).toBe(2);
+    const tokens = (input.getAttribute("aria-describedby") ?? "").split(" ").filter(Boolean);
+    expect(tokens).toHaveLength(2);
+    const [first, second] = tokens.map((id) => document.getElementById(id));
+    expect(first?.textContent).toBe("Heads up.");
+    expect(second?.textContent).toMatch(/to confirm\.?/);
   });
 
   it("renders only the default instruction when preamble is absent", () => {
