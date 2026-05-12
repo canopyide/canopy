@@ -229,6 +229,159 @@ describe("voiceInput — IPC handler surface", () => {
   });
 });
 
+describe("voiceInput — spoken-command paragraphing", () => {
+  let win: ReturnType<typeof buildMainWindow>;
+  let cleanup: () => void;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    shared.transcriptionEventCallback = null;
+    shared.drainResolve = null;
+    shared.useDeferredDrain = false;
+
+    win = buildMainWindow();
+    cleanup = registerVoiceInputHandlers({
+      mainWindow: win as unknown as Electron.BrowserWindow,
+    } as Parameters<typeof registerVoiceInputHandlers>[0]);
+
+    const handleStart = getHandler("voice-input:start");
+    await (handleStart as (e: unknown) => Promise<unknown>)(fakeEvent);
+  });
+
+  afterEach(() => {
+    cleanup?.();
+  });
+
+  it("splits text containing a literal \\n\\n into separate completes with a paragraph-boundary between", () => {
+    // OpenAI may emit a `\n\n` inside a single completed item when the model
+    // detects a paragraph break. The handler is expected to split on that
+    // boundary and interleave a paragraph-boundary event.
+    emitTranscriptionEvent({
+      type: "complete",
+      text: "first sentence\n\nsecond sentence",
+    });
+
+    const splitEvents = win.__sent.filter(
+      (m) =>
+        m.channel === "voice-input:transcription-complete" ||
+        m.channel === "voice-input:paragraph-boundary"
+    );
+    expect(splitEvents).toEqual([
+      {
+        channel: "voice-input:transcription-complete",
+        payload: { text: "first sentence", willCorrect: false },
+      },
+      {
+        channel: "voice-input:paragraph-boundary",
+        payload: { rawText: null, correctionId: null },
+      },
+      {
+        channel: "voice-input:transcription-complete",
+        payload: { text: "second sentence", willCorrect: false },
+      },
+    ]);
+  });
+
+  it("strips a trailing 'new paragraph' command and emits only the prefix as one complete", () => {
+    // applyDictationCommands turns "hello new paragraph" into "hello\n\n";
+    // the handler's split + filter(Boolean) drops the trailing empty part,
+    // so a single complete fires with no paragraph-boundary.
+    emitTranscriptionEvent({ type: "complete", text: "hello new paragraph" });
+
+    const completes = win.__sent.filter((m) => m.channel === "voice-input:transcription-complete");
+    const boundaries = win.__sent.filter((m) => m.channel === "voice-input:paragraph-boundary");
+    expect(completes).toHaveLength(1);
+    expect(completes[0]?.payload).toEqual({ text: "hello", willCorrect: false });
+    expect(boundaries).toHaveLength(0);
+  });
+
+  it("emits nothing when the utterance is just a paragraph command", () => {
+    emitTranscriptionEvent({ type: "complete", text: "new paragraph" });
+
+    const completes = win.__sent.filter((m) => m.channel === "voice-input:transcription-complete");
+    const boundaries = win.__sent.filter((m) => m.channel === "voice-input:paragraph-boundary");
+    expect(completes).toHaveLength(0);
+    expect(boundaries).toHaveLength(0);
+  });
+
+  it("rewrites a trailing 'period' command into '.' on the emitted text", () => {
+    emitTranscriptionEvent({ type: "complete", text: "hello period" });
+
+    const complete = win.__sent.find((m) => m.channel === "voice-input:transcription-complete");
+    expect(complete?.payload).toEqual({ text: "hello.", willCorrect: false });
+  });
+
+  it("leaves a mid-sentence 'new paragraph' literal (applyDictationCommands is trailing-only)", () => {
+    emitTranscriptionEvent({
+      type: "complete",
+      text: "hello new paragraph world",
+    });
+
+    const completes = win.__sent.filter((m) => m.channel === "voice-input:transcription-complete");
+    const boundaries = win.__sent.filter((m) => m.channel === "voice-input:paragraph-boundary");
+    expect(completes).toHaveLength(1);
+    expect(completes[0]?.payload).toEqual({
+      text: "hello new paragraph world",
+      willCorrect: false,
+    });
+    expect(boundaries).toHaveLength(0);
+  });
+});
+
+describe("voiceInput — manual paragraphing strategy", () => {
+  let win: ReturnType<typeof buildMainWindow>;
+  let cleanup: () => void;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    shared.transcriptionEventCallback = null;
+    shared.drainResolve = null;
+    shared.useDeferredDrain = false;
+
+    const { store } = await import("../../../store.js");
+    vi.mocked(store.get).mockReturnValue({
+      enabled: true,
+      openaiApiKey: "sk-test",
+      correctionEnabled: true,
+      correctionModel: "gpt-5-mini",
+      customDictionary: [],
+      correctionCustomInstructions: "",
+      language: "en",
+      transcriptionModel: "gpt-realtime-whisper",
+      paragraphingStrategy: "manual",
+      resolveFileLinks: true,
+    });
+
+    win = buildMainWindow();
+    cleanup = registerVoiceInputHandlers({
+      mainWindow: win as unknown as Electron.BrowserWindow,
+    } as Parameters<typeof registerVoiceInputHandlers>[0]);
+
+    const handleStart = getHandler("voice-input:start");
+    await (handleStart as (e: unknown) => Promise<unknown>)(fakeEvent);
+  });
+
+  afterEach(() => {
+    cleanup?.();
+  });
+
+  it("leaves spoken commands literal and does not emit paragraph boundaries", () => {
+    emitTranscriptionEvent({
+      type: "complete",
+      text: "hello new paragraph world",
+    });
+
+    const completes = win.__sent.filter((m) => m.channel === "voice-input:transcription-complete");
+    const boundaries = win.__sent.filter((m) => m.channel === "voice-input:paragraph-boundary");
+    expect(completes).toHaveLength(1);
+    expect(completes[0]?.payload).toEqual({
+      text: "hello new paragraph world",
+      willCorrect: false,
+    });
+    expect(boundaries).toHaveLength(0);
+  });
+});
+
 describe("getVoiceSettings migration", () => {
   beforeEach(async () => {
     const { store } = await import("../../../store.js");

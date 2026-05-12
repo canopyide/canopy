@@ -1,9 +1,9 @@
 /**
  * Dictation-command post-processor for the OpenAI realtime transcription path.
  *
- * Deepgram Dictation mode intercepts spoken commands ("new paragraph" → \n\n,
- * "period" → ".", etc.) at the transcription layer. OpenAI Realtime has no
- * equivalent — those phrases arrive as literal text. This module reproduces
+ * The legacy Deepgram Dictation mode intercepted spoken commands ("new paragraph"
+ * → \n\n, "period" → ".", etc.) at the transcription layer. OpenAI Realtime has
+ * no equivalent — those phrases arrive as literal text. This module reproduces
  * the behavior in post-processing so users get the same UX.
  *
  * Safety: commands only fire when they form a trailing chain at the end of the

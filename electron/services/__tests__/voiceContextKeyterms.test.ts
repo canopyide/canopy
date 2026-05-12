@@ -118,10 +118,10 @@ describe("extractTerminalIdentifiers", () => {
 describe("assembleKeyterms", () => {
   it("preserves custom dictionary with highest priority", async () => {
     const result = await assembleKeyterms({
-      customDictionary: ["Daintree", "Deepgram", "xterm"],
+      customDictionary: ["Daintree", "Whisper", "xterm"],
     });
     expect(result[0]).toBe("Daintree");
-    expect(result[1]).toBe("Deepgram");
+    expect(result[1]).toBe("Whisper");
     expect(result[2]).toBe("xterm");
   });
 

@@ -171,8 +171,8 @@ describe("applyDictationCommands", () => {
   describe("documented limitations", () => {
     // The trailing-anchor design is end-of-utterance only. Legitimate trailing
     // nouns that happen to be command words will convert. This is the same
-    // tradeoff Deepgram dictation mode makes — kept for parity. If a user
-    // dislikes it, the manual paragraphing strategy disables the post-processor.
+    // tradeoff the legacy Deepgram dictation mode made — kept for parity. If a
+    // user dislikes it, the manual paragraphing strategy disables the post-processor.
     it("converts a trailing noun that happens to spell a command (known tradeoff)", () => {
       expect(applyDictationCommands("I studied the Jurassic period")).toBe(
         "I studied the Jurassic."
