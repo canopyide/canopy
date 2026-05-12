@@ -5,43 +5,6 @@ import { useTerminalInputStore } from "@/store/terminalInputStore";
 import { useVoiceRecordingStore } from "@/store";
 import { voiceRecordingService } from "@/services/VoiceRecordingService";
 
-const VOICE_SUBMIT_TIMEOUT_MS = 10_000;
-
-export function waitForCorrectionsToSettle(panelId: string, timeoutMs: number): Promise<void> {
-  return new Promise<void>((resolve) => {
-    let settled = false;
-
-    const check = (state: ReturnType<typeof useVoiceRecordingStore.getState>): boolean => {
-      const buffer = state.panelBuffers[panelId];
-      const pendingCount = buffer?.pendingCorrections?.length ?? 0;
-      const phase = buffer?.transcriptPhase ?? "idle";
-      return pendingCount === 0 && phase !== "paragraph_pending_ai";
-    };
-
-    const timeout = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      unsubscribe();
-      resolve();
-    }, timeoutMs);
-
-    const unsubscribe = useVoiceRecordingStore.subscribe((state) => {
-      if (settled || !check(state)) return;
-      settled = true;
-      clearTimeout(timeout);
-      unsubscribe();
-      resolve();
-    });
-
-    if (check(useVoiceRecordingStore.getState())) {
-      settled = true;
-      clearTimeout(timeout);
-      unsubscribe();
-      resolve();
-    }
-  });
-}
-
 interface UseVoiceWaitSubmitParams {
   terminalId: string;
   editorViewRef: React.RefObject<EditorView | null>;
@@ -88,8 +51,6 @@ export function useVoiceWaitSubmit({
             announce: false,
           });
         }
-
-        await waitForCorrectionsToSettle(terminalId, VOICE_SUBMIT_TIMEOUT_MS);
 
         if (!useTerminalInputStore.getState().isVoiceSubmitting(terminalId)) return;
 

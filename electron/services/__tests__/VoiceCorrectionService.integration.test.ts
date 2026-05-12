@@ -3,9 +3,9 @@ import { VoiceCorrectionService } from "../VoiceCorrectionService.js";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
 
-// Note: VoiceCorrectionService aborts fetch requests via AbortSignal.timeout (7s
-// for correct(), 3s for correctWord()). If the API exceeds that, the caller falls
-// back to raw input. Integration tests can therefore fail due to latency, not bugs.
+// Note: VoiceCorrectionService aborts fetch requests via AbortSignal.timeout (7s for
+// correct()). If the API exceeds that, the caller falls back to raw input. Integration
+// tests can therefore fail due to latency, not bugs.
 describe("VoiceCorrectionService integration", () => {
   let svc: VoiceCorrectionService;
 
