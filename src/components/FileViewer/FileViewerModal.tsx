@@ -250,15 +250,16 @@ export function FileViewerModal({
         const target = e.target as HTMLElement;
         if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
         e.preventDefault();
+        e.stopImmediatePropagation();
         codeViewerRef.current?.openGotoLine();
       }
     };
 
     window.addEventListener("daintree:find-in-panel", handleFindInPanel);
-    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
     return () => {
       window.removeEventListener("daintree:find-in-panel", handleFindInPanel);
-      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keydown", handleKeyDown, { capture: true });
     };
   }, [isOpen, isImageMode, mode]);
 

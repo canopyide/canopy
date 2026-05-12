@@ -153,6 +153,7 @@ vi.mock("@/config/agents", () => ({
       codex: { name: "Codex", icon: () => null, models: [] },
     })[id],
   getAssistantSupportedAgentIds: () => mockGetAssistantSupportedAgentIds(),
+  getAgentIds: () => ["claude", "gemini", "codex"],
 }));
 
 vi.mock("@/services/ActionService", () => ({

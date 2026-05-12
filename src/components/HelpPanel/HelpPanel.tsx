@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { DaintreeIcon } from "@/components/icons/DaintreeIcon";
 import { XtermAdapter } from "@/components/Terminal/XtermAdapter";
 import { MissingCliGate } from "@/components/Terminal/MissingCliGate";
+import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { HelpIntroBanner } from "./HelpIntroBanner";
 import { HelpPanelHeader } from "./HelpPanelHeader";
 import { HelpPanelBanners } from "./HelpPanelBanners";
@@ -116,6 +117,7 @@ export function HelpPanel({
     preferredAgentId,
     introDismissed,
     conversationTouched,
+    focusRequest,
     markConversationStarted,
     setWidth,
     setOpen,
@@ -266,6 +268,8 @@ export function HelpPanel({
   }, []);
 
   // Move keyboard focus into the panel on open and restore it on close.
+  // focusRequest re-triggers this effect so repeated Cmd+L presses can
+  // re-focus a blurred panel without closing it.
   useEffect(() => {
     if (isOpen && isVisible) {
       const active = document.activeElement;
@@ -273,10 +277,24 @@ export function HelpPanel({
         previousFocusRef.current = active;
       }
       const raf = requestAnimationFrame(() => {
+        const state = useHelpPanelStore.getState();
+        if (!state.isOpen) return;
+
         const current = document.activeElement;
         if (current?.closest?.(".xterm-helper-textarea") && panelRef.current?.contains(current)) {
           return;
         }
+
+        // When an agent terminal is running, target its xterm input first.
+        // Falls back to the first-tabbable sweep for pre-launch / missing-CLI.
+        if (terminalId && terminal && terminal.spawnStatus !== "missing-cli") {
+          terminalInstanceService.focus(terminalId);
+          const after = document.activeElement;
+          if (after?.closest?.(".xterm-helper-textarea") && panelRef.current?.contains(after)) {
+            return;
+          }
+        }
+
         const candidates = panelRef.current?.querySelectorAll<HTMLElement>(TABBABLE_SELECTOR);
         let first: HTMLElement | undefined;
         for (const el of candidates ?? []) {
@@ -298,7 +316,7 @@ export function HelpPanel({
       el.focus();
     }
     return undefined;
-  }, [isOpen, isVisible]);
+  }, [isOpen, isVisible, focusRequest, terminalId, terminal]);
 
   // Resize via mouse drag
   const handleResizeStart = useCallback(
