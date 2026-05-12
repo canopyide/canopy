@@ -741,11 +741,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       <div className="group/header flex items-center justify-between px-4 py-2 border-b border-divider bg-transparent shrink-0">
         <div className="flex items-baseline gap-1.5">
           <h2 className="text-daintree-text font-semibold text-sm tracking-wide">Worktrees</h2>
-          <span className="text-daintree-text/50 text-xs">
-            {hasFilters && visibleCount !== deferredWorktrees.length
-              ? `(${visibleCount} of ${deferredWorktrees.length})`
-              : `(${deferredWorktrees.length})`}
-          </span>
           {isReconnecting && (
             <span
               role="status"
@@ -1006,8 +1001,20 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
               )}
             </div>
           </div>
-          <ScrollIndicator direction="above" count={hiddenAbove} onClick={scrollToTop} />
-          <ScrollIndicator direction="below" count={hiddenBelow} onClick={scrollToBottom} />
+          <ScrollIndicator
+            direction="above"
+            count={hiddenAbove}
+            onClick={scrollToTop}
+            ariaHidden
+            tabIndex={-1}
+          />
+          <ScrollIndicator
+            direction="below"
+            count={hiddenBelow}
+            onClick={scrollToBottom}
+            ariaHidden
+            tabIndex={-1}
+          />
         </div>
       </div>
 

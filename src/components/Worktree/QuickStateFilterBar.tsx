@@ -62,7 +62,6 @@ export function QuickStateFilterBar({ value, onChange, counts }: QuickStateFilte
               />
             )}
             {option.label}
-            {/* "All" has no count — quickStateCounts excludes main/integration worktrees, so the sum != the sidebar header's (N) total. */}
             {count !== undefined && (
               <>
                 <span aria-hidden="true">{` (${count})`}</span>
