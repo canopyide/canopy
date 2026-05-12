@@ -244,23 +244,36 @@ describe("WorktreeDeleteDialog — body copy", () => {
     cleanup();
   });
 
-  it("ends body copy with 'This cannot be undone.' in medium tier", () => {
+  it("renders the 'What will happen' heading", () => {
     const worktree = makeWorktree(makeChanges([]));
     render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
 
-    const body = screen.getByText(/This will permanently delete the worktree directory/);
-    expect(body.textContent).toMatch(/This cannot be undone\.$/);
+    expect(screen.getByText("What will happen")).toBeDefined();
   });
 
-  it("ends body copy with 'This cannot be undone.' in high tier", () => {
-    const worktree = makeWorktree(makeChanges([]), { branch: "main" });
+  it("renders 'This cannot be undone.' trailing text", () => {
+    const worktree = makeWorktree(makeChanges([]));
     render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
 
-    const forceCheckbox = screen.getByRole("checkbox", { name: /force delete/i });
-    fireEvent.click(forceCheckbox);
+    expect(screen.getByText("This cannot be undone.")).toBeDefined();
+  });
 
-    const body = screen.getByText(/This will permanently delete the worktree directory/);
-    expect(body.textContent).toMatch(/This cannot be undone\.$/);
+  it("renders the directory row and it is never line-through", () => {
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const row = screen.getByText("Worktree directory will be deleted");
+    expect(row).toBeDefined();
+    expect(row.className).not.toContain("line-through");
+  });
+
+  it("renders the terminals row active when hasTerminals and closeTerminals is checked", () => {
+    terminalCountsMock.total = 3;
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const row = screen.getByText(/3 terminals will be closed/);
+    expect(row.className).not.toContain("line-through");
   });
 
   it("uses singular 'terminal' when one terminal is associated", () => {
@@ -268,30 +281,11 @@ describe("WorktreeDeleteDialog — body copy", () => {
     const worktree = makeWorktree(makeChanges([]));
     render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
 
-    const body = screen.getByText(/This will permanently delete the worktree directory/);
-    expect(body.textContent).toContain("1 terminal will be closed.");
-    expect(body.textContent).not.toContain("1 terminals");
+    expect(screen.getByText(/1 terminal will be closed/)).toBeDefined();
+    expect(screen.queryByText(/1 terminals/)).toBeNull();
   });
 
-  it("uses plural 'terminals' when multiple terminals are associated", () => {
-    terminalCountsMock.total = 3;
-    const worktree = makeWorktree(makeChanges([]));
-    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
-
-    const body = screen.getByText(/This will permanently delete the worktree directory/);
-    expect(body.textContent).toContain("3 terminals will be closed.");
-  });
-
-  it("omits the terminal sentence when no terminals are associated", () => {
-    terminalCountsMock.total = 0;
-    const worktree = makeWorktree(makeChanges([]));
-    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
-
-    const body = screen.getByText(/This will permanently delete the worktree directory/);
-    expect(body.textContent).not.toMatch(/terminals? will be closed/);
-  });
-
-  it("omits the terminal sentence when closeTerminals is unchecked", () => {
+  it("renders the terminals row inactive when closeTerminals is unchecked", () => {
     terminalCountsMock.total = 2;
     const worktree = makeWorktree(makeChanges([]));
     render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
@@ -301,17 +295,123 @@ describe("WorktreeDeleteDialog — body copy", () => {
     });
     fireEvent.click(closeTerminalsCheckbox);
 
-    const body = screen.getByText(/This will permanently delete the worktree directory/);
-    expect(body.textContent).not.toMatch(/terminals? will be closed/);
+    const row = screen.getByText(/2 terminals will be closed/);
+    expect(row.className).toContain("line-through");
   });
 
-  it("states 'Uncommitted changes will be lost.' without the git-restore hint", () => {
+  it("renders the terminals row inactive when no terminals are associated", () => {
+    terminalCountsMock.total = 0;
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const row = screen.getByText(/0 terminals will be closed/);
+    expect(row.className).toContain("line-through");
+  });
+
+  it("renders the uncommitted row active (text-status-error) when force and hasChanges", () => {
     const worktree = makeWorktree(makeChanges([{ path: "src/app.ts", status: "modified" }]));
     render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
 
-    const body = screen.getByText(/This will permanently delete the worktree directory/);
-    expect(body.textContent).toContain("Uncommitted changes will be lost.");
-    expect(body.textContent).not.toContain("restored from git");
+    const forceCheckbox = screen.getByRole("checkbox", { name: /force delete/i });
+    fireEvent.click(forceCheckbox);
+
+    const row = screen.getByText("Uncommitted changes will be lost");
+    expect(row.className).toContain("text-status-error");
+    expect(row.className).not.toContain("line-through");
+  });
+
+  it("renders the uncommitted row inactive (line-through) when force is unchecked", () => {
+    const worktree = makeWorktree(makeChanges([{ path: "src/app.ts", status: "modified" }]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const row = screen.getByText("Uncommitted changes will be lost");
+    expect(row.className).toContain("line-through");
+  });
+
+  it("renders the uncommitted row inactive (line-through) when there are no changes", () => {
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const row = screen.getByText("Uncommitted changes will be lost");
+    expect(row.className).toContain("line-through");
+  });
+
+  it("renders the branch row active when deleteBranch and canDeleteBranch", () => {
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const deleteBranchCheckbox = screen.getByRole("checkbox", {
+      name: /delete branch/i,
+    });
+    fireEvent.click(deleteBranchCheckbox);
+
+    const row = screen.getByText(
+      (_content, element) => element?.textContent === "Branch feature/test will be deleted"
+    );
+    expect(row.className).not.toContain("line-through");
+    expect(row.className).not.toContain("text-status-warning");
+  });
+
+  it("renders the branch row with text-status-warning when active and force is on", () => {
+    const worktree = makeWorktree(makeChanges([{ path: "src/app.ts", status: "modified" }]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const forceCheckbox = screen.getByRole("checkbox", { name: /force delete/i });
+    fireEvent.click(forceCheckbox);
+
+    const deleteBranchCheckbox = screen.getByRole("checkbox", {
+      name: /delete branch/i,
+    });
+    fireEvent.click(deleteBranchCheckbox);
+
+    const row = screen.getByText(
+      (_content, element) => element?.textContent === "Branch feature/test will be deleted"
+    );
+    expect(row.className).toContain("text-status-warning");
+    expect(row.className).not.toContain("line-through");
+  });
+
+  it("renders the branch row inactive (line-through) when deleteBranch is unchecked", () => {
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const row = screen.getByText(
+      (_content, element) => element?.textContent === "Branch feature/test will be deleted"
+    );
+    expect(row.className).toContain("line-through");
+  });
+
+  it("renders the branch row always (even for protected branches, dimmed)", () => {
+    const worktree = makeWorktree(makeChanges([]), { branch: "main", name: "main" });
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const row = screen.getByText(
+      (_content, element) => element?.textContent === "Branch main will be deleted"
+    );
+    expect(row.className).toContain("line-through");
+  });
+
+  it("renders the branch row with placeholder text for detached HEAD", () => {
+    const worktree = makeWorktree(makeChanges([]), {
+      branch: undefined,
+      name: "abc1234",
+    });
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const row = screen.getByText("Branch will be deleted");
+    expect(row.className).toContain("line-through");
+  });
+
+  it("does not reference 'restored from git' in the body copy", () => {
+    const worktree = makeWorktree(makeChanges([{ path: "src/app.ts", status: "modified" }]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const forceCheckbox = screen.getByRole("checkbox", { name: /force delete/i });
+    fireEvent.click(forceCheckbox);
+
+    const row = screen.getByText("Uncommitted changes will be lost");
+    expect(row.className).toContain("text-status-error");
+    expect(screen.queryByText(/restored from git/)).toBeNull();
   });
 });
 
@@ -546,7 +646,7 @@ describe("WorktreeDeleteDialog — in-flight skeleton", () => {
     await waitFor(() => {
       expect(screen.getByTestId("delete-worktree-skeleton")).toBeDefined();
     });
-    expect(screen.queryByText(/This will permanently delete the worktree directory/)).toBeNull();
+    expect(screen.queryByText("Worktree directory will be deleted")).toBeNull();
 
     const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
     expect(button.disabled).toBe(true);
