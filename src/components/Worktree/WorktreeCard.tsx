@@ -748,7 +748,7 @@ export function WorktreeCard({
                   "shrink-0 w-4 flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none transition-colors group-hover/card:delay-[50ms] motion-reduce:transition-none",
                   isDraggingSort
                     ? "bg-overlay-emphasis text-text-primary"
-                    : "text-transparent group-hover/card:text-text-primary/30 group-hover/card:bg-overlay-soft"
+                    : "text-text-primary/25 group-hover/card:text-text-primary/40 group-hover/card:bg-overlay-soft"
                 )}
                 aria-label="Drag to reorder"
                 {...dragHandleListeners}

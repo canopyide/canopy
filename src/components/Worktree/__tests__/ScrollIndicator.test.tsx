@@ -93,4 +93,35 @@ describe("ScrollIndicator", () => {
     expect(button.className).toContain("translate-y-0");
     expect(button.className).toContain("opacity-100");
   });
+
+  it("forwards tabIndex to the button element", () => {
+    render(<ScrollIndicator direction="below" count={1} onClick={onClick} tabIndex={-1} />);
+    const button = screen.getByRole("button");
+    expect(button.tabIndex).toBe(-1);
+  });
+
+  it("defaults button tabIndex to 0 when not specified", () => {
+    render(<ScrollIndicator direction="below" count={1} onClick={onClick} />);
+    const button = screen.getByRole("button");
+    expect(button.tabIndex).toBe(0);
+  });
+
+  it("applies aria-hidden on the outer wrapper when ariaHidden is true", () => {
+    render(<ScrollIndicator direction="below" count={1} onClick={onClick} ariaHidden />);
+    const button = screen.getByRole("button", { hidden: true });
+    expect(button.parentElement!.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("does not render aria-hidden attribute on wrapper when ariaHidden is false or undefined", () => {
+    render(<ScrollIndicator direction="below" count={1} onClick={onClick} />);
+    const button = screen.getByRole("button");
+    expect(button.parentElement!.hasAttribute("aria-hidden")).toBe(false);
+  });
+
+  it("uses scoped transition-[opacity,transform] instead of bare transition", () => {
+    render(<ScrollIndicator direction="below" count={1} onClick={onClick} />);
+    const button = screen.getByRole("button");
+    expect(button.className).toContain("transition-[opacity,transform]");
+    expect(button.className.split(/\s+/)).not.toContain("transition");
+  });
 });
