@@ -325,9 +325,9 @@ describe("agentRegistry", () => {
       const gemini = getAgentConfig("gemini");
       expect(gemini?.supports).toMatchObject({
         mcpInjection: "project-config",
-        settingsOverlay: false,
+        settingsOverlay: true,
         permissionBypass: false,
-        trustDialog: false,
+        trustDialog: true,
         versionProbe: true,
         tier: "experimental",
       });

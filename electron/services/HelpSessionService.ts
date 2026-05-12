@@ -81,6 +81,8 @@ interface HelpSessionRecord {
   codexLaunchArgs?: string[];
   /** Computed at provision for gemini sessions; consumed by lifecycle.ts. */
   geminiLaunchArgs?: string[];
+  /** Computed at provision for copilot sessions; consumed by lifecycle.ts. */
+  copilotLaunchArgs?: string[];
 }
 
 interface SessionMeta {
@@ -96,6 +98,12 @@ interface BundledClaudeSettings {
   };
   defaultMode?: string;
   enableAllProjectMcpServers?: boolean;
+  [key: string]: unknown;
+}
+
+interface BundledGeminiSettings {
+  toolsAllowlist?: string[];
+  mcpServers?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
@@ -426,15 +434,24 @@ export class HelpSessionService {
     if (input.agentId === "claude") {
       await this.writeMcpConfig(sessionPath, settings, port, token);
       await this.writeClaudeSettings(sessionPath, helpFolder, settings);
+    } else if (input.agentId === "copilot") {
+      await this.writeCopilotMcpConfig(sessionPath, settings, port);
+    } else if (input.agentId === "gemini") {
+      await this.writeGeminiSettings(sessionPath, helpFolder, settings, port);
+      // The bundled `.mcp.json` still gets copied into the session via
+      // `fs.cp`; ensure no Claude-shaped daintree entry (with a literal
+      // dead bearer) survives from a prior provision under this same
+      // sessionPath.
+      await this.stripStaleDaintreeMcpEntry(sessionPath);
     } else {
-      // Codex and Gemini both skip `writeMcpConfig`, so when the template
-      // hash gate (#7525) also skips `fs.cp`, a `.mcp.json` from a prior
-      // Claude provision for this same project keeps its stale `daintree`
-      // Bearer in cwd. The bearer is already revoked in-memory (single-
-      // backend invariant), but before the gate, `fs.cp` would have
-      // restored the bundled `.mcp.json` and wiped the entry. Strip it now
-      // to preserve that hygiene — no-op when the entry is absent or its
-      // bearer is still live.
+      // Codex and any other agent skip `writeMcpConfig`, so when the
+      // template hash gate (#7525) also skips `fs.cp`, a `.mcp.json` from a
+      // prior Claude provision for this same project keeps its stale
+      // `daintree` Bearer in cwd. The bearer is already revoked in-memory
+      // (single-backend invariant), but before the gate, `fs.cp` would
+      // have restored the bundled `.mcp.json` and wiped the entry. Strip
+      // it now to preserve that hygiene — no-op when the entry is absent
+      // or its bearer is still live.
       await this.stripStaleDaintreeMcpEntry(sessionPath);
     }
     // Codex doesn't read project-scoped `.codex/config.toml` from cwd —
@@ -443,18 +460,27 @@ export class HelpSessionService {
     // to the spawn command in `lifecycle.ts` via the `getCodexLaunchArgs`
     // accessor below; nothing is written to disk for Codex.
     //
-    // Gemini reads its workspace-level `.gemini/settings.json` from cwd
-    // (already copied via `fs.cp`), which carries the docs MCP entry and
-    // the tool allowlist. The `--approval-mode=plan` flag is appended at
-    // spawn time via `getGeminiLaunchArgs` because it is a CLI flag, not a
-    // settings key — Gemini Phase 1 also skips the local Daintree MCP, so
-    // there is no per-session bearer to mint.
+    // Gemini reads `<sessionPath>/.gemini/settings.json` (written above by
+    // `writeGeminiSettings`). The workspace-level settings file takes
+    // precedence over `~/.gemini/settings.json` for same-name MCP entries
+    // (Gemini's merge order: workspace > user), which gives us the
+    // isolation we need without redirecting `os.homedir()` — see
+    // `getGeminiSpawnEnv` for why `GEMINI_CLI_HOME` is intentionally not
+    // injected. The `--approval-mode=plan` flag is appended at spawn time
+    // via `getGeminiLaunchArgs` because it is a CLI flag, not a settings
+    // key.
+    //
+    // Copilot reads `<sessionPath>/.mcp.json` (written above by
+    // `writeCopilotMcpConfig`). The `--plan` read-only flag is appended at
+    // spawn time via `getCopilotLaunchArgs`.
 
     const codexLaunchArgs =
       input.agentId === "codex"
         ? this.buildCodexLaunchArgs(settings.daintreeControl, settings.docSearch, port)
         : undefined;
     const geminiLaunchArgs = input.agentId === "gemini" ? this.buildGeminiLaunchArgs() : undefined;
+    const copilotLaunchArgs =
+      input.agentId === "copilot" ? this.buildCopilotLaunchArgs() : undefined;
 
     const now = Date.now();
     const record: HelpSessionRecord = {
@@ -472,6 +498,7 @@ export class HelpSessionService {
       revoked: false,
       codexLaunchArgs,
       geminiLaunchArgs,
+      copilotLaunchArgs,
     };
 
     await this.writeSessionMeta(sessionPath, {
@@ -483,23 +510,30 @@ export class HelpSessionService {
     this.sessionsByToken.set(token, record);
     this.sessionsById.set(sessionId, record);
 
-    if (settings.daintreeControl && port && input.agentId !== "gemini") {
+    if (settings.daintreeControl && port) {
       try {
-        if (input.agentId === "codex") {
-          // Codex's MCP transport is Streamable HTTP at /mcp; Claude Code
-          // reads SSE at /sse. Both probes warm the same in-memory MCP token
-          // map, so neither leaks across agents. Gemini Phase 1 doesn't
-          // connect to the Daintree MCP server, so neither probe runs.
-          await probeMcpServer(port, token);
-        } else {
+        if (input.agentId === "claude") {
+          // Claude Code reads SSE at /sse with a literal bearer baked into
+          // `.mcp.json`. Both probes warm the same in-memory MCP token
+          // map, so neither leaks across agents.
           await probeMcpSseServer(port, token);
+        } else {
+          // Codex, Gemini, and Copilot all speak Streamable HTTP at /mcp.
+          // Codex reads the bearer from `DAINTREE_MCP_TOKEN` PTY env via
+          // `bearer_token_env_var`. Gemini and Copilot read the bearer
+          // from PTY env via `${DAINTREE_MCP_TOKEN}` / `$DAINTREE_MCP_TOKEN`
+          // substitution in their respective settings files.
+          await probeMcpServer(port, token);
         }
       } catch (err) {
         record.revoked = true;
         this.sessionsByToken.delete(token);
         this.sessionsById.delete(sessionId);
-        if (input.agentId === "claude") {
+        if (input.agentId === "claude" || input.agentId === "copilot") {
           await this.stripStaleDaintreeMcpEntry(sessionPath);
+        }
+        if (input.agentId === "gemini") {
+          await this.stripStaleGeminiDaintreeEntry(sessionPath);
         }
         const reason = formatErrorMessage(err, "assistant MCP session isn't ready");
         await this.recordMcpNotReady(sessionId, reason);
@@ -520,12 +554,10 @@ export class HelpSessionService {
     port: number | null
   ): string | null {
     if (!daintreeControl || !port) return null;
-    // Gemini Phase 1 does not connect to the local Daintree MCP server;
-    // returning null keeps the renderer from advertising an SSE URL the
-    // agent will never call.
-    if (agentId === "gemini") return null;
-    if (agentId === "codex") return `http://127.0.0.1:${port}/mcp`;
-    return `http://127.0.0.1:${port}/sse`;
+    // Claude reads SSE at /sse with a literal bearer; everyone else speaks
+    // Streamable HTTP at /mcp with env-var substitution.
+    if (agentId === "claude") return `http://127.0.0.1:${port}/sse`;
+    return `http://127.0.0.1:${port}/mcp`;
   }
 
   /**
@@ -609,6 +641,53 @@ export class HelpSessionService {
   }
 
   /**
+   * Returns the per-session env vars that must be injected into the PTY
+   * spawn for a Gemini help session. Today this is just a placeholder for
+   * the per-session env contract; the daintree MCP entry travels with the
+   * workspace-level `<sessionPath>/.gemini/settings.json` written at
+   * provision time, which Gemini's merge precedence (workspace > user)
+   * lets shadow same-name user-level entries without redirecting
+   * `os.homedir()`. We intentionally do NOT set `GEMINI_CLI_HOME` here —
+   * the CLI uses `os.homedir()` for OAuth credential lookup at
+   * `~/.gemini/oauth_creds.json`, and redirecting it would break auth for
+   * any user who hasn't set `GEMINI_API_KEY`. Returns null for unknown /
+   * revoked tokens or non-Gemini sessions.
+   */
+  getGeminiSpawnEnv(token: string): Record<string, string> | null {
+    if (!token) return null;
+    const record = this.sessionsByToken.get(token);
+    if (!record || record.revoked) return null;
+    if (record.agentId !== "gemini") return null;
+    return {};
+  }
+
+  /**
+   * Builds the CLI flags that constrain a Copilot help-session spawn to
+   * read-only behaviour. Pins `--plan` (read-only mode, available since
+   * Copilot CLI v1.0.40 — gated by `assistantMinVersion` in
+   * `copilot.ts`). MCP servers are written into `<sessionPath>/.mcp.json`
+   * via `writeCopilotMcpConfig` and read from cwd at launch — no flag
+   * injection needed for MCP discovery.
+   */
+  private buildCopilotLaunchArgs(): string[] {
+    return ["--plan"];
+  }
+
+  /**
+   * Returns the cached CLI flags for a Copilot help session. lifecycle.ts
+   * appends them to the spawn command after the help token validates.
+   * Returns null for unknown / revoked tokens or non-Copilot sessions, so
+   * the spawn handler never injects flags for the wrong agent.
+   */
+  getCopilotLaunchArgs(token: string): string[] | null {
+    if (!token) return null;
+    const record = this.sessionsByToken.get(token);
+    if (!record || record.revoked) return null;
+    if (record.agentId !== "copilot") return null;
+    return record.copilotLaunchArgs ?? [];
+  }
+
+  /**
    * Invalidates the in-memory bearer for this session. The on-disk dir is
    * intentionally preserved across launches so the user's one-time Claude
    * Code workspace-trust acceptance for this project carries over to the
@@ -638,12 +717,17 @@ export class HelpSessionService {
       this.killTerminal(terminalId, "help-session-revoked");
     }
 
-    // Only Claude writes a managed `.mcp.json` carrying a literal session
-    // bearer (Codex uses `-c` flags; Gemini reads its settings.json from
-    // cwd and skips the local MCP in Phase 1), so the file-strip dance is
-    // Claude-only.
-    if (record.agentId === "claude") {
+    // Claude bakes a literal session bearer into `.mcp.json`; Copilot
+    // references the same file with `$DAINTREE_MCP_TOKEN` substitution.
+    // Both need the daintree entry stripped on revoke so a stray agent
+    // started outside the help-panel flow in that cwd can't keep talking
+    // to the now-revoked MCP route. Gemini writes its entry into
+    // `.gemini/settings.json` instead — strip that. Codex stores nothing
+    // on disk (uses `-c` flags), so no file-strip is needed.
+    if (record.agentId === "claude" || record.agentId === "copilot") {
       await this.stripStaleDaintreeMcpEntry(record.sessionPath);
+    } else if (record.agentId === "gemini") {
+      await this.stripStaleGeminiDaintreeEntry(record.sessionPath);
     }
   }
 
@@ -739,6 +823,7 @@ export class HelpSessionService {
         const entryPath = path.join(sessionsRoot, entry);
         if (this.isProjectHashDirName(entry)) {
           await this.stripStaleDaintreeMcpEntry(entryPath);
+          await this.stripStaleGeminiDaintreeEntry(entryPath);
           return;
         }
         await this.removeSessionDir(entryPath);
@@ -968,6 +1053,109 @@ export class HelpSessionService {
     );
   }
 
+  /**
+   * Writes `<sessionPath>/.mcp.json` for a Copilot help session. Copilot's
+   * MCP discovery is CWD-only and the file shape is `{ mcpServers: { name: {
+   * type: "http", url, headers } } }`. Auth uses Copilot's native env-var
+   * substitution (`$VAR`, single-dollar form) so the literal session token
+   * never lands on disk — the bearer is delivered through
+   * `DAINTREE_MCP_TOKEN` in PTY spawn env.
+   */
+  private async writeCopilotMcpConfig(
+    sessionPath: string,
+    settings: { daintreeControl: boolean; docSearch: boolean },
+    port: number | null
+  ): Promise<void> {
+    const mcpServers: Record<string, unknown> = {};
+    if (settings.docSearch) {
+      mcpServers["daintree-docs"] = {
+        type: "http",
+        url: "https://daintree.org/api/mcp",
+      };
+    }
+    if (settings.daintreeControl && port) {
+      mcpServers["daintree"] = {
+        type: "http",
+        url: `http://127.0.0.1:${port}/mcp`,
+        headers: { Authorization: "Bearer $DAINTREE_MCP_TOKEN" },
+      };
+    }
+    const target = path.join(sessionPath, ".mcp.json");
+    await resilientAtomicWriteFile(
+      target,
+      JSON.stringify({ mcpServers }, null, 2) + "\n",
+      "utf-8",
+      { mode: 0o600 }
+    );
+  }
+
+  /**
+   * Writes `<sessionPath>/.gemini/settings.json` for a Gemini help session.
+   * Reads the bundled settings as a baseline (tool allowlist + the
+   * `daintree-docs` MCP entry) and overlays the local `daintree` MCP entry
+   * when daintreeControl is on. Uses `httpUrl` to select Streamable HTTP
+   * transport (Gemini's `url` key is reserved for SSE) and Gemini's native
+   * `${VAR}` env-var substitution for the bearer so no literal token lands
+   * on disk.
+   *
+   * The session-dir settings file is workspace-scoped (Gemini reads it
+   * because `cwd === sessionPath`). Workspace settings take precedence over
+   * `~/.gemini/settings.json` for same-name MCP entries, so our daintree
+   * entry shadows any user-level `daintree` server. We do NOT redirect
+   * `os.homedir()` — see `getGeminiSpawnEnv` for the rationale.
+   */
+  private async writeGeminiSettings(
+    sessionPath: string,
+    bundledHelpFolder: string,
+    settings: { daintreeControl: boolean; docSearch: boolean },
+    port: number | null
+  ): Promise<void> {
+    const bundledSettingsPath = path.join(bundledHelpFolder, ".gemini", "settings.json");
+    const baseline = await this.readBundledGeminiSettings(bundledSettingsPath);
+
+    const merged = deepClonePlainJson(baseline);
+    if (!merged.mcpServers || typeof merged.mcpServers !== "object") {
+      merged.mcpServers = {};
+    }
+    const mcpServers = merged.mcpServers as Record<string, unknown>;
+
+    if (!settings.docSearch) {
+      delete mcpServers["daintree-docs"];
+    }
+
+    if (settings.daintreeControl && port) {
+      mcpServers["daintree"] = {
+        httpUrl: `http://127.0.0.1:${port}/mcp`,
+        headers: { Authorization: "Bearer ${DAINTREE_MCP_TOKEN}" },
+        trust: true,
+      };
+    } else {
+      delete mcpServers["daintree"];
+    }
+
+    const target = path.join(sessionPath, ".gemini", "settings.json");
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await resilientAtomicWriteFile(target, JSON.stringify(merged, null, 2) + "\n", "utf-8", {
+      mode: 0o600,
+    });
+  }
+
+  private async readBundledGeminiSettings(settingsPath: string): Promise<BundledGeminiSettings> {
+    try {
+      const raw = await fs.readFile(settingsPath, "utf-8");
+      const parsed = JSON.parse(raw) as BundledGeminiSettings;
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch {
+      // fall through to baseline
+    }
+    return {
+      toolsAllowlist: ["read_file", "list_directory", "search_files", "web_search", "shell"],
+      mcpServers: {
+        "daintree-docs": { httpUrl: "https://daintree.org/api/mcp", trust: true },
+      },
+    };
+  }
+
   private async writeClaudeSettings(
     sessionPath: string,
     bundledHelpFolder: string,
@@ -1079,6 +1267,52 @@ export class HelpSessionService {
     } catch (err) {
       console.warn(
         "[HelpSessionService] Failed to strip stale daintree entry from .mcp.json:",
+        target,
+        err
+      );
+    }
+  }
+
+  /**
+   * Removes the `daintree` MCP entry from `<sessionPath>/.gemini/settings.json`.
+   * Gemini's bearer is delivered via `${DAINTREE_MCP_TOKEN}` substitution
+   * (not a literal in the file), so a stray `gemini` in this cwd would fail
+   * authentication anyway — but stripping the entry is hygiene so the CLI
+   * doesn't surface a configured-but-broken server. The `daintree-docs`
+   * entry is preserved (session-independent). No-op on ENOENT.
+   */
+  private async stripStaleGeminiDaintreeEntry(sessionPath: string): Promise<void> {
+    const target = path.join(sessionPath, ".gemini", "settings.json");
+    let raw: string;
+    try {
+      raw = await fs.readFile(target, "utf-8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+      console.warn(
+        "[HelpSessionService] Failed to read .gemini/settings.json for stale-entry strip:",
+        target,
+        err
+      );
+      return;
+    }
+    let parsed: { mcpServers?: Record<string, unknown> };
+    try {
+      parsed = JSON.parse(raw) as { mcpServers?: Record<string, unknown> };
+    } catch {
+      return;
+    }
+    const servers = parsed.mcpServers;
+    if (!servers || typeof servers !== "object") return;
+    if (!("daintree" in servers)) return;
+
+    delete servers["daintree"];
+    try {
+      await resilientAtomicWriteFile(target, JSON.stringify(parsed, null, 2) + "\n", "utf-8", {
+        mode: 0o600,
+      });
+    } catch (err) {
+      console.warn(
+        "[HelpSessionService] Failed to strip stale daintree entry from .gemini/settings.json:",
         target,
         err
       );
