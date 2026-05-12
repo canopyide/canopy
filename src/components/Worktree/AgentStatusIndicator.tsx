@@ -31,7 +31,7 @@ const STATE_CONFIG: Record<
   },
   completed: {
     icon: "✓",
-    color: "text-status-success",
+    color: "text-status-info",
     tooltip: "Agent finished this task",
   },
   exited: {
