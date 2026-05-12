@@ -6,6 +6,7 @@ export interface TypedNameConfirmInputProps {
   value: string;
   onChange: (value: string) => void;
   onMatchSubmit?: () => void;
+  preamble?: React.ReactNode;
   instructions?: React.ReactNode;
   "data-testid"?: string;
 }
@@ -15,11 +16,14 @@ export function TypedNameConfirmInput({
   value,
   onChange,
   onMatchSubmit,
+  preamble,
   instructions,
   "data-testid": testId,
 }: TypedNameConfirmInputProps) {
   const instructionsId = useId();
+  const preambleId = useId();
   const isMatched = value === target;
+  const hasPreamble = preamble !== undefined && preamble !== null && !instructions;
 
   const defaultInstructions = (
     <>
@@ -33,6 +37,11 @@ export function TypedNameConfirmInput({
 
   return (
     <div className="space-y-2 p-3 bg-status-error/5 border border-status-error/20 rounded">
+      {hasPreamble && (
+        <p id={preambleId} className="text-sm text-daintree-text">
+          {preamble}
+        </p>
+      )}
       <p id={instructionsId} className="text-sm text-daintree-text">
         {instructions ?? defaultInstructions}
       </p>
@@ -46,7 +55,7 @@ export function TypedNameConfirmInput({
             onMatchSubmit();
           }
         }}
-        aria-describedby={instructionsId}
+        aria-describedby={hasPreamble ? `${preambleId} ${instructionsId}` : instructionsId}
         aria-label={`Type ${target} to confirm`}
         autoComplete="off"
         spellCheck={false}
