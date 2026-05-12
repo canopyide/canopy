@@ -192,21 +192,27 @@ export function extractGitHubErrorCode(rawMessage: string): string | undefined {
   return match ? match[0] : undefined;
 }
 
-export function statusLabel(status: string): { label: string; className: string } {
-  switch (status) {
-    case "A":
-      return { label: "A", className: "text-status-success" };
-    case "D":
-      return { label: "D", className: "text-status-error" };
-    case "M":
-      return { label: "M", className: "text-status-warning" };
-    case "R":
-      return { label: "R", className: "text-status-info" };
-    case "C":
-      return { label: "C", className: "text-github-merged" };
-    default:
-      return { label: status, className: "text-text-muted" };
-  }
+const BASE_BRANCH_STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
+  A: { label: "A", bg: "bg-status-success/15", text: "text-status-success" },
+  D: { label: "D", bg: "bg-status-error/15", text: "text-status-error" },
+  M: { label: "M", bg: "bg-status-warning/15", text: "text-status-warning" },
+  R: { label: "R", bg: "bg-status-info/15", text: "text-status-info" },
+  C: { label: "C", bg: "bg-status-info/15", text: "text-status-info" },
+  U: { label: "U", bg: "bg-status-error/15", text: "text-status-error" },
+};
+
+export function getBaseBranchStatusConfig(status: string): {
+  label: string;
+  bg: string;
+  text: string;
+} {
+  return (
+    BASE_BRANCH_STATUS_CONFIG[status] ?? {
+      label: status,
+      bg: "bg-tint/[0.06]",
+      text: "text-daintree-text/40",
+    }
+  );
 }
 
 export type SortKey = "path" | "status";

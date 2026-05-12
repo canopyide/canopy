@@ -25,7 +25,6 @@ import {
   Clock,
   GitBranch,
   GitPullRequest,
-  FileIcon,
   XCircle,
   SlidersHorizontal,
   ChevronUp,
@@ -73,7 +72,7 @@ import {
   matchesFilter,
   readGitErrorFields,
   sortFiles,
-  statusLabel,
+  getBaseBranchStatusConfig,
 } from "./reviewHubUtils";
 
 export interface ReviewHubContentProps {
@@ -127,35 +126,58 @@ function BaseBranchFileRow({
   unresolvedCount,
   onBadgeClick,
 }: BaseBranchFileRowProps) {
-  const { label, className: statusClass } = statusLabel(file.status);
-  const filename = file.path.split(/[/\\]/).filter(Boolean).pop() || file.path;
-  const dirPath = /[/\\]/.test(file.path)
-    ? file.path.substring(0, Math.max(file.path.lastIndexOf("/"), file.path.lastIndexOf("\\")))
-    : "";
+  const config = getBaseBranchStatusConfig(file.status);
+  const normalized = file.path.replace(/\\/g, "/");
+  const lastSlash = normalized.lastIndexOf("/");
+  const dir = lastSlash === -1 ? "" : normalized.slice(0, lastSlash);
+  const base = lastSlash === -1 ? normalized : normalized.slice(lastSlash + 1);
 
   return (
     <TruncatedTooltip content={file.path}>
       <div
         className={cn(
-          "w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs",
-          "hover:bg-tint/[0.05] transition-colors"
+          "group/baserow w-full flex items-center text-xs rounded px-1.5 py-1.5",
+          "hover:bg-tint/5 transition-colors"
         )}
       >
         <button
           type="button"
           onClick={onClick}
           className={cn(
-            "flex items-center gap-2 min-w-0 flex-1",
-            "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent rounded"
+            "relative flex min-w-0 flex-1 items-baseline rounded text-left",
+            "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent"
           )}
         >
-          <span className={cn("font-mono font-bold shrink-0 w-3 text-center", statusClass)}>
-            {label}
+          <span
+            aria-hidden="true"
+            className={cn(
+              "inline-flex items-center justify-center rounded-sm px-1 mr-2 shrink-0",
+              "text-[10px] font-medium leading-4 h-4 min-w-[16px]",
+              config.bg,
+              config.text
+            )}
+          >
+            {config.label}
           </span>
-          <FileIcon className="w-3 h-3 shrink-0 text-daintree-text/40" />
-          <span className="text-daintree-text/80 truncate min-w-0">{filename}</span>
-          <span className="text-daintree-text/30 truncate min-w-0 text-[10px] ml-auto">
-            {dirPath}
+          {dir && (
+            <span
+              data-testid="base-branch-file-row-dir"
+              className={cn(
+                "shrink truncate font-mono text-[11px] transition-colors",
+                "text-daintree-text/50 group-hover/baserow:text-daintree-text/70"
+              )}
+            >
+              {dir}/
+            </span>
+          )}
+          <span
+            data-testid="base-branch-file-row-base"
+            className={cn(
+              "shrink truncate font-medium font-mono text-[11px] transition-colors",
+              "text-daintree-text group-hover/baserow:text-daintree-text"
+            )}
+          >
+            {base}
           </span>
         </button>
         {unresolvedCount !== undefined && unresolvedCount > 0 && (
@@ -164,7 +186,7 @@ function BaseBranchFileRow({
             onClick={onBadgeClick}
             aria-label={`${unresolvedCount} unresolved review comment${unresolvedCount !== 1 ? "s" : ""} on ${file.path}`}
             className={cn(
-              "shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full",
+              "shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 ml-2 rounded-full",
               "text-[10px] font-semibold tabular-nums",
               "bg-status-warning/15 text-status-warning",
               "hover:bg-status-warning/25 transition-colors cursor-pointer",
@@ -297,6 +319,40 @@ export function ReviewHubContent({
       rows = rows.filter((f) => matchesFilter(f.path, changesView.filterQuery));
     return sortFiles(rows, changesView.sortKey, changesView.sortDir);
   }, [status, changesView]);
+
+  const stagedChurn = useMemo(
+    () =>
+      derivedStaged.reduce(
+        (acc, f) => ({
+          ins: acc.ins + (f.insertions ?? 0),
+          del: acc.del + (f.deletions ?? 0),
+        }),
+        { ins: 0, del: 0 }
+      ),
+    [derivedStaged]
+  );
+
+  const unstagedChurn = useMemo(
+    () =>
+      derivedUnstaged.reduce(
+        (acc, f) => ({
+          ins: acc.ins + (f.insertions ?? 0),
+          del: acc.del + (f.deletions ?? 0),
+        }),
+        { ins: 0, del: 0 }
+      ),
+    [derivedUnstaged]
+  );
+
+  const sortedBaseBranchFiles = useMemo(
+    () =>
+      baseBranchFiles
+        ? [...baseBranchFiles].sort((a, b) =>
+            a.path.replace(/\\/g, "/").localeCompare(b.path.replace(/\\/g, "/"))
+          )
+        : null,
+    [baseBranchFiles]
+  );
 
   const mainBranch = useWorktreeStore(
     (state) =>
@@ -1334,24 +1390,25 @@ export function ReviewHubContent({
                   Retry
                 </Button>
               </div>
-            ) : baseBranchFiles !== null && baseBranchFiles.length === 0 ? (
+            ) : sortedBaseBranchFiles !== null && sortedBaseBranchFiles.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-daintree-text/50">
                 <CheckSquare className="w-8 h-8 mb-2 text-daintree-text/30" />
                 <p className="text-sm">No changes vs {mainBranch}</p>
                 <p className="text-xs mt-1">This branch has no commits ahead of {mainBranch}</p>
               </div>
-            ) : baseBranchFiles !== null ? (
+            ) : sortedBaseBranchFiles !== null ? (
               <div>
                 <div className="flex items-center justify-between px-4 py-2 bg-overlay-subtle border-b border-divider">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-daintree-text/60">
                     Changed vs {mainBranch}
                     <span className="ml-1.5 tabular-nums bg-tint/10 rounded px-1 py-0.5 text-[10px] font-medium normal-case tracking-normal">
-                      {baseBranchFiles.length}
+                      {sortedBaseBranchFiles.length} file
+                      {sortedBaseBranchFiles.length !== 1 ? "s" : ""}
                     </span>
                   </span>
                 </div>
                 <div className="px-2 py-1 flex flex-col gap-0.5">
-                  {baseBranchFiles.map((file) => (
+                  {sortedBaseBranchFiles.map((file) => (
                     <BaseBranchFileRow
                       key={`${file.status}:${file.path}`}
                       file={file}
@@ -1427,8 +1484,26 @@ export function ReviewHubContent({
                     <div className="flex items-center justify-between px-4 py-2 bg-overlay-subtle gap-2">
                       <span className="text-[11px] font-semibold uppercase tracking-wider text-daintree-text/60 shrink-0">
                         Staged
-                        <span className="ml-1.5 tabular-nums bg-tint/10 rounded px-1 py-0.5 text-[10px] font-medium normal-case tracking-normal">
-                          {derivedStaged.length}
+                        <span
+                          data-testid="staged-section-count-chip"
+                          className="ml-1.5 tabular-nums bg-tint/10 rounded px-1 py-0.5 text-[10px] font-medium normal-case tracking-normal inline-flex items-center gap-1"
+                        >
+                          <span>
+                            {derivedStaged.length} file{derivedStaged.length !== 1 ? "s" : ""}
+                          </span>
+                          {(stagedChurn.ins > 0 || stagedChurn.del > 0) && (
+                            <>
+                              <span aria-hidden="true" className="text-daintree-text/30">
+                                ·
+                              </span>
+                              {stagedChurn.ins > 0 && (
+                                <span className="text-status-success/80">{`+${stagedChurn.ins}`}</span>
+                              )}
+                              {stagedChurn.del > 0 && (
+                                <span className="text-status-error/80">{`-${stagedChurn.del}`}</span>
+                              )}
+                            </>
+                          )}
                         </span>
                       </span>
                       <div className="flex items-center gap-1.5 min-w-0">
@@ -1607,8 +1682,26 @@ export function ReviewHubContent({
                     <div className="flex items-center justify-between px-4 py-2 bg-overlay-subtle gap-2">
                       <span className="text-[11px] font-semibold uppercase tracking-wider text-daintree-text/60 shrink-0">
                         Changes
-                        <span className="ml-1.5 tabular-nums bg-tint/10 rounded px-1 py-0.5 text-[10px] font-medium normal-case tracking-normal">
-                          {derivedUnstaged.length}
+                        <span
+                          data-testid="changes-section-count-chip"
+                          className="ml-1.5 tabular-nums bg-tint/10 rounded px-1 py-0.5 text-[10px] font-medium normal-case tracking-normal inline-flex items-center gap-1"
+                        >
+                          <span>
+                            {derivedUnstaged.length} file{derivedUnstaged.length !== 1 ? "s" : ""}
+                          </span>
+                          {(unstagedChurn.ins > 0 || unstagedChurn.del > 0) && (
+                            <>
+                              <span aria-hidden="true" className="text-daintree-text/30">
+                                ·
+                              </span>
+                              {unstagedChurn.ins > 0 && (
+                                <span className="text-status-success/80">{`+${unstagedChurn.ins}`}</span>
+                              )}
+                              {unstagedChurn.del > 0 && (
+                                <span className="text-status-error/80">{`-${unstagedChurn.del}`}</span>
+                              )}
+                            </>
+                          )}
                         </span>
                       </span>
                       <div className="flex items-center gap-1.5 min-w-0">
