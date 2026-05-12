@@ -1659,6 +1659,7 @@ export function ReviewHubContent({
                     ) : stagedView.filterQuery ? (
                       <EmptyState
                         variant="filtered-empty"
+                        scale="sidebar"
                         title={`No staged files matching "${stagedView.filterQuery}"`}
                         action={
                           <button
@@ -1857,6 +1858,7 @@ export function ReviewHubContent({
                     ) : changesView.filterQuery ? (
                       <EmptyState
                         variant="filtered-empty"
+                        scale="sidebar"
                         title={`No changed files matching "${changesView.filterQuery}"`}
                         action={
                           <button

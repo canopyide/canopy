@@ -614,15 +614,16 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 
           <EmptyState
             variant="zero-data"
+            scale="sidebar"
             icon={<FolderOpen />}
             title="Open a Git repository to get started"
-            description={
-              <>
+            action={
+              <span className="text-xs text-daintree-text/50">
                 Use{" "}
                 <kbd className="px-1.5 py-0.5 bg-tint/[0.06] rounded text-xs">
                   File → Open Directory
                 </kbd>
-              </>
+              </span>
             }
             className="flex-1"
           />
@@ -904,6 +905,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
               {showQuickStateEmptyState ? (
                 <EmptyState
                   variant="filtered-empty"
+                  scale="sidebar"
                   title={`No ${quickStateFilter} worktrees`}
                   action={
                     <button
@@ -920,6 +922,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                 !(mainVisible || integrationVisible) ? (
                 <EmptyState
                   variant="filtered-empty"
+                  scale="sidebar"
                   title={
                     hasQuery
                       ? `No matches for "${truncateSearchQuery(query.trim())}"`

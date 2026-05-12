@@ -450,6 +450,7 @@ AppPaletteDialog.Empty = function AppPaletteEmpty({
     return (
       <EmptyState
         variant="filtered-empty"
+        scale="popover"
         title={noMatchMessage ?? defaultNoMatchTitle(trimmedQuery)}
         action={noMatchContent}
         className="px-3 py-8"
@@ -457,6 +458,12 @@ AppPaletteDialog.Empty = function AppPaletteEmpty({
     );
   }
   return (
-    <EmptyState variant="zero-data" title={emptyMessage} action={children} className="px-3 py-8" />
+    <EmptyState
+      variant="zero-data"
+      scale="popover"
+      title={emptyMessage}
+      action={children}
+      className="px-3 py-8"
+    />
   );
 };

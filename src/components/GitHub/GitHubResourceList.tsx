@@ -525,6 +525,7 @@ export function GitHubResourceList({
       return (
         <EmptyState
           variant="filtered-empty"
+          scale="canvas"
           title={title}
           action={
             <Button
@@ -546,6 +547,7 @@ export function GitHubResourceList({
     return (
       <EmptyState
         variant="zero-data"
+        scale="canvas"
         title={`No ${resourceLabel} found`}
         className="flex-1 justify-center"
       />
@@ -557,6 +559,7 @@ export function GitHubResourceList({
       <div className="relative w-[450px] flex flex-col h-[500px]">
         <EmptyState
           variant="zero-data"
+          scale="canvas"
           icon={<Github />}
           title="GitHub not connected"
           description="Add a personal access token to browse issues and pull requests for this project."

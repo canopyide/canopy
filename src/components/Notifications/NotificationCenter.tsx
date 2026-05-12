@@ -715,6 +715,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
             filter === "unread" && entries.length > 0 ? (
               <EmptyState
                 variant="user-cleared"
+                scale="canvas"
                 title="You're all caught up"
                 icon={<Bell />}
                 className="py-10"
@@ -723,6 +724,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
               <div data-testid="notification-muted-empty-state">
                 <EmptyState
                   variant="zero-data"
+                  scale="canvas"
                   title="Notifications paused"
                   icon={<Moon />}
                   description={mutedEmptyDescription}
@@ -732,6 +734,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
             ) : (
               <EmptyState
                 variant="zero-data"
+                scale="canvas"
                 title="No notifications yet"
                 icon={<Bell />}
                 description={

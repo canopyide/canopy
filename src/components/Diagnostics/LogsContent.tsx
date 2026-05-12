@@ -268,6 +268,7 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
             <div className="flex items-center justify-center h-full">
               <EmptyState
                 variant="filtered-empty"
+                scale="sidebar"
                 title="No logs match filters"
                 action={
                   <button
