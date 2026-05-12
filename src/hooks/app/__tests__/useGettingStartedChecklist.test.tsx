@@ -311,7 +311,7 @@ describe("useGettingStartedChecklist", () => {
       });
     }
 
-    it("does not emit a toast or read keybinding when the final item completes", async () => {
+    it("does not emit a toast, read keybinding, or auto-dismiss when the final item completes", async () => {
       // Regression guard for #7499: the on-screen CelebrationConfetti is the
       // sole completion signal. A toast would be redundant (Visible-another-way)
       // and its CTA would point to an action the user just finished (Helpful).
@@ -327,12 +327,13 @@ describe("useGettingStartedChecklist", () => {
       expect(onboardingMock.markChecklistItem).toHaveBeenCalledWith("ranSecondParallelAgent");
       expect(notifyMock).not.toHaveBeenCalled();
       expect(getDisplayComboMock).not.toHaveBeenCalled();
+      expect(onboardingMock.dismissChecklist).not.toHaveBeenCalled();
       expect(onboardingMock.markChecklistCelebrationShown).toHaveBeenCalledTimes(1);
       expect(result.current.showCelebration).toBe(true);
     });
   });
 
-  describe("milestone-beat hold", () => {
+  describe("completion behavior", () => {
     beforeEach(() => {
       onboardingMock.getChecklist.mockResolvedValue({
         items: {
@@ -346,7 +347,7 @@ describe("useGettingStartedChecklist", () => {
       });
     });
 
-    it("keeps panel visible during the hold, then dismisses after 800ms", async () => {
+    it("keeps panel visible after all items complete (no auto-dismiss)", async () => {
       const { result } = renderHook(() => useGettingStartedChecklist(true));
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0);
@@ -356,77 +357,21 @@ describe("useGettingStartedChecklist", () => {
         result.current.markItem("ranSecondParallelAgent");
       });
 
-      // IPC dismiss fires immediately for restart safety.
-      expect(onboardingMock.dismissChecklist).toHaveBeenCalledTimes(1);
-      // Panel stays visible during the hold.
+      // Panel stays visible after completion — no auto-dismiss.
       expect(result.current.visible).toBe(true);
       expect(result.current.checklist?.dismissed).toBe(false);
+      // dismissChecklist is NOT called on completion.
+      expect(onboardingMock.dismissChecklist).not.toHaveBeenCalled();
 
+      // Advance well past the old 800ms hold — panel remains visible.
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(799);
+        await vi.advanceTimersByTimeAsync(2000);
       });
       expect(result.current.visible).toBe(true);
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(1);
-      });
-      expect(result.current.visible).toBe(false);
-      expect(result.current.checklist?.dismissed).toBe(true);
+      expect(result.current.checklist?.dismissed).toBe(false);
     });
 
-    it("ignores onChecklistPush(dismissed:true) during the hold window", async () => {
-      let pushHandler: ((next: ChecklistStateLike) => void) | null = null;
-      const onChecklistPushMock = vi.fn((fn: (next: ChecklistStateLike) => void) => {
-        pushHandler = fn;
-        return () => {};
-      });
-      const augmentedMock = onboardingMock as typeof onboardingMock & {
-        onChecklistPush: typeof onChecklistPushMock;
-      };
-      augmentedMock.onChecklistPush = onChecklistPushMock;
-
-      try {
-        const { result } = renderHook(() => useGettingStartedChecklist(true));
-        await act(async () => {
-          await vi.advanceTimersByTimeAsync(0);
-        });
-
-        await act(async () => {
-          result.current.markItem("ranSecondParallelAgent");
-        });
-
-        expect(result.current.visible).toBe(true);
-        expect(pushHandler).not.toBeNull();
-
-        // Main process broadcasts the persisted dismissed:true mid-hold;
-        // the panel must stay visible until the local timer fires.
-        await act(async () => {
-          pushHandler!({
-            items: {
-              openedProject: true,
-              launchedAgent: true,
-              createdWorktree: true,
-              ranSecondParallelAgent: true,
-            },
-            dismissed: true,
-            celebrationShown: true,
-          });
-        });
-
-        expect(result.current.visible).toBe(true);
-        expect(result.current.checklist?.dismissed).toBe(false);
-
-        await act(async () => {
-          await vi.advanceTimersByTimeAsync(800);
-        });
-        expect(result.current.visible).toBe(false);
-        expect(result.current.checklist?.dismissed).toBe(true);
-      } finally {
-        delete (augmentedMock as Partial<typeof augmentedMock>).onChecklistPush;
-      }
-    });
-
-    it("applies onChecklistPush(dismissed:true) immediately when no hold is active", async () => {
+    it("onChecklistPush with dismissed:true hides the panel", async () => {
       let pushHandler: ((next: ChecklistStateLike) => void) | null = null;
       const onChecklistPushMock = vi.fn((fn: (next: ChecklistStateLike) => void) => {
         pushHandler = fn;
@@ -446,8 +391,7 @@ describe("useGettingStartedChecklist", () => {
         expect(result.current.visible).toBe(true);
         expect(pushHandler).not.toBeNull();
 
-        // No markItem(allDone), so pendingDismissRef is false. The push gate
-        // must be inactive and dismissed:true must take effect immediately.
+        // Push with dismissed:true takes effect immediately.
         await act(async () => {
           pushHandler!({
             items: {
@@ -468,7 +412,7 @@ describe("useGettingStartedChecklist", () => {
       }
     });
 
-    it("manual dismiss() during the hold dismisses the panel immediately", async () => {
+    it("manual dismiss after completion hides panel and persists dismissal", async () => {
       const { result } = renderHook(() => useGettingStartedChecklist(true));
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0);
@@ -485,8 +429,9 @@ describe("useGettingStartedChecklist", () => {
 
       expect(result.current.visible).toBe(false);
       expect(result.current.checklist?.dismissed).toBe(true);
+      expect(onboardingMock.dismissChecklist).toHaveBeenCalledTimes(1);
 
-      // Pending timer must be a no-op after manual dismiss.
+      // Advancing time does not change anything.
       await act(async () => {
         await vi.advanceTimersByTimeAsync(800);
       });
@@ -507,26 +452,6 @@ describe("useGettingStartedChecklist", () => {
         dismissed: false,
         celebrationShown: false,
       });
-    });
-
-    it("completes pending dismiss in 0ms when reduced motion is preferred", async () => {
-      const { result } = renderHook(() => useGettingStartedChecklist(true));
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-
-      await act(async () => {
-        result.current.markItem("ranSecondParallelAgent");
-      });
-
-      expect(result.current.visible).toBe(true);
-
-      // Timer fires immediately (0ms).
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-      expect(result.current.visible).toBe(false);
-      expect(result.current.checklist?.dismissed).toBe(true);
     });
 
     it("completes celebration auto-clear in 0ms when reduced motion is preferred", async () => {
