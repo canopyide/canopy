@@ -114,6 +114,22 @@ interface HelpSessionRef {
   windowId: number;
 }
 
+/**
+ * Per-agent env injection for help-session launches. Today this is a
+ * placeholder shape — no agent currently requires renderer-side env beyond
+ * the universal `DAINTREE_MCP_TOKEN` / `DAINTREE_WINDOW_ID` set in
+ * `buildHelpEnv`. Gemini intentionally does NOT receive `GEMINI_CLI_HOME`:
+ * its OAuth credentials live under `os.homedir()` and redirecting them
+ * would break auth for users who haven't set `GEMINI_API_KEY`. MCP-server
+ * isolation for Gemini comes from the workspace-level
+ * `<sessionPath>/.gemini/settings.json` written at provision time, which
+ * Gemini's merge precedence (workspace > user) lets shadow same-name
+ * user-level entries.
+ */
+function agentSpawnEnv(_agentId: string, _sessionPath: string): Record<string, string> {
+  return {};
+}
+
 type ProvisionOutcome =
   | { ok: true; session: HelpSessionRef }
   | { ok: false; code: "MCP_NOT_READY"; message: string }
@@ -199,12 +215,14 @@ async function loadCustomLaunchFlags(): Promise<string[]> {
 
 function buildHelpEnv(
   session: HelpSessionRef | null,
-  projectId: string | null
+  projectId: string | null,
+  agentId: string
 ): Record<string, string> | undefined {
   if (!session) return undefined;
   const env: Record<string, string> = {
     DAINTREE_MCP_TOKEN: session.token,
     DAINTREE_WINDOW_ID: String(session.windowId),
+    ...agentSpawnEnv(agentId, session.sessionPath),
   };
   if (session.mcpUrl) env.DAINTREE_MCP_URL = session.mcpUrl;
   if (projectId) env.DAINTREE_PROJECT_ID = projectId;
@@ -1007,7 +1025,7 @@ export class HelpSessionController {
 
     const cwd = session?.sessionPath ?? hibernated.cwd ?? folderPath;
     const projectId = useProjectStore.getState().currentProject?.id ?? null;
-    const env = buildHelpEnv(session, projectId);
+    const env = buildHelpEnv(session, projectId, launchAgentId);
 
     const newId = await usePanelStore.getState().addPanel({
       kind: "terminal",
@@ -1085,7 +1103,7 @@ export class HelpSessionController {
       session = outcome.session;
       this._pendingSessionId = session.sessionId;
       const cwd = session.sessionPath;
-      const env = buildHelpEnv(session, launchProject.id);
+      const env = buildHelpEnv(session, launchProject.id, launchAgentId);
 
       const hibernated = useHelpPanelStore.getState().hibernateSessions[launchProject.id];
       if (hibernated && hibernated.agentId === launchAgentId) {
@@ -1265,7 +1283,7 @@ export class HelpSessionController {
         this._pendingSessionId = session.sessionId;
       }
       const cwd = session.sessionPath;
-      const helpEnv = buildHelpEnv(session, launchProject.id);
+      const helpEnv = buildHelpEnv(session, launchProject.id, launchAgentId);
       const env: Record<string, string> | undefined =
         helpEnv || presetEnv ? { ...(presetEnv ?? {}), ...(helpEnv ?? {}) } : undefined;
 
