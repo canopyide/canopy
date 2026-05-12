@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Breaking Changes
+
+- **Voice transcription backend switched from Deepgram to OpenAI Realtime API.** The voice subsystem now connects to `wss://api.openai.com/v1/realtime` and uses the `input_audio_transcription` event family (`delta` / `completed`) for streaming results. Spoken dictation commands ("new paragraph", "period", etc.) are reproduced in post-processing via `applyDictationCommands` since the Realtime API has no native equivalent.
+- **API key settings unified into a single `openaiApiKey`.** The separate `deepgramApiKey` and `correctionApiKey` fields have been removed. Settings are auto-migrated on first launch: existing `correctionApiKey` values move into `openaiApiKey`; a `deepgramApiKey` is dropped. Users who only had a Deepgram key configured need to add an OpenAI API key in Settings → Voice for transcription to resume.
+
 ## [0.9.1] - 2026-05-10
 
 Same-day follow-up to 0.9.0. Polish on the Daintree Assistant pip and help panel, GitHub bulk-selection cleanup, and several PTY/terminal robustness fixes.
