@@ -8,7 +8,7 @@ interface PullRequestServiceLike {
   start(): Promise<void>;
   stop(): void;
   reset(): void;
-  refresh(): void;
+  refresh(): Promise<void>;
   getStatus(): {
     isPolling: boolean;
     candidateCount: number;
@@ -161,7 +161,7 @@ export class PRIntegrationService {
   updateToken(token: string | null, projectRootPath: string | null): void {
     GitHubAuth.setMemoryToken(token);
     if (token) {
-      this.prService.refresh();
+      void this.prService.refresh();
     } else {
       this.prService.reset();
       if (projectRootPath) {

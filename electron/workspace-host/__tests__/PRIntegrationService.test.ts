@@ -44,7 +44,7 @@ describe("PRIntegrationService", () => {
     start(): Promise<void>;
     stop(): void;
     reset(): void;
-    refresh(): void;
+    refresh(): Promise<void>;
     getStatus(): {
       isPolling: boolean;
       candidateCount: number;
@@ -63,7 +63,7 @@ describe("PRIntegrationService", () => {
       start: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
       stop: vi.fn(),
       reset: vi.fn(),
-      refresh: vi.fn(),
+      refresh: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
       getStatus: vi.fn(() => ({
         isPolling: false,
         candidateCount: 0,

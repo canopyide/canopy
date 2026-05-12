@@ -1790,6 +1790,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
   }
 
   updateGitHubToken(token: string | null): void {
+    this.prService.updateToken(token, this.projectRootPath);
     if (token) {
       // A new token may resolve previously-failing auth — drop suspensions so
       // the next scheduled fetch retries. Network/transient entries stay so we
@@ -1803,7 +1804,6 @@ ${lines.map((l) => "+" + l).join("\n")}`;
         }
       }
     }
-    this.prService.updateToken(token, this.projectRootPath);
   }
 
   private initializePRService(): Promise<void> {
