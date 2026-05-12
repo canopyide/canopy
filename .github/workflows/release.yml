@@ -85,6 +85,11 @@ jobs:
   # Fan out the six full-* domain buckets as a matrix of reusable-workflow
   # calls. GitHub Actions waits on every matrix entry before unblocking
   # `build-daintree`, so a single `needs: [..., e2e-full-gate]` is enough.
+  #
+  # The full suite stays on `non-windows` here: a full run on Windows takes
+  # roughly five to six hours, which is why it was dropped from nightly too.
+  # Windows release confidence comes from the core and online gates above,
+  # plus the Windows build/package step in `build-daintree`.
   e2e-full-gate:
     needs: [checks, unit-tests]
     strategy:
@@ -100,7 +105,7 @@ jobs:
     uses: ./.github/workflows/e2e.yml
     with:
       suite: ${{ matrix.suite }}
-      platform: all
+      platform: non-windows
 
   e2e-online-gate:
     needs: [checks, unit-tests]
