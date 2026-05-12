@@ -34,9 +34,11 @@ export function AgentHelpOutput({
   const loadGenRef = useRef(0);
 
   useEffect(() => {
+    loadGenRef.current += 1;
     setHelpResult(null);
     setError(null);
     setIsCopied(false);
+    setIsLoading(false);
   }, [agentId, availability]);
 
   useEffect(() => {
