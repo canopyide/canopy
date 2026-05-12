@@ -4,7 +4,7 @@ import path from "path";
 import { launchApp, closeApp, getActiveAppWindow, type AppContext } from "../../helpers/launch";
 import { createFixtureRepo } from "../../helpers/fixtures";
 import { openAndOnboardProject } from "../../helpers/project";
-import { getFocusedPanelId, getGridPanelIds, getPanelById } from "../../helpers/panels";
+import { getFocusedPanelId, getPanelById } from "../../helpers/panels";
 import { waitForTerminalPty, waitForTerminalText } from "../../helpers/terminal";
 import { SEL } from "../../helpers/selectors";
 import { T_LONG, T_MEDIUM } from "../../helpers/timeouts";
@@ -325,7 +325,7 @@ test.describe.serial("Core: Fleet terminal broadcast", () => {
     fixtureCleanup?.();
   });
 
-  test.skip("shift-click on panel title arms terminal in fleet (#7704)", async () => {
+  test("shift-click on panel title arms terminal in fleet (#7704)", async () => {
     test.setTimeout(60_000);
     await ctx.window.waitForTimeout(1000);
     const gridIds = await createFreshFleetGridPanels(2);
@@ -365,7 +365,7 @@ test.describe.serial("Core: Fleet terminal broadcast", () => {
     });
   });
 
-  test.skip("active xterm selection does not block shift-click on panel title (#7704)", async () => {
+  test("active xterm selection does not block shift-click on panel title (#7704)", async () => {
     test.setTimeout(60_000);
     await ctx.window.waitForTimeout(1000);
     const gridIds = await createFreshFleetGridPanels(2);
