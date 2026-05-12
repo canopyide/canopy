@@ -257,7 +257,7 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
                           type="button"
                           className="text-daintree-text/30 hover:text-daintree-text transition-colors p-0.5 cursor-pointer"
                           onClick={() => systemClient.openExternal(config.install!.docsUrl!)}
-                          aria-label="View documentation"
+                          aria-label="Open documentation"
                         >
                           <ExternalLink className="w-3 h-3" />
                         </button>
