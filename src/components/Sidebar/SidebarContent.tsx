@@ -698,10 +698,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       ));
   const integrationVisible = integrationMatchesQuery && integrationMatchesFacets;
 
-  const visibleCount = hasFilters
-    ? filteredWorktrees.length + (mainVisible ? 1 : 0) + (integrationVisible ? 1 : 0)
-    : deferredWorktrees.length;
-
   const hasQuery = query.trim().length > 0;
   const isSortDisabled = isGroupedByType || hasQuery;
 
