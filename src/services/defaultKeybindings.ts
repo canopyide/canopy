@@ -836,6 +836,14 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     category: "Help",
   },
   {
+    actionId: "help.togglePanel",
+    combo: "Cmd+L",
+    scope: "global",
+    priority: 0,
+    description: "Toggle Daintree Assistant panel",
+    category: "Help",
+  },
+  {
     actionId: "app.newWindow",
     combo: "Cmd+Shift+Alt+N",
     scope: "global",

@@ -39,6 +39,8 @@ interface HelpPanelState {
    * the assistant session for project A must not leak into project B.
    */
   hibernateSessions: Record<string, HelpHibernateSession>;
+  /** Monotonic counter bumped by requestFocus() so repeated Cmd+L presses re-trigger the focus effect. */
+  focusRequest: number;
 }
 
 interface HelpPanelActions {
@@ -50,6 +52,7 @@ interface HelpPanelActions {
   setPreferredAgent: (agentId: string | null) => void;
   dismissIntro: () => void;
   markConversationStarted: () => void;
+  requestFocus: () => void;
   setHibernateSession: (
     projectId: string,
     entry: { sessionId: string; cwd: string; agentId: string }
@@ -67,6 +70,7 @@ const initialState: HelpPanelState = {
   introDismissed: false,
   conversationTouched: false,
   hibernateSessions: {},
+  focusRequest: 0,
 };
 
 function isRecordOfUnknown(value: unknown): value is Record<string, unknown> {
@@ -121,6 +125,8 @@ export const useHelpPanelStore = create<HelpPanelState & HelpPanelActions>()(
       dismissIntro: () => set({ introDismissed: true }),
 
       markConversationStarted: () => set({ conversationTouched: true }),
+
+      requestFocus: () => set((s) => ({ focusRequest: s.focusRequest + 1 })),
 
       setHibernateSession: (projectId, entry) =>
         set((s) => ({

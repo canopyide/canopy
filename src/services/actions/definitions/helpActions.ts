@@ -9,6 +9,7 @@ import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import { useFocusStore } from "@/store/focusStore";
 import { useHelpPanelStore } from "@/store/helpPanelStore";
 import { useProjectStore } from "@/store/projectStore";
+import { isAssistantFocused } from "@/store/macroFocusStore";
 import { logError } from "@/utils/logger";
 import { getDefaultAgentId } from "@/lib/resolveAgentId";
 
@@ -171,8 +172,21 @@ export function registerHelpActions(actions: ActionRegistry, callbacks: ActionCa
     keywords: ["docs", "support", "guide", "assistant"],
     run: async () => {
       suppressSidebarResizes();
-      useFocusStore.getState().clearAssistantGesture();
-      useHelpPanelStore.getState().toggle();
+      const store = useHelpPanelStore.getState();
+
+      if (!store.isOpen) {
+        // Closed → open and focus the input
+        useFocusStore.getState().clearAssistantGesture();
+        store.setOpen(true);
+        store.requestFocus();
+      } else if (!isAssistantFocused()) {
+        // Open but blurred → focus the input without closing
+        useFocusStore.getState().clearAssistantGesture();
+        store.requestFocus();
+      } else {
+        // Open and focused → close
+        store.setOpen(false);
+      }
     },
   }));
 }
