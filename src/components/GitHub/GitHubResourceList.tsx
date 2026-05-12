@@ -525,6 +525,7 @@ export function GitHubResourceList({
       return (
         <EmptyState
           variant="filtered-empty"
+          scale="canvas"
           title={title}
           action={
             <Button
@@ -546,6 +547,7 @@ export function GitHubResourceList({
     return (
       <EmptyState
         variant="zero-data"
+        scale="canvas"
         title={`No ${resourceLabel} found`}
         className="flex-1 justify-center"
       />
@@ -555,8 +557,12 @@ export function GitHubResourceList({
   if (showNoTokenEmptyState) {
     return (
       <div className="relative w-[450px] flex flex-col h-[500px]">
+        {/* Canvas scale: this is the canonical "connection-gated panel" example
+            in CLAUDE.md — a 450×500 dropdown that warrants panel semantics so the
+            token-explanation description and "Add GitHub token" CTA stay legal. */}
         <EmptyState
           variant="zero-data"
+          scale="canvas"
           icon={<Github />}
           title="GitHub not connected"
           description="Add a personal access token to browse issues and pull requests for this project."

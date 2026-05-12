@@ -330,3 +330,14 @@ export function isSortKey(v: string): v is SortKey {
 export function isDensity(v: string): v is Density {
   return v === "comfortable" || v === "compact";
 }
+
+const FILTER_QUERY_DISPLAY_MAX = 40;
+
+// Filter-query echoes in narrow sidebar surfaces would overflow otherwise:
+// file paths regularly exceed 40 chars and the panel can sit at ~200px.
+export function truncateFilterQuery(query: string): string {
+  const codepoints = Array.from(query);
+  return codepoints.length > FILTER_QUERY_DISPLAY_MAX
+    ? `${codepoints.slice(0, FILTER_QUERY_DISPLAY_MAX).join("")}…`
+    : query;
+}

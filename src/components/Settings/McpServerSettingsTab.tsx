@@ -327,6 +327,7 @@ export function McpServerSettingsTab() {
         <div className="border border-dashed border-daintree-border rounded-[var(--radius-md)]">
           <EmptyState
             variant="zero-data"
+            scale="canvas"
             icon={<McpServerIcon />}
             title="MCP server is off"
             description="Turn it on to expose Daintree's actions as MCP tools agents can call."

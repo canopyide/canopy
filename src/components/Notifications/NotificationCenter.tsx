@@ -713,8 +713,14 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
         >
           {totalChronoGroups === 0 && needsAttentionGroups.length === 0 ? (
             filter === "unread" && entries.length > 0 ? (
+              // Canvas scale: the bell dropdown is a 360px panel-style surface that
+              // mirrors GitHubResourceList ("connection-gated panel" example in
+              // CLAUDE.md). The "Notifications appear here" guidance and the
+              // "Adjust at Notification settings" inline link are intentional and
+              // load-bearing — popover scale would forbid them at compile time.
               <EmptyState
                 variant="user-cleared"
+                scale="canvas"
                 title="You're all caught up"
                 icon={<Bell />}
                 className="py-10"
@@ -723,6 +729,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
               <div data-testid="notification-muted-empty-state">
                 <EmptyState
                   variant="zero-data"
+                  scale="canvas"
                   title="Notifications paused"
                   icon={<Moon />}
                   description={mutedEmptyDescription}
@@ -732,6 +739,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
             ) : (
               <EmptyState
                 variant="zero-data"
+                scale="canvas"
                 title="No notifications yet"
                 icon={<Bell />}
                 description={
