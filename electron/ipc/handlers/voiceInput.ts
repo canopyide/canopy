@@ -13,6 +13,7 @@ import type { VoiceInputSettings } from "../../../shared/types/ipc/api.js";
 import { CONFIDENCE_TAG_THRESHOLD } from "../../../shared/config/voiceCorrection.js";
 import { logDebug, logWarn } from "../../utils/logger.js";
 import { assembleKeyterms } from "../../services/voiceContextKeyterms.js";
+import { applyDictationCommands } from "../../services/voiceDictationCommands.js";
 import { getAppWebContents } from "../../window/webContentsRegistry.js";
 import { voiceFileLinkResolver } from "../../services/VoiceFileLinkResolver.js";
 import { typedHandle, typedHandleWithContext } from "../utils.js";
@@ -500,15 +501,38 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
         getAppWebContents(win).send(CHANNELS.VOICE_INPUT_TRANSCRIPTION_DELTA, voiceEvent.text);
       } else if (voiceEvent.type === "complete") {
         const rawText = voiceEvent.text.trim();
+        const liveSettings = getVoiceSettings();
 
-        // Notify the renderer so it can finalize the utterance in the draft.
-        getAppWebContents(win).send(CHANNELS.VOICE_INPUT_TRANSCRIPTION_COMPLETE, {
-          text: rawText,
-          willCorrect: false,
-        });
+        // OpenAI Realtime emits spoken dictation commands ("new paragraph",
+        // "period", etc.) as literal text. Deepgram dictation mode rewrites
+        // them upstream; here we reproduce that behavior post-hoc, gated on
+        // the user's paragraphing strategy.
+        const processedText =
+          liveSettings.paragraphingStrategy === "spoken-command"
+            ? applyDictationCommands(rawText)
+            : rawText;
+
+        // Split on \n\n so each paragraph is emitted as its own complete event
+        // with a paragraph_boundary between them — mirrors the Deepgram path
+        // in VoiceTranscriptionService.emitCompleteWithParagraphDetection so
+        // the renderer's onParagraphBoundary handler is invoked consistently.
+        const parts = processedText.split(/\n\n+/).map((p) => p.trim());
+        for (let i = 0; i < parts.length; i++) {
+          if (parts[i]) {
+            getAppWebContents(win).send(CHANNELS.VOICE_INPUT_TRANSCRIPTION_COMPLETE, {
+              text: parts[i],
+              willCorrect: false,
+            });
+          }
+          if (i < parts.length - 1) {
+            getAppWebContents(win).send(CHANNELS.VOICE_INPUT_PARAGRAPH_BOUNDARY, {
+              rawText: null,
+              correctionId: null,
+            });
+          }
+        }
 
         // Feed word-level data into the streaming correction buffer
-        const liveSettings = getVoiceSettings();
         const correctionEnabled = !!(
           liveSettings.correctionEnabled && liveSettings.correctionApiKey
         );
