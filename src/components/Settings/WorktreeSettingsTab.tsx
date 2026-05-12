@@ -1,6 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { AlertCircle, Check, RotateCcw } from "lucide-react";
-import { Spinner } from "@/components/ui/Spinner";
 import { FolderGit2 } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -54,11 +53,15 @@ export function WorktreeSettingsTab() {
     };
   }, [savedMessageTimeout]);
 
+  const timedOutRef = useRef(false);
+
   useEffect(() => {
     let settled = false;
+    timedOutRef.current = false;
     const timer = setTimeout(() => {
       if (!settled) {
         settled = true;
+        timedOutRef.current = true;
         setError("Settings load timed out");
         setIsLoading(false);
       }
@@ -67,6 +70,7 @@ export function WorktreeSettingsTab() {
     actionService
       .dispatch("worktreeConfig.get", undefined, { source: "user" })
       .then((result) => {
+        if (timedOutRef.current) return;
         settled = true;
         clearTimeout(timer);
         if (!result.ok) {
@@ -148,16 +152,7 @@ export function WorktreeSettingsTab() {
   // the WebContentsView detaches. handleSave's internal validation/saving
   // guards short-circuit cleanly when the pattern is invalid or a save is
   // already in flight.
-  useSettingsTabFlush("worktree", handleSave, hasChanges);
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Spinner size="lg" />
-        <span className="ml-2 text-sm text-daintree-text/60">Loading settings...</span>
-      </div>
-    );
-  }
+  useSettingsTabFlush("worktree", handleSave, hasChanges && !isLoading);
 
   return (
     <div className="space-y-6">
@@ -180,6 +175,7 @@ export function WorktreeSettingsTab() {
                   setPattern(e.target.value);
                   setError(null);
                 }}
+                disabled={isLoading}
                 className={cn(
                   "flex-1 px-3 py-1.5 bg-daintree-bg border rounded-[var(--radius-md)] text-daintree-text font-mono text-sm",
                   "focus:outline-hidden focus:ring-2 focus:ring-daintree-accent",
@@ -191,7 +187,8 @@ export function WorktreeSettingsTab() {
                 <TooltipTrigger asChild>
                   <button
                     onClick={handleReset}
-                    className="px-3 py-1.5 border border-daintree-border rounded-[var(--radius-md)] text-daintree-text/60 hover:text-daintree-text hover:bg-daintree-border/50 transition-colors"
+                    disabled={isLoading}
+                    className="px-3 py-1.5 border border-daintree-border rounded-[var(--radius-md)] text-daintree-text/60 hover:text-daintree-text hover:bg-daintree-border/50 transition-colors disabled:opacity-50"
                     aria-label="Reset to default"
                   >
                     <RotateCcw className="w-4 h-4" />
@@ -201,7 +198,7 @@ export function WorktreeSettingsTab() {
               </Tooltip>
             </div>
 
-            {!validation.valid && validation.error && (
+            {!isLoading && !validation.valid && validation.error && (
               <div className="flex items-start gap-2 text-xs text-status-error">
                 <AlertCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />
                 <span>{validation.error}</span>
@@ -248,8 +245,9 @@ export function WorktreeSettingsTab() {
                   <TooltipTrigger asChild>
                     <button
                       onClick={() => handlePresetClick(preset.pattern)}
+                      disabled={isLoading}
                       className={cn(
-                        "px-3 py-1.5 text-xs rounded-[var(--radius-md)] border transition-colors",
+                        "px-3 py-1.5 text-xs rounded-[var(--radius-md)] border transition-colors disabled:opacity-50",
                         pattern === preset.pattern
                           ? "bg-overlay-selected border-border-strong text-daintree-text font-medium"
                           : "border-daintree-border text-daintree-text/70 hover:bg-daintree-border/50"
@@ -295,7 +293,7 @@ export function WorktreeSettingsTab() {
             </div>
             <button
               onClick={handleSave}
-              disabled={!hasChanges || !validation.valid || isSaving}
+              disabled={isLoading || !hasChanges || !validation.valid || isSaving}
               className={cn(
                 "px-4 py-1.5 text-sm font-medium rounded-[var(--radius-md)] transition-colors",
                 hasChanges && validation.valid

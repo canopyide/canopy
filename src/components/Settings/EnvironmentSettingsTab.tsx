@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Key, Eye, EyeOff, Trash2, Plus, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Spinner } from "@/components/ui/Spinner";
 import { Button } from "@/components/ui/button";
 import { SettingsSection } from "./SettingsSection";
 import { isSensitiveEnvKey } from "@shared/utils/envVars";
@@ -222,14 +221,6 @@ export function EnvironmentSettingsTab() {
   // user-initiated save).
   useSettingsTabFlush("environment", handleSave, isDirty);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <Spinner size="lg" />
-      </div>
-    );
-  }
-
   if (loadFailed) {
     return (
       <SettingsSection
@@ -339,7 +330,7 @@ export function EnvironmentSettingsTab() {
             })
           )}
 
-          <Button variant="outline" onClick={addRow} className="w-full">
+          <Button variant="outline" onClick={addRow} disabled={isLoading} className="w-full">
             <Plus />
             Add Variable
           </Button>
