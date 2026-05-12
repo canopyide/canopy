@@ -303,8 +303,7 @@ export class VoiceTranscriptionService {
       }
 
       case "conversation.item.input_audio_transcription.completed": {
-        const transcript =
-          typeof payload.transcript === "string" ? payload.transcript.trim() : "";
+        const transcript = typeof payload.transcript === "string" ? payload.transcript.trim() : "";
         this.liveText = "";
         if (transcript) {
           this.emit({ type: "complete", text: transcript, confidence: { ...STUB_CONFIDENCE } });

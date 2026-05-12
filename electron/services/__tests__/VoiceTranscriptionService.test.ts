@@ -112,6 +112,7 @@ vi.mock("ws", () => {
 
 // Import the service AFTER vi.mock so the mocked `ws` is used.
 const { VoiceTranscriptionService } = await import("../VoiceTranscriptionService.js");
+type VoiceTranscriptionServiceInstance = InstanceType<typeof VoiceTranscriptionService>;
 type VoiceTranscriptionEvent = import("../VoiceTranscriptionService.js").VoiceTranscriptionEvent;
 
 const BASE_SETTINGS: VoiceInputSettings = {
@@ -135,7 +136,7 @@ function latestInstance(): MockWebSocket {
 
 /** Advance the service through connect → ready. Returns the active mock socket. */
 async function bringSessionReady(
-  service: VoiceTranscriptionService,
+  service: VoiceTranscriptionServiceInstance,
   settings: VoiceInputSettings = BASE_SETTINGS
 ): Promise<{ socket: MockWebSocket; result: { ok: true } | { ok: false; error: string } }> {
   const startPromise = service.start(settings);
@@ -176,9 +177,7 @@ describe("VoiceTranscriptionService", () => {
     void service.start({ ...BASE_SETTINGS, openaiApiKey: "sk-abc" });
     await Promise.resolve();
     const socket = latestInstance();
-    expect(socket.url).toBe(
-      "wss://api.openai.com/v1/realtime?model=gpt-realtime-whisper"
-    );
+    expect(socket.url).toBe("wss://api.openai.com/v1/realtime?model=gpt-realtime-whisper");
     expect(socket.options.headers.Authorization).toBe("Bearer sk-abc");
     expect(socket.options.headers["OpenAI-Beta"]).toBe("realtime=v1");
     service.stop();
@@ -410,8 +409,9 @@ describe("VoiceTranscriptionService", () => {
     socket.simulateOpen();
     socket.simulateMessage("session.updated");
 
-    const audioCount = socket.sentJson().filter((p) => p.type === "input_audio_buffer.append")
-      .length;
+    const audioCount = socket
+      .sentJson()
+      .filter((p) => p.type === "input_audio_buffer.append").length;
     expect(audioCount).toBe(100);
     service.stop();
   });
