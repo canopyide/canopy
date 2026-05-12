@@ -431,7 +431,6 @@ describe("NotificationCenter muted pill", () => {
 
     const pill = screen.getByTestId("notification-muted-pill");
     expect(pill).toBeTruthy();
-    expect(pill.textContent).toContain("Notifications");
     expect(pill.textContent).toMatch(/Muted until /);
     const resume = screen.getByLabelText("Resume notifications");
     expect(resume).toBeTruthy();
@@ -1285,7 +1284,7 @@ describe("NotificationCenter — bulk mark-read with Undo", () => {
 
     const payload = getLastNotifyPayload();
     expect(payload.type).toBe("success");
-    expect(payload.message).toBe("Marked 2 read");
+    expect(payload.message).toBe("Marked 2 as read");
     expect(payload.duration).toBe(5000);
     expect(payload.urgent).toBe(true);
     expect(payload.transient).toBe(true);
@@ -1395,7 +1394,7 @@ describe("NotificationCenter — bulk mark-read with Undo", () => {
     expect(entries.find((e) => e.id === "old-1")?.seenAsToast).toBe(false);
 
     const payload = getLastNotifyPayload();
-    expect(payload.message).toBe("Marked 2 read");
+    expect(payload.message).toBe("Marked 2 as read");
     expect(useUIStore.getState().lastNotificationCenterClosedAt).toBe(0);
   });
 
@@ -1431,8 +1430,12 @@ describe("NotificationCenter — bulk mark-read with Undo", () => {
     const loginHeader = headers.find((h) => (h.textContent ?? "").includes("feature/login"));
     expect(loginHeader).toBeTruthy();
 
+    // Mark read button is always visible (not gated on hover).
+    const markReadBtn = within(loginHeader!).getByText("Mark read");
+    expect(markReadBtn.className).not.toContain("invisible");
+
     await act(async () => {
-      fireEvent.click(within(loginHeader!).getByText("Mark read"));
+      fireEvent.click(markReadBtn);
     });
 
     const entries = useNotificationHistoryStore.getState().entries;
@@ -1444,7 +1447,7 @@ describe("NotificationCenter — bulk mark-read with Undo", () => {
     expect(useUIStore.getState().lastNotificationCenterClosedAt).toBe(99999);
 
     const payload = getLastNotifyPayload();
-    expect(payload.message).toBe("Marked 2 read");
+    expect(payload.message).toBe("Marked 2 as read");
   });
 
   it("section header 'Mark read' button is not rendered when the section has no unread entries", () => {

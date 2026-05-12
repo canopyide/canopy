@@ -341,14 +341,19 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
     });
     if (ids.length === 0) return;
     markIdsRead(ids);
+    const prevLastClosedAt = options.resetLastClosed
+      ? useUIStore.getState().lastNotificationCenterClosedAt
+      : undefined;
     if (options.resetLastClosed) {
       resetLastClosedAt();
     }
     notify({
       type: "success",
-      message: `Marked ${ids.length} read`,
-      // Action-bearing toasts default to sticky (duration: 0). Keep the undo
-      // window short and explicit so the toast clears itself.
+      message: `Marked ${ids.length} as read`,
+      // WCAG 2.2.1: the 5 s auto-dismiss is permitted under the "available
+      // elsewhere without a time limit" exception — the notification history
+      // inbox is always accessible as the recovery surface, and Undo provides
+      // a reversal mechanism within the time limit.
       duration: 5000,
       priority: "high",
       // Time-bound undo — surface even during quiet hours so the user has a
@@ -362,6 +367,9 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
         onClick: () => {
           for (const id of ids) {
             markUnseenAsToast(id, { silent: true });
+          }
+          if (prevLastClosedAt !== undefined) {
+            useUIStore.setState({ lastNotificationCenterClosedAt: prevLastClosedAt });
           }
         },
       },
@@ -564,31 +572,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
     <div className="w-[360px] max-h-[420px] flex flex-col">
       <div className="flex items-center justify-between px-3 py-2 border-b border-divider gap-2">
         <div className="flex items-center gap-1.5 min-w-0">
-          {showMutedPill ? (
-            <span
-              data-testid="notification-muted-pill"
-              className="inline-flex items-center gap-1 rounded-full bg-overlay-medium px-2 py-0.5 text-[11px] text-daintree-text/70"
-            >
-              <span className="font-medium text-daintree-text/80">Notifications</span>
-              <span aria-hidden="true" className="text-daintree-text/40">
-                ·
-              </span>
-              <span className="truncate">{pillLabel}</span>
-              {isSessionMuted && (
-                <button
-                  type="button"
-                  onClick={handleResumeNotifications}
-                  aria-label="Resume notifications"
-                  title="Resume notifications"
-                  className="ml-0.5 inline-flex shrink-0 items-center justify-center rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[11px] font-medium text-daintree-text/70 hover:bg-overlay-emphasis hover:text-daintree-text transition-colors"
-                >
-                  Resume
-                </button>
-              )}
-            </span>
-          ) : (
-            <span className="text-xs font-medium text-daintree-text/80">Notifications</span>
-          )}
+          <span className="text-xs font-medium text-daintree-text/80">Notifications</span>
           {entries.length > 0 && (
             <>
               <button
@@ -703,6 +687,25 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
           )}
         </div>
       </div>
+      {showMutedPill && (
+        <div
+          data-testid="notification-muted-pill"
+          className="flex items-center gap-1.5 px-3 py-1 bg-overlay-subtle text-[11px] font-medium uppercase tracking-wide text-daintree-text/70"
+        >
+          <span className="truncate">{pillLabel}</span>
+          {isSessionMuted && (
+            <button
+              type="button"
+              onClick={handleResumeNotifications}
+              aria-label="Resume notifications"
+              title="Resume notifications"
+              className="ml-0.5 inline-flex shrink-0 items-center justify-center rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[11px] font-medium normal-case tracking-normal text-daintree-text/70 hover:bg-overlay-emphasis hover:text-daintree-text transition-colors"
+            >
+              Resume
+            </button>
+          )}
+        </div>
+      )}
       <div className="relative flex-1 min-h-0">
         <div
           ref={setScrollContainer}
@@ -1022,7 +1025,7 @@ function ContextSectionHeader({
           <button
             type="button"
             onClick={onMarkRead}
-            className="invisible opacity-0 pointer-events-none transition-[opacity,visibility] duration-150 motion-reduce:transition-none group-hover/section:visible group-hover/section:opacity-100 group-hover/section:pointer-events-auto group-focus-within/section:visible group-focus-within/section:opacity-100 group-focus-within/section:pointer-events-auto inline-flex items-center rounded-[var(--radius-sm)] px-1.5 py-0.5 normal-case tracking-normal text-daintree-text/60 hover:bg-overlay-emphasis hover:text-daintree-text"
+            className="inline-flex items-center rounded-[var(--radius-sm)] px-1.5 py-0.5 normal-case tracking-normal text-daintree-text/50 hover:text-daintree-text/80 hover:bg-overlay-emphasis focus-visible:text-daintree-text/80 focus-visible:bg-overlay-emphasis transition-colors"
           >
             Mark read
           </button>
@@ -1049,20 +1052,18 @@ function NewSinceLastLookedDivider({
       ref={ref}
       tabIndex={-1}
       data-testid="new-since-last-looked"
-      className="flex items-center gap-2 px-3 py-1 text-[10px] font-medium text-daintree-text/50 outline-hidden"
+      className="flex items-center gap-2 px-3 py-1 bg-overlay-subtle text-[10px] font-medium uppercase tracking-wide text-daintree-text/50 outline-hidden"
     >
-      <span className="h-px flex-1 bg-divider" aria-hidden="true" />
       <span>New since you last looked</span>
       {unreadCount > 0 && (
         <button
           type="button"
           onClick={onMarkRead}
-          className="inline-flex items-center rounded-[var(--radius-sm)] px-1.5 py-0.5 text-daintree-text/60 hover:bg-overlay-emphasis hover:text-daintree-text transition-colors"
+          className="inline-flex items-center rounded-[var(--radius-sm)] px-1.5 py-0.5 normal-case tracking-normal text-daintree-text/60 hover:bg-overlay-emphasis hover:text-daintree-text transition-colors"
         >
-          Mark these {unreadCount} read
+          {unreadCount === 1 ? "Mark this read" : `Mark these ${unreadCount} read`}
         </button>
       )}
-      <span className="h-px flex-1 bg-divider" aria-hidden="true" />
     </div>
   );
 }
