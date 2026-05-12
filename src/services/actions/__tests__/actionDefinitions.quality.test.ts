@@ -214,3 +214,42 @@ describe("duplicate registrations", () => {
     expect(true).toBe(true);
   });
 });
+
+/**
+ * Destructive actions whose definitions must carry `danger: "confirm"`. The set
+ * is the regression guard for #7881 — see docs/architecture/destructive-action-safeguards.md.
+ * Demoting any of these to `"safe"` re-enables them for `action.repeatLast` and
+ * the action-palette MRU rail, which is wrong for destructive operations.
+ */
+const EXPECTED_CONFIRM_DANGER: ReadonlyArray<ActionId> = [
+  "git.push",
+  "git.snapshotRevert",
+  "git.snapshotDelete",
+  "worktree.delete",
+  "worktree.sessions.endAll",
+  "worktree.sessions.trashAll",
+  "fleet.kill",
+  "fleet.trash",
+  "fleet.restart",
+];
+
+describe("destructive-action danger metadata", () => {
+  it('every action in EXPECTED_CONFIRM_DANGER is registered with danger:"confirm"', async () => {
+    const { registry } = await createRegistryWithAudit();
+
+    const mismatches: string[] = [];
+    for (const id of EXPECTED_CONFIRM_DANGER) {
+      const factory = registry.get(id);
+      if (!factory) {
+        mismatches.push(`${id} (not registered)`);
+        continue;
+      }
+      const def = factory();
+      if (def.danger !== "confirm") {
+        mismatches.push(`${id} (danger="${def.danger}", expected "confirm")`);
+      }
+    }
+
+    expect(mismatches).toEqual([]);
+  });
+});

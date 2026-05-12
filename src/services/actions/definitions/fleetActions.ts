@@ -196,7 +196,7 @@ export function registerFleetActions(actions: ActionRegistry): void {
     description: "Restart every armed agent terminal (always requires confirmation)",
     category: "terminal",
     kind: "command",
-    danger: "safe",
+    danger: "confirm",
     scope: "renderer",
     argsSchema: confirmedArgsSchema,
     run: async (args: unknown) => {
@@ -221,7 +221,7 @@ export function registerFleetActions(actions: ActionRegistry): void {
       "Remove every armed terminal panel (matches terminal.killAll semantics — not a raw SIGKILL; always requires confirmation)",
     category: "terminal",
     kind: "command",
-    danger: "safe",
+    danger: "confirm",
     scope: "renderer",
     argsSchema: confirmedArgsSchema,
     run: async (args: unknown) => {
@@ -246,7 +246,7 @@ export function registerFleetActions(actions: ActionRegistry): void {
     description: "Move every armed terminal to trash (confirms when 5+ targets)",
     category: "terminal",
     kind: "command",
-    danger: "safe",
+    danger: "confirm",
     scope: "renderer",
     argsSchema: confirmedArgsSchema,
     run: async (args: unknown) => {
