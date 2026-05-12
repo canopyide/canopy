@@ -1,9 +1,9 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { launchApp, closeApp, type AppContext } from "../../helpers/launch";
 import { createFixtureRepo } from "../../helpers/fixtures";
 import { openAndOnboardProject } from "../../helpers/project";
 import { waitForTerminalText, runTerminalCommand } from "../../helpers/terminal";
-import { getFirstGridPanel, openTerminal } from "../../helpers/panels";
+import { getGridPanelIds, getPanelById, openTerminal } from "../../helpers/panels";
 import { SEL } from "../../helpers/selectors";
 import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../../helpers/timeouts";
 import { dismissBlockingPalette } from "../../helpers/overlays";
@@ -11,9 +11,96 @@ import { dismissBlockingPalette } from "../../helpers/overlays";
 let ctx: AppContext;
 let fixtureDir: string;
 let fixtureCleanup: (() => void) | undefined;
+let terminalPanelId: string | undefined;
+
+type TerminalScrollState = {
+  viewportY: number;
+  baseY: number;
+  isUserScrolledBack: boolean;
+};
+
+type TerminalScrollHooks = {
+  __daintreeGetTerminalScrollState?: (panelId: string) => TerminalScrollState | null;
+  __daintreeScrollTerminalLines?: (panelId: string, lines: number) => TerminalScrollState | null;
+};
+
+async function getTerminalPanel(page: Page): Promise<Locator> {
+  if (terminalPanelId) {
+    return getPanelById(page, terminalPanelId);
+  }
+
+  const panelIds = await getGridPanelIds(page);
+  terminalPanelId = panelIds[panelIds.length - 1];
+  if (!terminalPanelId) {
+    throw new Error("Could not resolve terminal panel ID");
+  }
+  return getPanelById(page, terminalPanelId);
+}
+
+async function getTerminalScrollState(page: Page): Promise<TerminalScrollState | null> {
+  if (!terminalPanelId) {
+    throw new Error("Could not resolve terminal panel ID");
+  }
+
+  return page.evaluate((panelId) => {
+    const hooks = window as unknown as TerminalScrollHooks;
+    return hooks.__daintreeGetTerminalScrollState?.(panelId) ?? null;
+  }, terminalPanelId);
+}
+
+function isScrolledBack(state: TerminalScrollState | null): boolean {
+  return Boolean(state && state.isUserScrolledBack && state.viewportY < state.baseY);
+}
+
+async function scrollTerminalLines(page: Page, lines: number): Promise<TerminalScrollState | null> {
+  if (!terminalPanelId) {
+    throw new Error("Could not resolve terminal panel ID");
+  }
+
+  return page.evaluate(
+    ({ panelId, lineCount }) => {
+      const hooks = window as unknown as TerminalScrollHooks;
+      return hooks.__daintreeScrollTerminalLines?.(panelId, lineCount) ?? null;
+    },
+    { panelId: terminalPanelId, lineCount: lines }
+  );
+}
+
+async function scrollTerminalBack(panel: Locator): Promise<void> {
+  const page = panel.page();
+
+  await dismissBlockingPalette(page);
+  await panel.locator(SEL.terminal.xtermRows).click();
+  await page.waitForTimeout(T_SETTLE);
+
+  for (let i = 0; i < 15; i++) {
+    await page.keyboard.press("Shift+PageUp");
+  }
+  await page.waitForTimeout(T_SETTLE);
+
+  if (!isScrolledBack(await getTerminalScrollState(page))) {
+    await scrollTerminalLines(page, -80);
+  }
+  if (!isScrolledBack(await getTerminalScrollState(page))) {
+    await scrollTerminalLines(page, 80);
+  }
+
+  try {
+    await expect
+      .poll(async () => isScrolledBack(await getTerminalScrollState(page)), {
+        timeout: T_MEDIUM,
+        intervals: [100, 250, 500],
+      })
+      .toBe(true);
+  } catch (error) {
+    const state = await getTerminalScrollState(page);
+    throw new Error(`Terminal did not scroll back: ${JSON.stringify(state)}`, { cause: error });
+  }
+}
 
 test.describe.serial("Core: Terminal Scroll Indicator", () => {
   test.beforeAll(async () => {
+    terminalPanelId = undefined;
     ({ dir: fixtureDir, cleanup: fixtureCleanup } = createFixtureRepo({
       name: "scroll-indicator",
     }));
@@ -34,35 +121,38 @@ test.describe.serial("Core: Terminal Scroll Indicator", () => {
   test("open terminal via toolbar", async () => {
     const { window } = ctx;
     await openTerminal(window);
-    const panel = getFirstGridPanel(window);
+    await expect
+      .poll(() => getGridPanelIds(window).then((ids) => ids.length), {
+        timeout: T_LONG,
+        intervals: [100, 250, 500],
+      })
+      .toBeGreaterThan(0);
+    const panelIds = await getGridPanelIds(window);
+    terminalPanelId = panelIds[panelIds.length - 1];
+    const panel = await getTerminalPanel(window);
     await expect(panel).toBeVisible({ timeout: T_LONG });
   });
 
   test("indicator appears when scrolled up and new output arrives", async () => {
     const { window } = ctx;
-    const panel = getFirstGridPanel(window);
+    const panel = await getTerminalPanel(window);
 
     // Disable animations so indicator visibility toggles instantly
     await window.emulateMedia({ reducedMotion: "reduce" });
 
-    // Run a two-phase command: fill buffer immediately, then produce new output after 8s
+    const delayedOutputMs = process.env.CI ? 25_000 : 8_000;
+
+    // Run a two-phase command: fill buffer immediately, then produce delayed output
     await runTerminalCommand(
       window,
       panel,
-      `node -e "for(let i=1;i<=200;i++) console.log('SCRL_A_FILL_'+i); setTimeout(()=>{for(let i=1;i<=20;i++) console.log('SCRL_A_NEW_'+i)}, 8000)"`
+      `node -e "for(let i=1;i<=200;i++) console.log('SCRL_A_FILL_'+i); setTimeout(()=>{let i=0; const t=setInterval(()=>{i++; console.log('SCRL_A_NEW_'+i); if(i>=20) clearInterval(t)}, 150)}, ${delayedOutputMs})"`
     );
 
     // Wait for the fill phase to complete
     await waitForTerminalText(panel, "SCRL_A_FILL_200", T_LONG);
 
-    // Scroll up using keyboard (proven pattern from core-terminal-search.spec.ts)
-    await dismissBlockingPalette(window);
-    await panel.locator(SEL.terminal.xtermRows).click();
-    await window.waitForTimeout(T_SETTLE);
-    for (let i = 0; i < 15; i++) {
-      await window.keyboard.press("Shift+PageUp");
-    }
-    await window.waitForTimeout(T_SETTLE);
+    await scrollTerminalBack(panel);
 
     // Indicator should NOT be visible yet (scrolling alone doesn't trigger it)
     const indicator = panel.locator(SEL.terminal.scrollIndicator);
@@ -77,7 +167,7 @@ test.describe.serial("Core: Terminal Scroll Indicator", () => {
 
   test("clicking indicator scrolls to bottom and hides it", async () => {
     const { window } = ctx;
-    const panel = getFirstGridPanel(window);
+    const panel = await getTerminalPanel(window);
     const indicator = panel.locator(SEL.terminal.scrollIndicator);
 
     // Click the indicator
@@ -95,7 +185,7 @@ test.describe.serial("Core: Terminal Scroll Indicator", () => {
 
   test("indicator does not appear when already at bottom", async () => {
     const { window } = ctx;
-    const panel = getFirstGridPanel(window);
+    const panel = await getTerminalPanel(window);
 
     // Run a command with delayed output WITHOUT scrolling up
     await runTerminalCommand(

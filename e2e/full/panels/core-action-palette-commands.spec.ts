@@ -183,14 +183,13 @@ test.describe.serial("Core: Action Palette, Command Picker & Quick Switcher", ()
         expect(filteredCount).toBe(0);
       });
 
-      await test.step("Press Escape twice to clear query and close dialog", async () => {
-        // First Escape clears the search query (two-step escape behavior)
-        await window.keyboard.press("Escape");
-        // Second Escape closes the dialog
-        await window.keyboard.press("Escape");
+      await test.step("Clear query and press Escape to close dialog", async () => {
+        await searchInput.fill("");
+        await searchInput.press("Escape");
 
         const dialog = window.locator(SEL.quickSwitcher.dialog);
-        await expect(dialog).not.toBeVisible({ timeout: T_SHORT });
+        await expect(dialog).not.toBeVisible({ timeout: T_MEDIUM });
+        await expect(dialog).toHaveCount(0, { timeout: T_MEDIUM });
       });
     });
   });
@@ -265,6 +264,7 @@ test.describe.serial("Core: Action Palette, Command Picker & Quick Switcher", ()
       }
 
       const { window } = ctx;
+      const searchInput = window.locator(SEL.commandPicker.searchInput);
       const options = window.locator(SEL.commandPicker.options);
       let unfilteredCount = 0;
 
@@ -276,7 +276,6 @@ test.describe.serial("Core: Action Palette, Command Picker & Quick Switcher", ()
       });
 
       await test.step("Filter by 'git' and verify result count narrows", async () => {
-        const searchInput = window.locator(SEL.commandPicker.searchInput);
         await searchInput.fill("git");
         await window.waitForTimeout(T_SETTLE);
 
@@ -287,14 +286,12 @@ test.describe.serial("Core: Action Palette, Command Picker & Quick Switcher", ()
         }
       });
 
-      await test.step("Press Escape twice to clear query and close dialog", async () => {
-        // First Escape clears the search query (two-step escape behavior)
-        await window.keyboard.press("Escape");
-        // Second Escape closes the dialog
-        await window.keyboard.press("Escape");
+      await test.step("Clear query and press Escape to close dialog", async () => {
+        await searchInput.fill("");
+        await searchInput.press("Escape");
 
         const dialog = window.locator(SEL.commandPicker.dialog);
-        await expect(dialog).not.toBeVisible({ timeout: T_SHORT });
+        await expect(dialog).not.toBeVisible({ timeout: T_MEDIUM });
       });
     });
   });

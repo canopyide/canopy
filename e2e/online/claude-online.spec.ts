@@ -8,15 +8,16 @@ import {
 } from "../helpers/launch";
 import { createFixtureRepo } from "../helpers/fixtures";
 import { dismissTelemetryConsent } from "../helpers/project";
-import { getTerminalText } from "../helpers/terminal";
+import { getTerminalText, writeTerminalInput } from "../helpers/terminal";
 import { SEL } from "../helpers/selectors";
 import { configureClaudeAuthEnv, hasClaudeApiKey } from "../helpers/claudeAuth";
 
 let ctx: AppContext;
 let fixtureDir: string;
 let fixtureCleanup: (() => void) | undefined;
+let claudeAgentPanel: Locator;
 
-async function focusHybridEditor(page: Page, agentPanel: Locator): Promise<void> {
+async function tryFocusHybridEditor(page: Page, agentPanel: Locator): Promise<boolean> {
   let lastError: unknown;
 
   for (let attempt = 0; attempt < 8; attempt++) {
@@ -28,23 +29,71 @@ async function focusHybridEditor(page: Page, agentPanel: Locator): Promise<void>
         element.scrollIntoView({ block: "center", inline: "center" });
         element.focus();
       });
+      await cmEditor.click({ force: true });
       await expect
         .poll(
-          () => cmEditor.evaluate((node) => document.activeElement === node).catch(() => false),
+          () =>
+            cmEditor
+              .evaluate((node) => {
+                const active = document.activeElement;
+                return active === node || (active instanceof Node && node.contains(active));
+              })
+              .catch(() => false),
           {
-            timeout: 2_000,
+            timeout: process.platform === "win32" ? 5_000 : 2_000,
             intervals: [100, 250],
           }
         )
         .toBe(true);
-      return;
+      return true;
     } catch (error) {
       lastError = error;
       await page.waitForTimeout(500);
     }
   }
 
-  throw lastError instanceof Error ? lastError : new Error("Failed to focus hybrid editor");
+  if (lastError instanceof Error && !/cm-content/.test(lastError.message)) {
+    throw lastError;
+  }
+  return false;
+}
+
+async function sendAgentInput(
+  page: Page,
+  agentPanel: Locator,
+  input: string,
+  options: { submit?: boolean } = {}
+): Promise<void> {
+  if (process.platform === "win32") {
+    await writeTerminalInput(page, agentPanel, options.submit ? `${input}\r` : input);
+    return;
+  }
+
+  if (await tryFocusHybridEditor(page, agentPanel)) {
+    await page.keyboard.type(input, { delay: 30 });
+    if (options.submit) await page.keyboard.press("Enter");
+    return;
+  }
+
+  await writeTerminalInput(page, agentPanel, options.submit ? `${input}\r` : input);
+}
+
+async function pressAgentKey(
+  page: Page,
+  agentPanel: Locator,
+  key: "Enter" | "ArrowUp"
+): Promise<void> {
+  if (process.platform === "win32") {
+    await writeTerminalInput(page, agentPanel, key === "Enter" ? "\r" : "\x1b[A");
+    return;
+  }
+
+  if (await tryFocusHybridEditor(page, agentPanel)) {
+    await page.keyboard.press(key);
+    return;
+  }
+
+  await writeTerminalInput(page, agentPanel, key === "Enter" ? "\r" : "\x1b[A");
 }
 
 test.describe("Claude Online Flow", () => {
@@ -89,13 +138,18 @@ test.describe("Claude Online Flow", () => {
       await window.locator(SEL.agent.trayButton).click();
       await window.getByRole("menuitem", { name: "Claude" }).click();
 
-      const agentPanel = window.locator(SEL.agent.panel);
+      const agentPanel = window.locator(SEL.agent.panel).first();
       await expect(agentPanel).toBeVisible({ timeout: 30_000 });
+      const panelId = await agentPanel.evaluate(
+        (element) => element.closest("[data-panel-id]")?.getAttribute("data-panel-id") ?? ""
+      );
+      expect(panelId).toBeTruthy();
+      claudeAgentPanel = window.locator(`[data-panel-id="${panelId}"]`);
     });
 
     await test.step("handle prompts and wait for Welcome", async () => {
       const { window } = ctx;
-      const agentPanel = window.locator(SEL.agent.panel);
+      const agentPanel = claudeAgentPanel;
 
       // Claude Code may prompt for trust, API key, or skip straight to Welcome
       // depending on prior configuration. Poll and handle whatever appears.
@@ -114,13 +168,11 @@ test.describe("Claude Online Flow", () => {
         if (lower.includes("welcome")) {
           reachedWelcome = true;
         } else if (lower.includes("trust")) {
-          await focusHybridEditor(window, agentPanel);
-          await window.keyboard.press("Enter");
+          await pressAgentKey(window, agentPanel, "Enter");
           await window.waitForTimeout(2_000);
         } else if (lower.includes("api key")) {
-          await focusHybridEditor(window, agentPanel);
-          await window.keyboard.press("ArrowUp");
-          await window.keyboard.press("Enter");
+          await pressAgentKey(window, agentPanel, "ArrowUp");
+          await pressAgentKey(window, agentPanel, "Enter");
           await window.waitForTimeout(2_000);
         } else {
           await window.waitForTimeout(1_000);
@@ -133,16 +185,14 @@ test.describe("Claude Online Flow", () => {
     await test.step("send hello world command", async () => {
       const { window } = ctx;
 
-      const agentPanel = window.locator(SEL.agent.panel);
-      await focusHybridEditor(window, agentPanel);
-      await window.keyboard.type("Please say hello world", { delay: 30 });
-      await window.keyboard.press("Enter");
+      const agentPanel = claudeAgentPanel;
+      await sendAgentInput(window, agentPanel, "Please say hello world", { submit: true });
     });
 
     await test.step("verify response contains hello", async () => {
       const { window } = ctx;
 
-      const agentPanel = window.locator(SEL.agent.panel);
+      const agentPanel = claudeAgentPanel;
 
       await expect
         .poll(

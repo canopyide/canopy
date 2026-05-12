@@ -334,6 +334,10 @@ async function dispatchXtermContextMenu(xterm: Locator): Promise<boolean> {
   });
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export async function openTerminalContextMenu(
   panelLocator: Locator,
   { preserveSelection = false }: { preserveSelection?: boolean } = {}
@@ -381,6 +385,7 @@ export async function clickTerminalContextMenuItem(
 ): Promise<void> {
   const page = panelLocator.page();
   const menu = page.locator(SEL.contextMenu.content);
+  const itemName = new RegExp(`^${escapeRegExp(name)}\\b`);
   let lastError: unknown;
 
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -388,18 +393,46 @@ export async function clickTerminalContextMenuItem(
       await openTerminalContextMenu(panelLocator);
     }
 
-    const item = page.getByRole("menuitem", { name });
-    await expect(item).toBeVisible({ timeout: T_SHORT });
+    const item = page.getByRole("menuitem", { name: itemName }).first();
 
     try {
-      await item.click({ force: true, timeout: 3_000 });
-      return;
+      await expect(item).toBeVisible({ timeout: T_SHORT });
     } catch (error) {
       lastError = error;
       await page.keyboard.press("Escape").catch(() => undefined);
       await expect(menu)
         .not.toBeVisible({ timeout: T_SHORT })
         .catch(() => undefined);
+      continue;
+    }
+
+    try {
+      await item.click({ timeout: 3_000 });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!(await isContextMenuVisible(page, 500))) return;
+
+      try {
+        await item.click({ force: true, timeout: 3_000 });
+        return;
+      } catch (forceError) {
+        lastError = forceError;
+        if (!(await isContextMenuVisible(page, 500))) return;
+
+        try {
+          await item.focus({ timeout: 1_000 });
+          await page.keyboard.press("Enter");
+          if (!(await isContextMenuVisible(page, 1_000))) return;
+        } catch (keyboardError) {
+          lastError = keyboardError;
+        }
+
+        await page.keyboard.press("Escape").catch(() => undefined);
+        await expect(menu)
+          .not.toBeVisible({ timeout: T_SHORT })
+          .catch(() => undefined);
+      }
     }
   }
 

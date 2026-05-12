@@ -19,6 +19,7 @@ const toolbarButtonIds: Record<string, string> = {
 const toolbarShortcuts: Record<string, string> = {
   "Open Terminal": `${mod}+Alt+t`,
   "Open Browser": `${mod}+Alt+b`,
+  "Open settings": `${mod}+,`,
 };
 
 function extractExactAriaLabel(selector: string): string | null {
@@ -85,16 +86,20 @@ export async function clickToolbarButton(
   // Button might be in the overflow menu — look for and open it
   const overflowTrigger = toolbar.getByRole("button", { name: /more/i }).first();
   if (await overflowTrigger.isVisible({ timeout: 1000 }).catch(() => false)) {
-    await overflowTrigger.click();
+    try {
+      await overflowTrigger.click();
 
-    // Extract the aria-label from the selector to find the menu item
-    if (label) {
-      const menuItem = page.getByRole("menuitem", {
-        name: toolbarOverflowLabels[label] ?? label,
-        exact: true,
-      });
-      await menuItem.click({ timeout });
-      return;
+      // Extract the aria-label from the selector to find the menu item
+      if (label) {
+        const menuItem = page.getByRole("menuitem", {
+          name: toolbarOverflowLabels[label] ?? label,
+          exact: true,
+        });
+        await menuItem.click({ timeout });
+        return;
+      }
+    } catch {
+      await page.keyboard.press("Escape").catch(() => undefined);
     }
   }
 

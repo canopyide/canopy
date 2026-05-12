@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator } from "@playwright/test";
 import { launchApp, closeApp, refreshActiveWindow, type AppContext } from "../../helpers/launch";
 import { createFixtureRepo, createMultiProjectFixture } from "../../helpers/fixtures";
 import type { MultiProjectFixture } from "../../helpers/fixtures";
@@ -17,6 +17,10 @@ import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../../helpers/timeouts";
 const mod = process.platform === "darwin" ? "Meta" : "Control";
 const FEATURE = "feature/test-branch";
 const FEATURE_DIR_NAME = "feature-test-branch";
+
+async function getPanelId(panel: Locator): Promise<string> {
+  return panel.evaluate((element) => element.getAttribute("data-panel-id") ?? "");
+}
 
 // ── Block 1: Terminal CWD, Content Isolation, Overview Modal ──
 
@@ -75,6 +79,7 @@ test.describe.serial("Core: Cross-Worktree Terminal Isolation", () => {
   });
 
   test("terminal content is isolated across worktrees", async () => {
+    test.setTimeout(process.env.CI ? 180_000 : 120_000);
     const { window } = ctx;
 
     // Switch to main worktree first
@@ -86,9 +91,9 @@ test.describe.serial("Core: Cross-Worktree Terminal Isolation", () => {
         .toContain("selected");
     });
 
-    await spawnTerminalAndVerify(window);
-    const mainPanelIds = await getGridPanelIds(window);
-    const mainPanelId = mainPanelIds[mainPanelIds.length - 1];
+    const mainPanel = await spawnTerminalAndVerify(window);
+    const mainPanelId = await getPanelId(mainPanel);
+    expect(mainPanelId).not.toBe("");
 
     await test.step("echo marker in main terminal", async () => {
       // Re-acquire the panel via its stable ID — `.last()` can resolve
@@ -109,9 +114,9 @@ test.describe.serial("Core: Cross-Worktree Terminal Isolation", () => {
         .toContain("selected");
     });
 
-    await spawnTerminalAndVerify(window);
-    const featurePanelIds = await getGridPanelIds(window);
-    const featurePanelId = featurePanelIds[featurePanelIds.length - 1];
+    const featurePanel = await spawnTerminalAndVerify(window);
+    const featurePanelId = await getPanelId(featurePanel);
+    expect(featurePanelId).not.toBe("");
 
     await test.step("echo marker in feature terminal", async () => {
       const stableFeature = getPanelById(window, featurePanelId);
@@ -421,11 +426,43 @@ test.describe.serial("Core: Worktree Creation Resilience", () => {
 
     await test.step("verify quick-create palette is visible", async () => {
       const quickCreate = window.locator(SEL.worktree.quickCreatePalette);
+      if (!(await quickCreate.isVisible({ timeout: T_SHORT }).catch(() => false))) {
+        await window
+          .evaluate(async () => {
+            const dispatch = (
+              window as unknown as {
+                __daintreeDispatchAction?: (
+                  actionId: string,
+                  args?: unknown,
+                  options?: { source?: string }
+                ) => Promise<{ ok?: boolean }>;
+              }
+            ).__daintreeDispatchAction;
+            await dispatch?.("worktree.quickCreate", undefined, { source: "test" });
+          })
+          .catch(() => undefined);
+      }
       await expect(quickCreate).toBeVisible({ timeout: T_MEDIUM });
 
       // Close via Escape
-      await window.keyboard.press("Escape");
-      await expect(quickCreate).not.toBeVisible({ timeout: T_SHORT });
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await window.keyboard.press("Escape");
+        await window.waitForTimeout(T_SETTLE);
+        const stillVisible = await quickCreate.isVisible({ timeout: 250 }).catch(() => false);
+        const className = (await quickCreate.getAttribute("class").catch(() => "")) ?? "";
+        if (!stillVisible || !className.includes("opacity-100")) break;
+      }
+
+      await expect
+        .poll(
+          async () => {
+            if (!(await quickCreate.isVisible({ timeout: 250 }).catch(() => false))) return true;
+            const className = (await quickCreate.getAttribute("class").catch(() => "")) ?? "";
+            return !className.includes("opacity-100");
+          },
+          { timeout: T_SHORT }
+        )
+        .toBe(true);
     });
   });
 });

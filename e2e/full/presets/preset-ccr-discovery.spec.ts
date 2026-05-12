@@ -24,6 +24,38 @@ const closeSettings = async () => {
   await ctx.window.waitForTimeout(T_SETTLE);
 };
 
+const selectClaudePresetDirectly = async (presetId: string) => {
+  await ctx.window.evaluate(async (targetPresetId) => {
+    type AgentEntry = Record<string, unknown> & { presetId?: string };
+    type AgentSettings = { agents?: Record<string, AgentEntry | undefined> };
+    type DispatchResult = { ok?: boolean; error?: { message?: string } };
+    type Dispatch = (
+      actionId: string,
+      args?: unknown,
+      options?: { source?: string }
+    ) => Promise<DispatchResult>;
+
+    const settings = (await window.electron.agentSettings.get()) as AgentSettings;
+    const entry = settings.agents?.claude ?? {};
+    const nextEntry: AgentEntry = { ...entry, presetId: targetPresetId };
+    const dispatch = (window as unknown as { __daintreeDispatchAction?: Dispatch })
+      .__daintreeDispatchAction;
+    if (dispatch) {
+      const result = await dispatch(
+        "agentSettings.set",
+        { agentId: "claude", settings: nextEntry },
+        { source: "test" }
+      );
+      if (result?.ok === false) {
+        throw new Error(result.error?.message ?? "agentSettings.set failed");
+      }
+      return;
+    }
+
+    await window.electron.agentSettings.set("claude", nextEntry);
+  }, presetId);
+};
+
 test.describe.serial("Presets: CCR Discovery & Auto-Config (1–12)", () => {
   test.beforeAll(async () => {
     writeCcrConfig([
@@ -89,6 +121,7 @@ test.describe.serial("Presets: CCR Discovery & Auto-Config (1–12)", () => {
         baseUrl: "https://router.local/v1",
       },
     ]);
+    await waitForCcrPresets(ctx.window, ["Routed Model"]);
     await navigateToAgentSettings(ctx.window, "claude");
     await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_CCR });
     const row = await getPresetRowByName(ctx.window, "Routed Model");
@@ -102,6 +135,7 @@ test.describe.serial("Presets: CCR Discovery & Auto-Config (1–12)", () => {
     writeCcrConfig([
       { id: "keyed", name: "Keyed Model", model: "test-model", apiKeyEnv: "MY_API_KEY" },
     ]);
+    await waitForCcrPresets(ctx.window, ["Keyed Model"]);
     await navigateToAgentSettings(ctx.window, "claude");
     await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_CCR });
     const row = await getPresetRowByName(ctx.window, "Keyed Model");
@@ -144,13 +178,14 @@ test.describe.serial("Presets: CCR Discovery & Auto-Config (1–12)", () => {
 
   test("8. CCR presets show 'auto' badge", async () => {
     writeCcrConfig([{ id: "autobadge", name: "Autobadge Test", model: "auto-model" }]);
+    await waitForCcrPresets(ctx.window, ["Autobadge Test"]);
+    await selectClaudePresetDirectly("ccr-autobadge");
     await navigateToAgentSettings(ctx.window, "claude");
     const section = ctx.window.locator(SEL.preset.section);
     await expect(section).toBeVisible({ timeout: T_CCR });
-    // The auto badge lives in the scope banner inside #agents-presets, not
-    // inside the per-preset detail panel. Select the CCR preset first, then
-    // assert the badge is visible in the section.
-    await getPresetRowByName(ctx.window, "Autobadge Test");
+    await expect(ctx.window.locator(SEL.preset.selectorTrigger)).toContainText("Autobadge Test", {
+      timeout: T_SHORT,
+    });
     await expect(section.locator(SEL.preset.autoBadge)).toBeVisible({ timeout: T_SHORT });
 
     await closeSettings();
@@ -158,6 +193,7 @@ test.describe.serial("Presets: CCR Discovery & Auto-Config (1–12)", () => {
 
   test("9. CCR presets are read-only (no Edit/Delete buttons)", async () => {
     writeCcrConfig([{ id: "readonly-test", name: "Readonly Test", model: "ro-model" }]);
+    await waitForCcrPresets(ctx.window, ["Readonly Test"]);
     await navigateToAgentSettings(ctx.window, "claude");
     await expect(ctx.window.locator(SEL.preset.section)).toBeVisible({ timeout: T_CCR });
     const row = await getPresetRowByName(ctx.window, "Readonly Test");

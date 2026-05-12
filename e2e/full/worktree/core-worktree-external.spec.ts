@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { launchApp, closeApp, type AppContext } from "../../helpers/launch";
 import { createFixtureRepo } from "../../helpers/fixtures";
 import { openAndOnboardProject } from "../../helpers/project";
+import { openSettings } from "../../helpers/panels";
 import { switchWorktree } from "../../helpers/workflows";
 import { SEL } from "../../helpers/selectors";
 import { T_LONG, T_MEDIUM } from "../../helpers/timeouts";
@@ -151,8 +152,9 @@ test.describe.serial("Core: External Worktree Detection", () => {
     const mainCard = window.locator(SEL.worktree.mainCard);
     await expect(mainCard).toBeVisible({ timeout: T_MEDIUM });
 
-    // Settings button accessible (UI is responsive)
-    const settingsBtn = window.locator(SEL.toolbar.openSettings);
-    await expect(settingsBtn).toBeVisible({ timeout: T_MEDIUM });
+    // Settings are accessible (UI is responsive), even when the toolbar
+    // moves the button into overflow on narrower Linux runners.
+    await openSettings(window, T_MEDIUM);
+    await expect(window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });
   });
 });

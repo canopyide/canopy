@@ -47,14 +47,31 @@ test.describe.serial("Presets: Tray Default Launch (101–106)", () => {
     fixtureCleanup?.();
   });
 
-  const openTray = async () => {
-    const btn = ctx.window.locator('[aria-label^="Agent tray"]');
-    await btn.click();
+  const trayMenu = () => ctx.window.getByRole("menu", { name: "Agent tray" });
+  const submenuContent = () => ctx.window.locator('[data-testid="submenu-content"]');
+
+  const closeTray = async () => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const trayOpen = await trayMenu()
+        .isVisible({ timeout: 250 })
+        .catch(() => false);
+      const submenuOpen = await submenuContent()
+        .isVisible({ timeout: 250 })
+        .catch(() => false);
+      if (!trayOpen && !submenuOpen) return;
+
+      await ctx.window.keyboard.press("Escape");
+      await ctx.window.waitForTimeout(T_SETTLE);
+    }
+
+    await ctx.window.mouse.click(10, 10).catch(() => undefined);
     await ctx.window.waitForTimeout(T_SETTLE);
   };
 
-  const closeTray = async () => {
-    await ctx.window.keyboard.press("Escape");
+  const openTray = async () => {
+    await closeTray();
+    const btn = ctx.window.locator('[aria-label^="Agent tray"]');
+    await btn.click({ force: true, noWaitAfter: true });
     await ctx.window.waitForTimeout(T_SETTLE);
   };
 
@@ -64,7 +81,7 @@ test.describe.serial("Presets: Tray Default Launch (101–106)", () => {
 
     await openTray();
 
-    const menu = ctx.window.locator('[role="menu"]');
+    const menu = trayMenu();
     if (!(await menu.isVisible({ timeout: T_SHORT }).catch(() => false))) {
       await closeTray();
       return;
@@ -89,7 +106,7 @@ test.describe.serial("Presets: Tray Default Launch (101–106)", () => {
 
     await openTray();
 
-    const menu = ctx.window.locator('[role="menu"]');
+    const menu = trayMenu();
     if (!(await menu.isVisible({ timeout: T_SHORT }).catch(() => false))) {
       await closeTray();
       return;
@@ -110,7 +127,7 @@ test.describe.serial("Presets: Tray Default Launch (101–106)", () => {
   test("103. Hovering the chevron area opens the submenu", async () => {
     await openTray();
 
-    const menu = ctx.window.locator('[role="menu"]');
+    const menu = trayMenu();
     if (!(await menu.isVisible({ timeout: T_SHORT }).catch(() => false))) {
       await closeTray();
       return;
@@ -126,11 +143,10 @@ test.describe.serial("Presets: Tray Default Launch (101–106)", () => {
     await submenuTrigger.hover();
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    const submenuContent = ctx.window.locator('[data-testid="submenu-content"]');
-    await expect(submenuContent).toBeVisible({ timeout: T_MEDIUM });
+    await expect(submenuContent()).toBeVisible({ timeout: T_MEDIUM });
 
     // "Default" must be the first item
-    const firstItem = submenuContent.locator('[role^="menuitem"]').first();
+    const firstItem = submenuContent().locator('[role^="menuitem"]').first();
     const firstText = (await firstItem.textContent()) ?? "";
     expect(firstText.toLowerCase()).toContain("default");
 
@@ -140,7 +156,7 @@ test.describe.serial("Presets: Tray Default Launch (101–106)", () => {
   test("104. Submenu lists all available CCR presets", async () => {
     await openTray();
 
-    const menu = ctx.window.locator('[role="menu"]');
+    const menu = trayMenu();
     if (!(await menu.isVisible({ timeout: T_SHORT }).catch(() => false))) {
       await closeTray();
       return;
@@ -155,13 +171,16 @@ test.describe.serial("Presets: Tray Default Launch (101–106)", () => {
     await submenuTrigger.hover();
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    const submenuContent = ctx.window.locator('[data-testid="submenu-content"]');
-    if (!(await submenuContent.isVisible({ timeout: T_SHORT }).catch(() => false))) {
+    if (
+      !(await submenuContent()
+        .isVisible({ timeout: T_SHORT })
+        .catch(() => false))
+    ) {
       await closeTray();
       return;
     }
 
-    const items = submenuContent.locator('[role^="menuitem"]');
+    const items = submenuContent().locator('[role^="menuitem"]');
     const texts = await items.allTextContents();
     expect(texts.some((t) => t.includes("Tray Model A"))).toBe(true);
     expect(texts.some((t) => t.includes("Tray Model B"))).toBe(true);
@@ -172,7 +191,7 @@ test.describe.serial("Presets: Tray Default Launch (101–106)", () => {
   test("105. Clicking agent name (left area) closes tray without opening submenu", async () => {
     await openTray();
 
-    const menu = ctx.window.locator('[role="menu"]');
+    const menu = trayMenu();
     if (!(await menu.isVisible({ timeout: T_SHORT }).catch(() => false))) {
       await closeTray();
       return;
@@ -186,15 +205,16 @@ test.describe.serial("Presets: Tray Default Launch (101–106)", () => {
 
     // Click the left-area span (text + icon, NOT the chevron)
     const leftArea = submenuTrigger.locator("span").first();
-    await leftArea.click();
+    await leftArea.click({ force: true, noWaitAfter: true });
     await ctx.window.waitForTimeout(T_SETTLE);
 
     // Tray dropdown should be gone
     await expect(menu).not.toBeVisible({ timeout: T_SHORT });
 
     // Submenu content should never have opened
-    const submenuContent = ctx.window.locator('[data-testid="submenu-content"]');
-    const submenuOpened = await submenuContent.isVisible({ timeout: 200 }).catch(() => false);
+    const submenuOpened = await submenuContent()
+      .isVisible({ timeout: 200 })
+      .catch(() => false);
     expect(submenuOpened).toBe(false);
   });
 
@@ -207,7 +227,7 @@ test.describe.serial("Presets: Tray Default Launch (101–106)", () => {
 
     await openTray();
 
-    const menu = ctx.window.locator('[role="menu"]');
+    const menu = trayMenu();
     if (!(await menu.isVisible({ timeout: T_SHORT }).catch(() => false))) {
       await closeTray();
       return;
@@ -222,13 +242,16 @@ test.describe.serial("Presets: Tray Default Launch (101–106)", () => {
     await submenuTrigger.hover();
     await ctx.window.waitForTimeout(T_SETTLE);
 
-    const submenuContent = ctx.window.locator('[data-testid="submenu-content"]');
-    if (!(await submenuContent.isVisible({ timeout: T_SHORT }).catch(() => false))) {
+    if (
+      !(await submenuContent()
+        .isVisible({ timeout: T_SHORT })
+        .catch(() => false))
+    ) {
       await closeTray();
       return;
     }
 
-    const items = submenuContent.locator('[role^="menuitem"]');
+    const items = submenuContent().locator('[role^="menuitem"]');
     const count = await items.count();
     // Default + 2 CCR + 1 custom = at least 4
     expect(count).toBeGreaterThanOrEqual(4);

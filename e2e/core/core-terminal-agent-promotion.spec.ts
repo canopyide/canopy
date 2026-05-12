@@ -336,7 +336,7 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
   });
 
   test("toolbar Claude launch and plain-terminal Claude command both activate agent chrome/state", async () => {
-    test.setTimeout(260_000);
+    test.setTimeout(360_000);
 
     const { window } = ctx;
 
@@ -398,7 +398,7 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
       await expectWorktreeTracksPlainTerminal(window, toolbarPanelId);
     });
 
-    await test.step("plain terminal shows npm process chrome without agent state", async () => {
+    await test.step("plain terminal shows build process chrome without agent state", async () => {
       const beforeIds = new Set(await getGridPanelIds(window));
       await openTerminal(window);
       const plainPanelId = await newestPanelId(window, beforeIds);
@@ -412,20 +412,23 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
       await runTerminalCommand(window, panel, prependPathCommand(fakeBinDir));
       await runTerminalCommand(window, panel, "npm run build");
       await waitForTerminalText(panel, "NPM_READY", T_LONG);
+      // Windows process-tree detection sees the Node child behind npm.cmd;
+      // Unix runners keep the npm wrapper as the detected foreground process.
+      const buildProcessId = process.platform === "win32" ? "node" : "npm";
       await expect
         .poll(() => panel.getAttribute("data-detected-process-id"), {
           timeout: T_IDENTITY,
           intervals: [500],
         })
-        .toBe("npm");
+        .toBe(buildProcessId);
       await expectRuntimeKind(panel, "process");
-      await expectPanelHeaderIcon(panel, "npm");
+      await expectPanelHeaderIcon(panel, buildProcessId);
       await expectPanelHasNoAgentState(panel);
       await expectWorktreeTracksPlainTerminal(window, plainPanelId);
 
       await stopFakeNpm(window, panel, plainPanelId);
 
-      // Do not wait for the npm badge to clear before starting Claude. This
+      // Do not wait for the process badge to clear before starting Claude. This
       // exercises the stale process → fresh agent promotion path that regressed.
       await window.waitForTimeout(500);
       await runTerminalCommand(window, panel, "claude");

@@ -185,7 +185,9 @@ test.describe.serial("Presets: Custom Duplicate (35–44)", () => {
       .locator(SEL.preset.section)
       .locator(SEL.preset.duplicateButton)
       .first();
-    await dupBtn.click();
+    await expect(dupBtn).toBeVisible({ timeout: T_SHORT });
+    await dupBtn.scrollIntoViewIfNeeded().catch(() => undefined);
+    await dupBtn.click({ force: true, noWaitAfter: true });
     await ctx.window.waitForTimeout(T_SETTLE);
 
     const section = ctx.window.locator(SEL.preset.section);

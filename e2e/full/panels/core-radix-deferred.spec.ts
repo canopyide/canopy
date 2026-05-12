@@ -32,8 +32,16 @@ test.describe.serial("Core: Radix deferred wrappers", () => {
     const trigger = window.locator(SEL.toolbar.openSettings);
     await expect(trigger).toBeVisible({ timeout: T_MEDIUM });
 
-    // First hover — primes the Radix chunk and surfaces the tooltip after
-    // the standard tooltip delay. No second hover required.
+    // The trigger is rendered immediately, then the deferred Radix chunk
+    // upgrades it with `data-state`. Wait for that upgrade so this assertion
+    // measures one real hover opening the tooltip, not whether CI won a race
+    // against the dynamic import.
+    await expect(trigger).toHaveAttribute("data-state", /closed|delayed-open|instant-open/, {
+      timeout: T_MEDIUM,
+    });
+
+    // One hover after the deferred trigger is active should surface the
+    // tooltip after the standard tooltip delay.
     await trigger.hover();
     await expect(window.locator('[role="tooltip"]').first()).toBeVisible({ timeout: T_MEDIUM });
   });

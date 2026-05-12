@@ -1979,6 +1979,39 @@ if (typeof window !== "undefined") {
     return { cols: managed.terminal.cols, rows: managed.terminal.rows };
   };
 
+  type TerminalScrollSnapshotForE2E = {
+    viewportY: number;
+    baseY: number;
+    isUserScrolledBack: boolean;
+  };
+
+  const readTerminalScrollSnapshotForE2E = (
+    panelId: string
+  ): TerminalScrollSnapshotForE2E | null => {
+    const managed = terminalInstanceService.getInstanceForE2E(panelId);
+    if (!managed) return null;
+    const buffer = managed.terminal.buffer.active;
+    return {
+      viewportY: buffer.viewportY,
+      baseY: buffer.baseY,
+      isUserScrolledBack: managed.isUserScrolledBack,
+    };
+  };
+
+  Object.assign(window, {
+    __daintreeGetTerminalScrollState: (panelId: string): TerminalScrollSnapshotForE2E | null =>
+      readTerminalScrollSnapshotForE2E(panelId),
+    __daintreeScrollTerminalLines: (
+      panelId: string,
+      lines: number
+    ): TerminalScrollSnapshotForE2E | null => {
+      const managed = terminalInstanceService.getInstanceForE2E(panelId);
+      if (!managed || !Number.isFinite(lines)) return null;
+      managed.terminal.scrollLines(Math.trunc(lines));
+      return readTerminalScrollSnapshotForE2E(panelId);
+    },
+  });
+
   // Test-only: drive the frontend tier directly so E2E specs can reproduce
   // the BACKGROUND→active transition without depending on full panel-location
   // moves. Accepts the canonical tier names ("FOCUSED", "BURST", "VISIBLE",

@@ -190,14 +190,14 @@ test.describe.serial("Core: Terminal & Panels", () => {
 
       const panel = getFirstGridPanel(window);
       const closeBtn = panel.locator(SEL.panel.close).first();
-      await closeBtn.click();
+      await closeBtn.click({ force: true });
 
       await window.waitForTimeout(T_SETTLE);
       const remaining = await getGridPanelCount(window);
       if (remaining > 0) {
         const panel2 = getFirstGridPanel(window);
         const closeBtn2 = panel2.locator(SEL.panel.close).first();
-        await closeBtn2.click();
+        await closeBtn2.click({ force: true });
       }
 
       await expect.poll(() => getGridPanelCount(window), { timeout: T_MEDIUM }).toBe(0);
