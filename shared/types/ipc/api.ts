@@ -1252,38 +1252,14 @@ export interface ElectronAPI {
     getSettings(): Promise<VoiceInputSettings>;
     setSettings(settings: Partial<VoiceInputSettings>): Promise<void>;
     start(): Promise<{ ok: true } | { ok: false; error: string }>;
-    stop(): Promise<{ rawText: string | null; correctionId: string | null }>;
-    flushParagraph(): Promise<{ rawText: string | null; correctionId: string | null }>;
+    stop(): Promise<{ rawText: string | null }>;
+    flushParagraph(): Promise<{ rawText: string | null }>;
     sendAudioChunk(chunk: ArrayBuffer): void;
     onTranscriptionDelta(callback: (delta: string) => void): () => void;
     onTranscriptionComplete(
       callback: (payload: { text: string; willCorrect: boolean }) => void
     ): () => void;
-    onCorrectionQueued(
-      callback: (payload: {
-        correctionId: string;
-        rawText: string;
-        reason?: string;
-        segmentCount?: number;
-        recentContext?: string[];
-      }) => void
-    ): () => void;
-    onCorrectionReplace(
-      callback: (payload: {
-        correctionId: string;
-        correctedText: string;
-        rawText?: string;
-        action?: "no_change" | "replace";
-        confidence?: "low" | "medium" | "high";
-        reason?: string;
-        segmentCount?: number;
-        recentContext?: string[];
-        edits?: Array<{ start: number; end: number; fromText: string; toText: string }>;
-      }) => void
-    ): () => void;
-    onParagraphBoundary(
-      callback: (payload: { rawText: string | null; correctionId: string | null }) => void
-    ): () => void;
+    onParagraphBoundary(callback: (payload: { rawText: string | null }) => void): () => void;
     onError(callback: (error: string) => void): () => void;
     onStatus(callback: (status: VoiceInputStatus) => void): () => void;
     checkMicPermission(): Promise<MicPermissionStatus>;

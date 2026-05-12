@@ -4,7 +4,6 @@ import type { BuiltInAgentId } from "@shared/config/agentIds";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { buildTerminalSendPayload } from "@/lib/terminalInput";
 import { useCommandHistoryStore } from "@/store/commandHistoryStore";
-import { useVoiceRecordingStore } from "@/store";
 import {
   getAllAtTerminalTokens,
   getAllAtSelectionTokens,
@@ -149,7 +148,6 @@ export function useTokenResolution({
       setIsExpanded(false);
       applyEditorValue("", { selection: EditorSelection.create([EditorSelection.cursor(0)]) });
       latest.clearDraftInput(latest.terminalId, latest.projectId);
-      useVoiceRecordingStore.getState().clearAICorrectionSpans(latest.terminalId);
       setAtContext(null);
       setSlashContext(null);
       setDiffContext(null);
