@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { WorktreeHeader, type WorktreeHeaderProps } from "../WorktreeHeader";
 import type { WorktreeState } from "@shared/types";
@@ -1083,7 +1083,9 @@ describe("WorktreeHeader upstream sync indicator", () => {
     // Pulse class absent before the gate elapses
     expect(indicator.className).not.toContain("animate-pulse-immediate");
 
-    vi.advanceTimersByTime(199);
+    act(() => {
+      vi.advanceTimersByTime(199);
+    });
     expect(indicator.className).not.toContain("animate-pulse-immediate");
 
     act(() => {
@@ -1103,10 +1105,25 @@ describe("WorktreeHeader upstream sync indicator", () => {
         isFetchInFlight: true,
       },
     });
-    vi.advanceTimersByTime(150);
-    expect(screen.getByTestId("upstream-sync-indicator").className).not.toContain(
-      "animate-pulse-immediate"
-    );
+    // Fetch completes at 150ms — rerender with isFetchInFlight: false
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+    cleanup();
+    renderHeader({
+      worktree: {
+        ...baseWorktree,
+        aheadCount: 2,
+        behindCount: 0,
+        isFetchInFlight: false,
+      },
+    });
+    // Advance past the 200ms gate to confirm no lingering pulse
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    const indicator = screen.getByTestId("upstream-sync-indicator");
+    expect(indicator.className).not.toContain("animate-pulse-immediate");
     vi.useRealTimers();
   });
 
