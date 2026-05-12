@@ -109,6 +109,9 @@ describe("IssueSelector", () => {
       expect(listbox.className).toContain("palette-results-stale");
       expect(listbox.getAttribute("data-stale")).toBe("true");
       expect(listbox.getAttribute("aria-busy")).toBe("true");
+      // Skeleton must NOT be present during refetch (pulse animation absent)
+      expect(listbox.querySelector(".animate-pulse-immediate")).toBeNull();
+      expect(listbox.querySelector(".animate-pulse-delayed")).toBeNull();
       // Existing rows still visible
       expect(screen.getByRole("option", { name: /First issue/i })).toBeDefined();
     });
@@ -193,11 +196,95 @@ describe("IssueSelector", () => {
 
     await act(async () => rejectSecond(new Error("Network error")));
 
-    // Existing rows preserved, loading ended
+    // Existing rows preserved, loading ended, stale attributes removed
     await waitFor(() => {
-      expect(screen.getByRole("listbox").getAttribute("aria-busy")).toBeNull();
+      const listbox = screen.getByRole("listbox");
+      expect(listbox.getAttribute("aria-busy")).toBeNull();
+      expect(listbox.className).not.toContain("palette-results-stale");
+      expect(listbox.getAttribute("data-stale")).toBeNull();
     });
     expect(screen.getByRole("option", { name: /Survives/i })).toBeDefined();
+  });
+
+  it("clears issues on close and does not restore stale results on reopen", async () => {
+    let resolvePromise!: (value: { items: GitHubIssue[] }) => void;
+    mockListIssues.mockReturnValue(
+      new Promise((r) => {
+        resolvePromise = r;
+      })
+    );
+
+    render(<IssueSelector {...defaultProps} />);
+    const trigger = screen.getByRole("combobox");
+    fireEvent.click(trigger);
+
+    await act(async () => resolvePromise({ items: [mockIssue({ title: "Should not survive" })] }));
+    await waitFor(() => {
+      expect(screen.getByRole("option")).toBeDefined();
+    });
+
+    // Close popover
+    fireEvent.click(trigger);
+
+    // Reopen — should start fresh with empty issues (skeleton, then fetch)
+    let resolveSecond!: (value: { items: GitHubIssue[] }) => void;
+    mockListIssues.mockReturnValue(
+      new Promise((r) => {
+        resolveSecond = r;
+      })
+    );
+
+    fireEvent.click(trigger);
+
+    // Skeleton should be present (no stale rows)
+    await waitFor(() => {
+      expect(screen.getByRole("listbox").getAttribute("aria-busy")).toBe("true");
+    });
+    expect(screen.queryByRole("option", { name: /Should not survive/i })).toBeNull();
+
+    await act(async () => resolveSecond({ items: [mockIssue({ title: "Fresh" })] }));
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: /Fresh/i })).toBeDefined();
+    });
+  });
+
+  it("clears issues when projectPath changes", async () => {
+    let resolvePromise!: (value: { items: GitHubIssue[] }) => void;
+    mockListIssues.mockReturnValue(
+      new Promise((r) => {
+        resolvePromise = r;
+      })
+    );
+
+    const { rerender } = render(<IssueSelector {...defaultProps} />);
+    const trigger = screen.getByRole("combobox");
+    fireEvent.click(trigger);
+
+    await act(async () => resolvePromise({ items: [mockIssue({ title: "Repo A issue" })] }));
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: /Repo A issue/i })).toBeDefined();
+    });
+
+    // Change projectPath — should clear stale issues and refetch
+    let resolveSecond!: (value: { items: GitHubIssue[] }) => void;
+    mockListIssues.mockReturnValue(
+      new Promise((r) => {
+        resolveSecond = r;
+      })
+    );
+
+    rerender(<IssueSelector {...defaultProps} projectPath="/test/project-b" />);
+
+    // Old issues cleared, loading state active
+    await waitFor(() => {
+      expect(screen.queryByRole("option", { name: /Repo A issue/i })).toBeNull();
+      expect(screen.getByRole("listbox").getAttribute("aria-busy")).toBe("true");
+    });
+
+    await act(async () => resolveSecond({ items: [mockIssue({ title: "Repo B issue" })] }));
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: /Repo B issue/i })).toBeDefined();
+    });
   });
 
   it("renders empty state when latest success returns no results", async () => {

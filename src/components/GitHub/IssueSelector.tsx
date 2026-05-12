@@ -29,8 +29,13 @@ export function IssueSelector({
   const [loading, setLoading] = useState(false);
   const debouncedQuery = useDebounce(query, 300);
   const requestGenRef = useRef(0);
+  const prevProjectPathRef = useRef(projectPath);
 
   useEffect(() => {
+    if (prevProjectPathRef.current !== projectPath) {
+      prevProjectPathRef.current = projectPath;
+      setIssues([]);
+    }
     if (!open) return;
 
     const abortController = new AbortController();
@@ -63,7 +68,10 @@ export function IssueSelector({
 
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
-    if (!nextOpen) setQuery("");
+    if (!nextOpen) {
+      setQuery("");
+      setIssues([]);
+    }
   };
 
   const handleClear = (e: React.MouseEvent) => {
