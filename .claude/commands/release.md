@@ -9,15 +9,16 @@ You are the **Daintree Release Manager**. You execute a complete gitflow release
 
 **This is an interactive process.** You MUST use `AskUserQuestion` at every decision point listed below. Never proceed past a checkpoint without explicit user approval. The user drives this release — you facilitate it.
 
-### Interactive Checkpoints (7 total)
+### Interactive Checkpoints (8 total)
 
 1. **Version selection** (Phase 0) — Confirm target version
 2. **Preflight results** (Phase 1) — Report check results, confirm proceed
-3. **Change summary** (Phase 2) — Review categorized changes, allow edits
-4. **Changelog approval** (Phase 3) — Review exact changelog text, allow edits
-5. **Pre-merge confirmation** (Phase 4) — Review diff before merging to main
-6. **Tag confirmation** (Phase 5) — Confirm tag creation
-7. **Push confirmation** (Phase 5) — Confirm push (triggers CI)
+3. **Dry-run decision** (Phase 2) — Optionally validate the full CI pipeline before any release work
+4. **Change summary** (Phase 3) — Review categorized changes, allow edits
+5. **Changelog approval** (Phase 4) — Review exact changelog text, allow edits
+6. **Pre-merge confirmation** (Phase 5) — Review diff before merging to main
+7. **Tag confirmation** (Phase 6) — Confirm tag creation
+8. **Push confirmation** (Phase 6) — Confirm push (triggers CI)
 
 Post-release actions (GitHub Release, branch cleanup) are also interactive.
 
@@ -74,7 +75,8 @@ Run ALL of these checks. If any fail, stop and report the problem.
 - [ ] Unit tests pass (`npx vitest run`) — run this and if any fail, stop and fix before proceeding
 - [ ] No open PRs targeting `main` that should be merged first — check with `gh pr list --base main --state open`
 - [ ] Remote is reachable (`git fetch origin`)
-- [ ] E2E core tests pass locally — build the app (`npm run build`) then run the core E2E suite (`npx playwright test e2e/core/`). This catches render crashes and settings regressions that typecheck cannot detect. If any tests fail, stop and fix before proceeding.
+
+E2E coverage is **not** run locally. The optional dry run in Phase 2 exercises the full E2E suite (core + every `full-*` bucket + online) in CI on real macOS/Linux/Windows runners — that's the right place to catch render crashes, signing failures, and platform-specific regressions.
 
 ### Checkpoint: Report preflight results
 
@@ -89,13 +91,77 @@ After running all checks, present the results to the user using `AskUserQuestion
 > - Open PRs to main: ✅ None
 > - Remote: ✅ Reachable
 >
-> **All checks passed. Proceed to research phase?**
+> **All checks passed. Proceed to the dry-run decision?**
 
 If any check failed, show the failure clearly and ask the user how they'd like to proceed (fix it, skip, or abort).
 
 ---
 
-## Phase 2: Research — What Changed
+## Phase 2: Optional Dry Run (CI)
+
+Before you do any of the actual release work (changelog, version bump, branching, merges), you can validate the entire release pipeline by triggering the release workflow in **dry-run** mode against `develop`. This is the single best way to avoid the "tag → CI fails → re-tag → CI fails again" loop, because it catches:
+
+- Build, sign, or notarization failures on any of macOS / Linux / Windows
+- E2E regressions across every bucket (`core`, all six `full-*`, `online`)
+- Unit-test or check failures CI runs that you didn't run locally
+- Workflow-config drift (permissions, reusable-workflow inputs, etc.)
+
+The dry run exercises checks + unit tests + every E2E gate + build + sign + notarize on real runners, but **skips** publishing to R2, Microsoft Store, and the website refresh (see `release.yml:209-218`, `254-260`, `302`, `398`). It typically takes **30–40 minutes**.
+
+### Checkpoint: Ask whether to dry-run
+
+Use `AskUserQuestion`:
+
+> A dry-run release validates the full CI pipeline (checks, tests, build, sign, notarize on macOS + Linux + Windows) before you commit the changelog and version bump. It takes ~30–40 minutes and doesn't publish anything.
+>
+> **Run a dry-run now?**
+>
+> - Yes — trigger the dry-run and wait for it to finish (recommended for any non-trivial release)
+> - No — skip (use this if you've already run one for this commit, or you explicitly accept the risk of catching CI issues only after tagging)
+
+### If the user chose "Yes"
+
+1. Trigger the workflow against `develop`:
+
+   ```bash
+   gh workflow run release.yml --ref develop -f dry_run=true
+   ```
+
+2. Resolve the run ID. There's a brief delay before the run is queryable, so poll until one appears:
+
+   ```bash
+   sleep 5
+   gh run list --workflow=release.yml --branch develop --limit 1 \
+     --json databaseId,status,event,url
+   ```
+
+   Confirm the most recent run is a `workflow_dispatch` event (not an older tag-push). Capture the `databaseId` as `<RUN_ID>` and surface the URL to the user so they can follow along.
+
+3. Watch the run to completion non-interactively:
+
+   ```bash
+   gh run watch <RUN_ID> --exit-status
+   ```
+
+   This blocks for the full ~30–40 minutes and exits non-zero on failure.
+
+4. On **success**: report the green run to the user and proceed to Phase 3.
+
+5. On **failure**: stop. Pull the failure context for the user and ask how to proceed:
+
+   ```bash
+   gh run view <RUN_ID> --log-failed | head -200
+   ```
+
+   Typical recovery is: fix the issue on `develop`, push, then re-run the dry run. Do NOT proceed to Phase 3 until a dry run goes fully green — the whole point of this phase is to avoid the re-tag loop.
+
+### If the user chose "No"
+
+Proceed directly to Phase 3. Note in the final summary that the dry-run was skipped, so the first real signal of CI health will be the tag-triggered release run.
+
+---
+
+## Phase 3: Research — What Changed
 
 This phase builds the raw material for the changelog. Be thorough.
 
@@ -149,7 +215,7 @@ Wait for explicit confirmation before proceeding.
 
 ---
 
-## Phase 3: Changelog
+## Phase 4: Changelog
 
 ### File: `CHANGELOG.md`
 
@@ -209,7 +275,7 @@ If the user requests edits, apply them and show the updated version again. Repea
 
 ---
 
-## Phase 4: Branching & Version Bump
+## Phase 5: Branching & Version Bump
 
 ### Determine the release flow
 
@@ -262,7 +328,7 @@ This is used for the very first release when gitflow hasn't been set up yet.
 
 ---
 
-## Phase 5: Tag & Push
+## Phase 6: Tag & Push
 
 ### Create the tag
 
@@ -322,7 +388,7 @@ Tell the user they should set `develop` as the default branch in GitHub repo set
 
 ---
 
-## Phase 6: Post-Release
+## Phase 7: Post-Release
 
 1. **Monitor CI:** Provide the command to watch the workflow:
 
