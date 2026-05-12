@@ -311,35 +311,55 @@ test.describe.serial("E2E: Voice Input — Settings UI", () => {
 // ===========================================================================
 
 test.describe.serial("E2E: Voice Input — Settings Migration", () => {
-  let userDataDir: string;
-  let ctx: AppContext | null = null;
+  let activeUserDataDir: string | null = null;
+  let activeCtx: AppContext | null = null;
 
-  test.beforeAll(async () => {
-    userDataDir = mkdtempSync(path.join(tmpdir(), "daintree-e2e-voice-migrate-"));
-  });
-
-  test.afterAll(async () => {
-    if (ctx?.app) {
-      const pid = ctx.app.process().pid;
-      await closeApp(ctx.app);
+  test.afterEach(async () => {
+    if (activeCtx?.app) {
+      const pid = activeCtx.app.process().pid;
+      await closeApp(activeCtx.app);
       if (pid) await waitForProcessExit(pid).catch(() => {});
-      ctx = null;
+      activeCtx = null;
     }
-    removePathSync(userDataDir);
+    if (activeUserDataDir) {
+      removePathSync(activeUserDataDir);
+      activeUserDataDir = null;
+    }
   });
+
+  /**
+   * Helper: launch → close → seed legacy `voiceInput` config → relaunch.
+   * Returns the merged settings as observed via IPC and the post-migration
+   * on-disk shape so callers can assert both layers.
+   */
+  async function runMigration(legacySeed: Record<string, unknown>): Promise<{
+    migrated: Record<string, unknown>;
+    onDisk: { voiceInput: Record<string, unknown> };
+  }> {
+    activeUserDataDir = mkdtempSync(path.join(tmpdir(), "daintree-e2e-voice-migrate-"));
+
+    // Session 1: initialize the file so we can mutate it between sessions.
+    activeCtx = await launchApp({ userDataDir: activeUserDataDir });
+    await expect(activeCtx.window.locator(SEL.toolbar.toggleSidebar)).toBeVisible({
+      timeout: T_MEDIUM,
+    });
+    const pid = activeCtx.app.process().pid!;
+    await closeApp(activeCtx.app);
+    await waitForProcessExit(pid);
+    activeCtx = null;
+
+    seedVoiceConfig(activeUserDataDir, legacySeed);
+    removeSingletonFiles(activeUserDataDir);
+
+    activeCtx = await launchApp({ userDataDir: activeUserDataDir });
+    const migrated = await ipcGetSettings(activeCtx.window);
+    const configPath = path.join(activeUserDataDir, "config.json");
+    const onDisk = JSON.parse(readFileSync(configPath, "utf-8"));
+    return { migrated, onDisk };
+  }
 
   test("legacy correctionApiKey migrates into openaiApiKey on first read after upgrade", async () => {
-    // Session 1: initialize config.json so we have a file to mutate between sessions.
-    ctx = await launchApp({ userDataDir });
-    await expect(ctx.window.locator(SEL.toolbar.toggleSidebar)).toBeVisible({ timeout: T_MEDIUM });
-
-    const pid = ctx.app.process().pid!;
-    await closeApp(ctx.app);
-    await waitForProcessExit(pid);
-    ctx = null;
-
-    // Seed legacy fields. Omit `openaiApiKey` so the migration branch runs.
-    seedVoiceConfig(userDataDir, {
+    const { migrated, onDisk } = await runMigration({
       enabled: false,
       correctionApiKey: "sk-legacy-correction-key",
       language: "en",
@@ -352,22 +372,35 @@ test.describe.serial("E2E: Voice Input — Settings Migration", () => {
       resolveFileLinks: true,
     });
 
-    removeSingletonFiles(userDataDir);
-
-    // Session 2: relaunch and inspect the merged settings via IPC.
-    ctx = await launchApp({ userDataDir });
-    const migrated = await ipcGetSettings(ctx.window);
-
     expect(migrated.openaiApiKey).toBe("sk-legacy-correction-key");
     expect(migrated.transcriptionModel).toBe("gpt-realtime-whisper");
     expect(migrated.correctionApiKey).toBeUndefined();
 
-    // On-disk config.json reflects the cleaned object (migration write-back).
-    const configPath = path.join(userDataDir, "config.json");
-    const onDisk = JSON.parse(readFileSync(configPath, "utf-8"));
     expect(onDisk.voiceInput.openaiApiKey).toBe("sk-legacy-correction-key");
     expect(onDisk.voiceInput.correctionApiKey).toBeUndefined();
     expect(onDisk.voiceInput.transcriptionModel).toBe("gpt-realtime-whisper");
+  });
+
+  test("legacy apiKey field migrates into openaiApiKey when no correctionApiKey is present", async () => {
+    // Covers the second branch in voiceInput.ts: when correctionApiKey is absent
+    // but the older top-level `apiKey` exists, the migration falls through to it.
+    const { migrated, onDisk } = await runMigration({
+      enabled: false,
+      apiKey: "sk-original-key",
+      language: "en",
+      customDictionary: [],
+      transcriptionModel: "gpt-realtime-whisper",
+      correctionEnabled: false,
+      correctionModel: "gpt-5-mini",
+      correctionCustomInstructions: "",
+      paragraphingStrategy: "spoken-command",
+      resolveFileLinks: true,
+    });
+
+    expect(migrated.openaiApiKey).toBe("sk-original-key");
+    expect(migrated.apiKey).toBeUndefined();
+    expect(onDisk.voiceInput.openaiApiKey).toBe("sk-original-key");
+    expect(onDisk.voiceInput.apiKey).toBeUndefined();
   });
 });
 
@@ -445,6 +478,9 @@ test.describe.serial("E2E: Voice Input — OpenAI Realtime IPC Lifecycle", () =>
   test.beforeEach(async () => {
     resetMockState(mockState);
     await clearCapturedEvents(ctx.window);
+    // Restore defaults so a failed/aborted prior test cannot leak settings state
+    // (e.g. the "manual paragraphing" test below switching to manual mid-run).
+    await ipcSetSettings(ctx.window, { paragraphingStrategy: "spoken-command" });
   });
 
   test("start → session.updated → status 'recording'; stop → commit → completed transcript", async () => {
@@ -479,6 +515,19 @@ test.describe.serial("E2E: Voice Input — OpenAI Realtime IPC Lifecycle", () =>
     expect(types.indexOf("session.update")).toBeLessThan(
       types.indexOf("input_audio_buffer.commit")
     );
+
+    // session.update payload must carry the realtime contract the server expects.
+    // Catches silent regressions if VoiceTranscriptionService drops a required field.
+    const sessionUpdate = mockState.received.find((m) => m.type === "session.update");
+    expect(sessionUpdate).toBeDefined();
+    const session = (sessionUpdate!.raw as { session: Record<string, unknown> }).session;
+    expect(session.type).toBe("transcription");
+    const audio = session.audio as { input: Record<string, unknown> };
+    const transcription = audio.input.transcription as { model: string; language: string };
+    expect(transcription.model).toBe("gpt-realtime-whisper");
+    expect(transcription.language).toBe("en");
+    const turnDetection = audio.input.turn_detection as { type: string };
+    expect(turnDetection.type).toBe("server_vad");
 
     const captured = await getCapturedEvents(ctx.window);
     expect(captured.completes).toEqual([{ text: "hello world", willCorrect: false }]);
@@ -541,7 +590,7 @@ test.describe.serial("E2E: Voice Input — OpenAI Realtime IPC Lifecycle", () =>
       .toEqual(["hello", "world"]);
 
     const captured = await getCapturedEvents(ctx.window);
-    expect(captured.paragraphBoundaries.length).toBeGreaterThanOrEqual(1);
+    expect(captured.paragraphBoundaries).toEqual([{ rawText: null }]);
   });
 
   test("paragraphing 'manual' strategy passes spoken commands through as literal text", async () => {
@@ -564,8 +613,7 @@ test.describe.serial("E2E: Voice Input — OpenAI Realtime IPC Lifecycle", () =>
         timeout: T_MEDIUM,
       })
       .toEqual(["hello new paragraph world"]);
-
-    await ipcSetSettings(ctx.window, { paragraphingStrategy: "spoken-command" });
+    // No inline restore — `beforeEach` resets paragraphingStrategy to "spoken-command".
   });
 
   test("graceful drain: stop awaits server completed before resolving", async () => {
