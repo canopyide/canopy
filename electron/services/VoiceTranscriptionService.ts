@@ -1,11 +1,16 @@
-import { createClient, LiveTranscriptionEvents } from "@deepgram/sdk";
-import type { ListenLiveClient, LiveMetadataEvent, LiveTranscriptionEvent } from "@deepgram/sdk";
+import WebSocket from "ws";
 import type { VoiceInputSettings, VoiceInputStatus } from "../../shared/types/ipc/api.js";
-import { CONFIDENCE_TAG_THRESHOLD } from "../../shared/config/voiceCorrection.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 import { logDebug, logInfo, logWarn, logError } from "../utils/logger.js";
 
 const P = "[VoiceTranscription]";
+
+const OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime?model=gpt-realtime-whisper";
+const OPENAI_TRANSCRIPTION_MODEL = "gpt-realtime-whisper";
+const CONNECT_TIMEOUT_MS = 10_000;
+const DRAIN_TIMEOUT_MS = 3_000;
+const DRAIN_GRACE_MS = 100;
+const PRE_CONNECT_BUFFER_MAX = 100;
 
 export interface CorrectionWord {
   word: string;
@@ -30,11 +35,23 @@ export type VoiceTranscriptionEvent =
 
 type VoiceStartResult = { ok: true } | { ok: false; error: string };
 
+// We use the `ws` package rather than Node 22's global `WebSocket`. The
+// WHATWG spec exposes only `(url, protocols?)` — its constructor silently
+// discards any third options argument, so custom upgrade headers cannot be
+// sent. The `ws` package accepts a 2-arg `(url, options)` form with full
+// header support, which is also what the openai SDK uses internally.
+
+const STUB_CONFIDENCE: SegmentConfidence = {
+  minConfidence: 1.0,
+  wordCount: 0,
+  uncertainWords: [],
+  words: [],
+};
+
 export class VoiceTranscriptionService {
-  private connection: ListenLiveClient | null = null;
+  private connection: WebSocket | null = null;
   private sessionId = 0;
   private connectTimeout: ReturnType<typeof setTimeout> | null = null;
-  private keepAliveInterval: ReturnType<typeof setInterval> | null = null;
   private listeners: Set<(event: VoiceTranscriptionEvent) => void> = new Set();
   private pendingStart: { sessionId: number; resolve: (result: VoiceStartResult) => void } | null =
     null;
@@ -44,21 +61,16 @@ export class VoiceTranscriptionService {
 
   private drainResolve: (() => void) | null = null;
   private drainTimeout: ReturnType<typeof setTimeout> | null = null;
+  private drainGraceTimer: ReturnType<typeof setTimeout> | null = null;
   private drainPromise: Promise<void> | null = null;
   private isDraining = false;
 
-  /** Tracks accumulated is_final segments for the current utterance. */
-  private utteranceSegments: string[] = [];
-  /** Tracks per-segment confidence for the current utterance. */
-  private utteranceConfidenceSegments: SegmentConfidence[] = [];
-  /** Total text emitted as delta events for the current utterance (for incremental diffs). */
+  /** Cumulative delta text since the last complete event — used for incremental diffs. */
   private liveText = "";
-  /**
-   * When true, all transcript events for the current Deepgram utterance are suppressed
-   * until the next speech_final or UtteranceEnd clears this flag. Set by
-   * commitParagraphBoundary() after the in-flight utterance text has been consumed.
-   */
-  private _suppressingUtterance = false;
+
+  private audioChunkCount = 0;
+  private staleChunkWarned = false;
+  private preConnectBufferOverflowWarned = false;
 
   onEvent(listener: (event: VoiceTranscriptionEvent) => void): () => void {
     this.listeners.add(listener);
@@ -66,18 +78,15 @@ export class VoiceTranscriptionService {
   }
 
   /**
-   * Captures any in-flight utterance text accumulated so far (from deltas / is_final segments),
-   * resets utterance state, and suppresses subsequent Deepgram finalization events for that
-   * utterance. Call this before flushing the paragraph buffer on a manual Enter keypress so
-   * that text spoken before the paragraph break is captured into the correct paragraph and
-   * late speech_final / UtteranceEnd events cannot overwrite the committed newline.
+   * Clears any in-flight live-delta state so the next paragraph starts fresh.
+   * Called when the user presses Enter mid-utterance; the renderer has already
+   * captured the displayed text, so the service just needs to forget it. Audio
+   * keeps streaming and the next `completed` event will reflect speech after
+   * the boundary. We do NOT send `input_audio_buffer.commit` here — that would
+   * disrupt the active server_vad turn.
    */
   commitParagraphBoundary(): void {
-    const text = (this.liveText || this.utteranceSegments.join(" ")).trim();
-    this.resetUtteranceState();
-    if (text) {
-      this._suppressingUtterance = true;
-    }
+    this.liveText = "";
   }
 
   private emit(event: VoiceTranscriptionEvent): void {
@@ -90,13 +99,6 @@ export class VoiceTranscriptionService {
     if (this.connectTimeout !== null) {
       clearTimeout(this.connectTimeout);
       this.connectTimeout = null;
-    }
-  }
-
-  private clearKeepAliveInterval(): void {
-    if (this.keepAliveInterval !== null) {
-      clearInterval(this.keepAliveInterval);
-      this.keepAliveInterval = null;
     }
   }
 
@@ -122,148 +124,132 @@ export class VoiceTranscriptionService {
     this.sessionId = mySessionId;
     this.isReady = false;
     this.preConnectBuffer = [];
-    this.resetUtteranceState();
+    this.liveText = "";
 
     this.emit({ type: "status", status: "connecting" });
 
     return new Promise((resolve) => {
       this.pendingStart = { sessionId: mySessionId, resolve };
 
-      const keyterms = settings.customDictionary;
-      const deepgram = createClient(settings.openaiApiKey);
-
-      logDebug(`${P} Opening Deepgram live connection`, {
-        model: settings.transcriptionModel || "nova-3",
-        language: settings.language || "en",
-        keyterms: keyterms.length,
-      });
-
-      // Paragraphing strategy controls which Deepgram features are enabled:
-      //   "spoken-command" (default): Deepgram Dictation mode — the user says "new paragraph"
-      //     and Deepgram intercepts it, inserting \n\n into the transcript text. This is the
-      //     reliable live-streaming mechanism. `paragraphs: true` was evaluated and rejected
-      //     because it populates a JSON object rather than injecting \n\n into transcript text.
-      //   "manual": No dictation mode; paragraph breaks come from the Enter key only.
-      // Both modes use endpointing: 800ms (the sweet spot for dictation — 500ms fragments
-      // speech mid-thought; 1500ms feels sluggish) with utterance_end_ms: 1000ms as fallback.
-      // Note: Deepgram Dictation is documented as English-only. We only enable it when the
-      // session language is English; non-English sessions fall back to manual-Enter paragraphing.
-      const isEnglish = (settings.language || "en") === "en";
-      const isSpokenCommand =
-        (settings.paragraphingStrategy ?? "spoken-command") === "spoken-command" && isEnglish;
-
-      const connection = deepgram.listen.live({
-        model: settings.transcriptionModel || "nova-3",
-        language: settings.language || "en",
-        smart_format: true,
-        interim_results: true,
-        endpointing: 800,
-        utterance_end_ms: 1000,
-        encoding: "linear16",
-        sample_rate: 24000,
-        ...(isSpokenCommand ? { dictation: true } : {}),
-        ...(keyterms.length > 0 ? { keyterm: keyterms } : {}),
-      });
+      let connection: WebSocket;
+      try {
+        connection = new WebSocket(OPENAI_REALTIME_URL, {
+          headers: {
+            Authorization: `Bearer ${settings.openaiApiKey}`,
+            "OpenAI-Beta": "realtime=v1",
+          },
+        });
+      } catch (err) {
+        const message = formatErrorMessage(err, "Failed to open WebSocket");
+        logError(`${P} ${message}`);
+        this.emit({ type: "error", message });
+        this.emit({ type: "status", status: "error" });
+        this.settlePendingStart(mySessionId, { ok: false, error: message });
+        return;
+      }
 
       this.connection = connection;
+      logDebug(`${P} Opening OpenAI realtime WebSocket`, {
+        model: OPENAI_TRANSCRIPTION_MODEL,
+        language: settings.language || "en",
+      });
 
       this.connectTimeout = setTimeout(() => {
         this.connectTimeout = null;
-        logError(`${P} Connection timed out (10s)`);
+        logError(`${P} Connection timed out (${CONNECT_TIMEOUT_MS}ms)`);
         if (this.sessionId === mySessionId) {
+          try {
+            connection.close();
+          } catch {
+            // Ignore close errors
+          }
           this.cleanupConnection();
           this.emit({ type: "error", message: "Connection timed out" });
           this.emit({ type: "status", status: "error" });
           this.settlePendingStart(mySessionId, { ok: false, error: "Connection timed out" });
         }
-      }, 10000);
+      }, CONNECT_TIMEOUT_MS);
 
-      connection.on(LiveTranscriptionEvents.Open, () => {
-        this.clearConnectTimeout();
-        logInfo(`${P} Connection opened`);
-
+      connection.on("open", () => {
         if (this.sessionId !== mySessionId) {
           logWarn(`${P} Session expired during connect, closing`);
-          connection.requestClose();
+          try {
+            connection.close();
+          } catch {
+            // Ignore close errors
+          }
+          return;
+        }
+        logInfo(`${P} WebSocket opened, sending session.update`);
+        // TODO: pass `transcription.prompt` from settings once #7832 lands.
+        const sessionUpdate = {
+          type: "session.update",
+          session: {
+            type: "transcription",
+            audio: {
+              input: {
+                format: { type: "audio/pcm", rate: 24000 },
+                transcription: {
+                  model: OPENAI_TRANSCRIPTION_MODEL,
+                  language: settings.language || "en",
+                },
+                turn_detection: {
+                  type: "server_vad",
+                  threshold: 0.5,
+                  prefix_padding_ms: 300,
+                  silence_duration_ms: 500,
+                },
+              },
+            },
+          },
+        };
+        try {
+          connection.send(JSON.stringify(sessionUpdate));
+        } catch (err) {
+          const message = formatErrorMessage(err, "Failed to send session.update");
+          logError(`${P} ${message}`);
+          this.handleFatalError(mySessionId, message);
+        }
+      });
+
+      connection.on("message", (data) => {
+        if (this.sessionId !== mySessionId) return;
+        const raw =
+          typeof data === "string"
+            ? data
+            : Buffer.isBuffer(data)
+              ? data.toString("utf8")
+              : Array.isArray(data)
+                ? Buffer.concat(data).toString("utf8")
+                : Buffer.from(data as ArrayBuffer).toString("utf8");
+
+        let parsed: Record<string, unknown>;
+        try {
+          parsed = JSON.parse(raw) as Record<string, unknown>;
+        } catch {
+          logWarn(`${P} Ignoring non-JSON message`);
           return;
         }
 
-        if (this.preConnectBuffer.length > 0) {
-          logInfo(`${P} Flushing ${this.preConnectBuffer.length} buffered audio chunks`);
-          for (const chunk of this.preConnectBuffer) {
-            connection.send(chunk as ArrayBuffer);
-          }
-          this.preConnectBuffer = [];
-        }
-
-        this.keepAliveInterval = setInterval(() => {
-          if (this.connection === connection) {
-            connection.keepAlive();
-          }
-        }, 8000);
-
-        this.isReady = true;
-        this.emit({ type: "status", status: "recording" });
-        this.settlePendingStart(mySessionId, { ok: true });
+        const type = typeof parsed.type === "string" ? parsed.type : "";
+        this.handleServerEvent(mySessionId, type, parsed);
       });
 
-      connection.on(LiveTranscriptionEvents.Metadata, (data: LiveMetadataEvent) => {
-        if (this.sessionId !== mySessionId) return;
-        try {
-          logInfo(`${P} Metadata received`, { request_id: data.request_id });
-        } catch {
-          logDebug(`${P} Failed to process Metadata event`);
-        }
-      });
-
-      connection.on(LiveTranscriptionEvents.Transcript, (data: LiveTranscriptionEvent) => {
-        if (this.sessionId !== mySessionId) return;
-        try {
-          const alt = data.channel?.alternatives?.[0];
-          const transcript: string = alt?.transcript ?? "";
-          const isFinal: boolean = data.is_final ?? false;
-          const speechFinal: boolean = data.speech_final ?? false;
-          const words: Array<{ word: string; confidence: number; start?: number; end?: number }> =
-            isFinal
-              ? (((alt as Record<string, unknown>)?.words as Array<{
-                  word: string;
-                  confidence: number;
-                  start?: number;
-                  end?: number;
-                }>) ?? [])
-              : [];
-
-          logDebug(`${P} Transcript event`, { isFinal, speechFinal, len: transcript.length });
-
-          this.handleTranscript(transcript, isFinal, speechFinal, words);
-        } catch {
-          logWarn(`${P} Failed to process transcript event`);
-        }
-      });
-
-      connection.on(LiveTranscriptionEvents.UtteranceEnd, () => {
-        if (this.sessionId !== mySessionId) return;
-        logDebug(`${P} UtteranceEnd — flushing accumulated segments`);
-        this.flushUtterance();
-      });
-
-      connection.on(LiveTranscriptionEvents.Error, (err: Error) => {
+      connection.on("error", (err) => {
         this.clearConnectTimeout();
         if (this.sessionId !== mySessionId) return;
-        const errObj = err as { error?: string };
-        const message = formatErrorMessage(err, errObj?.error ?? "Deepgram error");
-        logError(`${P} Connection error`, { message });
-        this.cleanupConnection();
-        this.emit({ type: "error", message });
-        this.emit({ type: "status", status: "error" });
-        this.settlePendingStart(mySessionId, { ok: false, error: message });
-        this.settleDrain();
+        const message = formatErrorMessage(err, "WebSocket error");
+        logError(`${P} WebSocket error`, { message });
+        this.handleFatalError(mySessionId, message);
       });
 
-      connection.on(LiveTranscriptionEvents.Close, () => {
+      connection.on("close", (code, reason) => {
         this.clearConnectTimeout();
-        logInfo(`${P} Connection closed`);
         if (this.sessionId !== mySessionId) return;
+        logInfo(`${P} WebSocket closed`, {
+          code,
+          reason: Buffer.isBuffer(reason) ? reason.toString("utf8") : String(reason ?? ""),
+        });
         this.cleanupConnection();
         this.settlePendingStart(mySessionId, { ok: false, error: "Connection closed" });
         if (this.isDraining) {
@@ -275,213 +261,95 @@ export class VoiceTranscriptionService {
     });
   }
 
-  private emitCompleteWithParagraphDetection(text: string, confidence?: SegmentConfidence): void {
-    // In spoken-command mode, Deepgram Dictation intercepts "new paragraph" and
-    // injects \n\n into the transcript text. Split on these markers so each paragraph
-    // is emitted separately with a paragraph_boundary event between them.
-    // Only emit boundaries between non-empty parts to avoid spurious events
-    // from leading/trailing \n\n (e.g. "para\n\n" or "\n\npara").
-    const parts = text
-      .split(/\n\n+/)
-      .map((p) => p.trim())
-      .filter(Boolean);
-    for (let i = 0; i < parts.length; i++) {
-      // Confidence applies to the first part; subsequent parts after paragraph
-      // splits don't have word-level alignment so omit confidence.
-      this.emit({
-        type: "complete",
-        text: parts[i],
-        ...(i === 0 && confidence ? { confidence } : {}),
-      });
-      if (i < parts.length - 1) {
-        this.emit({ type: "paragraph_boundary" });
-      }
-    }
+  private handleFatalError(mySessionId: number, message: string): void {
+    this.cleanupConnection();
+    this.emit({ type: "error", message });
+    this.emit({ type: "status", status: "error" });
+    this.settlePendingStart(mySessionId, { ok: false, error: message });
+    this.settleDrain();
   }
 
-  private handleTranscript(
-    transcript: string,
-    isFinal: boolean,
-    speechFinal: boolean,
-    words: Array<{ word: string; confidence: number }> = []
+  private handleServerEvent(
+    mySessionId: number,
+    type: string,
+    payload: Record<string, unknown>
   ): void {
-    if (this._suppressingUtterance) {
-      if (speechFinal) {
-        this._suppressingUtterance = false;
-        this.resetUtteranceState();
-        if (this.isDraining) {
-          this.settleDrain();
-        }
-      }
-      return;
-    }
+    switch (type) {
+      case "session.created":
+        logDebug(`${P} session.created`);
+        return;
 
-    if (speechFinal) {
-      if (words.length > 0) {
-        this.utteranceConfidenceSegments.push(this.computeSegmentConfidence(words));
-      }
-      const segments = [...this.utteranceSegments, transcript].filter((s) => s.trim());
-      const fullText = segments.join(" ").trim();
-      const confidence = this.mergeConfidence(this.utteranceConfidenceSegments);
-      this.resetUtteranceState();
-
-      if (fullText) {
-        this.emitCompleteWithParagraphDetection(fullText, confidence);
-      }
-      if (this.isDraining) {
-        this.settleDrain();
-      }
-    } else if (isFinal) {
-      const segConfidence = words.length > 0 ? this.computeSegmentConfidence(words) : undefined;
-
-      if (transcript.includes("\n\n")) {
-        if (segConfidence) {
-          this.utteranceConfidenceSegments.push(segConfidence);
-        }
-        this.handleIsFinalWithParagraphBoundary(transcript);
-      } else {
-        const segmentText = transcript.trim();
-        if (segmentText) {
-          const accumulated = [...this.utteranceSegments, segmentText].filter(Boolean).join(" ");
-          this.emitIncrementalDelta(accumulated);
-          this.utteranceSegments.push(segmentText);
-          if (segConfidence) {
-            this.utteranceConfidenceSegments.push(segConfidence);
+      case "session.updated":
+        this.clearConnectTimeout();
+        logInfo(`${P} session.updated — session ready`);
+        if (this.preConnectBuffer.length > 0 && this.connection) {
+          logInfo(`${P} Flushing ${this.preConnectBuffer.length} buffered audio chunks`);
+          for (const chunk of this.preConnectBuffer) {
+            this.sendAudioJson(chunk);
           }
+          this.preConnectBuffer = [];
         }
+        this.isReady = true;
+        this.emit({ type: "status", status: "recording" });
+        this.settlePendingStart(mySessionId, { ok: true });
+        return;
+
+      case "conversation.item.input_audio_transcription.delta": {
+        const delta = typeof payload.delta === "string" ? payload.delta : "";
+        if (!delta) return;
+        this.emit({ type: "delta", text: delta });
+        this.liveText += delta;
+        return;
       }
-    } else {
-      if (!transcript) return;
-      const accumulated = [...this.utteranceSegments, transcript].filter(Boolean).join(" ");
-      this.emitIncrementalDelta(accumulated);
-    }
-  }
 
-  private handleIsFinalWithParagraphBoundary(transcript: string): void {
-    const boundaryIdx = transcript.indexOf("\n\n");
-    const before = transcript.slice(0, boundaryIdx).trim();
-    const after = transcript
-      .slice(boundaryIdx)
-      .replace(/^\n\n+/, "")
-      .trim();
-
-    // Flush the paragraph that just ended: existing segments + any text before \n\n.
-    const completedSegments = [...this.utteranceSegments, ...(before ? [before] : [])].filter(
-      Boolean
-    );
-    const completedText = completedSegments.join(" ").trim();
-    const confidence = this.mergeConfidence(this.utteranceConfidenceSegments);
-    this.resetUtteranceState();
-
-    // Only emit a boundary when there is actually a completed paragraph to close.
-    // Suppress spurious boundaries (e.g. first-ever segment starts with \n\n) to
-    // avoid inserting a blank line into the renderer before any speech has arrived.
-    if (completedText) {
-      this.emit({ type: "complete", text: completedText, confidence });
-      this.emit({ type: "paragraph_boundary" });
-    }
-
-    // Begin accumulating the next paragraph with any text that follows the boundary.
-    // Do NOT emit it as complete yet — let speech_final/UtteranceEnd finalize it.
-    if (after) {
-      this.emitIncrementalDelta(after);
-      this.utteranceSegments.push(after);
-    }
-  }
-
-  private emitIncrementalDelta(accumulated: string): void {
-    if (accumulated.startsWith(this.liveText)) {
-      const newChars = accumulated.slice(this.liveText.length);
-      if (newChars) {
-        this.emit({ type: "delta", text: newChars });
-        this.liveText = accumulated;
+      case "conversation.item.input_audio_transcription.completed": {
+        const transcript = typeof payload.transcript === "string" ? payload.transcript.trim() : "";
+        this.liveText = "";
+        if (transcript) {
+          this.emit({ type: "complete", text: transcript, confidence: { ...STUB_CONFIDENCE } });
+        }
+        if (this.isDraining) {
+          // server_vad can auto-commit items mid-session; the first `completed`
+          // we observe during drain may belong to one of those, with our own
+          // commit's transcript still in flight. Defer settling by a short
+          // grace period and reset it on every subsequent `completed` so the
+          // late arrival joins the same drain.
+          this.scheduleDrainGrace();
+        }
+        return;
       }
-    } else if (!this.liveText) {
-      this.emit({ type: "delta", text: accumulated });
-      this.liveText = accumulated;
-    } else {
-      // Deepgram revised earlier text (non-prefix change). Update the baseline
-      // so future appends can still emit incremental deltas correctly.
-      this.liveText = accumulated;
-    }
-  }
 
-  private computeSegmentConfidence(
-    words: Array<{ word: string; confidence: number; start?: number; end?: number }>
-  ): SegmentConfidence {
-    if (words.length === 0) {
-      return { minConfidence: 1.0, wordCount: 0, uncertainWords: [], words: [] };
-    }
-    return {
-      minConfidence: Math.min(...words.map((w) => w.confidence)),
-      wordCount: words.length,
-      uncertainWords: words
-        .filter((w) => w.confidence < CONFIDENCE_TAG_THRESHOLD)
-        .map((w) => w.word),
-      words: words.map((w) => ({
-        word: w.word,
-        confidence: w.confidence,
-        ...(w.start !== undefined ? { start: w.start } : {}),
-        ...(w.end !== undefined ? { end: w.end } : {}),
-      })),
-    };
-  }
-
-  private mergeConfidence(segments: SegmentConfidence[]): SegmentConfidence {
-    if (segments.length === 0) {
-      return { minConfidence: 1.0, wordCount: 0, uncertainWords: [], words: [] };
-    }
-    return {
-      minConfidence: Math.min(...segments.map((s) => s.minConfidence)),
-      wordCount: segments.reduce((sum, s) => sum + s.wordCount, 0),
-      uncertainWords: segments.flatMap((s) => s.uncertainWords),
-      words: segments.flatMap((s) => s.words),
-    };
-  }
-
-  private flushUtterance(): void {
-    if (this._suppressingUtterance) {
-      this._suppressingUtterance = false;
-      this.resetUtteranceState();
-      if (this.isDraining) {
-        this.settleDrain();
+      case "error": {
+        const errorPayload = payload.error as { message?: string; type?: string } | undefined;
+        const message = errorPayload?.message ?? "OpenAI realtime error";
+        logError(`${P} Server error event`, { message, type: errorPayload?.type });
+        this.handleFatalError(mySessionId, message);
+        return;
       }
-      return;
-    }
 
-    // Use liveText if set — it includes any pending interim transcript that has
-    // not yet received is_final=true (e.g. when UtteranceEnd fires without speech_final).
-    const fullText = (this.liveText || this.utteranceSegments.join(" ")).trim();
-    const confidence = this.mergeConfidence(this.utteranceConfidenceSegments);
-    this.resetUtteranceState();
-    if (fullText) {
-      this.emitCompleteWithParagraphDetection(fullText, confidence);
-    }
-    if (this.isDraining) {
-      this.settleDrain();
+      default:
+        logDebug(`${P} Unhandled server event`, { type });
     }
   }
 
-  private resetUtteranceState(): void {
-    this.utteranceSegments = [];
-    this.utteranceConfidenceSegments = [];
-    this.liveText = "";
+  private sendAudioJson(chunk: ArrayBuffer): void {
+    if (!this.connection) return;
+    const audio = Buffer.from(chunk).toString("base64");
+    this.connection.send(JSON.stringify({ type: "input_audio_buffer.append", audio }));
   }
-
-  private audioChunkCount = 0;
-  private staleChunkWarned = false;
-  private preConnectBufferOverflowWarned = false;
 
   sendAudioChunk(chunk: ArrayBuffer): void {
     if (this.isDraining) return;
 
     if (!this.isReady || !this.connection) {
       if (this.connection || this.pendingStart) {
-        if (this.preConnectBuffer.length < 100) {
+        if (this.preConnectBuffer.length < PRE_CONNECT_BUFFER_MAX) {
           this.preConnectBuffer.push(chunk);
         } else if (!this.preConnectBufferOverflowWarned) {
           this.preConnectBufferOverflowWarned = true;
-          logWarn(`${P} Pre-connect buffer full (100 chunks), dropping audio`);
+          logWarn(
+            `${P} Pre-connect buffer full (${PRE_CONNECT_BUFFER_MAX} chunks), dropping audio`
+          );
         }
       } else if (!this.staleChunkWarned) {
         this.staleChunkWarned = true;
@@ -493,11 +361,10 @@ export class VoiceTranscriptionService {
     if (this.audioChunkCount <= 3 || this.audioChunkCount % 200 === 0) {
       logDebug(`${P} Sending audio chunk #${this.audioChunkCount}`, { bytes: chunk.byteLength });
     }
-    this.connection.send(chunk as ArrayBuffer);
+    this.sendAudioJson(chunk);
   }
 
   private cleanupConnection(): void {
-    this.clearKeepAliveInterval();
     this.connection = null;
     this.isReady = false;
   }
@@ -515,21 +382,20 @@ export class VoiceTranscriptionService {
     this.isReady = false;
     this.preConnectBuffer = [];
     this.clearConnectTimeout();
-    this.clearKeepAliveInterval();
     this.clearDrainTimeout();
     this.isDraining = false;
-    this._suppressingUtterance = false;
-    this.resetUtteranceState();
+    this.liveText = "";
     if (this.drainResolve) {
       this.drainResolve();
       this.drainResolve = null;
     }
+    this.drainPromise = null;
     if (pendingSessionId !== undefined) {
       this.settlePendingStart(pendingSessionId, { ok: false, error: "Voice session stopped" });
     }
     if (this.connection) {
       try {
-        this.connection.requestClose();
+        this.connection.close();
       } catch {
         // Ignore close errors
       }
@@ -542,6 +408,20 @@ export class VoiceTranscriptionService {
       clearTimeout(this.drainTimeout);
       this.drainTimeout = null;
     }
+    if (this.drainGraceTimer !== null) {
+      clearTimeout(this.drainGraceTimer);
+      this.drainGraceTimer = null;
+    }
+  }
+
+  private scheduleDrainGrace(): void {
+    if (this.drainGraceTimer !== null) {
+      clearTimeout(this.drainGraceTimer);
+    }
+    this.drainGraceTimer = setTimeout(() => {
+      this.drainGraceTimer = null;
+      this.settleDrain();
+    }, DRAIN_GRACE_MS);
   }
 
   private settleDrain(): void {
@@ -577,10 +457,10 @@ export class VoiceTranscriptionService {
     this.emit({ type: "status", status: "finishing" });
 
     try {
-      this.connection.finish();
-      logDebug(`${P} Sent finalize to Deepgram`);
+      this.connection.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+      logDebug(`${P} Sent input_audio_buffer.commit`);
     } catch {
-      logWarn(`${P} Failed to send finalize, closing immediately`);
+      logWarn(`${P} Failed to send commit, closing immediately`);
       this.cleanupPreviousSession();
       this.emit({ type: "status", status: "idle" });
       return;
@@ -589,10 +469,9 @@ export class VoiceTranscriptionService {
     this.drainPromise = new Promise<void>((resolve) => {
       this.drainResolve = resolve;
       this.drainTimeout = setTimeout(() => {
-        logWarn(`${P} Drain timed out after 3s, force closing`);
-        this.flushUtterance();
+        logWarn(`${P} Drain timed out after ${DRAIN_TIMEOUT_MS}ms, force closing`);
         this.settleDrain();
-      }, 3000);
+      }, DRAIN_TIMEOUT_MS);
     });
 
     const sessionIdBeforeDrain = this.sessionId;

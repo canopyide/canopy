@@ -1128,8 +1128,8 @@ export const SETTINGS_REGISTRY = [
       "microphone",
       "speech",
       "dictation",
-      "deepgram",
       "openai",
+      "whisper",
       "transcription",
     ],
     sections: [
@@ -1141,11 +1141,11 @@ export const SETTINGS_REGISTRY = [
         keywords: ["voice", "microphone", "dictate", "speech", "recording", "enable", "mic"],
       },
       {
-        id: "voice-deepgram-key",
+        id: "voice-stt-openai-key",
         section: "Speech-to-Text",
-        title: "Deepgram API Key",
-        description: "Configure your Deepgram API key for speech recognition",
-        keywords: ["deepgram", "api", "key", "speech-to-text", "stt", "nova"],
+        title: "OpenAI API Key",
+        description: "Configure your OpenAI API key for realtime speech recognition",
+        keywords: ["openai", "api", "key", "speech-to-text", "stt", "whisper"],
         requiresEnabled: VOICE_REQUIRES_ENABLED,
       },
       {
@@ -1160,8 +1160,8 @@ export const SETTINGS_REGISTRY = [
         id: "voice-transcription-model",
         section: "Speech-to-Text",
         title: "Transcription Model",
-        description: "Choose the Deepgram model for transcription accuracy",
-        keywords: ["nova-3", "nova-2", "model", "deepgram", "accuracy", "transcription"],
+        description: "Choose the OpenAI Realtime model for transcription accuracy",
+        keywords: ["whisper", "gpt-realtime", "model", "openai", "accuracy", "transcription"],
         requiresEnabled: VOICE_REQUIRES_ENABLED,
       },
       {

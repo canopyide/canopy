@@ -1490,7 +1490,7 @@ export type MicPermissionStatus =
   | "restricted"
   | "unknown";
 
-export type VoiceTranscriptionModel = "nova-3" | "nova-2";
+export type VoiceTranscriptionModel = "gpt-realtime-whisper";
 
 export type VoiceCorrectionModel = "gpt-5-nano" | "gpt-5-mini";
 
@@ -1498,18 +1498,12 @@ export type VoiceCorrectionModel = "gpt-5-nano" | "gpt-5-mini";
  * Paragraphing strategy for voice dictation.
  *
  * "spoken-command" (default): The user says "new paragraph" to insert a paragraph break.
- *   Deepgram Dictation mode intercepts spoken commands ("new paragraph" → \n\n, "period" → ".",
- *   "new line" → \n, etc.) rather than transcribing them literally. Manual Enter is always
- *   available as a secondary mechanism.
+ *   Spoken commands ("new paragraph" → \n\n, "period" → ".", "new line" → \n, etc.) are
+ *   transcribed literally by the upstream service and rewritten post-hoc by the IPC handler
+ *   via applyDictationCommands. Manual Enter is always available as a secondary mechanism.
  *
  * "manual": Paragraph breaks are inserted only via the Enter key. No spoken commands.
  *   Best for users who prefer keyboard control or find spoken formatting commands awkward.
- *
- * Note: Deepgram's `paragraphs: true` parameter was evaluated and rejected as the primary
- * mechanism — in live streaming it populates a structured JSON object rather than injecting
- * \n\n into the transcript text, making it unreliable as an auto-paragraphing trigger.
- * Custom keyword detection was also evaluated and rejected in favor of Deepgram Dictation,
- * which natively handles the "new paragraph" command in Nova-3.
  */
 export type VoiceParagraphingStrategy = "spoken-command" | "manual";
 

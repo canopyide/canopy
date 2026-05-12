@@ -1,84 +1,126 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VoiceInputSettings } from "../../../shared/types/ipc/api.js";
 
-const deepgramMock = vi.hoisted(() => {
-  const LiveTranscriptionEvents = {
-    Open: "open",
-    Close: "close",
-    Error: "error",
-    Metadata: "Metadata",
-    Transcript: "Results",
-    UtteranceEnd: "UtteranceEnd",
-  };
+// ── Mock the `ws` package ────────────────────────────────────────────────────
+//
+// The service imports `WebSocket from "ws"` (the npm package, not the WHATWG
+// global) because Node's global WebSocket constructor silently drops the
+// custom-headers option needed for OpenAI auth. We mock the entire module so
+// the constructor returns a controllable EventEmitter-style stub.
 
-  class MockConnection {
-    private handlers = new Map<string, Set<(...args: unknown[]) => void>>();
-    sent: Buffer[] = [];
-    finalized = false;
-    closed = false;
-    keepAliveCalled = 0;
+interface MockOptions {
+  headers: Record<string, string>;
+}
 
-    on(event: string, handler: (...args: unknown[]) => void) {
-      const listeners = this.handlers.get(event) ?? new Set();
-      listeners.add(handler);
-      this.handlers.set(event, listeners);
-      return this;
-    }
+type WsListener = (...args: unknown[]) => void;
 
-    emit(event: string, ...args: unknown[]) {
-      const listeners = this.handlers.get(event);
-      if (!listeners) return;
-      for (const handler of listeners) {
-        handler(...args);
-      }
-    }
+class MockWebSocket {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
 
-    send(buf: Buffer) {
-      this.sent.push(buf);
-    }
+  url: string;
+  options: MockOptions;
+  readyState: number = MockWebSocket.CONNECTING;
+  sent: string[] = [];
+  closeCalls = 0;
+  closeCode?: number;
 
-    finish() {
-      this.finalized = true;
-    }
+  private listeners: Map<string, Set<WsListener>> = new Map();
 
-    requestClose() {
-      this.closed = true;
-      this.emit(LiveTranscriptionEvents.Close);
-    }
-
-    keepAlive() {
-      this.keepAliveCalled++;
-    }
+  constructor(url: string, options: MockOptions) {
+    this.url = url;
+    this.options = options;
+    instances.push(this);
   }
 
-  const instances: MockConnection[] = [];
+  on(event: string, listener: WsListener): this {
+    if (!this.listeners.has(event)) this.listeners.set(event, new Set());
+    this.listeners.get(event)!.add(listener);
+    return this;
+  }
 
-  const mockClient = {
-    listen: {
-      live: (_opts: unknown) => {
-        const conn = new MockConnection();
-        instances.push(conn);
-        return conn;
-      },
-    },
-  };
+  off(event: string, listener: WsListener): this {
+    this.listeners.get(event)?.delete(listener);
+    return this;
+  }
 
-  return { LiveTranscriptionEvents, MockConnection, instances, mockClient };
+  removeAllListeners(event?: string): this {
+    if (event) this.listeners.delete(event);
+    else this.listeners.clear();
+    return this;
+  }
+
+  private fire(event: string, ...args: unknown[]): void {
+    const set = this.listeners.get(event);
+    if (!set) return;
+    for (const listener of set) listener(...args);
+  }
+
+  send(payload: string): void {
+    this.sent.push(payload);
+  }
+
+  close(code?: number): void {
+    this.closeCalls++;
+    this.closeCode = code;
+    this.readyState = MockWebSocket.CLOSED;
+  }
+
+  // Test helpers
+  simulateOpen(): void {
+    this.readyState = MockWebSocket.OPEN;
+    this.fire("open");
+  }
+
+  simulateMessage(type: string, payload: Record<string, unknown> = {}): void {
+    this.fire("message", Buffer.from(JSON.stringify({ type, ...payload })));
+  }
+
+  simulateRawMessage(data: string | Buffer): void {
+    this.fire("message", data);
+  }
+
+  simulateError(err: Error = new Error("WebSocket error")): void {
+    this.fire("error", err);
+  }
+
+  simulateClose(code?: number, reason?: Buffer | string): void {
+    this.readyState = MockWebSocket.CLOSED;
+    this.fire("close", code, reason);
+  }
+
+  sentJson(): Array<Record<string, unknown>> {
+    return this.sent.map((s) => JSON.parse(s) as Record<string, unknown>);
+  }
+}
+
+const instances: MockWebSocket[] = [];
+let throwOnConstruct = false;
+let constructError: Error | null = null;
+
+vi.mock("ws", () => {
+  const ctor = function (this: unknown, url: string, options: MockOptions) {
+    if (throwOnConstruct) {
+      throw constructError ?? new Error("WebSocket construction failed");
+    }
+    return new MockWebSocket(url, options);
+  } as unknown as new (url: string, options: MockOptions) => MockWebSocket;
+  return { default: ctor };
 });
 
-vi.mock("@deepgram/sdk", () => ({
-  createClient: () => deepgramMock.mockClient,
-  LiveTranscriptionEvents: deepgramMock.LiveTranscriptionEvents,
-}));
-
-import { VoiceTranscriptionService } from "../VoiceTranscriptionService.js";
+// Import the service AFTER vi.mock so the mocked `ws` is used.
+const { VoiceTranscriptionService } = await import("../VoiceTranscriptionService.js");
+type VoiceTranscriptionServiceInstance = InstanceType<typeof VoiceTranscriptionService>;
+type VoiceTranscriptionEvent = import("../VoiceTranscriptionService.js").VoiceTranscriptionEvent;
 
 const BASE_SETTINGS: VoiceInputSettings = {
   enabled: true,
   openaiApiKey: "sk-test",
   language: "en",
   customDictionary: [],
-  transcriptionModel: "nova-3",
+  transcriptionModel: "gpt-realtime-whisper",
   correctionEnabled: false,
   correctionModel: "gpt-5-mini",
   correctionCustomInstructions: "",
@@ -86,66 +128,115 @@ const BASE_SETTINGS: VoiceInputSettings = {
   resolveFileLinks: true,
 };
 
-function makeTranscriptEvent(
-  transcript: string,
-  isFinal: boolean,
-  speechFinal: boolean,
-  words: Array<{ word: string; confidence: number }> = []
-): unknown {
-  return {
-    channel: { alternatives: [{ transcript, words }] },
-    is_final: isFinal,
-    speech_final: speechFinal,
-  };
+function latestInstance(): MockWebSocket {
+  const instance = instances.at(-1);
+  if (!instance) throw new Error("No MockWebSocket instance created");
+  return instance;
+}
+
+/** Advance the service through connect → ready. Returns the active mock socket. */
+async function bringSessionReady(
+  service: VoiceTranscriptionServiceInstance,
+  settings: VoiceInputSettings = BASE_SETTINGS
+): Promise<{ socket: MockWebSocket; result: { ok: true } | { ok: false; error: string } }> {
+  const startPromise = service.start(settings);
+  // start() runs synchronously through to assigning pendingStart; allow the
+  // microtask queue to settle so the constructor + onopen wiring is in place.
+  await Promise.resolve();
+  const socket = latestInstance();
+  socket.simulateOpen();
+  socket.simulateMessage("session.updated");
+  const result = await startPromise;
+  return { socket, result };
 }
 
 describe("VoiceTranscriptionService", () => {
-  let originalLiveFn: (opts: unknown) => InstanceType<typeof deepgramMock.MockConnection>;
-
   beforeEach(() => {
-    deepgramMock.instances.length = 0;
-    // Save original listen.live so option-mapping tests can restore it
-    originalLiveFn = deepgramMock.mockClient.listen.live;
+    instances.length = 0;
+    throwOnConstruct = false;
+    constructError = null;
     vi.useFakeTimers();
   });
 
   afterEach(() => {
-    // Restore listen.live in case an option-mapping test replaced it
-    deepgramMock.mockClient.listen.live = originalLiveFn;
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
-  it("transitions from connecting to recording when the connection opens", async () => {
-    const service = new VoiceTranscriptionService();
-    const statuses: string[] = [];
-
-    service.onEvent((event) => {
-      if (event.type === "status") statuses.push(event.status);
-    });
-
-    const startPromise = service.start(BASE_SETTINGS);
-    expect(statuses).toContain("connecting");
-
-    const conn = deepgramMock.instances.at(-1)!;
-    conn.emit(deepgramMock.LiveTranscriptionEvents.Open);
-
-    await expect(startPromise).resolves.toEqual({ ok: true });
-    expect(statuses.at(-1)).toBe("recording");
-  });
+  // ── Startup / readiness ──────────────────────────────────────────────────
 
   it("fails to start when no OpenAI API key is configured", async () => {
     const service = new VoiceTranscriptionService();
     const result = await service.start({ ...BASE_SETTINGS, openaiApiKey: "" });
     expect(result).toEqual({ ok: false, error: "OpenAI API key not configured" });
+    expect(instances).toHaveLength(0);
   });
 
-  it("settles a pending start when the session is stopped before connect completes", async () => {
+  it("constructs the WebSocket with the realtime URL and auth headers", async () => {
     const service = new VoiceTranscriptionService();
+    void service.start({ ...BASE_SETTINGS, openaiApiKey: "sk-abc" });
+    await Promise.resolve();
+    const socket = latestInstance();
+    expect(socket.url).toBe("wss://api.openai.com/v1/realtime?model=gpt-realtime-whisper");
+    expect(socket.options.headers.Authorization).toBe("Bearer sk-abc");
+    expect(socket.options.headers["OpenAI-Beta"]).toBe("realtime=v1");
+    service.stop();
+  });
+
+  it("sends session.update on WebSocket open and stays not-ready until session.updated", async () => {
+    const service = new VoiceTranscriptionService();
+    const statuses: string[] = [];
+    service.onEvent((e) => {
+      if (e.type === "status") statuses.push(e.status);
+    });
 
     const startPromise = service.start(BASE_SETTINGS);
-    service.stop();
+    expect(statuses).toEqual(["connecting"]);
+    await Promise.resolve();
+    const socket = latestInstance();
+    socket.simulateOpen();
 
+    expect(socket.sent).toHaveLength(1);
+    const sessionUpdate = JSON.parse(socket.sent[0]) as {
+      type: string;
+      session: { type: string; audio: { input: Record<string, unknown> } };
+    };
+    expect(sessionUpdate.type).toBe("session.update");
+    expect(sessionUpdate.session.type).toBe("transcription");
+    expect(sessionUpdate.session.audio.input).toMatchObject({
+      format: { type: "audio/pcm", rate: 24000 },
+      transcription: { model: "gpt-realtime-whisper", language: "en" },
+      turn_detection: { type: "server_vad" },
+    });
+
+    // Still not ready — start() must wait for session.updated
+    expect(statuses).toEqual(["connecting"]);
+
+    socket.simulateMessage("session.updated");
+    await expect(startPromise).resolves.toEqual({ ok: true });
+    expect(statuses).toEqual(["connecting", "recording"]);
+  });
+
+  it("uses the configured language in session.update", async () => {
+    const service = new VoiceTranscriptionService();
+    void service.start({ ...BASE_SETTINGS, language: "es" });
+    await Promise.resolve();
+    const socket = latestInstance();
+    socket.simulateOpen();
+    const payload = JSON.parse(socket.sent[0]) as {
+      session: { audio: { input: { transcription: { language: string } } } };
+    };
+    expect(payload.session.audio.input.transcription.language).toBe("es");
+    service.stop();
+  });
+
+  it("settles a pending start when the session is stopped before session.updated", async () => {
+    const service = new VoiceTranscriptionService();
+    const startPromise = service.start(BASE_SETTINGS);
+    await Promise.resolve();
+    latestInstance().simulateOpen();
+    // No session.updated yet — stop before ready.
+    service.stop();
     await expect(startPromise).resolves.toEqual({
       ok: false,
       error: "Voice session stopped",
@@ -154,1449 +245,447 @@ describe("VoiceTranscriptionService", () => {
 
   it("does not emit idle when start() replaces a previous session", async () => {
     const service = new VoiceTranscriptionService();
-    const events: Array<{ type: string; status?: string }> = [];
+    await bringSessionReady(service);
 
-    service.onEvent((event) => events.push(event));
-
-    const firstPromise = service.start(BASE_SETTINGS);
-    deepgramMock.instances.at(-1)!.emit(deepgramMock.LiveTranscriptionEvents.Open);
-    await firstPromise;
-
-    events.length = 0;
+    const events: VoiceTranscriptionEvent[] = [];
+    service.onEvent((e) => events.push(e));
 
     const secondPromise = service.start(BASE_SETTINGS);
     const idleBeforeConnect = events.filter((e) => e.type === "status" && e.status === "idle");
     expect(idleBeforeConnect).toHaveLength(0);
 
-    deepgramMock.instances.at(-1)!.emit(deepgramMock.LiveTranscriptionEvents.Open);
+    await Promise.resolve();
+    const socket = latestInstance();
+    socket.simulateOpen();
+    socket.simulateMessage("session.updated");
     await secondPromise;
   });
 
-  it("emits delta for interim transcripts", async () => {
+  it("times out and closes the socket if session.updated does not arrive within 10s", async () => {
+    const service = new VoiceTranscriptionService();
+    const errors: string[] = [];
+    service.onEvent((e) => {
+      if (e.type === "error") errors.push(e.message);
+    });
+
+    const startPromise = service.start(BASE_SETTINGS);
+    await Promise.resolve();
+    const socket = latestInstance();
+    socket.simulateOpen();
+    // Never simulate session.updated.
+
+    vi.advanceTimersByTime(10_000);
+
+    await expect(startPromise).resolves.toEqual({ ok: false, error: "Connection timed out" });
+    expect(errors).toContain("Connection timed out");
+    expect(socket.closeCalls).toBe(1);
+  });
+
+  // ── Delta / complete events ──────────────────────────────────────────────
+
+  it("emits delta for incremental transcription deltas", async () => {
     const service = new VoiceTranscriptionService();
     const deltas: string[] = [];
     service.onEvent((e) => {
       if (e.type === "delta") deltas.push(e.text);
     });
 
-    const p = service.start(BASE_SETTINGS);
-    deepgramMock.instances.at(-1)!.emit(deepgramMock.LiveTranscriptionEvents.Open);
-    await p;
-
-    const conn = deepgramMock.instances.at(-1)!;
-    conn.emit(
-      deepgramMock.LiveTranscriptionEvents.Transcript,
-      makeTranscriptEvent("Hello", false, false)
-    );
-    conn.emit(
-      deepgramMock.LiveTranscriptionEvents.Transcript,
-      makeTranscriptEvent("Hello world", false, false)
-    );
+    const { socket } = await bringSessionReady(service);
+    socket.simulateMessage("conversation.item.input_audio_transcription.delta", {
+      delta: "Hello",
+    });
+    socket.simulateMessage("conversation.item.input_audio_transcription.delta", {
+      delta: " world",
+    });
 
     expect(deltas).toEqual(["Hello", " world"]);
   });
 
-  it("emits complete on speech_final", async () => {
+  it("ignores empty deltas", async () => {
     const service = new VoiceTranscriptionService();
-    const completes: string[] = [];
+    const deltas: string[] = [];
     service.onEvent((e) => {
-      if (e.type === "complete") completes.push(e.text);
+      if (e.type === "delta") deltas.push(e.text);
     });
 
-    const p = service.start(BASE_SETTINGS);
-    deepgramMock.instances.at(-1)!.emit(deepgramMock.LiveTranscriptionEvents.Open);
-    await p;
+    const { socket } = await bringSessionReady(service);
+    socket.simulateMessage("conversation.item.input_audio_transcription.delta", { delta: "" });
+    socket.simulateMessage("conversation.item.input_audio_transcription.delta", {});
 
-    const conn = deepgramMock.instances.at(-1)!;
-    conn.emit(
-      deepgramMock.LiveTranscriptionEvents.Transcript,
-      makeTranscriptEvent("Hello world", true, true)
-    );
-
-    expect(completes).toEqual(["Hello world"]);
+    expect(deltas).toEqual([]);
   });
 
-  it("accumulates is_final segments and emits them as complete on speech_final", async () => {
+  it("emits complete with stub confidence on transcription.completed", async () => {
     const service = new VoiceTranscriptionService();
-    const completes: string[] = [];
-    service.onEvent((e) => {
-      if (e.type === "complete") completes.push(e.text);
-    });
-
-    const p = service.start(BASE_SETTINGS);
-    deepgramMock.instances.at(-1)!.emit(deepgramMock.LiveTranscriptionEvents.Open);
-    await p;
-
-    const conn = deepgramMock.instances.at(-1)!;
-    conn.emit(
-      deepgramMock.LiveTranscriptionEvents.Transcript,
-      makeTranscriptEvent("Hello world", true, false)
-    );
-    conn.emit(
-      deepgramMock.LiveTranscriptionEvents.Transcript,
-      makeTranscriptEvent("how are you", true, true)
-    );
-
-    expect(completes).toEqual(["Hello world how are you"]);
-  });
-
-  it("resets utterance state after each speech_final", async () => {
-    const service = new VoiceTranscriptionService();
-    const completes: string[] = [];
-    service.onEvent((e) => {
-      if (e.type === "complete") completes.push(e.text);
-    });
-
-    const p = service.start(BASE_SETTINGS);
-    deepgramMock.instances.at(-1)!.emit(deepgramMock.LiveTranscriptionEvents.Open);
-    await p;
-
-    const conn = deepgramMock.instances.at(-1)!;
-    conn.emit(
-      deepgramMock.LiveTranscriptionEvents.Transcript,
-      makeTranscriptEvent("First utterance.", true, true)
-    );
-    conn.emit(
-      deepgramMock.LiveTranscriptionEvents.Transcript,
-      makeTranscriptEvent("Second utterance.", true, true)
-    );
-
-    expect(completes).toEqual(["First utterance.", "Second utterance."]);
-  });
-
-  it("sends audio chunks as ArrayBuffer after connection opens", async () => {
-    const service = new VoiceTranscriptionService();
-    const p = service.start(BASE_SETTINGS);
-    const conn = deepgramMock.instances.at(-1)!;
-    conn.emit(deepgramMock.LiveTranscriptionEvents.Open);
-    await p;
-
-    const chunk = new ArrayBuffer(8);
-    service.sendAudioChunk(chunk);
-
-    expect(conn.sent).toHaveLength(1);
-    expect(conn.sent[0]).toBeInstanceOf(ArrayBuffer);
-    expect((conn.sent[0] as unknown as ArrayBuffer).byteLength).toBe(8);
-  });
-
-  it("buffers pre-connect audio chunks and flushes on open", async () => {
-    const service = new VoiceTranscriptionService();
-    const startPromise = service.start(BASE_SETTINGS);
-    const conn = deepgramMock.instances.at(-1)!;
-
-    const chunk1 = new ArrayBuffer(4);
-    const chunk2 = new ArrayBuffer(8);
-    service.sendAudioChunk(chunk1);
-    service.sendAudioChunk(chunk2);
-
-    expect(conn.sent).toHaveLength(0);
-
-    conn.emit(deepgramMock.LiveTranscriptionEvents.Open);
-    await startPromise;
-
-    expect(conn.sent).toHaveLength(2);
-  });
-
-  it("rejects audio chunks during drain", async () => {
-    const service = new VoiceTranscriptionService();
-    const p = service.start(BASE_SETTINGS);
-    const conn = deepgramMock.instances.at(-1)!;
-    conn.emit(deepgramMock.LiveTranscriptionEvents.Open);
-    await p;
-
-    const stopPromise = service.stopGracefully();
-    service.sendAudioChunk(new ArrayBuffer(4));
-
-    const chunksAfterDrain = conn.sent.length;
-    conn.emit(
-      deepgramMock.LiveTranscriptionEvents.Transcript,
-      makeTranscriptEvent("done", true, true)
-    );
-    await stopPromise;
-
-    expect(conn.sent.length).toBe(chunksAfterDrain);
-  });
-
-  it("calls connection.finish() on graceful stop", async () => {
-    const service = new VoiceTranscriptionService();
-    const p = service.start(BASE_SETTINGS);
-    const conn = deepgramMock.instances.at(-1)!;
-    conn.emit(deepgramMock.LiveTranscriptionEvents.Open);
-    await p;
-
-    const stopPromise = service.stopGracefully();
-    expect(conn.finalized).toBe(true);
-
-    conn.emit(
-      deepgramMock.LiveTranscriptionEvents.Transcript,
-      makeTranscriptEvent("bye", true, true)
-    );
-    await stopPromise;
-  });
-
-  it("drain resolves after speech_final during graceful stop", async () => {
-    const service = new VoiceTranscriptionService();
-    const p = service.start(BASE_SETTINGS);
-    const conn = deepgramMock.instances.at(-1)!;
-    conn.emit(deepgramMock.LiveTranscriptionEvents.Open);
-    await p;
-
-    let drained = false;
-    const stopPromise = service.stopGracefully().then(() => {
-      drained = true;
-    });
-
-    expect(drained).toBe(false);
-    conn.emit(
-      deepgramMock.LiveTranscriptionEvents.Transcript,
-      makeTranscriptEvent("final text", true, true)
-    );
-    await stopPromise;
-    expect(drained).toBe(true);
-  });
-
-  it("drain resolves after timeout if no speech_final arrives", async () => {
-    const service = new VoiceTranscriptionService();
-    const p = service.start(BASE_SETTINGS);
-    const conn = deepgramMock.instances.at(-1)!;
-    conn.emit(deepgramMock.LiveTranscriptionEvents.Open);
-    await p;
-
-    let drained = false;
-    const stopPromise = service.stopGracefully().then(() => {
-      drained = true;
-    });
-
-    expect(drained).toBe(false);
-    vi.advanceTimersByTime(3001);
-    await stopPromise;
-    expect(drained).toBe(true);
-  });
-
-  it("emits error and error status on connection error", async () => {
-    const service = new VoiceTranscriptionService();
-    const events: Array<{ type: string; message?: string; status?: string }> = [];
+    const events: VoiceTranscriptionEvent[] = [];
     service.onEvent((e) => events.push(e));
 
-    const p = service.start(BASE_SETTINGS);
-    const conn = deepgramMock.instances.at(-1)!;
-    conn.emit(deepgramMock.LiveTranscriptionEvents.Open);
-    await p;
+    const { socket } = await bringSessionReady(service);
+    socket.simulateMessage("conversation.item.input_audio_transcription.completed", {
+      transcript: "Hello world",
+    });
 
-    conn.emit(deepgramMock.LiveTranscriptionEvents.Error, new Error("websocket died"));
-
-    const errorEvent = events.find((e) => e.type === "error");
-    const statusEvent = events.find((e) => e.type === "status" && e.status === "error");
-    expect(errorEvent).toBeDefined();
-    expect(statusEvent).toBeDefined();
+    const complete = events.find((e) => e.type === "complete");
+    expect(complete).toEqual({
+      type: "complete",
+      text: "Hello world",
+      confidence: { minConfidence: 1.0, wordCount: 0, uncertainWords: [], words: [] },
+    });
   });
 
-  it("times out with an error if connection does not open within 10s", async () => {
+  it("does not emit complete when transcript is empty or whitespace-only", async () => {
+    const service = new VoiceTranscriptionService();
+    const completes: string[] = [];
+    service.onEvent((e) => {
+      if (e.type === "complete") completes.push(e.text);
+    });
+
+    const { socket } = await bringSessionReady(service);
+    socket.simulateMessage("conversation.item.input_audio_transcription.completed", {
+      transcript: "",
+    });
+    socket.simulateMessage("conversation.item.input_audio_transcription.completed", {
+      transcript: "   ",
+    });
+    socket.simulateMessage("conversation.item.input_audio_transcription.completed", {});
+
+    expect(completes).toEqual([]);
+  });
+
+  // ── Audio chunk handling ─────────────────────────────────────────────────
+
+  it("sends audio chunks as base64 input_audio_buffer.append after session.updated", async () => {
+    const service = new VoiceTranscriptionService();
+    const { socket } = await bringSessionReady(service);
+
+    const chunk = new Uint8Array([1, 2, 3, 4]).buffer;
+    const sentBeforeAudio = socket.sent.length;
+    service.sendAudioChunk(chunk);
+    expect(socket.sent.length).toBe(sentBeforeAudio + 1);
+    const payload = JSON.parse(socket.sent.at(-1)!) as { type: string; audio: string };
+    expect(payload.type).toBe("input_audio_buffer.append");
+    expect(payload.audio).toBe(Buffer.from(chunk).toString("base64"));
+  });
+
+  it("buffers pre-connect audio chunks and flushes them after session.updated", async () => {
+    const service = new VoiceTranscriptionService();
+    const startPromise = service.start(BASE_SETTINGS);
+    await Promise.resolve();
+    const socket = latestInstance();
+
+    // Queue chunks before the WS open / session.updated round-trip.
+    service.sendAudioChunk(new Uint8Array([1]).buffer);
+    service.sendAudioChunk(new Uint8Array([2]).buffer);
+
+    expect(socket.sent).toHaveLength(0);
+
+    socket.simulateOpen();
+    // session.update sent on open, no audio yet
+    expect(socket.sent).toHaveLength(1);
+
+    socket.simulateMessage("session.updated");
+    await startPromise;
+
+    const audioPayloads = socket
+      .sentJson()
+      .filter((p) => p.type === "input_audio_buffer.append")
+      .map((p) => p.audio as string);
+    expect(audioPayloads).toEqual([
+      Buffer.from(new Uint8Array([1])).toString("base64"),
+      Buffer.from(new Uint8Array([2])).toString("base64"),
+    ]);
+  });
+
+  it("caps the pre-connect buffer at 100 chunks and warns once on overflow", async () => {
+    const service = new VoiceTranscriptionService();
+    void service.start(BASE_SETTINGS);
+    await Promise.resolve();
+
+    // Push 105 chunks before session.updated — last 5 should be dropped.
+    for (let i = 0; i < 105; i++) {
+      service.sendAudioChunk(new Uint8Array([i % 256]).buffer);
+    }
+    const socket = latestInstance();
+    socket.simulateOpen();
+    socket.simulateMessage("session.updated");
+
+    const audioCount = socket
+      .sentJson()
+      .filter((p) => p.type === "input_audio_buffer.append").length;
+    expect(audioCount).toBe(100);
+    service.stop();
+  });
+
+  it("drops audio chunks while draining", async () => {
+    const service = new VoiceTranscriptionService();
+    const { socket } = await bringSessionReady(service);
+
+    const drainPromise = service.stopGracefully();
+    const sentAtStartOfDrain = socket.sent.length;
+    service.sendAudioChunk(new Uint8Array([99]).buffer);
+    expect(socket.sent.length).toBe(sentAtStartOfDrain);
+
+    socket.simulateMessage("conversation.item.input_audio_transcription.completed", {
+      transcript: "done",
+    });
+    vi.advanceTimersByTime(100);
+    await drainPromise;
+  });
+
+  // ── Graceful stop / drain ────────────────────────────────────────────────
+
+  it("sends input_audio_buffer.commit on stopGracefully and waits for completed", async () => {
     const service = new VoiceTranscriptionService();
     const statuses: string[] = [];
     service.onEvent((e) => {
       if (e.type === "status") statuses.push(e.status);
     });
 
-    const startPromise = service.start(BASE_SETTINGS);
-    vi.advanceTimersByTime(10001);
-    const result = await startPromise;
+    const { socket } = await bringSessionReady(service);
+    const drainPromise = service.stopGracefully();
+    expect(statuses).toContain("finishing");
 
-    expect(result).toEqual({ ok: false, error: "Connection timed out" });
-    expect(statuses).toContain("error");
+    const commitPayloads = socket.sentJson().filter((p) => p.type === "input_audio_buffer.commit");
+    expect(commitPayloads).toHaveLength(1);
+
+    socket.simulateMessage("conversation.item.input_audio_transcription.completed", {
+      transcript: "final",
+    });
+    // The grace timer fires 100ms after the first `completed` to give late
+    // arrivals (e.g. server_vad mid-utterance commits) a chance to join.
+    vi.advanceTimersByTime(100);
+    await drainPromise;
+    expect(statuses.at(-1)).toBe("idle");
   });
 
-  describe("paragraphing strategy — Deepgram connection options", () => {
-    it("spoken-command strategy sends dictation:true to Deepgram", async () => {
-      const capturedOpts: Record<string, unknown>[] = [];
-      deepgramMock.mockClient.listen.live = (opts: unknown) => {
-        capturedOpts.push(opts as Record<string, unknown>);
-        const conn = new deepgramMock.MockConnection();
-        deepgramMock.instances.push(conn);
-        return conn;
-      };
-
-      const service = new VoiceTranscriptionService();
-      void service.start({ ...BASE_SETTINGS, paragraphingStrategy: "spoken-command" });
-
-      expect(capturedOpts[0]).toMatchObject({ dictation: true });
-      expect(capturedOpts[0]).not.toHaveProperty("punctuate");
-      expect(capturedOpts[0]).not.toHaveProperty("paragraphs");
-      expect(capturedOpts[0].endpointing).toBe(800);
-    });
-
-    it("manual strategy does not send dictation or punctuate to Deepgram", async () => {
-      const capturedOpts: Record<string, unknown>[] = [];
-      deepgramMock.mockClient.listen.live = (opts: unknown) => {
-        capturedOpts.push(opts as Record<string, unknown>);
-        const conn = new deepgramMock.MockConnection();
-        deepgramMock.instances.push(conn);
-        return conn;
-      };
-
-      const service = new VoiceTranscriptionService();
-      void service.start({ ...BASE_SETTINGS, paragraphingStrategy: "manual" });
-
-      expect(capturedOpts[0]).not.toHaveProperty("dictation");
-      expect(capturedOpts[0]).not.toHaveProperty("punctuate");
-      expect(capturedOpts[0]).not.toHaveProperty("paragraphs");
-      expect(capturedOpts[0].endpointing).toBe(800);
-    });
-
-    it("defaults to spoken-command when paragraphingStrategy is undefined", async () => {
-      const capturedOpts: Record<string, unknown>[] = [];
-      deepgramMock.mockClient.listen.live = (opts: unknown) => {
-        capturedOpts.push(opts as Record<string, unknown>);
-        const conn = new deepgramMock.MockConnection();
-        deepgramMock.instances.push(conn);
-        return conn;
-      };
-
-      const service = new VoiceTranscriptionService();
-      // Simulate a stored settings object without the new field (pre-migration)
-      void service.start({
-        ...BASE_SETTINGS,
-        paragraphingStrategy: undefined as unknown as "spoken-command",
-      });
-
-      expect(capturedOpts[0]).toMatchObject({ dictation: true });
-      expect(capturedOpts[0]).not.toHaveProperty("punctuate");
-    });
-
-    it("spoken-command strategy does not enable dictation for non-English languages", async () => {
-      const capturedOpts: Record<string, unknown>[] = [];
-      deepgramMock.mockClient.listen.live = (opts: unknown) => {
-        capturedOpts.push(opts as Record<string, unknown>);
-        const conn = new deepgramMock.MockConnection();
-        deepgramMock.instances.push(conn);
-        return conn;
-      };
-
-      const service = new VoiceTranscriptionService();
-      void service.start({
-        ...BASE_SETTINGS,
-        paragraphingStrategy: "spoken-command",
-        language: "es",
-      });
-
-      expect(capturedOpts[0]).not.toHaveProperty("dictation");
-    });
-  });
-
-  describe("paragraph boundary detection via \\n\\n in transcript", () => {
-    it("emits complete + paragraph_boundary + complete when speech_final contains \\n\\n", async () => {
-      const service = new VoiceTranscriptionService();
-      const events: Array<{ type: string; text?: string }> = [];
-      service.onEvent((e) => {
-        if (e.type === "complete" || e.type === "paragraph_boundary") events.push(e);
-      });
-
-      const p = service.start(BASE_SETTINGS);
-      deepgramMock.instances.at(-1)!.emit(deepgramMock.LiveTranscriptionEvents.Open);
-      await p;
-
-      const conn = deepgramMock.instances.at(-1)!;
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("First paragraph.\n\nSecond paragraph.", true, true)
-      );
-
-      expect(events).toMatchObject([
-        { type: "complete", text: "First paragraph." },
-        { type: "paragraph_boundary" },
-        { type: "complete", text: "Second paragraph." },
-      ]);
-    });
-
-    it("does not emit paragraph_boundary for transcripts without \\n\\n", async () => {
-      const service = new VoiceTranscriptionService();
-      const boundaries: unknown[] = [];
-      service.onEvent((e) => {
-        if (e.type === "paragraph_boundary") boundaries.push(e);
-      });
-
-      const p = service.start(BASE_SETTINGS);
-      deepgramMock.instances.at(-1)!.emit(deepgramMock.LiveTranscriptionEvents.Open);
-      await p;
-
-      const conn = deepgramMock.instances.at(-1)!;
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("No paragraph break here.", true, true)
-      );
-
-      expect(boundaries).toHaveLength(0);
-    });
-
-    it("ignores leading and trailing \\n\\n — no spurious boundary events", async () => {
-      const service = new VoiceTranscriptionService();
-      const events: Array<{ type: string; text?: string }> = [];
-      service.onEvent((e) => {
-        if (e.type === "complete" || e.type === "paragraph_boundary") events.push(e);
-      });
-
-      const p = service.start(BASE_SETTINGS);
-      deepgramMock.instances.at(-1)!.emit(deepgramMock.LiveTranscriptionEvents.Open);
-      await p;
-
-      const conn = deepgramMock.instances.at(-1)!;
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("\n\nOnly one paragraph.\n\n", true, true)
-      );
-
-      expect(events).toMatchObject([{ type: "complete", text: "Only one paragraph." }]);
-    });
-
-    it("collapses repeated \\n\\n delimiters to a single boundary", async () => {
-      const service = new VoiceTranscriptionService();
-      const events: Array<{ type: string; text?: string }> = [];
-      service.onEvent((e) => {
-        if (e.type === "complete" || e.type === "paragraph_boundary") events.push(e);
-      });
-
-      const p = service.start(BASE_SETTINGS);
-      deepgramMock.instances.at(-1)!.emit(deepgramMock.LiveTranscriptionEvents.Open);
-      await p;
-
-      const conn = deepgramMock.instances.at(-1)!;
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("First.\n\n\n\nSecond.", true, true)
-      );
-
-      expect(events).toMatchObject([
-        { type: "complete", text: "First." },
-        { type: "paragraph_boundary" },
-        { type: "complete", text: "Second." },
-      ]);
-    });
-
-    it("does not split on single \\n — only \\n\\n triggers a boundary", async () => {
-      const service = new VoiceTranscriptionService();
-      const events: Array<{ type: string; text?: string }> = [];
-      service.onEvent((e) => {
-        if (e.type === "complete" || e.type === "paragraph_boundary") events.push(e);
-      });
-
-      const p = service.start(BASE_SETTINGS);
-      deepgramMock.instances.at(-1)!.emit(deepgramMock.LiveTranscriptionEvents.Open);
-      await p;
-
-      const conn = deepgramMock.instances.at(-1)!;
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("Line one.\nLine two.", true, true)
-      );
-
-      // A single \n is not a paragraph boundary — the text contains it but is not split
-      expect(events.filter((e) => e.type === "paragraph_boundary")).toHaveLength(0);
-      expect(events.filter((e) => e.type === "complete")).toHaveLength(1);
-    });
-
-    it("emits paragraph boundary via UtteranceEnd flush when accumulated text contains \\n\\n", async () => {
-      const service = new VoiceTranscriptionService();
-      const events: Array<{ type: string; text?: string }> = [];
-      service.onEvent((e) => {
-        if (e.type === "complete" || e.type === "paragraph_boundary") events.push(e);
-      });
-
-      const p = service.start(BASE_SETTINGS);
-      deepgramMock.instances.at(-1)!.emit(deepgramMock.LiveTranscriptionEvents.Open);
-      await p;
-
-      const conn = deepgramMock.instances.at(-1)!;
-      // Accumulate an is_final segment with \n\n
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("Part one.\n\nPart two.", true, false)
-      );
-      // UtteranceEnd flushes the accumulated segments
-      conn.emit(deepgramMock.LiveTranscriptionEvents.UtteranceEnd);
-
-      expect(events).toMatchObject([
-        { type: "complete", text: "Part one." },
-        { type: "paragraph_boundary" },
-        { type: "complete", text: "Part two." },
-      ]);
-    });
-  });
-
-  it("does not emit complete for empty speech_final transcripts", async () => {
+  it("drain grace period absorbs a late completed event without losing its transcript", async () => {
     const service = new VoiceTranscriptionService();
     const completes: string[] = [];
     service.onEvent((e) => {
       if (e.type === "complete") completes.push(e.text);
     });
 
-    const p = service.start(BASE_SETTINGS);
-    deepgramMock.instances.at(-1)!.emit(deepgramMock.LiveTranscriptionEvents.Open);
-    await p;
+    const { socket } = await bringSessionReady(service);
+    const drainPromise = service.stopGracefully();
 
-    const conn = deepgramMock.instances.at(-1)!;
-    conn.emit(deepgramMock.LiveTranscriptionEvents.Transcript, makeTranscriptEvent("", true, true));
-
-    expect(completes).toHaveLength(0);
+    // server_vad auto-committed item A mid-utterance; its completed arrives
+    // first, then item B's completed for our explicit commit arrives ~50ms later.
+    socket.simulateMessage("conversation.item.input_audio_transcription.completed", {
+      transcript: "first half",
+    });
+    vi.advanceTimersByTime(50);
+    socket.simulateMessage("conversation.item.input_audio_transcription.completed", {
+      transcript: "second half",
+    });
+    vi.advanceTimersByTime(100);
+    await drainPromise;
+    expect(completes).toEqual(["first half", "second half"]);
   });
 
-  describe("paragraph boundary detection from is_final segments", () => {
-    async function startService(): Promise<{
-      service: VoiceTranscriptionService;
-      conn: (typeof deepgramMock.instances)[number];
-      events: Array<{ type: string; text?: string }>;
-    }> {
-      const service = new VoiceTranscriptionService();
-      const events: Array<{ type: string; text?: string }> = [];
-      service.onEvent((e) => events.push(e));
+  it("drain resolves after the timeout if no completed event arrives", async () => {
+    const service = new VoiceTranscriptionService();
+    await bringSessionReady(service);
 
-      const p = service.start(BASE_SETTINGS);
-      const conn = deepgramMock.instances.at(-1)!;
-      conn.emit(deepgramMock.LiveTranscriptionEvents.Open);
-      await p;
-
-      return { service, conn, events };
-    }
-
-    it("leading \\n\\n in is_final flushes current utterance and emits paragraph_boundary", async () => {
-      const { conn, events } = await startService();
-
-      // First paragraph — two is_final segments
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("First paragraph.", true, false)
-      );
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("More of first.", true, false)
-      );
-
-      // Deepgram signals new paragraph with leading \n\n on next is_final
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("\n\nSecond paragraph.", true, false)
-      );
-
-      const completes = events.filter((e) => e.type === "complete").map((e) => e.text);
-      const boundaries = events.filter((e) => e.type === "paragraph_boundary");
-
-      expect(completes).toEqual(["First paragraph. More of first."]);
-      expect(boundaries).toHaveLength(1);
-    });
-
-    it("leading \\n\\n in is_final: text after boundary accumulates for next speech_final", async () => {
-      const { conn, events } = await startService();
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("Para one.", true, false)
-      );
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("\n\nPara two start", true, false)
-      );
-      // speech_final finalizes para two
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("Para two start and end.", true, true)
-      );
-
-      const completes = events.filter((e) => e.type === "complete").map((e) => e.text);
-      const boundaries = events.filter((e) => e.type === "paragraph_boundary");
-
-      expect(completes[0]).toBe("Para one.");
-      expect(boundaries).toHaveLength(1);
-      // Para two is finalized by speech_final — it joins the after-boundary segment
-      expect(completes[1]).toContain("Para two");
-    });
-
-    it("embedded \\n\\n in is_final splits at boundary and accumulates remainder", async () => {
-      const { conn, events } = await startService();
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("End of para one.\n\nStart of para two.", true, false)
-      );
-
-      const completes = events.filter((e) => e.type === "complete").map((e) => e.text);
-      const boundaries = events.filter((e) => e.type === "paragraph_boundary");
-
-      expect(completes).toEqual(["End of para one."]);
-      expect(boundaries).toHaveLength(1);
-    });
-
-    it("\\n\\n-only is_final flushes current utterance and emits boundary with no new text", async () => {
-      const { conn, events } = await startService();
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("Para one text.", true, false)
-      );
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("\n\n", true, false)
-      );
-
-      const completes = events.filter((e) => e.type === "complete").map((e) => e.text);
-      const boundaries = events.filter((e) => e.type === "paragraph_boundary");
-
-      expect(completes).toEqual(["Para one text."]);
-      expect(boundaries).toHaveLength(1);
-    });
-
-    it("paragraph boundary in is_final does not emit duplicate complete when speech_final follows", async () => {
-      const { conn, events } = await startService();
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("Para one.", true, false)
-      );
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("\n\nPara two.", true, false)
-      );
-      // speech_final for para two
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("Para two.", true, true)
-      );
-
-      const completes = events.filter((e) => e.type === "complete").map((e) => e.text);
-      const boundaries = events.filter((e) => e.type === "paragraph_boundary");
-
-      // Para one flushed at boundary, para two finalized at speech_final — exactly 2 completes
-      expect(completes).toHaveLength(2);
-      expect(completes[0]).toBe("Para one.");
-      expect(boundaries).toHaveLength(1);
-    });
-
-    it("is_final without \\n\\n still accumulates normally", async () => {
-      const { conn, events } = await startService();
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("Hello world", true, false)
-      );
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("how are you", true, true)
-      );
-
-      const completes = events.filter((e) => e.type === "complete").map((e) => e.text);
-      const boundaries = events.filter((e) => e.type === "paragraph_boundary");
-
-      expect(completes).toEqual(["Hello world how are you"]);
-      expect(boundaries).toHaveLength(0);
-    });
-
-    it("leading \\n\\n on first-ever is_final (empty utteranceSegments) emits no boundary", async () => {
-      const { conn, events } = await startService();
-
-      // First segment ever received starts with \n\n — there is no previous paragraph to close
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("\n\nFirst text.", true, false)
-      );
-
-      // No complete and no boundary — nothing to close yet
-      const completesBefore = events.filter((e) => e.type === "complete");
-      const boundaries = events.filter((e) => e.type === "paragraph_boundary");
-      expect(completesBefore).toHaveLength(0);
-      expect(boundaries).toHaveLength(0);
-
-      // The text after \n\n should have been accumulated, so speech_final finalizes it
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("First text continued.", true, true)
-      );
-      const completesAfter = events.filter((e) => e.type === "complete").map((e) => e.text);
-      expect(completesAfter).toHaveLength(1);
-      expect(completesAfter[0]).toContain("First text");
-    });
-
-    it("emits events in correct order: complete → paragraph_boundary", async () => {
-      const { conn, events } = await startService();
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("Para one text.", true, false)
-      );
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("\n\nPara two start.", true, false)
-      );
-
-      const relevant = events.filter(
-        (e) => e.type === "complete" || e.type === "paragraph_boundary"
-      );
-      expect(relevant).toHaveLength(2);
-      expect(relevant[0]).toMatchObject({ type: "complete", text: "Para one text." });
-      expect(relevant[1]).toEqual({ type: "paragraph_boundary" });
-    });
-
-    it("UtteranceEnd after paragraph boundary flushes the new paragraph correctly", async () => {
-      const { conn, events } = await startService();
-
-      // Para one ends, \n\n detected, Para two starts
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("Para one.", true, false)
-      );
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("\n\nPara two text.", true, false)
-      );
-
-      // UtteranceEnd fires (instead of speech_final) to finalize para two
-      conn.emit(deepgramMock.LiveTranscriptionEvents.UtteranceEnd);
-
-      const completes = events.filter((e) => e.type === "complete").map((e) => e.text);
-      const boundaries = events.filter((e) => e.type === "paragraph_boundary");
-
-      expect(completes).toEqual(["Para one.", "Para two text."]);
-      expect(boundaries).toHaveLength(1);
-    });
-
-    it("three paragraphs in one session produce two boundaries", async () => {
-      const { conn, events } = await startService();
-
-      // Para one accumulates as is_final
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("Para one.", true, false)
-      );
-      // \n\n → flush Para one, boundary 1, start Para two
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("\n\nPara two.", true, false)
-      );
-      // \n\n → flush Para two, boundary 2, start Para three
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("\n\nPara three.", true, false)
-      );
-      // speech_final finalizes Para three
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("Para three end.", true, true)
-      );
-
-      const completes = events.filter((e) => e.type === "complete").map((e) => e.text);
-      const boundaries = events.filter((e) => e.type === "paragraph_boundary");
-
-      expect(completes[0]).toBe("Para one.");
-      expect(completes[1]).toBe("Para two.");
-      expect(boundaries).toHaveLength(2);
-      expect(completes.at(-1)).toContain("Para three");
-    });
-
-    it("speech_final with embedded \\n\\n splits via emitCompleteWithParagraphDetection", async () => {
-      const { conn, events } = await startService();
-
-      // speech_final itself contains \n\n — the existing speechFinal path handles this
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("Para one text.\n\nPara two text.", true, true)
-      );
-
-      const completes = events.filter((e) => e.type === "complete").map((e) => e.text);
-      const boundaries = events.filter((e) => e.type === "paragraph_boundary");
-
-      expect(completes).toEqual(["Para one text.", "Para two text."]);
-      expect(boundaries).toHaveLength(1);
-    });
+    const drainPromise = service.stopGracefully();
+    vi.advanceTimersByTime(3_000);
+    await expect(drainPromise).resolves.toBeUndefined();
   });
 
-  describe("commitParagraphBoundary — manual paragraph flush coordination", () => {
-    async function startService() {
-      const service = new VoiceTranscriptionService();
-      const events: Array<{ type: string; text?: string }> = [];
-      service.onEvent((e) => {
-        if (e.type === "complete" || e.type === "delta" || e.type === "paragraph_boundary") {
-          events.push(e);
-        }
-      });
-      const p = service.start(BASE_SETTINGS);
-      const conn = deepgramMock.instances.at(-1)!;
-      conn.emit(deepgramMock.LiveTranscriptionEvents.Open);
-      await p;
-      return { service, events, conn };
-    }
+  it("repeated stopGracefully calls share a single in-flight drain", async () => {
+    const service = new VoiceTranscriptionService();
+    const { socket } = await bringSessionReady(service);
 
-    it("commits empty state when no utterance is in flight (no suppression)", async () => {
-      const { service, conn, events } = await startService();
+    const first = service.stopGracefully();
+    const second = service.stopGracefully();
 
-      service.commitParagraphBoundary();
-      events.length = 0;
+    // Only one commit is sent, even though stop was called twice.
+    const commits = socket.sentJson().filter((p) => p.type === "input_audio_buffer.commit");
+    expect(commits).toHaveLength(1);
 
-      // No suppression — events flow normally
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("new text", true, true)
-      );
-
-      expect(events.filter((e) => e.type === "complete")).toHaveLength(1);
-      expect(events.find((e) => e.type === "complete")?.text).toBe("new text");
+    socket.simulateMessage("conversation.item.input_audio_transcription.completed", {
+      transcript: "ok",
     });
-
-    it("commits accumulated delta text and suppresses late speech_final", async () => {
-      const { service, conn, events } = await startService();
-
-      // Interim delta builds liveText
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("how are", false, false)
-      );
-
-      service.commitParagraphBoundary();
-      events.length = 0;
-
-      // Late speech_final for the committed utterance is suppressed
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("how are you", true, true)
-      );
-
-      expect(events.filter((e) => e.type === "complete")).toHaveLength(0);
-
-      // Second commit finds nothing — suppression was armed only for non-empty text
-      events.length = 0;
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("next utterance", true, true)
-      );
-
-      expect(events.filter((e) => e.type === "complete")).toHaveLength(1);
-      expect(events.find((e) => e.type === "complete")?.text).toBe("next utterance");
-    });
-
-    it("suppresses is_final accumulated utterance after commit", async () => {
-      const { service, conn, events } = await startService();
-
-      // is_final events accumulate in utteranceSegments AND update liveText via
-      // emitIncrementalDelta, so commit captures them for suppression.
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("hello world", true, false)
-      );
-      service.commitParagraphBoundary();
-      events.length = 0;
-
-      // Late is_final + speech_final is suppressed
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("hello world extended", true, true)
-      );
-
-      expect(events.filter((e) => e.type === "complete")).toHaveLength(0);
-    });
-
-    it("late speech_final after commitParagraphBoundary does not emit complete", async () => {
-      const { service, conn, events } = await startService();
-
-      // Build up some interim state
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("how are you", false, false)
-      );
-
-      service.commitParagraphBoundary();
-      events.length = 0; // Reset after capture
-
-      // Deepgram sends speech_final for the consumed utterance
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("how are you doing", true, true)
-      );
-
-      expect(events.filter((e) => e.type === "complete")).toHaveLength(0);
-    });
-
-    it("late UtteranceEnd after commitParagraphBoundary does not emit complete", async () => {
-      const { service, conn, events } = await startService();
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("in flight", false, false)
-      );
-
-      service.commitParagraphBoundary();
-      events.length = 0;
-
-      conn.emit(deepgramMock.LiveTranscriptionEvents.UtteranceEnd);
-
-      expect(events.filter((e) => e.type === "complete")).toHaveLength(0);
-    });
-
-    it("is_final events after commitParagraphBoundary (before speech_final) are suppressed", async () => {
-      const { service, conn, events } = await startService();
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("first words", false, false)
-      );
-
-      service.commitParagraphBoundary();
-      events.length = 0;
-
-      // is_final event for the suppressed utterance
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("first words extended", true, false)
-      );
-
-      expect(events.filter((e) => e.type === "delta")).toHaveLength(0);
-    });
-
-    it("suppression clears after speech_final — new utterance events flow normally", async () => {
-      const { service, conn, events } = await startService();
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("first paragraph", false, false)
-      );
-
-      service.commitParagraphBoundary();
-
-      // speech_final clears suppression
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("first paragraph final", true, true)
-      );
-
-      events.length = 0;
-
-      // New utterance after the boundary should flow normally
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("second paragraph", false, false)
-      );
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("second paragraph done", true, true)
-      );
-
-      expect(events.filter((e) => e.type === "delta").length).toBeGreaterThan(0);
-      expect(events.filter((e) => e.type === "complete")).toHaveLength(1);
-      expect(events.find((e) => e.type === "complete")?.text).toBe("second paragraph done");
-    });
-
-    it("suppression clears after UtteranceEnd — new utterance events flow normally", async () => {
-      const { service, conn, events } = await startService();
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("first", false, false)
-      );
-
-      service.commitParagraphBoundary();
-
-      conn.emit(deepgramMock.LiveTranscriptionEvents.UtteranceEnd);
-
-      events.length = 0;
-
-      // New utterance after boundary
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("after boundary", true, true)
-      );
-
-      expect(events.filter((e) => e.type === "complete")).toHaveLength(1);
-      expect(events.find((e) => e.type === "complete")?.text).toBe("after boundary");
-    });
-
-    it("rapid back-to-back commitParagraphBoundary calls are safe", async () => {
-      const { service, conn, events } = await startService();
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("first", false, false)
-      );
-
-      // First commit captures text and arms suppression
-      service.commitParagraphBoundary();
-      // Second call finds no in-flight text — does NOT clear the
-      // first call's suppression flag (only armed when non-empty text was captured).
-      service.commitParagraphBoundary();
-
-      events.length = 0;
-
-      // Late speech_final for the original utterance should still be suppressed.
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("first extended", true, true)
-      );
-
-      expect(events.filter((e) => e.type === "complete")).toHaveLength(0);
-
-      // New utterance after suppression clears flows normally.
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("new paragraph text", true, true)
-      );
-
-      expect(events.filter((e) => e.type === "complete")).toHaveLength(1);
-      expect(events.find((e) => e.type === "complete")?.text).toBe("new paragraph text");
-    });
+    vi.advanceTimersByTime(100);
+    await Promise.all([first, second]);
   });
 
-  describe("realistic Deepgram payload scenarios", () => {
-    it("ignores alternatives[0].paragraphs field and emits complete from transcript text only", async () => {
-      const service = new VoiceTranscriptionService();
-      const events: Array<{ type: string; text?: string }> = [];
-      service.onEvent((e) => {
-        if (e.type === "complete" || e.type === "paragraph_boundary") events.push(e);
-      });
-
-      const p = service.start(BASE_SETTINGS);
-      deepgramMock.instances.at(-1)!.emit(deepgramMock.LiveTranscriptionEvents.Open);
-      await p;
-
-      const conn = deepgramMock.instances.at(-1)!;
-      // Full-shape Deepgram response object with a paragraphs field (REST-only)
-      conn.emit(deepgramMock.LiveTranscriptionEvents.Transcript, {
-        channel: {
-          alternatives: [
-            {
-              transcript: "Hello world",
-              paragraphs: {
-                paragraphs: [
-                  {
-                    sentences: [{ text: "Hello world", start: 0, end: 1.5 }],
-                    start: 0,
-                    end: 1.5,
-                  },
-                ],
-              },
-            },
-          ],
-        },
-        is_final: true,
-        speech_final: true,
-      });
-
-      // Only transcript text is used — paragraphs field is ignored
-      expect(events).toMatchObject([{ type: "complete", text: "Hello world" }]);
+  it("stopGracefully without an open connection goes straight to idle", async () => {
+    const service = new VoiceTranscriptionService();
+    const statuses: string[] = [];
+    service.onEvent((e) => {
+      if (e.type === "status") statuses.push(e.status);
     });
 
-    it("non-prefix interim revision produces correct final text without spurious events", async () => {
-      const service = new VoiceTranscriptionService();
-      const deltas: string[] = [];
-      const completes: string[] = [];
-      service.onEvent((e) => {
-        if (e.type === "delta") deltas.push(e.text);
-        if (e.type === "complete") completes.push(e.text);
-      });
-
-      const p = service.start(BASE_SETTINGS);
-      deepgramMock.instances.at(-1)!.emit(deepgramMock.LiveTranscriptionEvents.Open);
-      await p;
-
-      const conn = deepgramMock.instances.at(-1)!;
-
-      // Interim 1: "hell" — first delta emitted
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("hell", false, false)
-      );
-      expect(deltas).toEqual(["hell"]);
-
-      // Interim 2: "help" — non-prefix revision (not an extension of "hell"),
-      // triggers the silent liveText update path (no delta emitted)
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("help", false, false)
-      );
-      expect(deltas).toEqual(["hell"]); // No new delta
-
-      // Interim 3: "help me" — prefix extension of revised "help" baseline,
-      // proves the liveText baseline was correctly updated so delta emission recovers
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("help me", false, false)
-      );
-      expect(deltas).toEqual(["hell", " me"]); // " me" delta from "help" → "help me"
-
-      // speech_final: "Hello world" — produces exactly one complete event
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("Hello world", true, true)
-      );
-
-      expect(completes).toEqual(["Hello world"]);
-      // No spurious complete for the intermediate "help" or "help me"
-      expect(completes).toHaveLength(1);
-    });
+    await service.stopGracefully();
+    expect(statuses).toEqual(["idle"]);
   });
 
-  describe("status sequence regression — finishing phase", () => {
-    async function startService() {
-      const service = new VoiceTranscriptionService();
-      const statuses: string[] = [];
-      service.onEvent((e) => {
-        if (e.type === "status") statuses.push(e.status);
-      });
-      const p = service.start(BASE_SETTINGS);
-      const conn = deepgramMock.instances.at(-1)!;
-      conn.emit(deepgramMock.LiveTranscriptionEvents.Open);
-      await p;
-      return { service, statuses, conn };
-    }
-
-    it("emits finishing status during graceful stop before idle", async () => {
-      const { service, statuses, conn } = await startService();
-
-      const stopPromise = service.stopGracefully();
-      expect(statuses).toContain("finishing");
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("", true, true)
-      );
-      await stopPromise;
-
-      expect(statuses.at(-1)).toBe("idle");
+  it("start() during an in-flight drain resolves the old drain and reaches recording", async () => {
+    const service = new VoiceTranscriptionService();
+    const statuses: string[] = [];
+    service.onEvent((e) => {
+      if (e.type === "status") statuses.push(e.status);
     });
 
-    it("full status sequence: connecting → recording → finishing → idle", async () => {
-      const service = new VoiceTranscriptionService();
-      const statuses: string[] = [];
-      service.onEvent((e) => {
-        if (e.type === "status") statuses.push(e.status);
-      });
+    const { socket: firstSocket } = await bringSessionReady(service);
+    const drainPromise = service.stopGracefully();
+    // Don't simulate completed — drain is still in flight when start() runs.
 
-      const startPromise = service.start(BASE_SETTINGS);
-      expect(statuses).toContain("connecting");
+    const secondStart = service.start(BASE_SETTINGS);
+    await Promise.resolve();
+    const secondSocket = latestInstance();
+    secondSocket.simulateOpen();
+    secondSocket.simulateMessage("session.updated");
+    await secondStart;
 
-      const conn = deepgramMock.instances.at(-1)!;
-      conn.emit(deepgramMock.LiveTranscriptionEvents.Open);
-      await startPromise;
-      expect(statuses).toContain("recording");
+    // The first drain resolves once cleanupPreviousSession fires from start().
+    await drainPromise;
 
-      const stopPromise = service.stopGracefully();
-      expect(statuses).toContain("finishing");
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("last words", true, true)
-      );
-      await stopPromise;
-
-      expect(statuses).toEqual(["connecting", "recording", "finishing", "idle"]);
-    });
+    // Old commit was sent, new commit was NOT (new session has no drain).
+    const commitsOnFirst = firstSocket
+      .sentJson()
+      .filter((p) => p.type === "input_audio_buffer.commit").length;
+    const commitsOnSecond = secondSocket
+      .sentJson()
+      .filter((p) => p.type === "input_audio_buffer.commit").length;
+    expect(commitsOnFirst).toBe(1);
+    expect(commitsOnSecond).toBe(0);
+    expect(statuses.at(-1)).toBe("recording");
   });
 
-  describe("word-level confidence propagation", () => {
-    async function startService() {
-      const service = new VoiceTranscriptionService();
-      const events: Array<{ type: string; text?: string; confidence?: unknown }> = [];
-      service.onEvent((e) => events.push(e));
+  // ── Error handling ───────────────────────────────────────────────────────
 
-      const p = service.start(BASE_SETTINGS);
-      const conn = deepgramMock.instances.at(-1)!;
-      conn.emit(deepgramMock.LiveTranscriptionEvents.Open);
-      await p;
+  it("emits error and error status when the WebSocket reports an error", async () => {
+    const service = new VoiceTranscriptionService();
+    const events: VoiceTranscriptionEvent[] = [];
+    service.onEvent((e) => events.push(e));
 
-      return { service, events, conn };
-    }
+    const startPromise = service.start(BASE_SETTINGS);
+    await Promise.resolve();
+    const socket = latestInstance();
+    socket.simulateOpen();
+    socket.simulateError(new Error("network down"));
 
-    it("includes confidence on complete events when words are provided", async () => {
-      const { conn, events } = await startService();
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("Hello world", true, true, [
-          { word: "hello", confidence: 0.99 },
-          { word: "world", confidence: 0.95 },
-        ])
-      );
-
-      const complete = events.find((e) => e.type === "complete");
-      expect(complete).toBeDefined();
-      expect(complete!.confidence).toEqual({
-        minConfidence: 0.95,
-        wordCount: 2,
-        uncertainWords: [],
-        words: [
-          { word: "hello", confidence: 0.99 },
-          { word: "world", confidence: 0.95 },
-        ],
-      });
-    });
-
-    it("marks words below tag threshold as uncertain", async () => {
-      const { conn, events } = await startService();
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("racked native", true, true, [
-          { word: "racked", confidence: 0.65 },
-          { word: "native", confidence: 0.92 },
-        ])
-      );
-
-      const complete = events.find((e) => e.type === "complete");
-      expect(complete!.confidence).toEqual({
-        minConfidence: 0.65,
-        wordCount: 2,
-        uncertainWords: ["racked"],
-        words: [
-          { word: "racked", confidence: 0.65 },
-          { word: "native", confidence: 0.92 },
-        ],
-      });
-    });
-
-    it("merges confidence across multiple is_final segments", async () => {
-      const { conn, events } = await startService();
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("Hello", true, false, [{ word: "hello", confidence: 0.99 }])
-      );
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("world", true, true, [{ word: "world", confidence: 0.75 }])
-      );
-
-      const complete = events.find((e) => e.type === "complete");
-      expect(complete!.confidence).toEqual({
-        minConfidence: 0.75,
-        wordCount: 2,
-        uncertainWords: ["world"],
-        words: [
-          { word: "hello", confidence: 0.99 },
-          { word: "world", confidence: 0.75 },
-        ],
-      });
-    });
-
-    it("returns default confidence when words array is empty", async () => {
-      const { conn, events } = await startService();
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("Hello world", true, true)
-      );
-
-      const complete = events.find((e) => e.type === "complete");
-      expect(complete!.confidence).toEqual({
-        minConfidence: 1.0,
-        wordCount: 0,
-        uncertainWords: [],
-        words: [],
-      });
-    });
-
-    it("resets confidence accumulator after speech_final", async () => {
-      const { conn, events } = await startService();
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("first", true, true, [{ word: "first", confidence: 0.5 }])
-      );
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("second", true, true, [{ word: "second", confidence: 0.99 }])
-      );
-
-      const completes = events.filter((e) => e.type === "complete");
-      expect(completes[0].confidence).toMatchObject({ minConfidence: 0.5 });
-      expect(completes[1].confidence).toMatchObject({ minConfidence: 0.99 });
-    });
-
-    it("commitParagraphBoundary commits in-flight text and arms suppression", async () => {
-      const { service, conn, events } = await startService();
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("in flight", false, false)
-      );
-
-      service.commitParagraphBoundary();
-      events.length = 0;
-
-      // Late speech_final suppressed — in-flight text was captured by commit
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("in flight final", true, true)
-      );
-
-      expect(events.filter((e) => e.type === "complete")).toHaveLength(0);
-    });
-
-    it("includes confidence on complete events emitted via UtteranceEnd flush", async () => {
-      const { conn, events } = await startService();
-
-      conn.emit(
-        deepgramMock.LiveTranscriptionEvents.Transcript,
-        makeTranscriptEvent("Hello", true, false, [{ word: "hello", confidence: 0.88 }])
-      );
-      conn.emit(deepgramMock.LiveTranscriptionEvents.UtteranceEnd);
-
-      const complete = events.find((e) => e.type === "complete");
-      expect(complete!.confidence).toEqual({
-        minConfidence: 0.88,
-        wordCount: 1,
-        uncertainWords: [],
-        words: [{ word: "hello", confidence: 0.88 }],
-      });
-    });
+    await expect(startPromise).resolves.toEqual({ ok: false, error: "network down" });
+    expect(events.some((e) => e.type === "error" && /network down/.test(e.message))).toBe(true);
+    expect(events.some((e) => e.type === "status" && e.status === "error")).toBe(true);
   });
 
-  describe("Metadata event", () => {
-    it("logs request_id when Metadata event is received", async () => {
-      const logger = await import("../../utils/logger.js");
-      const logInfoSpy = vi.spyOn(logger, "logInfo");
-
-      const service = new VoiceTranscriptionService();
-      const p = service.start(BASE_SETTINGS);
-      const conn = deepgramMock.instances.at(-1)!;
-      conn.emit(deepgramMock.LiveTranscriptionEvents.Open);
-      await p;
-
-      conn.emit(deepgramMock.LiveTranscriptionEvents.Metadata, {
-        type: "Metadata",
-        request_id: "abc-123-def",
-        transaction_key: "tx-key",
-        sha256: "hash",
-        created: "2024-01-01T00:00:00Z",
-        duration: 1.0,
-        channels: 1,
-      });
-
-      expect(logInfoSpy).toHaveBeenCalled();
-      const call = logInfoSpy.mock.calls.find(
-        (c) => typeof c[0] === "string" && (c[0] as string).includes("Metadata received")
-      );
-      expect(call).toBeDefined();
-      expect(call?.[1]).toMatchObject({ request_id: "abc-123-def" });
-
-      logInfoSpy.mockRestore();
+  it("propagates server-side error events", async () => {
+    const service = new VoiceTranscriptionService();
+    const errors: string[] = [];
+    service.onEvent((e) => {
+      if (e.type === "error") errors.push(e.message);
     });
 
-    it("ignores Metadata from stale sessions", async () => {
-      const logger = await import("../../utils/logger.js");
-      const logInfoSpy = vi.spyOn(logger, "logInfo");
-
-      const service = new VoiceTranscriptionService();
-
-      // Start session A
-      const pA = service.start(BASE_SETTINGS);
-      const connA = deepgramMock.instances.at(-1)!;
-      connA.emit(deepgramMock.LiveTranscriptionEvents.Open);
-      await pA;
-
-      logInfoSpy.mockClear();
-
-      // Start session B — increments sessionId
-      const pB = service.start(BASE_SETTINGS);
-      const connB = deepgramMock.instances.at(-1)!;
-      connB.emit(deepgramMock.LiveTranscriptionEvents.Open);
-      await pB;
-
-      logInfoSpy.mockClear();
-
-      // Emit Metadata on session A's connection — should be ignored
-      connA.emit(deepgramMock.LiveTranscriptionEvents.Metadata, {
-        type: "Metadata",
-        request_id: "stale-req-id",
-        transaction_key: "tx",
-        sha256: "h",
-        created: "2024-01-01T00:00:00Z",
-        duration: 1.0,
-        channels: 1,
-      });
-
-      const metadataCalls = logInfoSpy.mock.calls.filter(
-        (c) => typeof c[0] === "string" && (c[0] as string).includes("Metadata received")
-      );
-      expect(metadataCalls).toHaveLength(0);
-
-      logInfoSpy.mockRestore();
+    const { socket } = await bringSessionReady(service);
+    socket.simulateMessage("error", {
+      error: { message: "invalid_session_config", type: "invalid_request_error" },
     });
+
+    expect(errors).toContain("invalid_session_config");
   });
 
-  describe("pre-connect buffer overflow", () => {
-    it("warns once when buffer reaches 100-chunk cap", async () => {
-      const logger = await import("../../utils/logger.js");
-      const logWarnSpy = vi.spyOn(logger, "logWarn");
-
-      const service = new VoiceTranscriptionService();
-      void service.start(BASE_SETTINGS);
-
-      // Send 101 chunks — the 101st should trigger overflow warning
-      for (let i = 0; i < 101; i++) {
-        service.sendAudioChunk(new ArrayBuffer(4));
-      }
-
-      const overflowCalls = logWarnSpy.mock.calls.filter(
-        (c) => typeof c[0] === "string" && (c[0] as string).includes("Pre-connect buffer full")
-      );
-      expect(overflowCalls).toHaveLength(1);
-
-      logWarnSpy.mockRestore();
+  it("parses string message data as well as Buffer", async () => {
+    const service = new VoiceTranscriptionService();
+    const completes: string[] = [];
+    service.onEvent((e) => {
+      if (e.type === "complete") completes.push(e.text);
     });
 
-    it("does not warn a second time within the same session", async () => {
-      const logger = await import("../../utils/logger.js");
-      const logWarnSpy = vi.spyOn(logger, "logWarn");
+    const { socket } = await bringSessionReady(service);
+    // `ws` can deliver messages as strings when the server sends a text frame.
+    socket.simulateRawMessage(
+      JSON.stringify({
+        type: "conversation.item.input_audio_transcription.completed",
+        transcript: "from string",
+      })
+    );
+    expect(completes).toEqual(["from string"]);
+  });
 
-      const service = new VoiceTranscriptionService();
-      void service.start(BASE_SETTINGS);
+  it("ignores malformed JSON messages without throwing", async () => {
+    const service = new VoiceTranscriptionService();
+    const events: VoiceTranscriptionEvent[] = [];
+    service.onEvent((e) => events.push(e));
 
-      // Trigger overflow
-      for (let i = 0; i < 101; i++) {
-        service.sendAudioChunk(new ArrayBuffer(4));
-      }
+    const { socket } = await bringSessionReady(service);
+    expect(() => socket.simulateRawMessage("not json {")).not.toThrow();
 
-      logWarnSpy.mockClear();
+    // Service still functional afterward
+    socket.simulateMessage("conversation.item.input_audio_transcription.completed", {
+      transcript: "ok",
+    });
+    expect(events.some((e) => e.type === "complete")).toBe(true);
+  });
 
-      // More chunks — no second warning
-      for (let i = 0; i < 10; i++) {
-        service.sendAudioChunk(new ArrayBuffer(4));
-      }
+  it("fails start when WebSocket construction throws", async () => {
+    throwOnConstruct = true;
+    constructError = new Error("ECONNREFUSED");
+    const service = new VoiceTranscriptionService();
+    const result = await service.start(BASE_SETTINGS);
+    expect(result).toEqual({ ok: false, error: "ECONNREFUSED" });
+  });
 
-      const overflowCalls = logWarnSpy.mock.calls.filter(
-        (c) => typeof c[0] === "string" && (c[0] as string).includes("Pre-connect buffer full")
-      );
-      expect(overflowCalls).toHaveLength(0);
+  // ── Reentrancy / stale-session guard ─────────────────────────────────────
 
-      logWarnSpy.mockRestore();
+  it("ignores transcript events from a stale session", async () => {
+    const service = new VoiceTranscriptionService();
+    const completes: string[] = [];
+    service.onEvent((e) => {
+      if (e.type === "complete") completes.push(e.text);
     });
 
-    it("resets overflow warning on new session", async () => {
-      const logger = await import("../../utils/logger.js");
-      const logWarnSpy = vi.spyOn(logger, "logWarn");
+    const { socket: firstSocket } = await bringSessionReady(service);
+    // Start a second session; the first socket is now stale.
+    const secondPromise = service.start(BASE_SETTINGS);
+    await Promise.resolve();
+    const secondSocket = latestInstance();
+    secondSocket.simulateOpen();
+    secondSocket.simulateMessage("session.updated");
+    await secondPromise;
 
-      const service = new VoiceTranscriptionService();
-
-      // Session 1: overflow
-      void service.start(BASE_SETTINGS);
-      for (let i = 0; i < 101; i++) {
-        service.sendAudioChunk(new ArrayBuffer(4));
-      }
-
-      expect(
-        logWarnSpy.mock.calls.filter(
-          (c) => typeof c[0] === "string" && (c[0] as string).includes("Pre-connect buffer full")
-        )
-      ).toHaveLength(1);
-
-      logWarnSpy.mockClear();
-
-      // Session 2: should overflow again (flag reset)
-      void service.start(BASE_SETTINGS);
-      for (let i = 0; i < 101; i++) {
-        service.sendAudioChunk(new ArrayBuffer(4));
-      }
-
-      expect(
-        logWarnSpy.mock.calls.filter(
-          (c) => typeof c[0] === "string" && (c[0] as string).includes("Pre-connect buffer full")
-        )
-      ).toHaveLength(1);
-
-      logWarnSpy.mockRestore();
+    firstSocket.simulateMessage("conversation.item.input_audio_transcription.completed", {
+      transcript: "ghost",
     });
+
+    expect(completes).toEqual([]);
+  });
+
+  // ── commitParagraphBoundary ──────────────────────────────────────────────
+
+  it("commitParagraphBoundary resets state and does not touch the WebSocket", async () => {
+    const service = new VoiceTranscriptionService();
+    const { socket } = await bringSessionReady(service);
+    const sentBefore = socket.sent.length;
+
+    socket.simulateMessage("conversation.item.input_audio_transcription.delta", {
+      delta: "Hello",
+    });
+    service.commitParagraphBoundary();
+
+    expect(socket.sent.length).toBe(sentBefore);
+    expect(socket.closeCalls).toBe(0);
+  });
+
+  // ── destroy ─────────────────────────────────────────────────────────────
+
+  it("destroy closes the socket and clears listeners", async () => {
+    const service = new VoiceTranscriptionService();
+    const events: VoiceTranscriptionEvent[] = [];
+    service.onEvent((e) => events.push(e));
+
+    const { socket } = await bringSessionReady(service);
+    service.destroy();
+    expect(socket.closeCalls).toBe(1);
+
+    // Listeners cleared: subsequent emits should not reach the recorded array.
+    const lengthAtDestroy = events.length;
+    // Spawn a brand-new session — the listener from before destroy should be gone.
+    const { socket: socket2 } = await bringSessionReady(service);
+    socket2.simulateMessage("conversation.item.input_audio_transcription.completed", {
+      transcript: "after destroy",
+    });
+    expect(events.length).toBe(lengthAtDestroy);
   });
 });
