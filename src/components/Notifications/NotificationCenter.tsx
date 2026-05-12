@@ -341,6 +341,9 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
     });
     if (ids.length === 0) return;
     markIdsRead(ids);
+    const prevLastClosedAt = options.resetLastClosed
+      ? useUIStore.getState().lastNotificationCenterClosedAt
+      : undefined;
     if (options.resetLastClosed) {
       resetLastClosedAt();
     }
@@ -364,6 +367,9 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
         onClick: () => {
           for (const id of ids) {
             markUnseenAsToast(id, { silent: true });
+          }
+          if (prevLastClosedAt !== undefined) {
+            useUIStore.setState({ lastNotificationCenterClosedAt: prevLastClosedAt });
           }
         },
       },
@@ -693,7 +699,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
               onClick={handleResumeNotifications}
               aria-label="Resume notifications"
               title="Resume notifications"
-              className="ml-0.5 inline-flex shrink-0 items-center justify-center rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[11px] font-medium text-daintree-text/70 hover:bg-overlay-emphasis hover:text-daintree-text transition-colors"
+              className="ml-0.5 inline-flex shrink-0 items-center justify-center rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[11px] font-medium normal-case tracking-normal text-daintree-text/70 hover:bg-overlay-emphasis hover:text-daintree-text transition-colors"
             >
               Resume
             </button>
@@ -1055,7 +1061,7 @@ function NewSinceLastLookedDivider({
           onClick={onMarkRead}
           className="inline-flex items-center rounded-[var(--radius-sm)] px-1.5 py-0.5 normal-case tracking-normal text-daintree-text/60 hover:bg-overlay-emphasis hover:text-daintree-text transition-colors"
         >
-          Mark these {unreadCount} read
+          {unreadCount === 1 ? "Mark this read" : `Mark these ${unreadCount} read`}
         </button>
       )}
     </div>
