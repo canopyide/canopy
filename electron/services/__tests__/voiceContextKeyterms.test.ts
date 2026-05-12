@@ -303,4 +303,24 @@ describe("formatKeytermPrompt", () => {
     const result = formatKeytermPrompt(["abc", "abc1", "abc2", "abc3"], 23);
     expect(result).toBe("Keywords: abc, abc1");
   });
+
+  it("skips an over-cap term mid-list and continues to later terms that fit", () => {
+    // "Keywords: foo" = 13. "averylongterm_skip_me" alone added would push to 36 (> 20).
+    // "Keywords: foo, bar" = 18 (≤ 20). Skip semantics keep "bar" reachable.
+    const result = formatKeytermPrompt(["foo", "averylongterm_skip_me", "bar"], 20);
+    expect(result).toBe("Keywords: foo, bar");
+  });
+
+  it("returns empty string when every term is over the cap", () => {
+    expect(formatKeytermPrompt(["averylongterm1", "averylongterm2"], 15)).toBe("");
+  });
+
+  it("returns empty string when maxChars is smaller than the prefix alone", () => {
+    // "Keywords: " is 10 chars; "abc" pushes candidate to 13 — nothing can fit at cap 8.
+    expect(formatKeytermPrompt(["abc"], 8)).toBe("");
+  });
+
+  it("skips whitespace-only terms defensively", () => {
+    expect(formatKeytermPrompt(["   ", "\t\n", "foo"])).toBe("Keywords: foo");
+  });
 });

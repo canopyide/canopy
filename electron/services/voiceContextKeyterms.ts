@@ -368,9 +368,9 @@ export function formatKeytermPrompt(terms: string[], maxChars: number = MAX_PROM
   let appended = 0;
 
   for (const term of terms) {
-    if (term.length === 0) continue;
+    if (term.trim().length === 0) continue;
     const candidate = appended === 0 ? out + term : out + KEYTERM_PROMPT_SEPARATOR + term;
-    if (candidate.length > maxChars) break;
+    if (candidate.length > maxChars) continue;
     out = candidate;
     appended++;
   }
