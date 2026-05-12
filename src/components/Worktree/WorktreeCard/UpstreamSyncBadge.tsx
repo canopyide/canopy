@@ -2,6 +2,8 @@ import { useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import { actionService } from "@/services/ActionService";
+import { useDeferredLoading } from "@/hooks/useDeferredLoading";
+import { UI_SKELETON_GATE_MS } from "@/lib/animationUtils";
 
 const RELATIVE_TIME_FORMATTER = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
 
@@ -40,6 +42,7 @@ export function UpstreamSyncBadge({
 }: UpstreamSyncBadgeProps) {
   const hasAhead = aheadCount !== undefined && aheadCount > 0;
   const hasBehind = behindCount !== undefined && behindCount > 0;
+  const showPulse = useDeferredLoading(isFetchInFlight, UI_SKELETON_GATE_MS);
 
   const handleSignInClick = useCallback((event: React.MouseEvent) => {
     event.stopPropagation();
@@ -93,7 +96,7 @@ export function UpstreamSyncBadge({
           className={cn(
             "flex items-center text-[10px] font-mono tabular-nums",
             containerGapClass,
-            isFetchInFlight && "animate-pulse-immediate"
+            isFetchInFlight && showPulse && "animate-pulse-immediate"
           )}
           data-testid="upstream-sync-indicator"
           data-fetch-in-flight={isFetchInFlight ? "true" : undefined}
