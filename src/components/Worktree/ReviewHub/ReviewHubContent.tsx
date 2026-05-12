@@ -1191,7 +1191,7 @@ export function ReviewHubContent({
                   "px-2 py-1 transition-colors",
                   "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent",
                   diffMode === "working-tree"
-                    ? "bg-tint/[0.12] text-daintree-text"
+                    ? "bg-filter-selected-bg-strong text-daintree-text"
                     : "text-daintree-text/50 hover:text-daintree-text hover:bg-tint/[0.06]"
                 )}
                 aria-pressed={diffMode === "working-tree"}
@@ -1206,7 +1206,7 @@ export function ReviewHubContent({
                   "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent",
                   "disabled:opacity-40 disabled:cursor-not-allowed",
                   diffMode === "base-branch"
-                    ? "bg-tint/[0.12] text-daintree-text"
+                    ? "bg-filter-selected-bg-strong text-daintree-text"
                     : "text-daintree-text/50 hover:text-daintree-text hover:bg-tint/[0.06]"
                 )}
                 aria-pressed={diffMode === "base-branch"}
@@ -1303,7 +1303,7 @@ export function ReviewHubContent({
                   "disabled:opacity-50 disabled:cursor-not-allowed",
                   isPrimary
                     ? "bg-status-warning/20 hover:bg-status-warning/30 text-status-warning"
-                    : "bg-tint/[0.08] hover:bg-tint/[0.14] text-daintree-text/80"
+                    : "bg-filter-selected-bg-soft hover:bg-tint/[0.14] text-daintree-text/80"
                 )}
               >
                 {isLoading && cta.kind === "pull-rebase" ? "Pulling…" : cta.label}

@@ -601,7 +601,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
                 className={cn(
                   "inline-flex items-center px-2 py-0.5 text-[11px] rounded-full transition-colors",
                   filter === "all"
-                    ? "bg-tint/[0.12] text-daintree-text font-medium"
+                    ? "bg-filter-selected-bg-strong text-daintree-text font-medium"
                     : "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.04]"
                 )}
               >
@@ -614,7 +614,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
                 className={cn(
                   "inline-flex items-center px-2 py-0.5 text-[11px] rounded-full transition-colors",
                   filter === "unread"
-                    ? "bg-tint/[0.12] text-daintree-text font-medium"
+                    ? "bg-filter-selected-bg-strong text-daintree-text font-medium"
                     : "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.04]"
                 )}
               >
