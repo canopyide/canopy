@@ -244,7 +244,7 @@ export function NotificationCenterEntry({
                     type="button"
                     aria-label="Notification options"
                     onClick={(e) => e.stopPropagation()}
-                    className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 h-4 w-4 flex items-center justify-center rounded text-daintree-text/40 hover:text-daintree-text/70 transition-opacity"
+                    className="opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 group-has-[:focus-visible]:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 h-4 w-4 flex items-center justify-center rounded text-daintree-text/40 hover:text-daintree-text/70 transition-opacity"
                   >
                     <MoreHorizontal className="h-3 w-3" />
                   </button>
@@ -290,7 +290,7 @@ export function NotificationCenterEntry({
               e.stopPropagation();
               onDismiss();
             }}
-            className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 h-4 w-4 flex items-center justify-center rounded text-daintree-text/40 hover:text-daintree-text/70 transition-opacity"
+            className="opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 group-has-[:focus-visible]:opacity-100 focus:opacity-100 h-4 w-4 flex items-center justify-center rounded text-daintree-text/40 hover:text-daintree-text/70 transition-opacity"
           >
             <X className="h-3 w-3" />
           </button>
