@@ -23,7 +23,7 @@ export type VoiceInputStatus = "idle" | "connecting" | "recording" | "finishing"
  *
  * - idle: No active transcription in this panel buffer.
  * - interim: A live segment is in flight; liveText is non-empty.
- * - utterance_final: OpenAI finalized the transcription item; liveText cleared.
+ * - utterance_final: A final transcript segment was accepted; liveText cleared.
  * - stable: Ready for the next utterance.
  */
 export type VoiceTranscriptPhase = "idle" | "interim" | "utterance_final" | "stable";
