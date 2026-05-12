@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { Check, ChevronsUpDown, Search, CircleDot, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -28,11 +28,13 @@ export function IssueSelector({
   const [issues, setIssues] = useState<GitHubIssue[]>([]);
   const [loading, setLoading] = useState(false);
   const debouncedQuery = useDebounce(query, 300);
+  const requestGenRef = useRef(0);
 
   useEffect(() => {
     if (!open) return;
 
     const abortController = new AbortController();
+    const gen = ++requestGenRef.current;
     setLoading(true);
     githubClient
       .listIssues({
@@ -41,18 +43,17 @@ export function IssueSelector({
         search: debouncedQuery || undefined,
       })
       .then((res) => {
-        if (!abortController.signal.aborted) {
+        if (!abortController.signal.aborted && requestGenRef.current === gen) {
           setIssues(res.items);
         }
       })
       .catch((err) => {
-        if (!abortController.signal.aborted) {
+        if (!abortController.signal.aborted && requestGenRef.current === gen) {
           logError("Failed to fetch issues", err);
-          setIssues([]);
         }
       })
       .finally(() => {
-        if (!abortController.signal.aborted) {
+        if (!abortController.signal.aborted && requestGenRef.current === gen) {
           setLoading(false);
         }
       });
@@ -135,8 +136,17 @@ export function IssueSelector({
             aria-expanded={open}
           />
         </div>
-        <div id="issue-list" role="listbox" className="max-h-[300px] overflow-y-auto p-1">
-          {loading ? (
+        <div
+          id="issue-list"
+          role="listbox"
+          className={cn(
+            "max-h-[300px] overflow-y-auto p-1",
+            loading && issues.length > 0 && "palette-results-stale"
+          )}
+          data-stale={loading && issues.length > 0 ? "true" : undefined}
+          aria-busy={loading || undefined}
+        >
+          {loading && issues.length === 0 ? (
             <GitHubResourceRowsSkeleton count={3} immediate />
           ) : issues.length === 0 ? (
             <div className="py-6 text-center text-sm text-muted-foreground">
