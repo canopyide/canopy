@@ -1,18 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VoiceInputSettings } from "../../../shared/types/ipc/api.js";
-import { VoiceTranscriptionService } from "../VoiceTranscriptionService.js";
-import type { VoiceTranscriptionEvent } from "../VoiceTranscriptionService.js";
 
-// ── Mock WebSocket ────────────────────────────────────────────────────────────
+// ── Mock the `ws` package ────────────────────────────────────────────────────
 //
-// The service uses Node 22's global `WebSocket` (Electron 41 main process). We
-// stub the global so each test can drive the lifecycle (open / message / error
-// / close) deterministically. Constructor options (`{ headers }`) are captured
-// for header assertions; `sent` records the JSON payloads the service emits.
+// The service imports `WebSocket from "ws"` (the npm package, not the WHATWG
+// global) because Node's global WebSocket constructor silently drops the
+// custom-headers option needed for OpenAI auth. We mock the entire module so
+// the constructor returns a controllable EventEmitter-style stub.
 
 interface MockOptions {
   headers: Record<string, string>;
 }
+
+type WsListener = (...args: unknown[]) => void;
 
 class MockWebSocket {
   static readonly CONNECTING = 0;
@@ -27,15 +27,35 @@ class MockWebSocket {
   closeCalls = 0;
   closeCode?: number;
 
-  onopen: (() => void) | null = null;
-  onmessage: ((event: { data: string }) => void) | null = null;
-  onerror: ((event: { message?: string; error?: unknown }) => void) | null = null;
-  onclose: ((event: { code?: number; reason?: string }) => void) | null = null;
+  private listeners: Map<string, Set<WsListener>> = new Map();
 
-  constructor(url: string, _protocols: string[] | undefined, options: MockOptions) {
+  constructor(url: string, options: MockOptions) {
     this.url = url;
     this.options = options;
     instances.push(this);
+  }
+
+  on(event: string, listener: WsListener): this {
+    if (!this.listeners.has(event)) this.listeners.set(event, new Set());
+    this.listeners.get(event)!.add(listener);
+    return this;
+  }
+
+  off(event: string, listener: WsListener): this {
+    this.listeners.get(event)?.delete(listener);
+    return this;
+  }
+
+  removeAllListeners(event?: string): this {
+    if (event) this.listeners.delete(event);
+    else this.listeners.clear();
+    return this;
+  }
+
+  private fire(event: string, ...args: unknown[]): void {
+    const set = this.listeners.get(event);
+    if (!set) return;
+    for (const listener of set) listener(...args);
   }
 
   send(payload: string): void {
@@ -51,24 +71,24 @@ class MockWebSocket {
   // Test helpers
   simulateOpen(): void {
     this.readyState = MockWebSocket.OPEN;
-    this.onopen?.();
+    this.fire("open");
   }
 
   simulateMessage(type: string, payload: Record<string, unknown> = {}): void {
-    this.onmessage?.({ data: JSON.stringify({ type, ...payload }) });
+    this.fire("message", Buffer.from(JSON.stringify({ type, ...payload })));
   }
 
-  simulateRawMessage(data: string): void {
-    this.onmessage?.({ data });
+  simulateRawMessage(data: string | Buffer): void {
+    this.fire("message", data);
   }
 
-  simulateError(error?: unknown, message?: string): void {
-    this.onerror?.({ error, message });
+  simulateError(err: Error = new Error("WebSocket error")): void {
+    this.fire("error", err);
   }
 
-  simulateClose(code?: number, reason?: string): void {
+  simulateClose(code?: number, reason?: Buffer | string): void {
     this.readyState = MockWebSocket.CLOSED;
-    this.onclose?.({ code, reason });
+    this.fire("close", code, reason);
   }
 
   sentJson(): Array<Record<string, unknown>> {
@@ -79,22 +99,20 @@ class MockWebSocket {
 const instances: MockWebSocket[] = [];
 let throwOnConstruct = false;
 let constructError: Error | null = null;
-class ThrowingWebSocket {
-  constructor(_url: string, _protocols: string[] | undefined, _options: MockOptions) {
-    throw constructError ?? new Error("WebSocket construction failed");
-  }
-}
 
-const WS_FACTORY = function (
-  url: string,
-  protocols: string[] | undefined,
-  options: MockOptions
-): MockWebSocket | ThrowingWebSocket {
-  if (throwOnConstruct) {
-    return new ThrowingWebSocket(url, protocols, options);
-  }
-  return new MockWebSocket(url, protocols, options);
-} as unknown as typeof WebSocket;
+vi.mock("ws", () => {
+  const ctor = function (this: unknown, url: string, options: MockOptions) {
+    if (throwOnConstruct) {
+      throw constructError ?? new Error("WebSocket construction failed");
+    }
+    return new MockWebSocket(url, options);
+  } as unknown as new (url: string, options: MockOptions) => MockWebSocket;
+  return { default: ctor };
+});
+
+// Import the service AFTER vi.mock so the mocked `ws` is used.
+const { VoiceTranscriptionService } = await import("../VoiceTranscriptionService.js");
+type VoiceTranscriptionEvent = import("../VoiceTranscriptionService.js").VoiceTranscriptionEvent;
 
 const BASE_SETTINGS: VoiceInputSettings = {
   enabled: true,
@@ -136,13 +154,11 @@ describe("VoiceTranscriptionService", () => {
     instances.length = 0;
     throwOnConstruct = false;
     constructError = null;
-    vi.stubGlobal("WebSocket", WS_FACTORY);
     vi.useFakeTimers();
   });
 
   afterEach(() => {
     vi.useRealTimers();
-    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -246,7 +262,7 @@ describe("VoiceTranscriptionService", () => {
     await secondPromise;
   });
 
-  it("times out with an error if session.updated does not arrive within 10s", async () => {
+  it("times out and closes the socket if session.updated does not arrive within 10s", async () => {
     const service = new VoiceTranscriptionService();
     const errors: string[] = [];
     service.onEvent((e) => {
@@ -255,13 +271,15 @@ describe("VoiceTranscriptionService", () => {
 
     const startPromise = service.start(BASE_SETTINGS);
     await Promise.resolve();
-    latestInstance().simulateOpen();
+    const socket = latestInstance();
+    socket.simulateOpen();
     // Never simulate session.updated.
 
     vi.advanceTimersByTime(10_000);
 
     await expect(startPromise).resolves.toEqual({ ok: false, error: "Connection timed out" });
     expect(errors).toContain("Connection timed out");
+    expect(socket.closeCalls).toBe(1);
   });
 
   // ── Delta / complete events ──────────────────────────────────────────────
@@ -410,6 +428,7 @@ describe("VoiceTranscriptionService", () => {
     socket.simulateMessage("conversation.item.input_audio_transcription.completed", {
       transcript: "done",
     });
+    vi.advanceTimersByTime(100);
     await drainPromise;
   });
 
@@ -432,8 +451,35 @@ describe("VoiceTranscriptionService", () => {
     socket.simulateMessage("conversation.item.input_audio_transcription.completed", {
       transcript: "final",
     });
+    // The grace timer fires 100ms after the first `completed` to give late
+    // arrivals (e.g. server_vad mid-utterance commits) a chance to join.
+    vi.advanceTimersByTime(100);
     await drainPromise;
     expect(statuses.at(-1)).toBe("idle");
+  });
+
+  it("drain grace period absorbs a late completed event without losing its transcript", async () => {
+    const service = new VoiceTranscriptionService();
+    const completes: string[] = [];
+    service.onEvent((e) => {
+      if (e.type === "complete") completes.push(e.text);
+    });
+
+    const { socket } = await bringSessionReady(service);
+    const drainPromise = service.stopGracefully();
+
+    // server_vad auto-committed item A mid-utterance; its completed arrives
+    // first, then item B's completed for our explicit commit arrives ~50ms later.
+    socket.simulateMessage("conversation.item.input_audio_transcription.completed", {
+      transcript: "first half",
+    });
+    vi.advanceTimersByTime(50);
+    socket.simulateMessage("conversation.item.input_audio_transcription.completed", {
+      transcript: "second half",
+    });
+    vi.advanceTimersByTime(100);
+    await drainPromise;
+    expect(completes).toEqual(["first half", "second half"]);
   });
 
   it("drain resolves after the timeout if no completed event arrives", async () => {
@@ -459,6 +505,7 @@ describe("VoiceTranscriptionService", () => {
     socket.simulateMessage("conversation.item.input_audio_transcription.completed", {
       transcript: "ok",
     });
+    vi.advanceTimersByTime(100);
     await Promise.all([first, second]);
   });
 
@@ -473,6 +520,39 @@ describe("VoiceTranscriptionService", () => {
     expect(statuses).toEqual(["idle"]);
   });
 
+  it("start() during an in-flight drain resolves the old drain and reaches recording", async () => {
+    const service = new VoiceTranscriptionService();
+    const statuses: string[] = [];
+    service.onEvent((e) => {
+      if (e.type === "status") statuses.push(e.status);
+    });
+
+    const { socket: firstSocket } = await bringSessionReady(service);
+    const drainPromise = service.stopGracefully();
+    // Don't simulate completed — drain is still in flight when start() runs.
+
+    const secondStart = service.start(BASE_SETTINGS);
+    await Promise.resolve();
+    const secondSocket = latestInstance();
+    secondSocket.simulateOpen();
+    secondSocket.simulateMessage("session.updated");
+    await secondStart;
+
+    // The first drain resolves once cleanupPreviousSession fires from start().
+    await drainPromise;
+
+    // Old commit was sent, new commit was NOT (new session has no drain).
+    const commitsOnFirst = firstSocket
+      .sentJson()
+      .filter((p) => p.type === "input_audio_buffer.commit").length;
+    const commitsOnSecond = secondSocket
+      .sentJson()
+      .filter((p) => p.type === "input_audio_buffer.commit").length;
+    expect(commitsOnFirst).toBe(1);
+    expect(commitsOnSecond).toBe(0);
+    expect(statuses.at(-1)).toBe("recording");
+  });
+
   // ── Error handling ───────────────────────────────────────────────────────
 
   it("emits error and error status when the WebSocket reports an error", async () => {
@@ -484,7 +564,7 @@ describe("VoiceTranscriptionService", () => {
     await Promise.resolve();
     const socket = latestInstance();
     socket.simulateOpen();
-    socket.simulateError(new Error("network down"), "network down");
+    socket.simulateError(new Error("network down"));
 
     await expect(startPromise).resolves.toEqual({ ok: false, error: "network down" });
     expect(events.some((e) => e.type === "error" && /network down/.test(e.message))).toBe(true);
@@ -504,6 +584,24 @@ describe("VoiceTranscriptionService", () => {
     });
 
     expect(errors).toContain("invalid_session_config");
+  });
+
+  it("parses string message data as well as Buffer", async () => {
+    const service = new VoiceTranscriptionService();
+    const completes: string[] = [];
+    service.onEvent((e) => {
+      if (e.type === "complete") completes.push(e.text);
+    });
+
+    const { socket } = await bringSessionReady(service);
+    // `ws` can deliver messages as strings when the server sends a text frame.
+    socket.simulateRawMessage(
+      JSON.stringify({
+        type: "conversation.item.input_audio_transcription.completed",
+        transcript: "from string",
+      })
+    );
+    expect(completes).toEqual(["from string"]);
   });
 
   it("ignores malformed JSON messages without throwing", async () => {

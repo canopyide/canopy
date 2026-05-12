@@ -1,3 +1,4 @@
+import WebSocket from "ws";
 import type { VoiceInputSettings, VoiceInputStatus } from "../../shared/types/ipc/api.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 import { logDebug, logInfo, logWarn, logError } from "../utils/logger.js";
@@ -8,6 +9,7 @@ const OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime?model=gpt-realtime
 const OPENAI_TRANSCRIPTION_MODEL = "gpt-realtime-whisper";
 const CONNECT_TIMEOUT_MS = 10_000;
 const DRAIN_TIMEOUT_MS = 3_000;
+const DRAIN_GRACE_MS = 100;
 const PRE_CONNECT_BUFFER_MAX = 100;
 
 export interface CorrectionWord {
@@ -33,23 +35,11 @@ export type VoiceTranscriptionEvent =
 
 type VoiceStartResult = { ok: true } | { ok: false; error: string };
 
-// The OpenAI realtime endpoint speaks the WHATWG WebSocket interface; we use
-// Node 22's global `WebSocket` (available in Electron 41's main process) with
-// custom headers via the third constructor argument — a Node-only extension.
-interface OpenAIRealtimeSocket {
-  readonly readyState: number;
-  send(data: string): void;
-  close(code?: number): void;
-  onopen: (() => void) | null;
-  onmessage: ((event: { data: string | ArrayBufferLike | Buffer }) => void) | null;
-  onerror: ((event: { message?: string; error?: unknown }) => void) | null;
-  onclose: ((event: { code?: number; reason?: string }) => void) | null;
-}
-type WebSocketConstructor = new (
-  url: string,
-  protocols: string[] | undefined,
-  options: { headers: Record<string, string> }
-) => OpenAIRealtimeSocket;
+// We use the `ws` package rather than Node 22's global `WebSocket`. The
+// WHATWG spec exposes only `(url, protocols?)` — its constructor silently
+// discards any third options argument, so custom upgrade headers cannot be
+// sent. The `ws` package accepts a 2-arg `(url, options)` form with full
+// header support, which is also what the openai SDK uses internally.
 
 const STUB_CONFIDENCE: SegmentConfidence = {
   minConfidence: 1.0,
@@ -59,7 +49,7 @@ const STUB_CONFIDENCE: SegmentConfidence = {
 };
 
 export class VoiceTranscriptionService {
-  private connection: OpenAIRealtimeSocket | null = null;
+  private connection: WebSocket | null = null;
   private sessionId = 0;
   private connectTimeout: ReturnType<typeof setTimeout> | null = null;
   private listeners: Set<(event: VoiceTranscriptionEvent) => void> = new Set();
@@ -71,6 +61,7 @@ export class VoiceTranscriptionService {
 
   private drainResolve: (() => void) | null = null;
   private drainTimeout: ReturnType<typeof setTimeout> | null = null;
+  private drainGraceTimer: ReturnType<typeof setTimeout> | null = null;
   private drainPromise: Promise<void> | null = null;
   private isDraining = false;
 
@@ -140,19 +131,9 @@ export class VoiceTranscriptionService {
     return new Promise((resolve) => {
       this.pendingStart = { sessionId: mySessionId, resolve };
 
-      const WS = (globalThis as unknown as { WebSocket?: WebSocketConstructor }).WebSocket;
-      if (!WS) {
-        const message = "WebSocket is not available in this runtime";
-        logError(`${P} ${message}`);
-        this.emit({ type: "error", message });
-        this.emit({ type: "status", status: "error" });
-        this.settlePendingStart(mySessionId, { ok: false, error: message });
-        return;
-      }
-
-      let connection: OpenAIRealtimeSocket;
+      let connection: WebSocket;
       try {
-        connection = new WS(OPENAI_REALTIME_URL, undefined, {
+        connection = new WebSocket(OPENAI_REALTIME_URL, {
           headers: {
             Authorization: `Bearer ${settings.openaiApiKey}`,
             "OpenAI-Beta": "realtime=v1",
@@ -177,6 +158,11 @@ export class VoiceTranscriptionService {
         this.connectTimeout = null;
         logError(`${P} Connection timed out (${CONNECT_TIMEOUT_MS}ms)`);
         if (this.sessionId === mySessionId) {
+          try {
+            connection.close();
+          } catch {
+            // Ignore close errors
+          }
           this.cleanupConnection();
           this.emit({ type: "error", message: "Connection timed out" });
           this.emit({ type: "status", status: "error" });
@@ -184,7 +170,7 @@ export class VoiceTranscriptionService {
         }
       }, CONNECT_TIMEOUT_MS);
 
-      connection.onopen = () => {
+      connection.on("open", () => {
         if (this.sessionId !== mySessionId) {
           logWarn(`${P} Session expired during connect, closing`);
           try {
@@ -224,16 +210,18 @@ export class VoiceTranscriptionService {
           logError(`${P} ${message}`);
           this.handleFatalError(mySessionId, message);
         }
-      };
+      });
 
-      connection.onmessage = (event) => {
+      connection.on("message", (data) => {
         if (this.sessionId !== mySessionId) return;
         const raw =
-          typeof event.data === "string"
-            ? event.data
-            : event.data instanceof Buffer
-              ? event.data.toString("utf8")
-              : Buffer.from(event.data as ArrayBufferLike).toString("utf8");
+          typeof data === "string"
+            ? data
+            : Buffer.isBuffer(data)
+              ? data.toString("utf8")
+              : Array.isArray(data)
+                ? Buffer.concat(data).toString("utf8")
+                : Buffer.from(data as ArrayBuffer).toString("utf8");
 
         let parsed: Record<string, unknown>;
         try {
@@ -245,22 +233,23 @@ export class VoiceTranscriptionService {
 
         const type = typeof parsed.type === "string" ? parsed.type : "";
         this.handleServerEvent(mySessionId, type, parsed);
-      };
+      });
 
-      connection.onerror = (event) => {
+      connection.on("error", (err) => {
         this.clearConnectTimeout();
         if (this.sessionId !== mySessionId) return;
-        const inner = (event as { error?: unknown; message?: string })?.error;
-        const fallback = event?.message ?? "WebSocket error";
-        const message = formatErrorMessage(inner ?? event, fallback);
+        const message = formatErrorMessage(err, "WebSocket error");
         logError(`${P} WebSocket error`, { message });
         this.handleFatalError(mySessionId, message);
-      };
+      });
 
-      connection.onclose = (event) => {
+      connection.on("close", (code, reason) => {
         this.clearConnectTimeout();
         if (this.sessionId !== mySessionId) return;
-        logInfo(`${P} WebSocket closed`, { code: event?.code, reason: event?.reason });
+        logInfo(`${P} WebSocket closed`, {
+          code,
+          reason: Buffer.isBuffer(reason) ? reason.toString("utf8") : String(reason ?? ""),
+        });
         this.cleanupConnection();
         this.settlePendingStart(mySessionId, { ok: false, error: "Connection closed" });
         if (this.isDraining) {
@@ -268,7 +257,7 @@ export class VoiceTranscriptionService {
         } else {
           this.emit({ type: "status", status: "idle" });
         }
-      };
+      });
     });
   }
 
@@ -321,7 +310,12 @@ export class VoiceTranscriptionService {
           this.emit({ type: "complete", text: transcript, confidence: { ...STUB_CONFIDENCE } });
         }
         if (this.isDraining) {
-          this.settleDrain();
+          // server_vad can auto-commit items mid-session; the first `completed`
+          // we observe during drain may belong to one of those, with our own
+          // commit's transcript still in flight. Defer settling by a short
+          // grace period and reset it on every subsequent `completed` so the
+          // late arrival joins the same drain.
+          this.scheduleDrainGrace();
         }
         return;
       }
@@ -415,6 +409,20 @@ export class VoiceTranscriptionService {
       clearTimeout(this.drainTimeout);
       this.drainTimeout = null;
     }
+    if (this.drainGraceTimer !== null) {
+      clearTimeout(this.drainGraceTimer);
+      this.drainGraceTimer = null;
+    }
+  }
+
+  private scheduleDrainGrace(): void {
+    if (this.drainGraceTimer !== null) {
+      clearTimeout(this.drainGraceTimer);
+    }
+    this.drainGraceTimer = setTimeout(() => {
+      this.drainGraceTimer = null;
+      this.settleDrain();
+    }, DRAIN_GRACE_MS);
   }
 
   private settleDrain(): void {
