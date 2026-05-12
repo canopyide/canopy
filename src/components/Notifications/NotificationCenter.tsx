@@ -713,6 +713,11 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
         >
           {totalChronoGroups === 0 && needsAttentionGroups.length === 0 ? (
             filter === "unread" && entries.length > 0 ? (
+              // Canvas scale: the bell dropdown is a 360px panel-style surface that
+              // mirrors GitHubResourceList ("connection-gated panel" example in
+              // CLAUDE.md). The "Notifications appear here" guidance and the
+              // "Adjust at Notification settings" inline link are intentional and
+              // load-bearing — popover scale would forbid them at compile time.
               <EmptyState
                 variant="user-cleared"
                 scale="canvas"

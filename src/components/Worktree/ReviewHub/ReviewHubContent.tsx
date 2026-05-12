@@ -72,6 +72,7 @@ import {
   matchesFilter,
   readGitErrorFields,
   sortFiles,
+  truncateFilterQuery,
   getBaseBranchStatusConfig,
 } from "./reviewHubUtils";
 
@@ -1660,7 +1661,7 @@ export function ReviewHubContent({
                       <EmptyState
                         variant="filtered-empty"
                         scale="sidebar"
-                        title={`No staged files matching "${stagedView.filterQuery}"`}
+                        title={`No staged files matching "${truncateFilterQuery(stagedView.filterQuery)}"`}
                         action={
                           <button
                             type="button"
@@ -1859,7 +1860,7 @@ export function ReviewHubContent({
                       <EmptyState
                         variant="filtered-empty"
                         scale="sidebar"
-                        title={`No changed files matching "${changesView.filterQuery}"`}
+                        title={`No changed files matching "${truncateFilterQuery(changesView.filterQuery)}"`}
                         action={
                           <button
                             type="button"

@@ -557,6 +557,9 @@ export function GitHubResourceList({
   if (showNoTokenEmptyState) {
     return (
       <div className="relative w-[450px] flex flex-col h-[500px]">
+        {/* Canvas scale: this is the canonical "connection-gated panel" example
+            in CLAUDE.md — a 450×500 dropdown that warrants panel semantics so the
+            token-explanation description and "Add GitHub token" CTA stay legal. */}
         <EmptyState
           variant="zero-data"
           scale="canvas"

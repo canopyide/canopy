@@ -318,10 +318,12 @@ describe("EmptyState", () => {
       expect(status?.className).toContain("@container/empty-state");
     });
 
-    it("ships compact-density variants gated on the named container", () => {
+    it("ships compact-density variants on a descendant of the named container", () => {
       // The `@max-[280px]/empty-state:` prefix triggers when the outer
       // container's inline-size falls below 280px — comfortably above the
       // 200px minimum sidebar floor without affecting the 350px default.
+      // Container queries can only style *descendants* of the container, so
+      // density variants live on the icon wrapper, not on the container itself.
       const { container } = render(
         <EmptyState
           variant="zero-data"
@@ -331,7 +333,9 @@ describe("EmptyState", () => {
         />
       );
       const status = container.querySelector('[role="status"]');
-      expect(status?.className).toContain("@max-[280px]/empty-state:py-4");
+      // The container element itself cannot respond to its own queries, so we
+      // assert the rule is NOT here — placing it here would be a silent no-op.
+      expect(status?.className).not.toContain("@max-[280px]/empty-state:py-");
       const iconWrap = container.querySelector('[aria-hidden="true"]');
       expect(iconWrap?.className).toContain("@max-[280px]/empty-state:[&_svg]:h-4");
       expect(iconWrap?.className).toContain("@max-[280px]/empty-state:[&_svg]:w-4");

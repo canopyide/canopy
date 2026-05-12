@@ -63,7 +63,7 @@ export function EmptyState(props: EmptyStateProps) {
       aria-live="polite"
       aria-describedby={hasDescription ? descriptionId : undefined}
       className={cn(
-        "@container/empty-state flex flex-col items-center justify-center text-center px-4 py-8 @max-[280px]/empty-state:py-4",
+        "@container/empty-state flex flex-col items-center justify-center text-center px-4 py-8",
         className
       )}
     >
