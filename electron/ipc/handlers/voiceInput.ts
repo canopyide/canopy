@@ -506,24 +506,27 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
         // OpenAI Realtime emits spoken dictation commands ("new paragraph",
         // "period", etc.) as literal text. Deepgram dictation mode rewrites
         // them upstream; here we reproduce that behavior post-hoc, gated on
-        // the user's paragraphing strategy.
+        // the session-snapshotted paragraphing strategy (matches the
+        // transcription-settings convention documented at handleStart).
         const processedText =
-          liveSettings.paragraphingStrategy === "spoken-command"
+          settings.paragraphingStrategy === "spoken-command"
             ? applyDictationCommands(rawText)
             : rawText;
 
-        // Split on \n\n so each paragraph is emitted as its own complete event
-        // with a paragraph_boundary between them — mirrors the Deepgram path
-        // in VoiceTranscriptionService.emitCompleteWithParagraphDetection so
-        // the renderer's onParagraphBoundary handler is invoked consistently.
-        const parts = processedText.split(/\n\n+/).map((p) => p.trim());
+        // Split on \n\n and emit one complete event per non-empty part with a
+        // paragraph_boundary between them — mirrors the Deepgram path in
+        // VoiceTranscriptionService.emitCompleteWithParagraphDetection.
+        // .filter(Boolean) ensures command-only utterances (e.g. "new paragraph"
+        // alone produces "\n\n" → ["", ""]) emit nothing, consistent with Deepgram.
+        const parts = processedText
+          .split(/\n\n+/)
+          .map((p) => p.trim())
+          .filter(Boolean);
         for (let i = 0; i < parts.length; i++) {
-          if (parts[i]) {
-            getAppWebContents(win).send(CHANNELS.VOICE_INPUT_TRANSCRIPTION_COMPLETE, {
-              text: parts[i],
-              willCorrect: false,
-            });
-          }
+          getAppWebContents(win).send(CHANNELS.VOICE_INPUT_TRANSCRIPTION_COMPLETE, {
+            text: parts[i],
+            willCorrect: false,
+          });
           if (i < parts.length - 1) {
             getAppWebContents(win).send(CHANNELS.VOICE_INPUT_PARAGRAPH_BOUNDARY, {
               rawText: null,

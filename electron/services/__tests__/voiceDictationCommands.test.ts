@@ -112,6 +112,13 @@ describe("applyDictationCommands", () => {
       // "world" interrupts the chain, so only "period" at the tail fires.
       expect(applyDictationCommands("hello comma world period")).toBe("hello comma world.");
     });
+
+    it("preserves a chain that ends in a formatting command followed by punctuation", () => {
+      // Chain produces a paragraph break followed by a literal comma — the
+      // downstream split-on-\\n\\n yields ["hello", ","] which the handler
+      // emits as two paragraphs.
+      expect(applyDictationCommands("hello new paragraph comma")).toBe("hello\n\n,");
+    });
   });
 
   describe("whitespace handling", () => {
@@ -153,6 +160,23 @@ describe("applyDictationCommands", () => {
 
     it("does not match 'comma' inside 'commando'", () => {
       expect(applyDictationCommands("the commando")).toBe("the commando");
+    });
+
+    it("matches a trailing command after a word that starts with the same prefix", () => {
+      // "periodic" is preserved; the trailing standalone "period" still fires.
+      expect(applyDictationCommands("periodic period")).toBe("periodic.");
+    });
+  });
+
+  describe("documented limitations", () => {
+    // The trailing-anchor design is end-of-utterance only. Legitimate trailing
+    // nouns that happen to be command words will convert. This is the same
+    // tradeoff Deepgram dictation mode makes — kept for parity. If a user
+    // dislikes it, the manual paragraphing strategy disables the post-processor.
+    it("converts a trailing noun that happens to spell a command (known tradeoff)", () => {
+      expect(applyDictationCommands("I studied the Jurassic period")).toBe(
+        "I studied the Jurassic."
+      );
     });
   });
 });
