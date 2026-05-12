@@ -518,16 +518,18 @@ describe("NotificationCenterEntry roving focus props", () => {
     expect((container.firstElementChild as HTMLElement).className).toMatch(/focus-visible:ring/);
   });
 
-  it("reveals the dismiss button on descendant focus-visible (keyboard focus inside the row)", () => {
+  it("reveals the dismiss button on keyboard focus (row or descendant)", () => {
     render(<NotificationCenterEntry entry={makeEntry()} onDismiss={vi.fn()} />);
     const dismiss = screen.getByLabelText("Dismiss notification");
+    expect(dismiss.className).toMatch(/group-focus-visible:opacity-100/);
     expect(dismiss.className).toMatch(/group-has-\[:focus-visible\]:opacity-100/);
     expect(dismiss.className).not.toMatch(/group-focus-within:opacity-100/);
   });
 
-  it("reveals the kebab trigger on descendant focus-visible (keyboard focus inside the row)", () => {
+  it("reveals the kebab trigger on keyboard focus (row or descendant)", () => {
     render(<NotificationCenterEntry entry={makeEntry({ context: { projectId: "p1" } })} />);
     const kebab = screen.getByLabelText("Notification options");
+    expect(kebab.className).toMatch(/group-focus-visible:opacity-100/);
     expect(kebab.className).toMatch(/group-has-\[:focus-visible\]:opacity-100/);
     expect(kebab.className).not.toMatch(/group-focus-within:opacity-100/);
   });
