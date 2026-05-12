@@ -62,53 +62,7 @@ function makeItem(id: string, title: string): ActionPaletteItemType {
 const noop = () => {};
 
 describe("ActionPalette", () => {
-  it("renders the 'Recently used' header when surfacing MRU on the empty state", () => {
-    render(
-      <ActionPalette
-        isOpen
-        query=""
-        results={[makeItem("a.action", "Alpha"), makeItem("b.action", "Bravo")]}
-        totalResults={2}
-        selectedIndex={0}
-        isShowingRecentlyUsed
-        isStale={false}
-        close={noop}
-        setQuery={noop}
-        setSelectedIndex={noop}
-        selectPrevious={noop}
-        selectNext={noop}
-        executeAction={noop}
-        confirmSelection={noop}
-      />
-    );
-
-    expect(screen.getByText("Recently used")).toBeTruthy();
-  });
-
-  it("does not render the header when the user has typed a query", () => {
-    render(
-      <ActionPalette
-        isOpen
-        query="alp"
-        results={[makeItem("a.action", "Alpha")]}
-        totalResults={1}
-        selectedIndex={0}
-        isShowingRecentlyUsed={false}
-        isStale={false}
-        close={noop}
-        setQuery={noop}
-        setSelectedIndex={noop}
-        selectPrevious={noop}
-        selectNext={noop}
-        executeAction={noop}
-        confirmSelection={noop}
-      />
-    );
-
-    expect(screen.queryByText("Recently used")).toBeNull();
-  });
-
-  it("renders neither the header nor the hint when a typed query has zero matches", () => {
+  it("does not render the empty message when a typed query has zero matches", () => {
     render(
       <ActionPalette
         isOpen
@@ -116,7 +70,6 @@ describe("ActionPalette", () => {
         results={[]}
         totalResults={0}
         selectedIndex={0}
-        isShowingRecentlyUsed={false}
         isStale={false}
         close={noop}
         setQuery={noop}
@@ -128,8 +81,7 @@ describe("ActionPalette", () => {
       />
     );
 
-    expect(screen.queryByText("Recently used")).toBeNull();
-    expect(screen.queryByText("Type to search actions")).toBeNull();
+    expect(screen.queryByText("No actions yet")).toBeNull();
   });
 
   it("shows the empty message when no MRU exists and no query is typed", () => {
@@ -140,7 +92,6 @@ describe("ActionPalette", () => {
         results={[]}
         totalResults={0}
         selectedIndex={0}
-        isShowingRecentlyUsed={false}
         isStale={false}
         close={noop}
         setQuery={noop}
@@ -152,8 +103,7 @@ describe("ActionPalette", () => {
       />
     );
 
-    expect(screen.queryByText("Recently used")).toBeNull();
-    expect(screen.getByText("Type to search actions")).toBeTruthy();
+    expect(screen.getByText("No actions yet")).toBeTruthy();
   });
 
   it("forwards isStale to SearchablePalette as isFiltering", () => {
@@ -164,7 +114,6 @@ describe("ActionPalette", () => {
         results={[makeItem("a.action", "Alpha")]}
         totalResults={1}
         selectedIndex={0}
-        isShowingRecentlyUsed={false}
         isStale
         close={noop}
         setQuery={noop}
