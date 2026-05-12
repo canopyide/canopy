@@ -1,5 +1,5 @@
 import { test, expect, type Locator } from "@playwright/test";
-import { launchApp, closeApp, type AppContext } from "../../helpers/launch";
+import { launchApp, closeApp, refreshActiveWindow, type AppContext } from "../../helpers/launch";
 import { createFixtureRepo } from "../../helpers/fixtures";
 import { openAndOnboardProject } from "../../helpers/project";
 import { expectInputBarFocused } from "../../helpers/focus";
@@ -12,6 +12,93 @@ let fixtureDir: string;
 let fixtureCleanup: (() => void) | undefined;
 let agentPanel: Locator;
 let cmEditor: Locator;
+
+async function ensureProjectViewOpen(): Promise<void> {
+  ctx.window = await refreshActiveWindow(ctx.app, ctx.window).catch(() => ctx.window);
+
+  const worktreeVisible = await ctx.window
+    .locator("[data-worktree-branch]")
+    .first()
+    .isVisible({ timeout: 500 })
+    .catch(() => false);
+  if (worktreeVisible) return;
+
+  if (
+    await ctx.window
+      .getByRole("button", { name: "Open Folder" })
+      .isVisible({ timeout: 500 })
+      .catch(() => false)
+  ) {
+    ctx.window = await openAndOnboardProject(
+      ctx.app,
+      ctx.window,
+      fixtureDir,
+      "HybridInputBar Test"
+    );
+  }
+}
+
+async function bindVisibleAgentPanel(timeout = 1_000): Promise<boolean> {
+  const launchedAgentPanel = ctx.window.locator(SEL.agent.panel).first();
+  if (!(await launchedAgentPanel.isVisible({ timeout }).catch(() => false))) {
+    return false;
+  }
+
+  const panelId = await launchedAgentPanel.evaluate(
+    (element) => element.closest("[data-panel-id]")?.getAttribute("data-panel-id") ?? ""
+  );
+  if (!panelId) return false;
+
+  agentPanel = ctx.window.locator(`[data-panel-id="${panelId}"]`);
+  cmEditor = agentPanel.locator(SEL.terminal.cmEditor);
+  await expect(cmEditor).toBeAttached({ timeout: T_LONG });
+  return true;
+}
+
+async function ensureAgentPanelReady(): Promise<boolean> {
+  await ensureProjectViewOpen();
+
+  if (agentPanel) {
+    const existingEditor = agentPanel.locator(SEL.terminal.cmEditor).first();
+    if (await existingEditor.isVisible({ timeout: 500 }).catch(() => false)) {
+      cmEditor = existingEditor;
+      return true;
+    }
+  }
+
+  if (await bindVisibleAgentPanel()) return true;
+
+  const startBtn = ctx.window.locator(SEL.agent.startButton);
+  if (!(await startBtn.isVisible({ timeout: 1_000 }).catch(() => false))) {
+    return false;
+  }
+  await startBtn.click({ force: true });
+  ctx.window = await refreshActiveWindow(ctx.app, ctx.window).catch(() => ctx.window);
+  return bindVisibleAgentPanel(T_LONG);
+}
+
+async function focusCmEditor(): Promise<Locator> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    if (!(await ensureAgentPanelReady())) {
+      throw new Error("Claude agent panel is not available");
+    }
+    const editor = agentPanel.locator(SEL.terminal.cmEditor).first();
+    try {
+      await expect(editor).toBeAttached({ timeout: T_MEDIUM });
+      await editor.scrollIntoViewIfNeeded().catch(() => undefined);
+      await editor.click({ force: true, noWaitAfter: true, timeout: 5_000 });
+      await expectInputBarFocused(agentPanel);
+      cmEditor = editor;
+      return editor;
+    } catch (error) {
+      lastError = error;
+      await ctx.window.waitForTimeout(250);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Failed to focus CodeMirror editor");
+}
 
 test.describe.serial("Core: HybridInputBar", () => {
   test.beforeAll(async () => {
@@ -27,19 +114,10 @@ test.describe.serial("Core: HybridInputBar", () => {
     );
 
     // Agent panel requires CLI availability — skip all tests if not present
-    const startBtn = ctx.window.locator(SEL.agent.startButton);
-    if (!(await startBtn.isVisible().catch(() => false))) {
+    if (!(await ensureAgentPanelReady())) {
       test.skip();
       return;
     }
-
-    await startBtn.click();
-
-    agentPanel = ctx.window.locator(SEL.agent.panel);
-    await expect(agentPanel).toBeVisible({ timeout: T_LONG });
-
-    cmEditor = agentPanel.locator(SEL.terminal.cmEditor);
-    await expect(cmEditor).toBeAttached({ timeout: T_LONG });
   });
 
   test.afterAll(async () => {
@@ -50,11 +128,10 @@ test.describe.serial("Core: HybridInputBar", () => {
   test("can type text into CodeMirror editor", async () => {
     const { window } = ctx;
 
-    await cmEditor.click();
-    await expectInputBarFocused(agentPanel);
-    await cmEditor.pressSequentially("hello world", { delay: 30 });
+    const editor = await focusCmEditor();
+    await editor.pressSequentially("hello world", { delay: 30 });
 
-    await expect(cmEditor).toHaveText(/hello world/);
+    await expect(editor).toHaveText(/hello world/);
 
     // Clear for next test
     await window.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+A`);
@@ -64,27 +141,27 @@ test.describe.serial("Core: HybridInputBar", () => {
   test("Enter submits the input and clears the editor", async () => {
     const { window } = ctx;
 
-    await cmEditor.click();
-    await cmEditor.pressSequentially("e2e-submit-test", { delay: 30 });
-    await expect(cmEditor).toHaveText(/e2e-submit-test/);
+    const editor = await focusCmEditor();
+    await editor.pressSequentially("e2e-submit-test", { delay: 30 });
+    await expect(editor).toHaveText(/e2e-submit-test/);
 
     await window.keyboard.press("Enter");
 
     // Editor should be cleared after submit — the submitted text should no longer appear
-    await expect(cmEditor).not.toHaveText(/e2e-submit-test/, { timeout: T_MEDIUM });
+    await expect(editor).not.toHaveText(/e2e-submit-test/, { timeout: T_MEDIUM });
   });
 
   test("Shift+Enter inserts newline without submitting", async () => {
     const { window } = ctx;
 
-    await cmEditor.click();
-    await cmEditor.pressSequentially("line1", { delay: 30 });
+    const editor = await focusCmEditor();
+    await editor.pressSequentially("line1", { delay: 30 });
     await window.keyboard.press("Shift+Enter");
-    await cmEditor.pressSequentially("line2", { delay: 30 });
+    await editor.pressSequentially("line2", { delay: 30 });
 
     // Editor should contain both lines with a newline between them
     // CM6 renders each line in a separate .cm-line element
-    const lines = cmEditor.locator(".cm-line");
+    const lines = editor.locator(".cm-line");
     await expect(lines).toHaveCount(2, { timeout: T_SHORT });
     await expect(lines.nth(0)).toHaveText("line1");
     await expect(lines.nth(1)).toHaveText("line2");
@@ -95,8 +172,8 @@ test.describe.serial("Core: HybridInputBar", () => {
   });
 
   test("slash autocomplete appears when typing /", async () => {
-    await cmEditor.click();
-    await cmEditor.pressSequentially("/", { delay: 30 });
+    const editor = await focusCmEditor();
+    await editor.pressSequentially("/", { delay: 30 });
 
     const listbox = agentPanel.getByRole("listbox", { name: "Command autocomplete" });
     await expect(listbox).toBeVisible({ timeout: T_MEDIUM });
@@ -142,10 +219,10 @@ test.describe.serial("Core: HybridInputBar", () => {
     const { window } = ctx;
 
     // Type draft text into the agent panel's input bar
-    await cmEditor.click();
+    const editor = await focusCmEditor();
     const draftText = "my-draft-message";
-    await cmEditor.pressSequentially(draftText, { delay: 30 });
-    await expect(cmEditor).toHaveText(new RegExp(draftText));
+    await editor.pressSequentially(draftText, { delay: 30 });
+    await expect(editor).toHaveText(new RegExp(draftText));
 
     // Open a new terminal panel via toolbar
     await openTerminal(window);

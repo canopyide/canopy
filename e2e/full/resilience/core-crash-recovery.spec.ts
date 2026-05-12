@@ -407,7 +407,9 @@ test.describe.serial("Core: Crash Recovery — Panel Restoration", () => {
 
     // Dialog should dismiss and main UI should appear
     await expect(window.locator(SEL.crashRecovery.dialog)).not.toBeVisible({ timeout: T_LONG });
-    await expect(window.locator(SEL.toolbar.openSettings)).toBeVisible({ timeout: T_LONG });
+    await expect(window.getByRole("toolbar", { name: "Main toolbar" })).toBeVisible({
+      timeout: T_LONG,
+    });
 
     // Wait for at least one panel with data-panel-id to appear
     await expect(window.locator(SEL.panel.anyPanel)).toHaveCount(2, { timeout: T_LONG });

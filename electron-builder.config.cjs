@@ -77,7 +77,7 @@ module.exports = async function () {
     mac: {
       extraResources: [{ from: "scripts/daintree-cli.sh", to: "daintree-cli.sh" }],
       x64ArchFiles:
-        "Contents/Resources/app.asar.unpacked/node_modules/{node-pty/build/Release,win-job-object/bin}/**",
+        "Contents/Resources/app.asar.unpacked/node_modules/{node-pty/build/Release/**,win-job-object/bin/**,@parcel/watcher-darwin-*/watcher.node}",
       forceCodeSigning: true,
       notarize: true,
       binaries: [

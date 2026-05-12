@@ -177,9 +177,26 @@ test.describe.serial("Core: Focus Management", () => {
   test("Escape pops layered overlays in LIFO order", async () => {
     const { window } = ctx;
     await ensureWindowFocused(ctx.app);
-    const panel = getFirstGridPanel(window);
+    let panel = getFirstGridPanel(window);
 
     await test.step("Focus terminal as the underlying focus target", async () => {
+      if (
+        !(await panel
+          .locator(SEL.terminal.xtermRows)
+          .isVisible({ timeout: 1000 })
+          .catch(() => false))
+      ) {
+        const before = await getGridPanelCount(window);
+        await window.keyboard.press(`${mod}+Alt+t`);
+        await expect
+          .poll(() => getGridPanelCount(window), { timeout: T_LONG })
+          .toBeGreaterThan(before);
+        panel = window
+          .locator(SEL.panel.gridPanel)
+          .filter({ has: window.locator(SEL.terminal.xtermRows) })
+          .last();
+        await expect(panel.locator(SEL.terminal.xtermRows)).toBeVisible({ timeout: T_LONG });
+      }
       await panel.locator(SEL.terminal.xtermRows).click();
       await expectTerminalFocused(panel);
     });
@@ -196,11 +213,14 @@ test.describe.serial("Core: Focus Management", () => {
 
     await test.step("First Escape pops palette only — settings remains", async () => {
       await window.keyboard.press("Escape");
-      await expect(window.locator(SEL.actionPalette.dialog)).not.toBeVisible({ timeout: T_MEDIUM });
+      const paletteDialog = window.locator(SEL.actionPalette.dialog);
+      await expect(paletteDialog).not.toBeVisible({ timeout: T_MEDIUM });
+      await expect(paletteDialog).toHaveCount(0, { timeout: T_MEDIUM });
       await expect(window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_SHORT });
     });
 
     await test.step("Second Escape closes settings and restores terminal focus", async () => {
+      await window.locator(SEL.settings.heading).click({ force: true });
       await window.keyboard.press("Escape");
       await expect(window.locator(SEL.settings.heading)).not.toBeVisible({ timeout: T_SHORT });
 

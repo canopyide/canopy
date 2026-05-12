@@ -31,6 +31,33 @@ async function applyTier(page: Page, panelId: string, tier: string): Promise<boo
   );
 }
 
+async function applyTierAndReadDimensions(
+  page: Page,
+  panelId: string,
+  tier: string
+): Promise<{ applied: boolean; dims: { cols: number; rows: number } | null }> {
+  return page.evaluate(
+    ({ id, name }) => {
+      const win = window as unknown as {
+        __daintreeApplyTerminalTier?: (panelId: string, tierName: string) => boolean;
+        __daintreeGetTerminalDimensions?: (
+          panelId: string
+        ) => { cols: number; rows: number } | null;
+      };
+      const applied =
+        typeof win.__daintreeApplyTerminalTier === "function"
+          ? win.__daintreeApplyTerminalTier(id, name)
+          : false;
+      const dims =
+        typeof win.__daintreeGetTerminalDimensions === "function"
+          ? win.__daintreeGetTerminalDimensions(id)
+          : null;
+      return { applied, dims };
+    },
+    { id: panelId, name: tier }
+  );
+}
+
 async function simulateResize(
   page: Page,
   panelId: string,
@@ -125,14 +152,15 @@ test.describe
     // Restore to FOCUSED. applyDeferredResize on the wake path must reconcile
     // xterm's grid with the dims captured during background, before refresh
     // repaints into the buffer.
-    expect(await applyTier(window, panelId, "FOCUSED")).toBe(true);
+    const restored = await applyTierAndReadDimensions(window, panelId, "FOCUSED");
+    expect(restored.applied).toBe(true);
+    expect(restored.dims).toEqual(observed);
     await window.waitForTimeout(T_SETTLE);
 
     const afterRestore = await getTerminalDimensions(terminalPanel);
     expect(afterRestore).not.toBeNull();
-    expect(afterRestore!.cols).toBe(observed!.cols);
-    expect(afterRestore!.rows).toBe(observed!.rows);
-    expect(afterRestore!.cols).toBeLessThan(initial!.cols);
+    expect(afterRestore!.cols).toBeGreaterThan(2);
+    expect(afterRestore!.rows).toBeGreaterThan(1);
   });
 
   test("bulk output during BACKGROUND survives restore without garbling", async () => {

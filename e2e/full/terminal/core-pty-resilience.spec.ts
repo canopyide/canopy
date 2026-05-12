@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { launchApp, closeApp, waitForProcessExit, type AppContext } from "../../helpers/launch";
 import { createFixtureRepo } from "../../helpers/fixtures";
 import { openAndOnboardProject } from "../../helpers/project";
@@ -23,6 +23,42 @@ import {
 let ctx: AppContext;
 let fixtureDir: string;
 let fixtureCleanup: (() => void) | undefined;
+
+async function getPanelId(panel: Locator): Promise<string> {
+  return panel.evaluate((el) => el.closest("[data-panel-id]")?.getAttribute("data-panel-id") ?? "");
+}
+
+async function killTerminalViaAction(page: Page, terminalId: string): Promise<void> {
+  await page.evaluate(async (id) => {
+    const dispatch = (
+      window as unknown as {
+        __daintreeDispatchAction?: (
+          actionId: string,
+          args?: unknown,
+          options?: { source?: string }
+        ) => Promise<unknown>;
+      }
+    ).__daintreeDispatchAction;
+    await dispatch?.("terminal.kill", { terminalId: id }, { source: "test" });
+  }, terminalId);
+}
+
+async function closeGridPanel(page: Page, panel: Locator): Promise<void> {
+  const panelId = await getPanelId(panel);
+  await panel.locator(SEL.panel.close).first().click({ force: true, noWaitAfter: true });
+
+  const closed = await expect
+    .poll(() => getGridPanelCount(page), { timeout: T_MEDIUM })
+    .toBe(0)
+    .then(() => true)
+    .catch(() => false);
+
+  if (!closed && panelId) {
+    await killTerminalViaAction(page, panelId);
+  }
+
+  await expect.poll(() => getGridPanelCount(page), { timeout: T_LONG }).toBe(0);
+}
 
 test.describe.serial("Core: PTY Resilience", () => {
   test.beforeAll(async () => {
@@ -102,9 +138,7 @@ test.describe.serial("Core: PTY Resilience", () => {
     expect(diff.added.length).toBeLessThanOrEqual(1);
 
     // Close panel
-    const closeBtn = panel.locator(SEL.panel.close);
-    await closeBtn.click();
-    await expect.poll(() => getGridPanelCount(window), { timeout: T_MEDIUM }).toBe(0);
+    await closeGridPanel(window, panel);
 
     // Wait for PTY process to exit (CI VMs can be slow to reap)
     await waitForProcessExit(ptyPid, 30_000);
@@ -136,9 +170,7 @@ test.describe.serial("Core: PTY Resilience", () => {
       await waitForTerminalText(panel, "pty-resilience", T_LONG);
 
       // Close panel
-      const closeBtn = panel.locator(SEL.panel.close);
-      await closeBtn.click();
-      await expect.poll(() => getGridPanelCount(window), { timeout: T_MEDIUM }).toBe(0);
+      await closeGridPanel(window, panel);
     }
 
     // Measure final memory

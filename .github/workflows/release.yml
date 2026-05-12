@@ -80,7 +80,7 @@ jobs:
     uses: ./.github/workflows/e2e.yml
     with:
       suite: core
-      platform: non-windows
+      platform: all
 
   # Fan out the six full-* domain buckets as a matrix of reusable-workflow
   # calls. GitHub Actions waits on every matrix entry before unblocking
@@ -100,14 +100,14 @@ jobs:
     uses: ./.github/workflows/e2e.yml
     with:
       suite: ${{ matrix.suite }}
-      platform: non-windows
+      platform: all
 
   e2e-online-gate:
     needs: [checks, unit-tests]
     uses: ./.github/workflows/e2e.yml
     with:
       suite: online
-      platform: non-windows
+      platform: all
     secrets: inherit
 
   build-daintree:
