@@ -361,9 +361,10 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   );
 
   const quickStateCounts = useMemo(() => {
-    const counts = { working: 0, waiting: 0, finished: 0 };
+    const counts = { all: 0, working: 0, waiting: 0, finished: 0 };
     for (const w of deferredWorktrees) {
       if (w.id === mainWorktree?.id || w.id === integrationWorktree?.id) continue;
+      counts.all++;
       const meta = derivedMetaMap.get(w.id);
       if (!meta) continue;
       if (matchesQuickStateFilter("working", meta)) counts.working++;

@@ -22,20 +22,21 @@ const FILTER_VISUALS: Record<
 interface QuickStateFilterBarProps {
   value: QuickStateFilter;
   onChange: (value: QuickStateFilter) => void;
-  counts?: Record<"working" | "waiting" | "finished", number>;
+  counts?: Record<QuickStateFilter, number>;
 }
 
 export function QuickStateFilterBar({ value, onChange, counts }: QuickStateFilterBarProps) {
   const workingActive = counts !== undefined && counts.working > 0;
   return (
     <div
-      className="flex items-center gap-0.5 px-4 py-1.5 border-b border-border-default"
+      className="grid grid-cols-4 border-b border-border-default"
       role="toolbar"
       aria-label="Quick state filter"
     >
-      {FILTER_OPTIONS.map((option) => {
+      {FILTER_OPTIONS.map((option, idx) => {
         const isActive = option.value === value;
-        const count = counts && option.value !== "all" ? counts[option.value] : undefined;
+        const rawCount = counts ? counts[option.value] : undefined;
+        const showCount = rawCount !== undefined && rawCount > 0;
         const visual = option.value === "all" ? null : FILTER_VISUALS[option.value];
         const isSpinningWorking = option.value === "working" && workingActive;
         const Icon = isSpinningWorking ? SpinnerCircle : visual?.Icon;
@@ -46,26 +47,27 @@ export function QuickStateFilterBar({ value, onChange, counts }: QuickStateFilte
             aria-pressed={isActive}
             onClick={() => onChange(isActive ? "all" : option.value)}
             className={cn(
-              "inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded-full transition-colors",
+              "inline-flex items-center justify-center gap-1 min-w-0 px-1 py-1.5 text-[11px] transition-colors",
+              idx > 0 && "border-l border-border-default",
               isActive
-                ? "bg-filter-selected-bg-soft ring-1 ring-inset ring-border-strong text-daintree-text font-medium"
+                ? "text-daintree-text font-medium shadow-[inset_0_-2px_0_0_var(--color-text-primary)]"
                 : "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.04]"
             )}
           >
             {Icon && visual && (
               <Icon
                 className={cn(
-                  "w-3 h-3",
+                  "w-3 h-3 shrink-0",
                   visual.color,
                   isSpinningWorking && "animate-spin-slow motion-reduce:animate-none"
                 )}
               />
             )}
-            {option.label}
-            {count !== undefined && (
+            <span className="truncate">{option.label}</span>
+            {showCount && (
               <>
-                <span aria-hidden="true">{` (${count})`}</span>
-                <span className="sr-only">{`, ${count} ${count === 1 ? "worktree" : "worktrees"}`}</span>
+                <span aria-hidden="true">{` (${rawCount})`}</span>
+                <span className="sr-only">{`, ${rawCount} ${rawCount === 1 ? "worktree" : "worktrees"}`}</span>
               </>
             )}
           </button>
