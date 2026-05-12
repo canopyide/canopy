@@ -22,7 +22,6 @@ type ActionPaletteProps = Pick<
   | "results"
   | "totalResults"
   | "selectedIndex"
-  | "isShowingRecentlyUsed"
   | "isStale"
   | "close"
   | "setQuery"
@@ -39,7 +38,6 @@ export function ActionPalette({
   results,
   totalResults,
   selectedIndex,
-  isShowingRecentlyUsed,
   isStale,
   close,
   setQuery,
@@ -90,13 +88,8 @@ export function ActionPalette({
       searchAriaLabel="Search actions"
       listId="action-palette-list"
       itemIdPrefix="action-option"
-      emptyMessage="Type to search actions"
+      emptyMessage="No actions yet"
       totalResults={totalResults}
-      beforeList={
-        isShowingRecentlyUsed ? (
-          <div className="px-3 pt-2 pb-1 text-xs text-daintree-text/40">Recently used</div>
-        ) : null
-      }
     />
   );
 }

@@ -993,7 +993,6 @@ function App() {
                     results={actionPalette.results}
                     totalResults={actionPalette.totalResults}
                     selectedIndex={actionPalette.selectedIndex}
-                    isShowingRecentlyUsed={actionPalette.isShowingRecentlyUsed}
                     isStale={actionPalette.isStale}
                     close={actionPalette.close}
                     setQuery={actionPalette.setQuery}
