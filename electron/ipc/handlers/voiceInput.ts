@@ -189,7 +189,7 @@ const VOICE_INPUT_DEFAULTS: VoiceInputSettings = {
 };
 
 /** Read voiceInput settings with defaults for fields added after initial store creation. */
-function getVoiceSettings(): VoiceInputSettings {
+export function getVoiceSettings(): VoiceInputSettings {
   const stored = store.get("voiceInput") as
     | (Partial<VoiceInputSettings> & {
         apiKey?: string;

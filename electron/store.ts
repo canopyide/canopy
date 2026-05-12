@@ -180,7 +180,7 @@ export interface StoreSchema {
   };
   voiceInput: {
     enabled: boolean;
-    apiKey: string;
+    openaiApiKey: string;
     language: string;
     customDictionary: string[];
     transcriptionModel: string;
@@ -188,6 +188,7 @@ export interface StoreSchema {
     correctionModel: string;
     correctionCustomInstructions: string;
     paragraphingStrategy: string;
+    resolveFileLinks: boolean;
   };
   mcpServer: {
     enabled: boolean;
@@ -354,7 +355,7 @@ const storeOptions = {
     },
     voiceInput: {
       enabled: false,
-      apiKey: "",
+      openaiApiKey: "",
       language: "en",
       customDictionary: [],
       transcriptionModel: "nova-3",
@@ -362,6 +363,7 @@ const storeOptions = {
       correctionModel: "gpt-5-mini",
       correctionCustomInstructions: "",
       paragraphingStrategy: "spoken-command",
+      resolveFileLinks: true,
     },
     mcpServer: {
       enabled: false,
