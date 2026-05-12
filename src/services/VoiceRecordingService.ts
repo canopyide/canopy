@@ -152,7 +152,7 @@ class VoiceRecordingService {
 
     this.unsubscribers.push(
       voiceInput.onParagraphBoundary(({ rawText }) => {
-        logDebug(`${LOG_PREFIX} Received paragraph boundary from Deepgram`, { rawText });
+        logDebug(`${LOG_PREFIX} Received paragraph boundary`, { rawText });
         const voiceState = useVoiceRecordingStore.getState();
         const currentTarget = voiceState.activeTarget;
         if (!currentTarget) return;
@@ -528,7 +528,7 @@ class VoiceRecordingService {
       .getState()
       .announce(`Dictation started in ${formatTargetLabel(target)}.`);
 
-    // Connect to Deepgram in parallel — audio is already flowing.
+    // Connect in parallel — audio is already flowing.
     logDebug(`${LOG_PREFIX} Calling voiceInput.start() IPC`);
     const result = await window.electron.voiceInput.start();
     logDebug(`${LOG_PREFIX} voiceInput.start() returned`, {

@@ -1157,14 +1157,6 @@ export const SETTINGS_REGISTRY = [
         requiresEnabled: VOICE_REQUIRES_ENABLED,
       },
       {
-        id: "voice-transcription-model",
-        section: "Speech-to-Text",
-        title: "Transcription Model",
-        description: "Choose the OpenAI Realtime model for transcription accuracy",
-        keywords: ["whisper", "gpt-realtime", "model", "openai", "accuracy", "transcription"],
-        requiresEnabled: VOICE_REQUIRES_ENABLED,
-      },
-      {
         id: "voice-paragraph-breaks",
         section: "Speech-to-Text",
         title: "Paragraph Breaks",
@@ -1187,14 +1179,6 @@ export const SETTINGS_REGISTRY = [
         description: "Enable AI-powered post-processing to clean up transcribed text",
         keywords: ["correction", "ai", "cleanup", "post-process", "filler"],
         requiresEnabled: VOICE_REQUIRES_ENABLED,
-      },
-      {
-        id: "voice-openai-key",
-        section: "AI Text Correction",
-        title: "OpenAI API Key",
-        description: "Configure your OpenAI API key for AI text correction",
-        keywords: ["openai", "api", "key", "correction", "gpt"],
-        requiresEnabled: VOICE_AI_REQUIRES_ENABLED,
       },
       {
         id: "voice-correction-model",
