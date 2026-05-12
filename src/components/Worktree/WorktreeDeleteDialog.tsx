@@ -246,15 +246,7 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
                 value={confirmInput}
                 onChange={setConfirmInput}
                 onMatchSubmit={() => void handleDelete()}
-                instructions={
-                  <>
-                    Force-deleting this protected worktree is irreversible. Type{" "}
-                    <code className="font-mono text-xs bg-daintree-bg/50 px-1.5 py-0.5 rounded border border-daintree-border">
-                      {confirmTarget}
-                    </code>{" "}
-                    to confirm.
-                  </>
-                }
+                preamble="Force-deleting this protected worktree is irreversible."
                 data-testid="delete-worktree-confirm-input"
               />
             )}
