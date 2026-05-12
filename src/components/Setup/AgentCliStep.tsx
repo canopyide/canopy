@@ -18,6 +18,7 @@ import { systemClient } from "@/clients";
 import { useAgentSettingsStore } from "@/store";
 import { DEFAULT_DANGEROUS_ARGS } from "@shared/types/agentSettings";
 import { CopyableCommand } from "./CopyableCommand";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { AGENT_DESCRIPTIONS } from "@/config/agents";
 import type { CliAvailability } from "@shared/types";
 import { isAgentInstalled } from "@shared/utils/agentAvailability";
@@ -250,14 +251,19 @@ export function AgentCliStep({ availability, selections, onInstallComplete }: Ag
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {config.install?.docsUrl && (
-                    <button
-                      type="button"
-                      className="text-daintree-text/30 hover:text-daintree-text transition-colors p-0.5 cursor-pointer"
-                      onClick={() => systemClient.openExternal(config.install!.docsUrl!)}
-                      title="View documentation"
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="text-daintree-text/30 hover:text-daintree-text transition-colors p-0.5 cursor-pointer"
+                          onClick={() => systemClient.openExternal(config.install!.docsUrl!)}
+                          aria-label="View documentation"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>View documentation</TooltipContent>
+                    </Tooltip>
                   )}
                   {isInstalled ? (
                     <span className="inline-flex items-center gap-1 text-[11px] text-status-success font-medium">
