@@ -348,10 +348,6 @@ function settingsWith(
   return { agents: overrides } as unknown as AgentSettings;
 }
 
-function avail(rows: Record<string, string>): CliAvailability {
-  return rows as unknown as CliAvailability;
-}
-
 function agentRows(container: HTMLElement): string[] {
   return Array.from(container.querySelectorAll('[data-testid^="agent-tray-row-"]'))
     .map((el) => el.getAttribute("data-testid")?.replace("agent-tray-row-", "") ?? "")
