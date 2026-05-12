@@ -179,6 +179,10 @@ export function createDaintreeTokens(
     "overlay-active": tokens["overlay-active"] ?? withAlpha(overlayTone, dark ? 0.08 : 0.06),
     "overlay-selected": tokens["overlay-selected"] ?? withAlpha(overlayTone, dark ? 0.04 : 0.05),
     "overlay-elevated": tokens["overlay-elevated"] ?? withAlpha(overlayTone, dark ? 0.06 : 0.08),
+    "filter-selected-bg-soft":
+      tokens["filter-selected-bg-soft"] ?? withAlpha(tint, dark ? 0.08 : 0.06),
+    "filter-selected-bg-strong":
+      tokens["filter-selected-bg-strong"] ?? withAlpha(tint, dark ? 0.12 : 0.1),
     "wash-subtle": tokens["wash-subtle"] ?? withAlpha(overlayBase, 0.02),
     "wash-medium": tokens["wash-medium"] ?? withAlpha(overlayBase, 0.04),
     "wash-strong": tokens["wash-strong"] ?? withAlpha(overlayBase, 0.08),
