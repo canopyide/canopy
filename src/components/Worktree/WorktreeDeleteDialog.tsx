@@ -138,7 +138,11 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
         ) : (
           <div className="space-y-4">
             <div>
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-daintree-text/60">
+              <span
+                role="heading"
+                aria-level={3}
+                className="text-[11px] font-semibold uppercase tracking-wider text-daintree-text/60"
+              >
                 What will happen
               </span>
               <ul className="mt-2 space-y-1">
@@ -174,7 +178,8 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
                 >
                   {worktree.branch ? (
                     <>
-                      Branch <span className="font-mono">{worktree.branch}</span> will be deleted
+                      Branch <span className="font-mono break-all">{worktree.branch}</span> will be
+                      deleted
                     </>
                   ) : (
                     "Branch will be deleted"
