@@ -8,6 +8,9 @@ const MAX_KEYTERMS = 96;
 const ASSEMBLY_TIMEOUT_MS = 500;
 const MIN_TERM_LENGTH = 4;
 const MAX_KEYTERM_LINES = 200;
+const MAX_PROMPT_CHARS = 400;
+const KEYTERM_PROMPT_PREFIX = "Keywords: ";
+const KEYTERM_PROMPT_SEPARATOR = ", ";
 
 const BLOCKLIST = new Set([
   // Shell commands
@@ -356,4 +359,21 @@ export async function assembleKeyterms(opts: KeytermAssemblyOpts): Promise<strin
   });
 
   return result;
+}
+
+export function formatKeytermPrompt(terms: string[], maxChars: number = MAX_PROMPT_CHARS): string {
+  if (terms.length === 0) return "";
+
+  let out = KEYTERM_PROMPT_PREFIX;
+  let appended = 0;
+
+  for (const term of terms) {
+    if (term.trim().length === 0) continue;
+    const candidate = appended === 0 ? out + term : out + KEYTERM_PROMPT_SEPARATOR + term;
+    if (candidate.length > maxChars) continue;
+    out = candidate;
+    appended++;
+  }
+
+  return appended === 0 ? "" : out;
 }

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { PtyClient } from "../PtyClient.js";
 import {
   assembleKeyterms,
+  formatKeytermPrompt,
   tokenizeBranchName,
   tokenizeProjectName,
   extractTerminalIdentifiers,
@@ -246,5 +247,80 @@ describe("assembleKeyterms", () => {
     expect(customIdx).toBeLessThan(projectIdx);
     expect(projectIdx).toBeLessThan(branchIdx);
     expect(branchIdx).toBeLessThan(terminalIdx);
+  });
+});
+
+describe("formatKeytermPrompt", () => {
+  it("joins terms into the OpenAI prompt string format", () => {
+    expect(formatKeytermPrompt(["foo", "bar", "baz"])).toBe("Keywords: foo, bar, baz");
+  });
+
+  it("returns empty string for empty array", () => {
+    expect(formatKeytermPrompt([])).toBe("");
+  });
+
+  it("formats a single term without a trailing separator", () => {
+    expect(formatKeytermPrompt(["Daintree"])).toBe("Keywords: Daintree");
+  });
+
+  it("preserves casing of terms", () => {
+    expect(formatKeytermPrompt(["Daintree", "xterm", "PtyClient"])).toBe(
+      "Keywords: Daintree, xterm, PtyClient"
+    );
+  });
+
+  it("drops whole terms that would exceed the char cap (never mid-term truncation)", () => {
+    // "Keywords: foo" = 13 chars. ", toolong_word_here" would push to 32.
+    const result = formatKeytermPrompt(["foo", "toolong_word_here"], 20);
+    expect(result).toBe("Keywords: foo");
+    expect(result.length).toBeLessThanOrEqual(20);
+  });
+
+  it("returns empty string when the first term alone exceeds the cap", () => {
+    // "Keywords: averylongtermthatcannotfit" exceeds 20 chars
+    expect(formatKeytermPrompt(["averylongtermthatcannotfit"], 20)).toBe("");
+  });
+
+  it("includes a term whose total length lands exactly at the cap", () => {
+    // "Keywords: abc" is exactly 13 chars; cap of 13 must include it.
+    expect(formatKeytermPrompt(["abc"], 13)).toBe("Keywords: abc");
+  });
+
+  it("skips blank terms in the input", () => {
+    expect(formatKeytermPrompt(["foo", "", "bar"])).toBe("Keywords: foo, bar");
+  });
+
+  it("caps the full string (including the prefix) at maxChars", () => {
+    const many = Array.from({ length: 200 }, (_, i) => `term${i}`);
+    const result = formatKeytermPrompt(many);
+    expect(result.length).toBeLessThanOrEqual(400);
+    expect(result.startsWith("Keywords: ")).toBe(true);
+  });
+
+  it("appends as many terms as fit within the cap, in input order", () => {
+    // Each "abc" pair = 5 chars after the first ("abc" then ", abc").
+    // "Keywords: abc" = 13, +", abc" = 18, +", abc" = 23.
+    const result = formatKeytermPrompt(["abc", "abc1", "abc2", "abc3"], 23);
+    expect(result).toBe("Keywords: abc, abc1");
+  });
+
+  it("skips an over-cap term mid-list and continues to later terms that fit", () => {
+    // "Keywords: foo" = 13. "averylongterm_skip_me" alone added would push to 36 (> 20).
+    // "Keywords: foo, bar" = 18 (≤ 20). Skip semantics keep "bar" reachable.
+    const result = formatKeytermPrompt(["foo", "averylongterm_skip_me", "bar"], 20);
+    expect(result).toBe("Keywords: foo, bar");
+  });
+
+  it("returns empty string when every term is over the cap", () => {
+    expect(formatKeytermPrompt(["averylongterm1", "averylongterm2"], 15)).toBe("");
+  });
+
+  it("returns empty string when maxChars is smaller than the prefix alone", () => {
+    // "Keywords: " is 10 chars; "abc" pushes candidate to 13 — nothing can fit at cap 8.
+    expect(formatKeytermPrompt(["abc"], 8)).toBe("");
+  });
+
+  it("skips whitespace-only terms defensively", () => {
+    expect(formatKeytermPrompt(["   ", "\t\n", "foo"])).toBe("Keywords: foo");
   });
 });
