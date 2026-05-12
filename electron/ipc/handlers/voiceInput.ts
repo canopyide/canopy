@@ -63,7 +63,12 @@ export function getVoiceSettings(): VoiceInputSettings {
 
   // Persist the cleaned object on first read after upgrade so the legacy
   // fields disappear from disk. `store.set` with a full object replaces.
-  if (apiKey !== undefined || deepgramApiKey !== undefined || correctionApiKey !== undefined || staleModel) {
+  if (
+    apiKey !== undefined ||
+    deepgramApiKey !== undefined ||
+    correctionApiKey !== undefined ||
+    staleModel
+  ) {
     store.set("voiceInput", merged);
   }
 
