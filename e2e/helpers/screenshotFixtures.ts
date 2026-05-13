@@ -1,8 +1,19 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
+import { mkdirSync, writeFileSync, existsSync, rmSync } from "fs";
 import path from "path";
 import { execSync } from "child_process";
 import { removePathSync } from "./fixtures";
+
+/**
+ * Demo repos live at a clean, sanitized base path so the title bar / project
+ * footer don't expose Windows `C:\Users\runneradmin\AppData\Local\Temp\...`
+ * paths in marketing screenshots. Windows: C:\Projects\<slug>. POSIX:
+ * /tmp/daintree-demos/<slug>. Override with DAINTREE_DEMO_ROOT.
+ */
+function getDemoRoot(): string {
+  if (process.env.DAINTREE_DEMO_ROOT) return process.env.DAINTREE_DEMO_ROOT;
+  if (process.platform === "win32") return "C:\\Projects";
+  return "/tmp/daintree-demos";
+}
 
 interface DemoRepoOptions {
   /** Marketing slug — also used as folder basename, so it shows in the title bar. */
@@ -52,9 +63,29 @@ function writeFiles(root: string, files: Record<string, string>) {
  * identifiable third-party code. All content is original demo material.
  */
 export function createDemoRepo(opts: DemoRepoOptions): DemoRepo {
-  // Use a parent tmpdir so the folder basename is exactly the slug.
-  const parent = mkdtempSync(path.join(tmpdir(), "daintree-screenshots-"));
-  const dir = path.join(parent, opts.slug);
+  // Sanitized base: C:\Projects\<slug> on Windows, /tmp/daintree-demos/<slug>
+  // on POSIX. The project header in the app shows this path, so we keep it
+  // looking like a normal developer project location.
+  const root = getDemoRoot();
+  mkdirSync(root, { recursive: true });
+  const dir = path.join(root, opts.slug);
+  // Clean any leftover from a prior run so `git init` doesn't trip.
+  if (existsSync(dir)) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // best-effort
+    }
+  }
+  // Also clean the sibling -worktrees dir if it exists.
+  const worktreeSibling = path.join(root, `${opts.slug}-worktrees`);
+  if (existsSync(worktreeSibling)) {
+    try {
+      rmSync(worktreeSibling, { recursive: true, force: true });
+    } catch {
+      // best-effort
+    }
+  }
   mkdirSync(dir, { recursive: true });
 
   git("init -b main", dir);
@@ -86,7 +117,7 @@ export function createDemoRepo(opts: DemoRepoOptions): DemoRepo {
   }
 
   if (opts.worktrees?.length) {
-    const worktreesParent = path.join(parent, `${opts.slug}-worktrees`);
+    const worktreesParent = path.join(root, `${opts.slug}-worktrees`);
     mkdirSync(worktreesParent, { recursive: true });
     for (const wt of opts.worktrees) {
       const safeBranch = wt.branch.replace(/\//g, "-");
@@ -114,7 +145,12 @@ export function createDemoRepo(opts: DemoRepoOptions): DemoRepo {
     slug: opts.slug,
     cleanup: () => {
       try {
-        removePathSync(parent);
+        removePathSync(dir);
+      } catch {
+        // best-effort
+      }
+      try {
+        removePathSync(worktreeSibling);
       } catch {
         // best-effort
       }

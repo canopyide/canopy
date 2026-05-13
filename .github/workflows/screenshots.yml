@@ -11,10 +11,15 @@ name: Marketing Screenshots
 run-name: screenshots · ${{ inputs.scale || '2' }}x · ${{ github.ref_name }}
 
 on:
-  # Temporary: lets the workflow fire on push to the feature branch so we can
-  # validate it before merge. Strip this `push:` block before merging — the
-  # canonical triggers are workflow_dispatch + release.published.
+  # Canonical trigger: tagging a version. Mirrors release.yml so the
+  # marketing assets refresh in lockstep with the binaries on R2.
   push:
+    tags:
+      - "v*"
+    # Temporary branch trigger: lets the workflow fire on push to the feature
+    # branch so we can validate it before merge. Strip this `branches:` block
+    # before merging — the canonical triggers are `push: tags: ['v*']` +
+    # workflow_dispatch.
     branches:
       - feat/marketing-screenshots-workflow
   workflow_dispatch:
@@ -31,11 +36,9 @@ on:
         type: boolean
         default: true
       tag:
-        description: "Subdir under screenshots/ on R2 (default: branch-or-sha)"
+        description: "Subdir under screenshots/ on R2 (default: <version>-<sha7>)"
         type: string
         default: ""
-  release:
-    types: [published]
 
 permissions:
   contents: read
@@ -161,24 +164,30 @@ jobs:
           if-no-files-found: warn
 
       - name: Resolve R2 destination tag
-        if: success() && (github.event_name == 'release' || inputs.upload_to_r2 == true || inputs.upload_to_r2 == 'true')
+        if: success() && (startsWith(github.ref, 'refs/tags/v') || inputs.upload_to_r2 == true || inputs.upload_to_r2 == 'true')
         id: r2-tag
         shell: bash
         run: |
+          # Versioned destination — the package.json version is the canonical
+          # source so screenshots/0.9.1/, screenshots/0.9.2/ etc. sit side by
+          # side on R2. Tag push uses just the version; manual/dev dispatch
+          # adds a -<sha7> qualifier so multiple iterations of the same
+          # version don't overwrite each other.
+          PKG_VERSION=$(node -p "require('./package.json').version")
           if [ -n "${{ inputs.tag }}" ]; then
             TAG="${{ inputs.tag }}"
-          elif [ "${{ github.event_name }}" = "release" ]; then
-            TAG="${{ github.event.release.tag_name }}"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            # Strip leading v for path consistency with package.json.
+            TAG="${GITHUB_REF_NAME#v}"
           else
-            # Use branch name slugified + short SHA so iterations don't collide.
-            BRANCH_SLUG=$(echo "${GITHUB_REF_NAME}" | tr '/' '-' | tr -cs 'a-zA-Z0-9-' '-')
-            TAG="dev/${BRANCH_SLUG}-${GITHUB_SHA::7}"
+            TAG="${PKG_VERSION}-${GITHUB_SHA::7}"
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "pkg_version=${PKG_VERSION}" >> "$GITHUB_OUTPUT"
           echo "Uploading to: screenshots/${TAG}/"
 
       - name: Upload screenshots to R2
-        if: success() && (github.event_name == 'release' || inputs.upload_to_r2 == true || inputs.upload_to_r2 == 'true')
+        if: success() && (startsWith(github.ref, 'refs/tags/v') || inputs.upload_to_r2 == true || inputs.upload_to_r2 == 'true')
         shell: bash
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}

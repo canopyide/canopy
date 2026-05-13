@@ -167,13 +167,23 @@ async function sendPrompt(page: Page, panel: Locator, prompt: string): Promise<v
   await writeTerminalInput(page, panel, `${prompt}\r`);
 }
 
-/** Wait for the agent panel to reach "Welcome" — i.e. CLI is ready. */
+/**
+ * Wait for the agent panel to reach a ready/welcome state.
+ *
+ * Handles common boot prompts: Claude's "trust" + "api key" dialogs and
+ * OpenCode's "/connect" provider setup. Caller passes the regex set that
+ * indicates ready — typically [/welcome/i] for Claude, or the OpenCode-
+ * specific banners.
+ */
 async function waitForAgentReady(
   panel: Locator,
   page: Page,
-  matches: RegExp[] = [/welcome/i]
+  matches: RegExp[] = [/welcome/i],
+  options: { kind?: "claude" | "opencode" } = {}
 ): Promise<void> {
-  const deadline = Date.now() + (process.platform === "win32" ? 270_000 : 120_000);
+  const kind = options.kind ?? "claude";
+  const budget = kind === "opencode" ? 360_000 : 270_000;
+  const deadline = Date.now() + (process.platform === "win32" ? budget : 120_000);
   while (Date.now() < deadline) {
     await dismissTelemetryConsent(page);
     const text = await getTerminalText(panel).catch(() => "");
@@ -185,6 +195,9 @@ async function waitForAgentReady(
     } else if (lower.includes("api key")) {
       await writeTerminalInput(page, panel, "\x1b[A\r");
       await page.waitForTimeout(2000);
+    } else if (kind === "opencode" && (lower.includes("/connect") || lower.includes("provider"))) {
+      await writeTerminalInput(page, panel, "\r");
+      await page.waitForTimeout(2000);
     } else {
       await page.waitForTimeout(1000);
     }
@@ -192,19 +205,36 @@ async function waitForAgentReady(
   throw new Error("Agent never reached ready state");
 }
 
-/** Wait for visible output from the agent — anything beyond the boot prompt. */
-async function waitForAgentOutput(
+/**
+ * Wait until the agent has clearly started producing a response. We can't
+ * just count terminal lines — the welcome screen already has plenty.
+ * Instead we capture a baseline immediately after sending the prompt, then
+ * wait for the buffer to gain N more non-trivial lines.
+ *
+ * If the agent never produces output, return after timeoutMs so we still
+ * capture something for the marketing reel (better than failing the run).
+ */
+async function waitForAgentResponse(
   panel: Locator,
   page: Page,
-  minLines: number = 6,
-  timeoutMs: number = 120_000
+  baseline: string,
+  minNewLines: number = 4,
+  timeoutMs: number = 90_000
 ): Promise<void> {
+  const baselineLines = baseline.split("\n").length;
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const text = await getTerminalText(panel).catch(() => "");
-    const nonEmpty = text.split("\n").filter((l) => l.trim().length > 0).length;
-    if (nonEmpty >= minLines) return;
-    await page.waitForTimeout(500);
+    const lines = text.split("\n").length;
+    if (lines - baselineLines >= minNewLines) return;
+    // Also break on common in-progress indicators (Claude tool-use glyphs,
+    // OpenCode "thinking" markers, numbered-list output starts).
+    if (/^\s*(⏺|✓|✗|\d+\.\s+|◉|\*\s+\w)/m.test(text.slice(baseline.length))) {
+      // Let one more chunk arrive so we don't shoot mid-line.
+      await page.waitForTimeout(2500);
+      return;
+    }
+    await page.waitForTimeout(750);
   }
 }
 
@@ -225,14 +255,12 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
       const claudePanel = await launchClaude(ctx.app, page);
       await waitForAgentReady(claudePanel, page);
 
+      const baseline = await getTerminalText(claudePanel).catch(() => "");
       const prompt =
         "Read src/checkout.ts and src/refund.ts, then propose a 4-step plan for adding " +
         "an idempotent partial-refund flow. Output the plan as a numbered list, then stop.";
       await sendPrompt(page, claudePanel, prompt);
-      await waitForAgentOutput(claudePanel, page, 8);
-
-      // Give the response one more beat to settle visually.
-      await page.waitForTimeout(2500);
+      await waitForAgentResponse(claudePanel, page, baseline, 4, 90_000);
       await dismissBlockingPalette(page);
 
       await snap(page, "01-hero-surge-checkout");
@@ -378,26 +406,33 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
       await waitForAgentReady(claudePanel, page);
 
       const opencodePanel = await launchOpenCode(page);
-      await waitForAgentReady(opencodePanel, page, [/opencode/i, /welcome/i, />\s*$/]);
+      await waitForAgentReady(
+        opencodePanel,
+        page,
+        [/ask anything/i, /build\s+opencode/i, /\d+\.\d+\.\d+$/m],
+        { kind: "opencode" }
+      );
 
       // Drive both agents in parallel-ish — Claude on the implementation,
       // OpenCode on the tests. They'll run for tens of seconds each; we
       // shoot during the working window.
+      const claudeBaseline = await getTerminalText(claudePanel).catch(() => "");
       await sendPrompt(
         page,
         claudePanel,
         "In src/retry/policy.ts, add a circuit-breaker that trips after 5 consecutive failures. Outline the API first."
       );
+
+      const opencodeBaseline = await getTerminalText(opencodePanel).catch(() => "");
       await sendPrompt(
         page,
         opencodePanel,
         "Write vitest tests for src/retry/backoff.ts. Cover the jitter range and the 30s cap."
       );
 
-      await waitForAgentOutput(claudePanel, page, 5, 60_000);
-      await waitForAgentOutput(opencodePanel, page, 5, 60_000);
+      await waitForAgentResponse(claudePanel, page, claudeBaseline, 4, 90_000);
+      await waitForAgentResponse(opencodePanel, page, opencodeBaseline, 4, 90_000);
 
-      await page.waitForTimeout(2500);
       await dismissBlockingPalette(page);
       await snap(page, "05-multi-agent-orbital-sync");
     } finally {
@@ -416,10 +451,24 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
       captured = await bootProject(repo);
       const { page } = captured;
 
-      // Open settings and route to Recipes — this is the canonical recipe
-      // library view.
-      await page.locator(SEL.toolbar.openSettings).click();
-      await expect(page.locator(SEL.settings.heading)).toBeVisible({ timeout: 15_000 });
+      // Give the project view a moment to fully paint — paint-gate races
+      // have been observed on cold Windows CI launches with no intervening
+      // user action between project-open and the next interaction.
+      await page.locator(SEL.toolbar.toggleSidebar).waitFor({ state: "visible", timeout: 30_000 });
+      await page.waitForTimeout(2000);
+
+      // Open settings via keyboard shortcut. The toolbar button can be
+      // hidden by paint-gate races on a cold launch — Ctrl+, works
+      // regardless of toolbar visibility.
+      await page.keyboard.press("Control+,");
+      const settingsHeading = page.locator(SEL.settings.heading);
+      // Fallback to click if the shortcut didn't fire.
+      if (!(await settingsHeading.isVisible({ timeout: 4_000 }).catch(() => false))) {
+        const openSettings = page.locator(SEL.toolbar.openSettings);
+        await openSettings.waitFor({ state: "visible", timeout: 30_000 }).catch(() => {});
+        await openSettings.click({ timeout: 10_000 }).catch(() => {});
+      }
+      await expect(settingsHeading).toBeVisible({ timeout: 30_000 });
       const recipesTab = page.locator(SEL.projectSettings.recipesTab);
       if (await recipesTab.isVisible({ timeout: 3_000 }).catch(() => false)) {
         await recipesTab.click();
@@ -449,13 +498,14 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
       const claudePanel = await launchClaude(ctx.app, page);
       await waitForAgentReady(claudePanel, page);
 
+      const baseline = await getTerminalText(claudePanel).catch(() => "");
       // Quieter prompt — completes faster so the panel is in idle state.
       await sendPrompt(
         page,
         claudePanel,
         "Just say: I'm ready to help with surge-checkout. List the files in src/. Stop after."
       );
-      await waitForAgentOutput(claudePanel, page, 4, 60_000);
+      await waitForAgentResponse(claudePanel, page, baseline, 3, 60_000);
 
       // Dismiss any notification badges or banners before capture.
       await page.evaluate(() => {

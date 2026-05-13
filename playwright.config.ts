@@ -95,9 +95,13 @@ export default defineConfig({
       // artifacts/screenshots/. Real Anthropic API calls happen for the
       // agent-state shots, so flake is non-zero; we surface failures rather
       // than retry them (the workflow is manually rerun).
+      //
+      // 900s budget — scene-5 (multi-agent) boots two CLIs serially. Claude
+      // can take ~270s cold on Windows, OpenCode ~360s (provider probe), so
+      // boot alone consumes ~10min before any work happens.
       name: "screenshots",
       testDir: "./e2e/screenshots",
-      timeout: 600_000,
+      timeout: 900_000,
       retries: 0,
     },
   ],
