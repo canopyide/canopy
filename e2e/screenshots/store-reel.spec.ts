@@ -359,7 +359,7 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
   });
 
   // -------------------------------------------------------------------------
-  // Scene 3 — 🍱 bento-portfolio : Dev preview live
+  // Scene 3 — 🍱 daintree-site : Dev preview live
   // -------------------------------------------------------------------------
   test("scene-3-dev-preview-daintree-site", async () => {
     const repo = createDaintreeSiteRepo();

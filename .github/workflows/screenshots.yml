@@ -20,12 +20,6 @@ on:
   push:
     tags:
       - "v*"
-    # Temporary branch trigger: lets the workflow fire on push to the feature
-    # branch so we can validate it before merge. Strip this `branches:` block
-    # before merging — the canonical triggers are `push: tags: ['v*']` +
-    # workflow_dispatch.
-    branches:
-      - feat/marketing-screenshots-workflow
   workflow_dispatch:
     inputs:
       scale:

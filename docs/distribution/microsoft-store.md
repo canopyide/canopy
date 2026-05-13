@@ -115,7 +115,7 @@ This framing is the difference between a clean review and a back-and-forth on th
 
 ## Screenshots
 
-Microsoft Store screenshots and the website hero are produced by the [`Marketing Screenshots`](../../.github/workflows/screenshots.yml) workflow on a `macos-14` GitHub-hosted runner. The capture spec is [`e2e/screenshots/store-reel.spec.ts`](../../e2e/screenshots/store-reel.spec.ts) — it boots Daintree against a different demo repo per scene (surge-checkout, brush-cms, bento-portfolio, launchpad-analytics, orbital-sync, mise-en-place) so each shot has its own title-bar identity.
+Microsoft Store screenshots and the website hero are produced by the [`Marketing Screenshots`](../../.github/workflows/screenshots.yml) workflow on a `macos-14` GitHub-hosted runner. The capture spec is [`e2e/screenshots/store-reel.spec.ts`](../../e2e/screenshots/store-reel.spec.ts) — it boots Daintree against a different demo repo per scene (surge-checkout, brush-cms, daintree-site, launchpad-analytics, orbital-sync, mise-en-place) so each shot has its own title-bar identity.
 
 **Capture pipeline.** Electron launches with `--force-device-scale-factor=2` (configurable via the workflow's `scale` input). The renderer paints at 2× device pixels, Playwright's `page.screenshot()` captures the framebuffer, and each PNG lands at `3840×1940` — at the Microsoft Store maximum. Scale `3` is also wired and produces a tighter zoom; use it when the UI fits the smaller logical viewport.
 
