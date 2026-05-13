@@ -1,12 +1,4 @@
-import {
-  app,
-  BrowserWindow,
-  WebContentsView,
-  dialog,
-  ipcMain,
-  nativeTheme,
-  session,
-} from "electron";
+import { app, BrowserWindow, WebContentsView, dialog, ipcMain, session } from "electron";
 import {
   getWindowForWebContents,
   registerWebContents,
