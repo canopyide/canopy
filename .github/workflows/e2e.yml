@@ -272,10 +272,21 @@ jobs:
 
       - name: Run ${{ inputs.suite || 'core' }} e2e tests (Windows)
         if: runner.os == 'Windows'
+        shell: bash
         env:
           ELECTRON_ENABLE_LOGGING: "1"
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: npx playwright test ${{ steps.test-cmd.outputs.args }}
+        run: |
+          set -euo pipefail
+
+          while true; do
+            sleep 60
+            echo "[e2e] heartbeat $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          done &
+          heartbeat_pid=$!
+          trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
+
+          npx playwright test ${{ steps.test-cmd.outputs.args }}
 
       - name: Upload test results
         if: always()
