@@ -127,7 +127,7 @@ import { useProjectSwitcherPalette } from "../useProjectSwitcherPalette";
 
 describe("useProjectSwitcherPalette hover prefetch", () => {
   beforeEach(() => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.useFakeTimers();
     prefetchHydrateMock.mockReset();
     prefetchHydrateMock.mockResolvedValue(undefined);
     projectState.currentProject = null;
