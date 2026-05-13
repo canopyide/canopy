@@ -34,6 +34,24 @@ test.describe.serial("Nightly: Evicted project view leak detection", () => {
     const [repoA, repoB] = fixtures.map((f) => f.dir);
     ctx = await launchApp();
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, repoA, PROJECT_A);
+    await ctx.app.evaluate(() => {
+      const g = globalThis as Record<string, unknown>;
+      const getPvm = g.__daintreeGetPvm as (() => unknown) | undefined;
+      const pvm = getPvm?.() as
+        | {
+            setCachedViewLimit: (n: number) => void;
+            setLowMemoryFreeThresholdMb?: (n: number | null) => void;
+          }
+        | null
+        | undefined;
+      // This spec verifies explicit cache eviction semantics. On macOS CI the
+      // ResourceProfileService can temporarily clamp the cache to 1 under
+      // pressure, which makes the "two live views before eviction" precondition
+      // impossible. Freeze the scenario at a deterministic 2-view limit and
+      // disable the low-memory override for this process only.
+      pvm?.setLowMemoryFreeThresholdMb?.(null);
+      pvm?.setCachedViewLimit(2);
+    });
     ctx.window = await addAndSwitchToProject(ctx.app, ctx.window, repoB, PROJECT_B);
     // Switch back to A so A is the active project; B will be the cached view
     // that we capture and watch for proper destruction after eviction.
