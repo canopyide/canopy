@@ -9,14 +9,13 @@ import { actionService } from "@/services/ActionService";
 import type { WorktreeState } from "@/types";
 import { cn } from "@/lib/utils";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { isProtectedBranch as isProtectedBranchName } from "@shared/utils/gitConstants";
 
 interface WorktreeDeleteDialogProps {
   isOpen: boolean;
   onClose: () => void;
   worktree: WorktreeState;
 }
-
-const PROTECTED_BRANCHES = ["main", "master", "develop", "development"];
 
 export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDeleteDialogProps) {
   const [isDeleting, setIsDeleting] = useState(false);
@@ -39,8 +38,7 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
   const hasChanges = hasTrackedChanges || hasUntrackedFiles;
   const hasTerminals = terminalCounts.total > 0;
 
-  const isProtectedBranch =
-    !!worktree.branch && PROTECTED_BRANCHES.includes(worktree.branch.toLowerCase());
+  const isProtectedBranch = isProtectedBranchName(worktree.branch?.toLowerCase());
   const isDetachedHead = !worktree.branch;
   const canDeleteBranch =
     !isProtectedBranch && !isDetachedHead && worktree.isMainWorktree === false;
