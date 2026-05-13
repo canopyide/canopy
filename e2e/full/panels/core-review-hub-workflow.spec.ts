@@ -54,6 +54,13 @@ test.describe.serial("Core: Review Hub Workflow", () => {
 
     const hub = window.locator(SEL.reviewHub.container);
     await expect(hub).toBeVisible({ timeout: T_MEDIUM });
+
+    // PR #7890 auto-stages files when the hub is launched from a worktree
+    // card. Reset to an unstaged baseline so the Changes-section assertions
+    // in subsequent tests exercise the unstaged path explicitly.
+    await expect(hub.locator(SEL.reviewHub.unstageAllButton)).toBeVisible({ timeout: T_MEDIUM });
+    await hub.locator(SEL.reviewHub.unstageAllButton).click();
+    await expect(hub.locator(SEL.reviewHub.noStagedFiles)).toBeVisible({ timeout: T_MEDIUM });
   });
 
   test("file list shows uncommitted.txt in Changes section", async () => {

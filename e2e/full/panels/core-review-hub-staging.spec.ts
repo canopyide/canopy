@@ -38,9 +38,15 @@ test.describe.serial("Core: Review Hub Staging Edge Cases", () => {
       const reviewBtn = ctx.window.locator(SEL.worktree.reviewHubButton);
       await expect(reviewBtn.first()).toBeVisible({ timeout: T_LONG });
       await reviewBtn.first().click();
-      await expect(ctx.window.locator(SEL.reviewHub.container)).toBeVisible({
-        timeout: T_MEDIUM,
-      });
+      const hub = ctx.window.locator(SEL.reviewHub.container);
+      await expect(hub).toBeVisible({ timeout: T_MEDIUM });
+
+      // PR #7890 auto-stages files when the hub is launched from a worktree
+      // card. Reset to an unstaged baseline so the partial-staging assertions
+      // below exercise the Changes → Staged path explicitly.
+      await expect(hub.locator(SEL.reviewHub.unstageAllButton)).toBeVisible({ timeout: T_MEDIUM });
+      await hub.locator(SEL.reviewHub.unstageAllButton).click();
+      await expect(hub.locator(SEL.reviewHub.noStagedFiles)).toBeVisible({ timeout: T_MEDIUM });
     });
 
     test.afterAll(async () => {
@@ -210,9 +216,15 @@ test.describe.serial("Core: Review Hub Staging Edge Cases", () => {
       const reviewBtn = ctx.window.locator(SEL.worktree.reviewHubButton);
       await expect(reviewBtn.first()).toBeVisible({ timeout: T_LONG });
       await reviewBtn.first().click();
-      await expect(ctx.window.locator(SEL.reviewHub.container)).toBeVisible({
-        timeout: T_MEDIUM,
-      });
+      const hub = ctx.window.locator(SEL.reviewHub.container);
+      await expect(hub).toBeVisible({ timeout: T_MEDIUM });
+
+      // PR #7890 auto-stages files when the hub is launched from a worktree
+      // card. Reset to an unstaged baseline so the partial-staging assertions
+      // below exercise the Changes → Staged path explicitly.
+      await expect(hub.locator(SEL.reviewHub.unstageAllButton)).toBeVisible({ timeout: T_MEDIUM });
+      await hub.locator(SEL.reviewHub.unstageAllButton).click();
+      await expect(hub.locator(SEL.reviewHub.noStagedFiles)).toBeVisible({ timeout: T_MEDIUM });
     });
 
     test.afterAll(async () => {

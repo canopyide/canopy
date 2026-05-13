@@ -86,10 +86,9 @@ jobs:
   # calls. GitHub Actions waits on every matrix entry before unblocking
   # `build-daintree`, so a single `needs: [..., e2e-full-gate]` is enough.
   #
-  # The full suite stays on `non-windows` here: a full run on Windows takes
-  # roughly five to six hours, which is why it was dropped from nightly too.
-  # Windows release confidence comes from the core and online gates above,
-  # plus the Windows build/package step in `build-daintree`.
+  # Releases gate on all three OSes here so Windows-only regressions can't
+  # ship. The nightly job validates the same surface daily (see nightly.yml)
+  # so this isn't a cold path — Windows full has been green in nightly.
   e2e-full-gate:
     needs: [checks, unit-tests]
     strategy:
@@ -105,7 +104,7 @@ jobs:
     uses: ./.github/workflows/e2e.yml
     with:
       suite: ${{ matrix.suite }}
-      platform: non-windows
+      platform: all
 
   e2e-online-gate:
     needs: [checks, unit-tests]
