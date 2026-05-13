@@ -40,27 +40,6 @@ vi.mock("@/components/ui/tooltip", () => ({
   TooltipContent: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
-vi.mock("@/components/ui/split-button", () => ({
-  SplitButton: ({
-    primaryLabel,
-    onPrimaryClick,
-    ariaDisabled,
-  }: {
-    primaryLabel: string;
-    onPrimaryClick: () => void;
-    ariaDisabled?: boolean;
-  }) => (
-    <button
-      type="button"
-      onClick={onPrimaryClick}
-      aria-disabled={ariaDisabled}
-      data-testid="commit-and-push-button"
-    >
-      {primaryLabel}
-    </button>
-  ),
-}));
-
 vi.mock("@/components/ui/ConfirmDialog", () => ({
   ConfirmDialog: ({
     isOpen,
@@ -143,21 +122,21 @@ describe("CommitPanel — protected-branch confirm", () => {
 
   it("on a feature branch, calls onCommitAndPush directly without confirm", () => {
     const { onCommitAndPush } = renderPanel({ currentBranch: "feature/x" });
-    fireEvent.click(screen.getByTestId("commit-and-push-button"));
+    fireEvent.click(screen.getByRole("button", { name: /Commit & Push/ }));
     expect(onCommitAndPush).toHaveBeenCalledWith("fix: bug");
     expect(screen.queryByTestId("protected-confirm-dialog")).toBeNull();
   });
 
   it("on a protected branch ('main'), opens the ConfirmDialog instead of pushing", () => {
     const { onCommitAndPush } = renderPanel({ currentBranch: "main" });
-    fireEvent.click(screen.getByTestId("commit-and-push-button"));
+    fireEvent.click(screen.getByRole("button", { name: /Commit & Push/ }));
     expect(onCommitAndPush).not.toHaveBeenCalled();
     expect(screen.getByTestId("protected-confirm-dialog")).toBeDefined();
   });
 
   it("confirming the protected-branch dialog calls onCommitAndPush", () => {
     const { onCommitAndPush } = renderPanel({ currentBranch: "develop" });
-    fireEvent.click(screen.getByTestId("commit-and-push-button"));
+    fireEvent.click(screen.getByRole("button", { name: /Commit & Push/ }));
     expect(onCommitAndPush).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: /Push to develop/ }));
@@ -166,7 +145,7 @@ describe("CommitPanel — protected-branch confirm", () => {
 
   it("cancelling the protected-branch dialog does not call onCommitAndPush", () => {
     const { onCommitAndPush } = renderPanel({ currentBranch: "main" });
-    fireEvent.click(screen.getByTestId("commit-and-push-button"));
+    fireEvent.click(screen.getByRole("button", { name: /Commit & Push/ }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onCommitAndPush).not.toHaveBeenCalled();
     expect(screen.queryByTestId("protected-confirm-dialog")).toBeNull();
@@ -174,33 +153,33 @@ describe("CommitPanel — protected-branch confirm", () => {
 
   it("normalizes mixed-case protected branch names ('Main', 'DEVELOP')", () => {
     const { onCommitAndPush } = renderPanel({ currentBranch: "Main" });
-    fireEvent.click(screen.getByTestId("commit-and-push-button"));
+    fireEvent.click(screen.getByRole("button", { name: /Commit & Push/ }));
     expect(onCommitAndPush).not.toHaveBeenCalled();
     expect(screen.getByTestId("protected-confirm-dialog")).toBeDefined();
     cleanup();
 
     const second = renderPanel({ currentBranch: "DEVELOP" });
-    fireEvent.click(screen.getByTestId("commit-and-push-button"));
+    fireEvent.click(screen.getByRole("button", { name: /Commit & Push/ }));
     expect(second.onCommitAndPush).not.toHaveBeenCalled();
     expect(screen.getByTestId("protected-confirm-dialog")).toBeDefined();
   });
 
   it("treats 'master' and 'development' as protected", () => {
     const first = renderPanel({ currentBranch: "master" });
-    fireEvent.click(screen.getByTestId("commit-and-push-button"));
+    fireEvent.click(screen.getByRole("button", { name: /Commit & Push/ }));
     expect(first.onCommitAndPush).not.toHaveBeenCalled();
     expect(screen.getByTestId("protected-confirm-dialog")).toBeDefined();
     cleanup();
 
     const second = renderPanel({ currentBranch: "development" });
-    fireEvent.click(screen.getByTestId("commit-and-push-button"));
+    fireEvent.click(screen.getByRole("button", { name: /Commit & Push/ }));
     expect(second.onCommitAndPush).not.toHaveBeenCalled();
     expect(screen.getByTestId("protected-confirm-dialog")).toBeDefined();
   });
 
   it("shows the commit message preview inside the confirm dialog body", () => {
     renderPanel({ currentBranch: "main", commitMessage: "chore: bump deps\n\nBody line" });
-    fireEvent.click(screen.getByTestId("commit-and-push-button"));
+    fireEvent.click(screen.getByRole("button", { name: /Commit & Push/ }));
     const body = screen.getByTestId("confirm-body");
     expect(body.textContent).toContain("chore: bump deps");
     expect(body.textContent).toContain("Body line");

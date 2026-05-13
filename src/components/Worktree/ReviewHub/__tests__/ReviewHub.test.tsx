@@ -1545,22 +1545,21 @@ describe("ReviewHub", () => {
   });
 
   describe("commit panel", () => {
-    it("renders split button when hasRemote is true", async () => {
+    it("renders both Commit and Commit & Push buttons when hasRemote is true", async () => {
       getStagingStatusMock.mockResolvedValue(makeStatus({ hasRemote: true }));
 
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
       await waitFor(() => screen.getByPlaceholderText("Commit message…"));
 
-      expect(screen.getByTestId("split-button")).toBeDefined();
-      const primary = screen.getByTestId("split-button-primary");
-      expect(primary.textContent).toMatch(/Commit & Push/);
+      expect(screen.getByRole("button", { name: /^Commit$/i })).toBeDefined();
+      expect(screen.getByRole("button", { name: /Commit & Push \(1\)/i })).toBeDefined();
     });
 
     it("renders single Commit button when hasRemote is false", async () => {
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
       await waitFor(() => screen.getByPlaceholderText("Commit message…"));
 
-      expect(screen.queryByTestId("split-button")).toBeNull();
+      expect(screen.queryByRole("button", { name: /Commit & Push/i })).toBeNull();
       expect(screen.getByRole("button", { name: /Commit \(1\)/i })).toBeDefined();
     });
 
@@ -1575,14 +1574,16 @@ describe("ReviewHub", () => {
       expect(btn.hasAttribute("disabled")).toBe(false);
     });
 
-    it("uses aria-disabled on split button primary when blocked", async () => {
+    it("uses aria-disabled on both buttons when blocked and hasRemote is true", async () => {
       getStagingStatusMock.mockResolvedValue(makeStatus({ staged: [], hasRemote: true }));
 
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
       await waitFor(() => screen.getByPlaceholderText("Commit message…"));
 
-      const primary = screen.getByTestId("split-button-primary");
-      expect(primary.getAttribute("aria-disabled")).toBe("true");
+      const commitBtn = screen.getByRole("button", { name: /^Commit$/i });
+      const pushBtn = screen.getByRole("button", { name: /Commit & Push \(0\)/i });
+      expect(commitBtn.getAttribute("aria-disabled")).toBe("true");
+      expect(pushBtn.getAttribute("aria-disabled")).toBe("true");
     });
 
     it("shows tooltip content when blocked and hasRemote is false", async () => {
@@ -1596,13 +1597,13 @@ describe("ReviewHub", () => {
       expect(screen.getByText("Cannot commit")).toBeDefined();
     });
 
-    it("shows tooltip content in split button when blocked and hasRemote is true", async () => {
+    it("shows tooltip content when blocked and hasRemote is true", async () => {
       getStagingStatusMock.mockResolvedValue(makeStatus({ staged: [], hasRemote: true }));
 
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
       await waitFor(() => screen.getByPlaceholderText("Commit message…"));
 
-      expect(screen.getByTestId("split-button-tooltip")).toBeDefined();
+      expect(screen.getAllByText("Cannot commit").length).toBeGreaterThan(0);
     });
 
     it("reentrancy guard prevents double-commit via rapid clicks", async () => {
@@ -2642,55 +2643,7 @@ describe("ReviewHub", () => {
     });
   });
 
-  describe("commit message overflow", () => {
-    it("shows warning when any line exceeds 72 characters", async () => {
-      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
-      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
-
-      const textarea = screen.getByPlaceholderText("Commit message…");
-      // Subject line within limit, but body line exceeds 72
-      fireEvent.change(textarea, {
-        target: {
-          value:
-            "feat: short subject\n\nThe quick brown fox jumps over the lazy dog and then some more text goes here yes indeed wow",
-        },
-      });
-
-      expect(screen.getByText("Line over 72 chars")).toBeTruthy();
-      expect(textarea.className).toContain("border-status-warning");
-    });
-
-    it("shows warning when subject line alone exceeds 72 characters", async () => {
-      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
-      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
-
-      const textarea = screen.getByPlaceholderText("Commit message…");
-      // Subject line exceeds 72 chars — should trigger overflow
-      fireEvent.change(textarea, {
-        target: {
-          value:
-            "feat: this is a very long subject line that goes way beyond seventy two characters and should trigger the warning",
-        },
-      });
-
-      expect(screen.getByText("Line over 72 chars")).toBeTruthy();
-      expect(textarea.className).toContain("border-status-warning");
-    });
-
-    it("does not show warning when all lines are 72 characters or fewer", async () => {
-      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
-      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
-
-      const textarea = screen.getByPlaceholderText("Commit message…");
-      fireEvent.change(textarea, {
-        target: { value: "feat: short subject\n\nA normal body line." },
-      });
-
-      expect(screen.queryByText("Line over 72 chars")).toBeNull();
-      expect(textarea.className).toContain("border-divider");
-      expect(textarea.className).not.toContain("border-status-warning");
-    });
-
+  describe("commit message subject counter", () => {
     it("shows subject line length counter", async () => {
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
       await waitFor(() => screen.getByPlaceholderText("Commit message…"));
@@ -2701,6 +2654,17 @@ describe("ReviewHub", () => {
       });
 
       expect(screen.getByText("16/72")).toBeTruthy();
+    });
+
+    it("counter reflects subject length past the 72-char limit", async () => {
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+
+      const textarea = screen.getByPlaceholderText("Commit message…");
+      const longSubject = "x".repeat(85);
+      fireEvent.change(textarea, { target: { value: longSubject } });
+
+      expect(screen.getByText("85/72")).toBeTruthy();
     });
   });
 
@@ -2897,20 +2861,6 @@ describe("ReviewHub", () => {
 
       fireEvent.keyDown(textarea, { key: "ArrowUp", altKey: true });
       expect(listCommitsMock).not.toHaveBeenCalled();
-    });
-
-    it("sets ruler background styling on textarea", async () => {
-      renderOpen();
-      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
-
-      const textarea = screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
-
-      const styleAttr = textarea.getAttribute("style") ?? "";
-      expect(styleAttr).toContain("linear-gradient");
-      expect(styleAttr).toContain("72ch");
-      expect(styleAttr).toContain("rgba");
-      expect(styleAttr).toContain("background-origin: content-box");
-      expect(styleAttr).toContain("background-attachment: local");
     });
   });
 

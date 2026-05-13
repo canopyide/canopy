@@ -5,7 +5,6 @@ import { GitCommit, ArrowUpFromLine, Check, CircleX } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { SplitButton } from "@/components/ui/split-button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { isProtectedBranch } from "@shared/utils/gitConstants";
 
@@ -165,6 +164,7 @@ export function CommitPanel({
       focusBlocker();
       return;
     }
+    if (isBusy) return;
     if (hasRemote) {
       if (isProtected) {
         // D2 confirmation: pushing to a protected branch is shared-state
@@ -176,7 +176,7 @@ export function CommitPanel({
     } else {
       void handleCommit();
     }
-  }, [isBlocked, hasRemote, isProtected, focusBlocker, handleCommitAndPush, handleCommit]);
+  }, [isBlocked, isBusy, hasRemote, isProtected, focusBlocker, handleCommitAndPush, handleCommit]);
 
   const handleConfirmProtectedPush = useCallback(() => {
     setProtectedConfirmOpen(false);
@@ -314,46 +314,42 @@ export function CommitPanel({
         </div>
       )}
 
-      <div className="relative">
-        <textarea
-          ref={textareaRef}
-          value={commitMessage}
-          onChange={(e) => {
-            historyIndexRef.current = -1;
-            pendingFirstApplyRef.current = false;
-            onCommitMessageChange(e.target.value);
-          }}
-          onKeyDown={handleKeyDown}
-          placeholder="Commit message…"
-          rows={4}
-          disabled={isBusy || isDetachedHead}
-          style={
-            {
-              backgroundImage: `linear-gradient(to right, transparent 72ch, rgba(128,128,128,0.14) 72ch)`,
-              backgroundOrigin: "content-box",
-              backgroundClip: "content-box",
-              backgroundAttachment: "local",
-            } as React.CSSProperties
-          }
-          className={cn(
-            "w-full resize-none rounded-md border bg-daintree-bg px-3 py-2 text-xs font-mono",
-            "placeholder:text-daintree-text/30 text-daintree-text",
-            "focus:outline-hidden focus:ring-2 focus:ring-daintree-accent focus:border-transparent",
-            "disabled:opacity-50 disabled:cursor-not-allowed",
-            hasLineOverflow ? "border-status-warning" : "border-divider"
-          )}
-        />
-        <div
-          className={cn(
-            "absolute bottom-1.5 right-2 text-[10px] flex items-center gap-1.5",
-            hasLineOverflow ? "text-status-warning" : "text-daintree-text/30"
-          )}
-        >
-          <span className="tabular-nums">
-            {subjectLine.length}/{MAX_SUBJECT_LENGTH}
-          </span>
-          {hasLineOverflow && <span>Line over 72 chars</span>}
-        </div>
+      <textarea
+        ref={textareaRef}
+        value={commitMessage}
+        onChange={(e) => {
+          historyIndexRef.current = -1;
+          pendingFirstApplyRef.current = false;
+          onCommitMessageChange(e.target.value);
+        }}
+        onKeyDown={handleKeyDown}
+        placeholder="Commit message…"
+        rows={2}
+        disabled={isBusy || isDetachedHead}
+        style={
+          {
+            backgroundImage: `linear-gradient(to right, transparent 72ch, var(--color-border-subtle) 72ch, var(--color-border-subtle) calc(72ch + 1px), transparent calc(72ch + 1px))`,
+            backgroundOrigin: "content-box",
+            backgroundClip: "content-box",
+            backgroundAttachment: "local",
+            fieldSizing: "content",
+          } as React.CSSProperties
+        }
+        className={cn(
+          "w-full resize-none rounded-md border border-divider bg-daintree-bg px-3 py-2 text-xs font-mono",
+          "min-h-[calc(2lh+1rem)] max-h-[calc(6lh+1rem)] overflow-y-auto",
+          "placeholder:text-daintree-text/30 text-daintree-text",
+          "focus:outline-hidden focus:ring-2 focus:ring-daintree-accent focus:border-transparent",
+          "disabled:opacity-50 disabled:cursor-not-allowed"
+        )}
+      />
+      <div
+        className={cn(
+          "flex justify-end text-[10px] tabular-nums -mt-1",
+          hasLineOverflow ? "text-status-warning" : "text-daintree-text/40"
+        )}
+      >
+        {subjectLine.length}/{MAX_SUBJECT_LENGTH}
       </div>
 
       {isPushing && pushTargetBranch && (
@@ -412,31 +408,55 @@ export function CommitPanel({
 
       <div className="flex items-center gap-2">
         {hasRemote ? (
-          <SplitButton
-            primaryLabel={`${primaryLabel} (${stagedCount})`}
-            primaryIcon={
-              isPushing ? (
-                <Spinner size="sm" className="mr-1.5" />
-              ) : (
-                <ArrowUpFromLine className="w-3.5 h-3.5 mr-1.5" />
-              )
-            }
-            onPrimaryClick={handlePrimaryClick}
-            menuItems={[
-              {
-                label: `Commit (${stagedCount})`,
-                icon: isCommitting ? <Spinner size="sm" /> : <GitCommit className="w-3.5 h-3.5" />,
-                shortcut: "⇧⌘↵",
-                onClick: () => void handleCommit(),
-              },
-            ]}
-            ariaDisabled={!canCommit || isBusy}
-            disabledReason={isBlocked ? blockerTooltip : undefined}
-            isBusy={isBusy}
-            variant="default"
-            size="sm"
-            className="flex-1"
-          />
+          <Tooltip delayDuration={300}>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-2 flex-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (isBlocked) {
+                      focusBlocker();
+                      return;
+                    }
+                    if (isBusy) return;
+                    void handleCommit();
+                  }}
+                  aria-disabled={!canCommit || isBusy || undefined}
+                  className="aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
+                >
+                  {isCommitting ? (
+                    <Spinner size="sm" className="mr-1.5" />
+                  ) : (
+                    <GitCommit className="w-3.5 h-3.5 mr-1.5" />
+                  )}
+                  Commit
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handlePrimaryClick}
+                  aria-disabled={!canCommit || isBusy || undefined}
+                  className={cn(
+                    "flex-1",
+                    "aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
+                  )}
+                >
+                  {isPushing ? (
+                    <Spinner size="sm" className="mr-1.5" />
+                  ) : (
+                    <ArrowUpFromLine className="w-3.5 h-3.5 mr-1.5" />
+                  )}
+                  {primaryLabel} ({stagedCount})
+                </Button>
+              </div>
+            </TooltipTrigger>
+            {isBlocked && (
+              <TooltipContent side="top" align="center" className="p-3 max-w-[260px]">
+                {blockerTooltip}
+              </TooltipContent>
+            )}
+          </Tooltip>
         ) : (
           <Tooltip delayDuration={300}>
             <TooltipTrigger asChild>
