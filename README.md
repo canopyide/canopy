@@ -25,10 +25,10 @@
 
 ## Install
 
-Download the latest build for **[macOS](https://github.com/daintreehq/daintree/releases/latest)**, **[Windows](https://github.com/daintreehq/daintree/releases/latest)**, or **[Linux](https://github.com/daintreehq/daintree/releases/latest)** from the releases page. Homebrew and winget recipes are in the oven.
+Get Daintree for **[macOS](https://daintree.org/download)**, **[Windows](https://daintree.org/download)**, or **[Linux](https://daintree.org/download)** — all on the same page. macOS ships as a signed-and-notarized DMG (arm64, x64, universal); Linux as AppImage and `.deb`; Windows as a sideloadable `.appx` package while the Microsoft Store listing is in review. Homebrew and winget recipes are in the oven.
 
 <p align="center">
-  <a href="https://github.com/daintreehq/daintree/releases/latest"><img alt="Download Daintree" src="https://cdn.daintree.org/brand/download-button.svg" width="240"></a>
+  <a href="https://daintree.org/download"><img alt="Download Daintree" src="https://cdn.daintree.org/brand/download-button.svg" width="240"></a>
 </p>
 
 ## The problem
