@@ -39,6 +39,10 @@ on:
         description: "Subdir under screenshots/ on R2 (default: <version>-<sha7>)"
         type: string
         default: ""
+      update_latest:
+        description: "Also overwrite screenshots/latest/ (default: only on v* tag pushes)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -217,4 +221,35 @@ jobs:
           for f in artifacts/screenshots/*.png; do
             base=$(basename "$f")
             echo "  https://updates.daintree.org/screenshots/${R2_TAG}/${base}"
+          done
+
+      - name: Mirror to screenshots/latest/
+        if: success() && (startsWith(github.ref, 'refs/tags/v') || inputs.update_latest == true || inputs.update_latest == 'true')
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.DAINTREE_R2_BUCKET }}
+        run: |
+          # `latest/` mirrors the most recent successful run so the website
+          # can pin to a stable URL like screenshots/latest/01-hero.png.
+          # Use --delete so an asset removed in a future run doesn't linger.
+          # Short cache TTL (5 min) so a fresh release propagates quickly
+          # through the R2 edge cache without a manual invalidation.
+          aws s3 sync artifacts/screenshots/ "s3://${R2_BUCKET}/screenshots/latest/" \
+            --endpoint-url "${R2_ENDPOINT}" \
+            --no-progress \
+            --delete \
+            --exclude "*" \
+            --include "*.png" \
+            --content-type "image/png" \
+            --cache-control "public, max-age=300, must-revalidate"
+
+          echo ""
+          echo "🔄 Mirrored to screenshots/latest/. Stable URLs:"
+          for f in artifacts/screenshots/*.png; do
+            base=$(basename "$f")
+            echo "  https://updates.daintree.org/screenshots/latest/${base}"
           done
