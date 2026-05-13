@@ -96,12 +96,12 @@ export default defineConfig({
       // agent-state shots, so flake is non-zero; we surface failures rather
       // than retry them (the workflow is manually rerun).
       //
-      // 900s budget — scene-5 (multi-agent) boots two CLIs serially. Claude
-      // can take ~270s cold on Windows, OpenCode ~360s (provider probe), so
-      // boot alone consumes ~10min before any work happens.
+      // 1800s (30 min) per scene — multi-agent + heavy fixed waits eat
+      // budget on Windows cold launches. We'd rather wait long than
+      // ship a screenshot of a half-painted panel.
       name: "screenshots",
       testDir: "./e2e/screenshots",
-      timeout: 900_000,
+      timeout: 1_800_000,
       retries: 0,
     },
   ],

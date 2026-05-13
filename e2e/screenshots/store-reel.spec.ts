@@ -12,8 +12,7 @@
  *   3. 🍱 bento-portfolio        — dev preview live (split with agent)
  *   4. 🚀 launchpad-analytics    — action palette open
  *   5. 🛰️ orbital-sync           — multi-agent (Claude + OpenCode)
- *   6. 🍳 mise-en-place          — recipe library
- *   7. (hero asset)              — clean reshoot of scene 1, no toasts
+ *   6. 🍳 mise-en-place          — settings / agent overview
  *
  * Sanitization rules baked in:
  *   - No API-key shapes (ANTHROPIC_API_KEY is set via IPC, never visible in UI)
@@ -130,6 +129,7 @@ async function snap(page: Page, slug: string): Promise<string> {
     animations: "disabled",
     caret: "hide",
     fullPage: false,
+    timeout: 120_000, // generous — windows-latest sometimes needs >30s
   });
   return filePath;
 }
@@ -206,35 +206,52 @@ async function waitForAgentReady(
 }
 
 /**
- * Wait until the agent has clearly started producing a response. We can't
- * just count terminal lines — the welcome screen already has plenty.
- * Instead we capture a baseline immediately after sending the prompt, then
- * wait for the buffer to gain N more non-trivial lines.
+ * Wait for the agent to actually respond — not just echo the prompt.
  *
- * If the agent never produces output, return after timeoutMs so we still
- * capture something for the marketing reel (better than failing the run).
+ * Strategy: poll the terminal text and look for response markers (Claude's
+ * `⏺` tool-use glyphs, numbered-list starts, code-block fences, common
+ * response openings). Also accept a substantial line-count gain over the
+ * baseline as a fallback signal. If neither fires, sit and wait the full
+ * timeout — better to capture a quiet panel than to fail the run.
  */
 async function waitForAgentResponse(
   panel: Locator,
   page: Page,
   baseline: string,
-  minNewLines: number = 4,
-  timeoutMs: number = 90_000
+  options: {
+    /** Wait at least this long even if response markers appear, so the response has time to grow. */
+    minWaitMs?: number;
+    /** Hard upper bound on the wait. */
+    maxWaitMs?: number;
+  } = {}
 ): Promise<void> {
+  const minWait = options.minWaitMs ?? 25_000;
+  const maxWait = options.maxWaitMs ?? 180_000;
+  const start = Date.now();
   const baselineLines = baseline.split("\n").length;
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
+  const responseMarker =
+    /(⏺|✓|✗|^I('ll| can| see)\b|^Let me\b|^Here('s| is)\b|^\d+\.\s+\w|```|^Step\s+\d+)/im;
+
+  let markerSeenAt = 0;
+  while (Date.now() - start < maxWait) {
     const text = await getTerminalText(panel).catch(() => "");
-    const lines = text.split("\n").length;
-    if (lines - baselineLines >= minNewLines) return;
-    // Also break on common in-progress indicators (Claude tool-use glyphs,
-    // OpenCode "thinking" markers, numbered-list output starts).
-    if (/^\s*(⏺|✓|✗|\d+\.\s+|◉|\*\s+\w)/m.test(text.slice(baseline.length))) {
-      // Let one more chunk arrive so we don't shoot mid-line.
-      await page.waitForTimeout(2500);
+    const newSection = text.slice(baseline.length);
+
+    if (markerSeenAt === 0 && responseMarker.test(newSection)) {
+      markerSeenAt = Date.now();
+    }
+
+    const elapsed = Date.now() - start;
+    if (markerSeenAt > 0 && elapsed >= minWait) {
+      // We've seen a response start AND waited long enough for it to grow.
       return;
     }
-    await page.waitForTimeout(750);
+
+    // Fallback: substantial line gain even without a recognizable marker.
+    const lineGain = text.split("\n").length - baselineLines;
+    if (lineGain >= 12 && elapsed >= minWait) return;
+
+    await page.waitForTimeout(1500);
   }
 }
 
@@ -260,7 +277,10 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
         "Read src/checkout.ts and src/refund.ts, then propose a 4-step plan for adding " +
         "an idempotent partial-refund flow. Output the plan as a numbered list, then stop.";
       await sendPrompt(page, claudePanel, prompt);
-      await waitForAgentResponse(claudePanel, page, baseline, 4, 90_000);
+      await waitForAgentResponse(claudePanel, page, baseline, {
+        minWaitMs: 30_000,
+        maxWaitMs: 180_000,
+      });
       await dismissBlockingPalette(page);
 
       await snap(page, "01-hero-surge-checkout");
@@ -430,8 +450,16 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
         "Write vitest tests for src/retry/backoff.ts. Cover the jitter range and the 30s cap."
       );
 
-      await waitForAgentResponse(claudePanel, page, claudeBaseline, 4, 90_000);
-      await waitForAgentResponse(opencodePanel, page, opencodeBaseline, 4, 90_000);
+      // Both agents are running by now — wait for each to start streaming.
+      // 180s upper bound per agent on Windows cold launches.
+      await waitForAgentResponse(claudePanel, page, claudeBaseline, {
+        minWaitMs: 25_000,
+        maxWaitMs: 180_000,
+      });
+      await waitForAgentResponse(opencodePanel, page, opencodeBaseline, {
+        minWaitMs: 25_000,
+        maxWaitMs: 180_000,
+      });
 
       await dismissBlockingPalette(page);
       await snap(page, "05-multi-agent-orbital-sync");
@@ -482,44 +510,7 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
     }
   });
 
-  // -------------------------------------------------------------------------
-  // Hero asset — clean reshoot of scene 1 (no toasts, no badges)
-  // The Microsoft Store overlays its own title on the hero, so no text.
-  // -------------------------------------------------------------------------
-  test("hero-asset-clean", async () => {
-    test.skip(!hasClaudeApiKey(), "ANTHROPIC_API_KEY is required for the hero asset");
-
-    const repo = createSurgeCheckoutRepo();
-    let captured: CaptureContext | undefined;
-    try {
-      captured = await bootProject(repo);
-      const { ctx, page } = captured;
-
-      const claudePanel = await launchClaude(ctx.app, page);
-      await waitForAgentReady(claudePanel, page);
-
-      const baseline = await getTerminalText(claudePanel).catch(() => "");
-      // Quieter prompt — completes faster so the panel is in idle state.
-      await sendPrompt(
-        page,
-        claudePanel,
-        "Just say: I'm ready to help with surge-checkout. List the files in src/. Stop after."
-      );
-      await waitForAgentResponse(claudePanel, page, baseline, 3, 60_000);
-
-      // Dismiss any notification badges or banners before capture.
-      await page.evaluate(() => {
-        document.querySelectorAll('[role="alert"], [role="status"]').forEach((el) => {
-          if (el instanceof HTMLElement && !el.closest("aside")) el.style.display = "none";
-        });
-      });
-
-      await page.waitForTimeout(2000);
-      await dismissBlockingPalette(page);
-      await snap(page, "07-hero-asset");
-    } finally {
-      if (captured) await teardown(captured.ctx);
-      repo.cleanup();
-    }
-  });
+  // Hero asset scene removed — scene 1 doubles as the hero. Run-2 observed
+  // page.screenshot timeouts on a 7th cold launch (resource exhaustion). 6
+  // screenshots is also right in the Microsoft Store devtools sweet spot.
 });

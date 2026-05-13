@@ -1,8 +1,10 @@
 name: Marketing Screenshots
 
-# Captures Microsoft Store + website marketing screenshots from a windows-latest
-# runner using the existing Playwright/Electron harness. Trigger manually or
-# automatically on a published release.
+# Captures Microsoft Store + website marketing screenshots across all three
+# distribution platforms (Windows, Linux, macOS) using the existing Playwright/
+# Electron harness. Each OS produces a parallel screenshot set that lands at
+# screenshots/<version>/<os>/ on R2 — Windows for Microsoft Store, macOS for
+# Apple-flavored landing pages, Linux for the AppImage/.deb story.
 #
 # The actual store/marketing reel lives in e2e/screenshots/store-reel.spec.ts.
 # Each scene opens a distinct demo repo (surge-checkout, brush-cms, etc.) so
@@ -43,6 +45,16 @@ on:
         description: "Also overwrite screenshots/latest/ (default: only on v* tag pushes)"
         type: boolean
         default: false
+      platforms:
+        description: "Which OSes to capture on"
+        type: choice
+        default: "all"
+        options:
+          - all
+          - windows
+          - linux
+          - macos
+          - non-windows
 
 permissions:
   contents: read
@@ -55,12 +67,43 @@ env:
   NODE_VERSION: "22"
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Resolve the OS matrix based on the workflow input. Default: all three.
+  # ---------------------------------------------------------------------------
+  matrix-setup:
+    runs-on: ubuntu-22.04
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - id: set
+        run: |
+          P="${{ inputs.platforms || 'all' }}"
+          WIN='{"os":"windows-latest","slug":"windows"}'
+          LNX='{"os":"ubuntu-22.04","slug":"linux"}'
+          MAC='{"os":"macos-14","slug":"macos"}'
+          case "$P" in
+            windows)      echo "matrix={\"include\":[$WIN]}" >> "$GITHUB_OUTPUT" ;;
+            linux)        echo "matrix={\"include\":[$LNX]}" >> "$GITHUB_OUTPUT" ;;
+            macos)        echo "matrix={\"include\":[$MAC]}" >> "$GITHUB_OUTPUT" ;;
+            non-windows)  echo "matrix={\"include\":[$LNX,$MAC]}" >> "$GITHUB_OUTPUT" ;;
+            *)            echo "matrix={\"include\":[$WIN,$LNX,$MAC]}" >> "$GITHUB_OUTPUT" ;;
+          esac
+
   capture:
-    runs-on: windows-latest
-    timeout-minutes: 45
+    needs: matrix-setup
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix-setup.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    name: capture (${{ matrix.slug }})
+    timeout-minutes: 90
 
     steps:
+      # -----------------------------------------------------------------------
+      # Per-OS hardening / dependencies. Each step gates on matrix.slug.
+      # -----------------------------------------------------------------------
       - name: Harden Windows for Electron screenshot capture
+        if: matrix.slug == 'windows'
         shell: pwsh
         run: |
           Set-MpPreference -DisableRealtimeMonitoring $true
@@ -70,9 +113,6 @@ jobs:
           Set-Service -Name "SysMain" -StartupType Disabled -ErrorAction SilentlyContinue
           Stop-Service -Name "DiagTrack" -Force -ErrorAction SilentlyContinue
           Set-Service -Name "DiagTrack" -StartupType Disabled -ErrorAction SilentlyContinue
-
-          # 1920x1080 OS display + scale=2 device-pixel-factor = 3840x2160 PNG.
-          # Microsoft Store maximum is 3840x2160, so this lands exactly at max.
           try {
             Set-DisplayResolution -Width 1920 -Height 1080 -Force -ErrorAction SilentlyContinue
           } catch {
@@ -88,6 +128,8 @@ jobs:
         uses: actions/cache@v5
         with:
           path: |
+            ~/.cache/ms-playwright
+            ~/Library/Caches/ms-playwright
             ~/AppData/Local/ms-playwright
           key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ hashFiles('package-lock.json') }}
 
@@ -96,6 +138,24 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
+
+      - name: Install Linux dependencies
+        if: matrix.slug == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgbm1 \
+            libgtk-3-0 \
+            libnss3 \
+            libasound2 \
+            libxss1 \
+            libxtst6 \
+            libatk1.0-0 \
+            libatk-bridge2.0-0 \
+            libcups2 \
+            libdrm2 \
+            libnotify4 \
+            xvfb
 
       - name: Install dependencies
         run: npm ci
@@ -109,18 +169,30 @@ jobs:
       - name: Install OpenCode
         run: npm install -g opencode-ai
 
-      - name: Configure Claude Code
+      - name: Configure Claude Code (Windows)
+        if: matrix.slug == 'windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.claude" | Out-Null
           '{"hasCompletedOnboarding": true}' | Set-Content "$env:USERPROFILE\.claude.json"
           '{"model": "claude-haiku-4-5-20251001"}' | Set-Content "$env:USERPROFILE\.claude\settings.json"
 
+      - name: Configure Claude Code (macOS/Linux)
+        if: matrix.slug != 'windows'
+        shell: bash
+        run: |
+          mkdir -p ~/.claude
+          echo '{"hasCompletedOnboarding": true}' > ~/.claude.json
+          echo '{"model": "claude-haiku-4-5-20251001"}' > ~/.claude/settings.json
+
       - name: Verify native modules
-        shell: pwsh
+        shell: bash
         run: |
           node -e "try { require('node-pty'); console.log('node-pty: OK') } catch(e) { console.error('node-pty FAILED:', e.message); process.exit(1) }"
 
+      # -----------------------------------------------------------------------
+      # Capture step. Linux uses xvfb-run; macOS and Windows run directly.
+      # -----------------------------------------------------------------------
       - name: Capture screenshots
         shell: bash
         env:
@@ -142,7 +214,12 @@ jobs:
           heartbeat_pid=$!
           trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
 
-          npx playwright test --project=screenshots
+          SLUG="${{ matrix.slug }}"
+          if [ "$SLUG" = "linux" ]; then
+            xvfb-run --auto-servernum npx playwright test --project=screenshots
+          else
+            npx playwright test --project=screenshots
+          fi
 
       - name: List captured screenshots
         if: always()
@@ -160,7 +237,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: marketing-screenshots-${{ github.sha }}
+          name: marketing-screenshots-${{ matrix.slug }}-${{ github.sha }}
           path: |
             artifacts/screenshots/
             test-results/
@@ -168,7 +245,8 @@ jobs:
           if-no-files-found: warn
 
       - name: Resolve R2 destination tag
-        if: success() && (startsWith(github.ref, 'refs/tags/v') || inputs.upload_to_r2 == true || inputs.upload_to_r2 == 'true')
+        # always() so we still upload partial sets when a single scene fails.
+        if: always() && (startsWith(github.ref, 'refs/tags/v') || inputs.upload_to_r2 == true || inputs.upload_to_r2 == 'true')
         id: r2-tag
         shell: bash
         run: |
@@ -181,17 +259,18 @@ jobs:
           if [ -n "${{ inputs.tag }}" ]; then
             TAG="${{ inputs.tag }}"
           elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            # Strip leading v for path consistency with package.json.
             TAG="${GITHUB_REF_NAME#v}"
           else
             TAG="${PKG_VERSION}-${GITHUB_SHA::7}"
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "pkg_version=${PKG_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Uploading to: screenshots/${TAG}/"
+          echo "Uploading to: screenshots/${TAG}/${{ matrix.slug }}/"
 
-      - name: Upload screenshots to R2
-        if: success() && (startsWith(github.ref, 'refs/tags/v') || inputs.upload_to_r2 == true || inputs.upload_to_r2 == 'true')
+      - name: Upload screenshots to R2 (per-OS)
+        # always() lets us upload partial captures from a run where a single
+        # scene failed. The script no-ops if no PNGs exist.
+        if: always() && steps.r2-tag.outputs.tag != '' && (startsWith(github.ref, 'refs/tags/v') || inputs.upload_to_r2 == true || inputs.upload_to_r2 == 'true')
         shell: bash
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -200,15 +279,16 @@ jobs:
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_BUCKET: ${{ secrets.DAINTREE_R2_BUCKET }}
           R2_TAG: ${{ steps.r2-tag.outputs.tag }}
+          R2_SLUG: ${{ matrix.slug }}
         run: |
           set -euo pipefail
-          if [ ! -d artifacts/screenshots ]; then
-            echo "::warning::No screenshots/ directory to upload"
+          if [ ! -d artifacts/screenshots ] || [ -z "$(ls -A artifacts/screenshots/*.png 2>/dev/null)" ]; then
+            echo "::warning::No PNGs to upload — skipping"
             exit 0
           fi
 
-          # Public-cacheable for a year — the tag in the path provides invalidation.
-          aws s3 sync artifacts/screenshots/ "s3://${R2_BUCKET}/screenshots/${R2_TAG}/" \
+          # screenshots/<tag>/<os>/<scene>.png so per-OS sets don't collide.
+          aws s3 sync artifacts/screenshots/ "s3://${R2_BUCKET}/screenshots/${R2_TAG}/${R2_SLUG}/" \
             --endpoint-url "${R2_ENDPOINT}" \
             --no-progress \
             --exclude "*" \
@@ -217,14 +297,14 @@ jobs:
             --cache-control "public, max-age=31536000, immutable"
 
           echo ""
-          echo "✅ Uploaded to R2. Public URLs:"
+          echo "✅ Uploaded ${R2_SLUG} to R2. Public URLs:"
           for f in artifacts/screenshots/*.png; do
             base=$(basename "$f")
-            echo "  https://updates.daintree.org/screenshots/${R2_TAG}/${base}"
+            echo "  https://updates.daintree.org/screenshots/${R2_TAG}/${R2_SLUG}/${base}"
           done
 
-      - name: Mirror to screenshots/latest/
-        if: success() && (startsWith(github.ref, 'refs/tags/v') || inputs.update_latest == true || inputs.update_latest == 'true')
+      - name: Mirror to screenshots/latest/<os>/
+        if: always() && (startsWith(github.ref, 'refs/tags/v') || inputs.update_latest == true || inputs.update_latest == 'true')
         shell: bash
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -232,13 +312,16 @@ jobs:
           AWS_DEFAULT_REGION: auto
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_BUCKET: ${{ secrets.DAINTREE_R2_BUCKET }}
+          R2_SLUG: ${{ matrix.slug }}
         run: |
-          # `latest/` mirrors the most recent successful run so the website
-          # can pin to a stable URL like screenshots/latest/01-hero.png.
-          # Use --delete so an asset removed in a future run doesn't linger.
-          # Short cache TTL (5 min) so a fresh release propagates quickly
-          # through the R2 edge cache without a manual invalidation.
-          aws s3 sync artifacts/screenshots/ "s3://${R2_BUCKET}/screenshots/latest/" \
+          set -euo pipefail
+          if [ ! -d artifacts/screenshots ] || [ -z "$(ls -A artifacts/screenshots/*.png 2>/dev/null)" ]; then
+            echo "::warning::No PNGs to mirror — skipping"
+            exit 0
+          fi
+
+          # latest/<os>/ mirrors the most recent successful run for that OS.
+          aws s3 sync artifacts/screenshots/ "s3://${R2_BUCKET}/screenshots/latest/${R2_SLUG}/" \
             --endpoint-url "${R2_ENDPOINT}" \
             --no-progress \
             --delete \
@@ -248,8 +331,8 @@ jobs:
             --cache-control "public, max-age=300, must-revalidate"
 
           echo ""
-          echo "🔄 Mirrored to screenshots/latest/. Stable URLs:"
+          echo "🔄 Mirrored ${R2_SLUG} to screenshots/latest/. Stable URLs:"
           for f in artifacts/screenshots/*.png; do
             base=$(basename "$f")
-            echo "  https://updates.daintree.org/screenshots/latest/${base}"
+            echo "  https://updates.daintree.org/screenshots/latest/${R2_SLUG}/${base}"
           done

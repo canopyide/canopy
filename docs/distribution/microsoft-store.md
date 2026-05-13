@@ -119,14 +119,14 @@ Microsoft Store screenshots and the website hero are produced by the [`Marketing
 
 **Capture pipeline.** The runner sets the OS display to `1920×1080` and Electron launches with `--force-device-scale-factor=2` (configurable via the workflow's `scale` input). The renderer paints at 2× device pixels, Playwright's `page.screenshot()` captures the framebuffer, and each PNG lands at `3840×2160` — Microsoft Store's documented maximum. Scale `3` is also wired and produces a tighter zoom; use it when the UI fits the smaller logical viewport.
 
-**Outputs.** PNGs are uploaded to R2 at `screenshots/<version>/` for tagged releases (e.g. `screenshots/0.9.2/`) and `screenshots/<version>-<sha7>/` for manual dispatch — versioned folders sit side by side on R2 so older asset sets stay browseable. The same set is also mirrored to `screenshots/latest/` on every `v*` tag push (and on manual runs if `update_latest: true`) — the website pins to the `latest/` URLs and never needs to know the current version. Each PNG is also attached as a workflow artifact for 90 days. The workflow fires automatically on every `v*` tag push (same trigger as `release.yml`), so marketing assets refresh in lockstep with binaries.
+**Outputs.** Captured per-OS across `windows`, `linux`, and `macos` (3-leg matrix). PNGs land at `screenshots/<version>/<os>/` for tagged releases (e.g. `screenshots/0.9.2/windows/`) and `screenshots/<version>-<sha7>/<os>/` for manual dispatch — versioned folders sit side by side on R2 so older sets stay browseable. The same sets mirror to `screenshots/latest/<os>/` on every `v*` tag push (and on manual runs if `update_latest: true`). PNGs are also attached as workflow artifacts (one per OS) for 90 days. The workflow fires automatically on every `v*` tag push (same trigger as `release.yml`).
 
-Stable URLs:
+Stable URLs (substitute `<os>` with `windows`, `linux`, or `macos`):
 
-- Versioned: `https://updates.daintree.org/screenshots/<version>/<scene>.png`
-- Latest: `https://updates.daintree.org/screenshots/latest/<scene>.png`
+- Versioned: `https://updates.daintree.org/screenshots/<version>/<os>/<scene>.png`
+- Latest: `https://updates.daintree.org/screenshots/latest/<os>/<scene>.png`
 
-**Submission requirements (recap).** PNG only; sRGB; 16:9 landscape preferred; 1 minimum and 10 maximum per submission; 6–9 is typical for the developer-tools category. The 7th scene (`07-hero-asset.png`) is the no-text Super Hero Art — Microsoft Store overlays its own title, so this asset stays clean.
+**Submission requirements (recap).** PNG only; sRGB; 16:9 landscape preferred; 1 minimum and 10 maximum per submission; 6–9 is typical for the developer-tools category. The reel ships exactly 6 scenes (scene 1 doubles as the Microsoft Store hero — earlier 7-shot attempts hit resource exhaustion on the cold 7th launch).
 
 **Sanitization rules** that the demo repos enforce automatically:
 
