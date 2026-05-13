@@ -223,7 +223,7 @@ jobs:
           npx electron-builder --config electron-builder.config.cjs --publish "$PUBLISH_FLAG" -c.buildDependenciesFromSource=true $EXTRA_ARGS
 
       - name: Verify macOS notarization staple
-        if: startsWith(matrix.os, 'macos') && inputs.skip_notarization != 'true'
+        if: startsWith(matrix.os, 'macos') && inputs.skip_notarization != true
         shell: bash
         run: |
           set -euo pipefail
