@@ -15,6 +15,13 @@ export async function configureClaudeAuthEnv(page: Page): Promise<void> {
     await window.electron.globalEnv.set({
       ...currentGlobalEnv,
       ANTHROPIC_API_KEY: anthropicApiKey,
+      // CLAUDE_CODE_SIMPLE=1 is the env-var equivalent of `claude --bare`:
+      // it skips marketplace OAuth, plugin sync, auto-memory, CLAUDE.md
+      // discovery, and keychain reads. Anthropic auth becomes strictly
+      // ANTHROPIC_API_KEY, so the "Not logged in - Run /login" marketplace
+      // nag never appears in marketing screenshots. (Strings dump of the
+      // claude-code binary confirms this is the right toggle.)
+      CLAUDE_CODE_SIMPLE: "1",
     });
 
     const current = await window.electron.agentSettings.get();
@@ -24,6 +31,7 @@ export async function configureClaudeAuthEnv(page: Page): Promise<void> {
       globalEnv: {
         ...currentEnv,
         ANTHROPIC_API_KEY: anthropicApiKey,
+        CLAUDE_CODE_SIMPLE: "1",
       },
     });
   }, apiKey);

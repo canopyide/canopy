@@ -4,8 +4,8 @@ import {
   WebContentsView,
   dialog,
   ipcMain,
-  nativeTheme,
   session,
+  nativeTheme,
 } from "electron";
 import {
   getWindowForWebContents,
@@ -154,7 +154,13 @@ export function setupBrowserWindow(
   ) {
     colorSchemeId = themeConfig.colorSchemeId.trim();
   } else {
-    colorSchemeId = nativeTheme.shouldUseDarkColors ? "daintree" : "bondi";
+    // Daintree always defaults to its dark theme on first run, regardless of
+    // the OS color-scheme preference. Users who want light or system-following
+    // behavior can opt in via Settings → Appearance.
+    colorSchemeId =
+      process.env.DAINTREE_SCREENSHOT_SCALE || nativeTheme.shouldUseDarkColors
+        ? "daintree"
+        : "bondi";
   }
 
   // Apply lazy migration for legacy string-encoded customSchemes
