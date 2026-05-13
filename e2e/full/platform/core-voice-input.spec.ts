@@ -274,6 +274,11 @@ test.describe.serial("E2E: Voice Input — Settings UI", () => {
     const { window } = ctx;
     // Pre-seed via IPC — avoids the validation/HTTP path the Save button triggers.
     await ipcSetSettings(window, { enabled: true, openaiApiKey: PRE_SEEDED_KEY });
+    // The Settings dialog keeps visited tabs mounted between closes. Reload so
+    // this assertion reads the pre-seeded value through the tab's mount path.
+    await window.reload({ waitUntil: "domcontentloaded" });
+    await window.locator(SEL.toolbar.toggleSidebar).waitFor({ state: "visible", timeout: T_LONG });
+    ctx.window = window;
 
     await openSettings(window);
     await window.locator(`${SEL.settings.navSidebar} button`, { hasText: "Voice Input" }).click();
@@ -568,29 +573,29 @@ test.describe.serial("E2E: Voice Input — OpenAI Realtime IPC Lifecycle", () =>
       .toBe(1);
   });
 
-  test("spoken-command paragraphing splits 'X new paragraph Y' into two completes with a boundary", async () => {
+  test("spoken-command paragraphing strips a trailing 'new paragraph' command", async () => {
     mockState.scenario = {
       onSessionUpdate: (ws) => send(ws, { type: "session.updated" }),
       onCommit: (ws) =>
         send(ws, {
           type: "conversation.item.input_audio_transcription.completed",
-          transcript: "hello new paragraph world",
+          transcript: "hello new paragraph",
         }),
     };
 
     await ipcStart(ctx.window);
     await ipcStop(ctx.window);
 
-    // The IPC handler applies applyDictationCommands → "hello\n\nworld", then
-    // splits on \n\n and emits two completes interleaved with paragraph_boundary.
+    // The IPC handler applies applyDictationCommands → "hello\n\n", then
+    // split + filter(Boolean) drops the trailing empty paragraph.
     await expect
       .poll(async () => (await getCapturedEvents(ctx.window)).completes.map((c) => c.text), {
         timeout: T_MEDIUM,
       })
-      .toEqual(["hello", "world"]);
+      .toEqual(["hello"]);
 
     const captured = await getCapturedEvents(ctx.window);
-    expect(captured.paragraphBoundaries).toEqual([{ rawText: null }]);
+    expect(captured.paragraphBoundaries).toEqual([]);
   });
 
   test("paragraphing 'manual' strategy passes spoken commands through as literal text", async () => {

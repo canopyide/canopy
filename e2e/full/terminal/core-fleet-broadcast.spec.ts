@@ -1,8 +1,9 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { chmodSync, mkdirSync, writeFileSync } from "fs";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import path from "path";
 import { launchApp, closeApp, getActiveAppWindow, type AppContext } from "../../helpers/launch";
-import { createFixtureRepo } from "../../helpers/fixtures";
+import { createFixtureRepo, removePathSync } from "../../helpers/fixtures";
 import { openAndOnboardProject } from "../../helpers/project";
 import { getFocusedPanelId, getPanelById } from "../../helpers/panels";
 import { waitForTerminalPty, waitForTerminalText } from "../../helpers/terminal";
@@ -18,7 +19,7 @@ interface ActionResult<T = unknown> {
 
 let ctx: AppContext;
 let fixtureDir: string;
-let fakeBinDir: string;
+let fakeBinDir = "";
 let fixtureCleanup: (() => void) | undefined;
 
 async function dispatchAction<T = unknown>(
@@ -244,7 +245,7 @@ function prepareFixture(): void {
   const { dir, cleanup } = createFixtureRepo({ name: "fleet-broadcast" });
   fixtureDir = dir;
   fixtureCleanup = cleanup;
-  fakeBinDir = path.join(fixtureDir, ".e2e-bin");
+  fakeBinDir = mkdtempSync(path.join(tmpdir(), "daintree-e2e-fleet-bin-"));
   mkdirSync(fakeBinDir, { recursive: true });
 
   const fakeClaude = path.join(fakeBinDir, "claude");
@@ -323,6 +324,7 @@ test.describe.serial("Core: Fleet terminal broadcast", () => {
   test.afterAll(async () => {
     if (ctx?.app) await closeApp(ctx.app);
     fixtureCleanup?.();
+    if (fakeBinDir) removePathSync(fakeBinDir);
   });
 
   test("shift-click on panel title arms terminal in fleet (#7704)", async () => {
