@@ -595,10 +595,7 @@ export function ReviewHubContent({
         setActionError(formatErrorMessage(err, "Failed to stage all files"));
       }
     })();
-    // refresh and worktreePath are stable for a given open; the ref guard
-    // is the source of truth for one-shot semantics.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, autoStageOnOpen, status]);
+  }, [isOpen, autoStageOnOpen, status, refresh, worktreePath]);
 
   useEffect(() => {
     if (diffMode === "base-branch" && status?.currentBranch === mainBranch) {

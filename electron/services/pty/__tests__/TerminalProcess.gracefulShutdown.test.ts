@@ -155,6 +155,26 @@ describe("TerminalProcess.gracefulShutdown — input-clear prelude", () => {
     await expect(shutdownPromise).resolves.toBe("session-xyz");
   });
 
+  it("waits for a terminator before accepting a capture that ends at the buffer tail", async () => {
+    // Repro: Gemini's resume hint arrives in two PTY chunks. The first chunk
+    // ends mid-UUID at "fc1c3a37-2294-4". Without a trailing-terminator guard,
+    // the greedy `[\w-]+` capture matches the partial token and resume-on-
+    // restart hands the agent an invalid 14-char identifier.
+    const handles = createMockPty();
+    const terminal = createAgentTerminal(handles, "gemini");
+
+    const shutdownPromise = terminal.gracefulShutdown();
+    await vi.advanceTimersByTimeAsync(GRACEFUL_SHUTDOWN_CLEAR_DELAY_MS);
+
+    handles.emitData("Resume with: gemini --resume fc1c3a37-2294-4");
+    // First chunk ends mid-UUID — capture must NOT resolve yet.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    handles.emitData("c8d-9abc-1234567890ab\n");
+    await expect(shutdownPromise).resolves.toBe("fc1c3a37-2294-4c8d-9abc-1234567890ab");
+  });
+
   it("resolves null when no session ID is emitted before the shutdown timeout", async () => {
     const handles = createMockPty();
     const terminal = createAgentTerminal(handles);
