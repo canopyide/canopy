@@ -8,7 +8,12 @@ import {
 import { getDefaultShell, getDefaultShellArgs } from "./terminalShell.js";
 import { computePoolEnvHash } from "./ptyPoolEnvHash.js";
 import type { PtySpawnOptions } from "./types.js";
-import { BufferedPtyDataHandoff, type PooledPtyDataHandoff, type PtyPool } from "../PtyPool.js";
+import {
+  BufferedPtyDataHandoff,
+  destroyPty,
+  type PooledPtyDataHandoff,
+  type PtyPool,
+} from "../PtyPool.js";
 
 // Agent CLIs that ship as Node binaries and benefit from V8 bytecode
 // caching across launches. Codex is a Rust binary and would silently
@@ -173,11 +178,9 @@ export function acquirePtyProcess(
       } catch {
         // Ignore disposal errors
       }
-      try {
-        pooled.process.kill();
-      } catch {
-        // Process may already be dead
-      }
+      // Use destroyPty so the master FD is closed too — kill() alone leaves
+      // /dev/ptmx open and stacks toward the system-wide ptmx_max (#7892).
+      destroyPty(pooled.process);
       pooled = null;
     }
   }
