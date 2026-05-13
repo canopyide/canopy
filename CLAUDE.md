@@ -36,8 +36,8 @@ npm run rebuild      # Rebuild native modules
 ### CI Testing Strategy
 
 - **PRs / pushes:** Typecheck, lint, format, unit tests, and build on **Ubuntu only** (smoke on push only; no E2E, no budgets). `ci-ok` gate job is the sole required status check.
-- **Nightly (2 AM UTC):** Full cross-platform CI on all 3 OSes (macOS + Linux + **Windows**): check + test + build + smoke + E2E core + every `full-*` bucket + E2E online + E2E nightly. Auto-creates GitHub issue on failure (`nightly-failure` label).
-- **Releases:** E2E core, all six `full-*` buckets (in parallel), and E2E online gate the release publish on **macOS + Linux only**. Windows E2E is nightly-only.
+- **Nightly (2 AM UTC):** Full cross-platform CI on all 3 OSes (macOS + Linux + **Windows**): check + test + build + smoke + E2E core (all 3 OSes) + every `full-*` bucket (**macOS + Linux only** — Windows full takes ~5–6 hours) + E2E online (all 3 OSes) + E2E nightly memory-leak suite (**macOS + Linux only** — same reason). Auto-creates GitHub issue on failure (`nightly-failure` label).
+- **Releases:** E2E core and E2E online gate the release publish on **all 3 OSes (macOS + Linux + Windows)**. The six `full-*` buckets (in parallel) gate on **macOS + Linux only** — Windows full E2E takes ~5–6 hours and isn't gated anywhere.
 - **E2E tiers:** `e2e/core/` smoke gates releases. The `full` tier is split into six domain buckets, each its own Playwright project: `full-terminal`, `full-worktree`, `full-presets`, `full-platform`, `full-panels`, `full-resilience`. Specs live in `e2e/full/<bucket>/*.spec.ts`. `e2e/online/` runs 3 agent-integration tests against real model APIs (gates releases). `e2e/nightly/` runs memory-leak detection (nightly only).
 - **Bucket boundaries:**
   - `full-terminal` — PTY mechanics, scrollback, search, layout, recipes, output flood, context injection, fleet broadcast.
