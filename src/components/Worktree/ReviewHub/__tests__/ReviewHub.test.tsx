@@ -3378,4 +3378,110 @@ describe("ReviewHub", () => {
       );
     });
   });
+
+  describe("autoStageOnOpen (issue #7886)", () => {
+    it("stages all unstaged files exactly once on open when no files are staged", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeStatus({
+          staged: [],
+          unstaged: [{ path: "src/a.ts", status: "modified", insertions: 1, deletions: 0 }],
+        })
+      );
+      render(
+        <ReviewHub
+          isOpen={true}
+          worktreePath={WORKTREE_PATH}
+          onClose={vi.fn()}
+          autoStageOnOpen={true}
+        />
+      );
+      await waitFor(() => expect(stageAllMock).toHaveBeenCalledWith(WORKTREE_PATH));
+      expect(stageAllMock).toHaveBeenCalledTimes(1);
+
+      // A background-refresh tick (worktree update) must not re-trigger stageAll
+      // — the one-shot guard owns that decision.
+      await act(async () => {
+        capturedUpdateCallback!(makeWorktreeState());
+        await Promise.resolve();
+      });
+      expect(stageAllMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not stage when files are already staged", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeStatus({
+          staged: [{ path: "src/a.ts", status: "modified", insertions: 1, deletions: 0 }],
+          unstaged: [{ path: "src/b.ts", status: "modified", insertions: 1, deletions: 0 }],
+        })
+      );
+      render(
+        <ReviewHub
+          isOpen={true}
+          worktreePath={WORKTREE_PATH}
+          onClose={vi.fn()}
+          autoStageOnOpen={true}
+        />
+      );
+      await waitFor(() => expect(getStagingStatusMock).toHaveBeenCalled());
+      // Give effects a chance to settle.
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(stageAllMock).not.toHaveBeenCalled();
+    });
+
+    it("does not stage when autoStageOnOpen is omitted", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeStatus({
+          staged: [],
+          unstaged: [{ path: "src/a.ts", status: "modified", insertions: 1, deletions: 0 }],
+        })
+      );
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+      await waitFor(() => expect(getStagingStatusMock).toHaveBeenCalled());
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(stageAllMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("initialCommitMessage (issue #7886)", () => {
+    it("seeds the commit textarea on open with the provided message", async () => {
+      render(
+        <ReviewHub
+          isOpen={true}
+          worktreePath={WORKTREE_PATH}
+          onClose={vi.fn()}
+          initialCommitMessage="fix(scope): from AI note"
+        />
+      );
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+      const textarea = screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
+      expect(textarea.value).toBe("fix(scope): from AI note");
+    });
+
+    it("does not overwrite user edits when the prop changes while open", async () => {
+      const { rerender } = render(
+        <ReviewHub
+          isOpen={true}
+          worktreePath={WORKTREE_PATH}
+          onClose={vi.fn()}
+          initialCommitMessage="from AI"
+        />
+      );
+      await waitFor(() => screen.getByPlaceholderText("Commit message…"));
+      const textarea = screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
+      fireEvent.change(textarea, { target: { value: "human override" } });
+      rerender(
+        <ReviewHub
+          isOpen={true}
+          worktreePath={WORKTREE_PATH}
+          onClose={vi.fn()}
+          initialCommitMessage="new AI note"
+        />
+      );
+      expect(textarea.value).toBe("human override");
+    });
+  });
 });

@@ -28,6 +28,8 @@ interface UIState {
   clearPendingReviewHubWorktreeId: () => void;
   // Per-worktree disclosure state for the Review Hub file list. Default
   // (unset) is collapsed so the commit textarea is the focal point on open.
+  // Session-scoped (in-memory only — resets on app restart, no persist
+  // middleware).
   reviewHubFileListExpanded: Record<string, boolean>;
   setReviewHubFileListExpanded: (worktreePath: string, expanded: boolean) => void;
 }

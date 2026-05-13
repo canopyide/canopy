@@ -579,12 +579,26 @@ export function ReviewHubContent({
       return;
     }
     if (status.unstaged.length === 0) return;
+    // Optimistically take the guard so a concurrent status update can't
+    // re-trip this effect mid-call. If staging fails, release the guard so
+    // the next status update gets another chance instead of leaving the
+    // user stuck looking at unstaged files for the rest of the session.
+    // We inline the IPC call here (rather than reusing handleStageAll) to
+    // observe failure — handleStageAll swallows errors into a banner.
     hasAutoStagedRef.current = true;
-    void handleStageAll();
-    // handleStageAll is intentionally not in the dep list: it depends on
-    // `refresh`/`worktreePath`, both of which are stable for a given open.
-    // Adding it would re-fire the effect after refresh() updates `status`,
-    // re-tripping the guard immediately. The ref guard is the source of truth.
+    void (async () => {
+      setActionError(null);
+      debouncedBgRefreshRef.current?.cancel();
+      try {
+        await window.electron.git.stageAll(worktreePath);
+        await refresh();
+      } catch (err) {
+        hasAutoStagedRef.current = false;
+        setActionError(formatErrorMessage(err, "Failed to stage all files"));
+      }
+    })();
+    // refresh and worktreePath are stable for a given open; the ref guard
+    // is the source of truth for one-shot semantics.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, autoStageOnOpen, status]);
 
@@ -929,14 +943,27 @@ export function ReviewHubContent({
     await runPush();
   }, [runPush]);
 
-  const handleFocusBlocker = useCallback((blocker: "conflicts" | "staged-files") => {
-    if (blocker === "conflicts") {
-      conflictSectionRef.current?.focus();
-    } else {
-      const stageAllBtn = unstagedSectionRef.current?.querySelector("button");
-      stageAllBtn?.focus();
-    }
-  }, []);
+  const handleFocusBlocker = useCallback(
+    (blocker: "conflicts" | "staged-files") => {
+      // Conflict warning + Staged + Unstaged sections live inside the
+      // collapsible file-list disclosure. Expand it first so the targeted
+      // refs exist before we try to focus them — otherwise the click on a
+      // disabled Commit button is silently swallowed when the list is hidden.
+      if (!fileListExpanded) {
+        setFileListExpanded(worktreePath, true);
+      }
+      // Defer one frame so the just-expanded DOM is committed before focus.
+      requestAnimationFrame(() => {
+        if (blocker === "conflicts") {
+          conflictSectionRef.current?.focus();
+        } else {
+          const stageAllBtn = unstagedSectionRef.current?.querySelector("button");
+          stageAllBtn?.focus();
+        }
+      });
+    },
+    [fileListExpanded, setFileListExpanded, worktreePath]
+  );
 
   const handlePullRebase = useCallback(async () => {
     if (isPullRebasingRef.current) return;
@@ -1521,8 +1548,8 @@ export function ReviewHubContent({
               ) : status ? (
                 <div>
                   {/* File-list disclosure — default collapsed so the commit
-                      textarea is the focal point on open. Persisted per worktree
-                      in uiStore so reopening preserves the user's choice. */}
+                      textarea is the focal point on open. State lives per
+                      worktree in uiStore (session-scoped, in-memory only). */}
                   <div className="px-4 py-2 bg-overlay-subtle border-b border-divider flex items-center justify-between">
                     <button
                       type="button"
