@@ -45,7 +45,7 @@ Daintree is the macro-orchestration layer for this workflow. The longer version 
   <img alt="Daintree Assistant connecting to six agent terminals — Claude Code, Gemini CLI, Codex, Cursor, GitHub Copilot CLI, and Crush" src="https://cdn.daintree.org/brand/assistant-diagram-v2.svg" width="900">
 </p>
 
-The **Daintree Assistant** is an AI that runs inside Daintree on the agent CLI you already use — Claude Code, Gemini CLI, Codex, or GitHub Copilot CLI. No extra subscription; it rides your existing auth. From there it drives the rest of the app on your behalf: spawn new agent terminals in any worktree, broadcast a prompt to many at once, watch their progress, inject context, run git operations, report back. Anything you can trigger from the action palette, the Assistant can trigger too.
+Daintree is built for running a lot of agent terminals across a lot of worktrees in parallel — that's the main job of the app. The **Daintree Assistant** sits on top of that and drives it for you. It runs on the agent CLI you already use — Claude Code, Gemini CLI, Codex, or GitHub Copilot CLI — so there's no extra subscription, it rides your existing auth. From there it can spawn new agent terminals in any worktree, broadcast a prompt to many at once, watch their progress, inject context, run git operations, and report back. Anything you can trigger from the action palette, the Assistant can trigger too.
 
 Under the hood it's a sandboxed agent session. When the backend is Claude Code, it attaches to a local `daintree` MCP server that exposes the action system at the authorization tier you grant. It also connects to a live `daintree-docs` server so it can answer how-to questions about Daintree on the side.
 
@@ -82,7 +82,7 @@ Claude Code, Gemini CLI, Codex, GitHub Copilot CLI, Cursor, Aider, OpenCode, Goo
 
 ## Build from source
 
-Clone, install, then run the package command for your platform. Builds land in `release/`.
+Clone, install, then run the package command for your platform. Builds land in `release/` by default; pass `-c.directories.output=<path>` to electron-builder if you want them somewhere else.
 
 ```bash
 git clone https://github.com/daintreehq/daintree.git
