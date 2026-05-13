@@ -39,8 +39,7 @@ describe("SortableWorktreeCard", () => {
       </SortableWorktreeCard>
     );
     // outer m.div wraps inner div
-    const outer = container.firstChild as HTMLElement;
-    const wrapper = outer.firstChild as HTMLElement;
+    const wrapper = container.firstChild as HTMLElement;
     expect(wrapper.style.isolation).toBe("isolate");
     expect(wrapper.style.contentVisibility).toBe("auto");
   });
@@ -57,8 +56,7 @@ describe("SortableWorktreeCard", () => {
         {() => <div data-testid="child" />}
       </SortableWorktreeCard>
     );
-    const outer = container.firstChild as HTMLElement;
-    const wrapper = outer.firstChild as HTMLElement;
+    const wrapper = container.firstChild as HTMLElement;
     expect(wrapper.style.isolation).toBe("auto");
     expect(wrapper.style.contentVisibility).toBe("");
   });
@@ -75,14 +73,13 @@ describe("SortableWorktreeCard", () => {
         {() => <div data-testid="child" />}
       </SortableWorktreeCard>
     );
-    const outer = container.firstChild as HTMLElement;
-    const wrapper = outer.firstChild as HTMLElement;
+    const wrapper = container.firstChild as HTMLElement;
     expect(wrapper.getAttribute("data-worktree-row")).toBe("wt1");
     expect(wrapper.getAttribute("tabindex")).toBe("-1");
     expect(wrapper.getAttribute("role")).toBe("row");
   });
 
-  it("does not apply opacity-40 class (opacity now driven by framer-motion animate)", () => {
+  it("applies opacity-40 to the inner gridcell wrapper while dragging", () => {
     mockIsDragging = true;
     const { container } = render(
       <SortableWorktreeCard
@@ -94,8 +91,10 @@ describe("SortableWorktreeCard", () => {
         {() => <div data-testid="child" />}
       </SortableWorktreeCard>
     );
-    const outer = container.firstChild as HTMLElement;
-    const wrapper = outer.firstChild as HTMLElement;
+    const wrapper = container.firstChild as HTMLElement;
     expect(wrapper.className).not.toContain("opacity-40");
+    const ghost = wrapper.querySelector("[role='gridcell'] > div") as HTMLElement;
+    expect(ghost.className).toContain("opacity-40");
+    expect(ghost.className).toContain("transition-opacity");
   });
 });
