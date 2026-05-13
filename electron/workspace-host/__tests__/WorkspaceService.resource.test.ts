@@ -997,6 +997,8 @@ describe("WorkspaceService.runResourceAction", () => {
   // --- Idempotent provision logic ---
 
   describe("provision idempotency", () => {
+    const q = process.platform === "win32" ? '"' : "'";
+
     it("provision is a no-op when resource status is `ready`", async () => {
       const monitor = createAndRegisterMonitor();
       await setupConfig({
@@ -1029,12 +1031,14 @@ describe("WorkspaceService.runResourceAction", () => {
 
       await service.runResourceAction("req-prov-noop-emit", "/test/worktree", "provision");
 
-      expect(monitor.resourceConnectCommand).toBe("ssh root@'feature/remote'.dev.example.com");
+      expect(monitor.resourceConnectCommand).toBe(
+        `ssh root@${q}feature/remote${q}.dev.example.com`
+      );
       expect(mockSendEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "worktree-update",
           worktree: expect.objectContaining({
-            resourceConnectCommand: "ssh root@'feature/remote'.dev.example.com",
+            resourceConnectCommand: `ssh root@${q}feature/remote${q}.dev.example.com`,
           }),
         })
       );

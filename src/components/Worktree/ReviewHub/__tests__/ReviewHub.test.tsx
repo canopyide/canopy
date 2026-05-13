@@ -2709,6 +2709,11 @@ describe("ReviewHub", () => {
       return render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
     }
 
+    function focusTextareaAt(textarea: HTMLTextAreaElement, start: number, end = start) {
+      textarea.focus();
+      textarea.setSelectionRange(start, end);
+    }
+
     it("fetches and cycles through recent commits on ArrowUp from caret 0", async () => {
       listCommitsMock.mockResolvedValue({
         items: [
@@ -2738,7 +2743,7 @@ describe("ReviewHub", () => {
       const textarea = screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
 
       // Position cursor at 0 (empty textarea)
-      textarea.setSelectionRange(0, 0);
+      focusTextareaAt(textarea, 0);
 
       fireEvent.keyDown(textarea, { key: "ArrowUp" });
       expect(listCommitsMock).toHaveBeenCalledWith({
@@ -2750,12 +2755,12 @@ describe("ReviewHub", () => {
       await waitFor(() => expect(textarea.value).toBe("feat: most recent commit"));
 
       // ArrowUp again → next older commit (with body)
-      textarea.setSelectionRange(0, 0);
+      focusTextareaAt(textarea, 0);
       fireEvent.keyDown(textarea, { key: "ArrowUp" });
       await waitFor(() => expect(textarea.value).toBe("fix: older commit\n\nDetailed body text."));
 
       // ArrowUp again → no more commits, stays at last
-      textarea.setSelectionRange(0, 0);
+      focusTextareaAt(textarea, 0);
       fireEvent.keyDown(textarea, { key: "ArrowUp" });
       await waitFor(() => expect(textarea.value).toBe("fix: older commit\n\nDetailed body text."));
     });
@@ -2782,13 +2787,13 @@ describe("ReviewHub", () => {
 
       // Type a draft first
       fireEvent.change(textarea, { target: { value: "my draft message" } });
-      textarea.setSelectionRange(0, 0);
+      focusTextareaAt(textarea, 0);
 
       fireEvent.keyDown(textarea, { key: "ArrowUp" });
       await waitFor(() => expect(textarea.value).toBe("feat: most recent commit"));
 
       // ArrowDown → back to draft
-      textarea.setSelectionRange(0, 0);
+      focusTextareaAt(textarea, 0);
       fireEvent.keyDown(textarea, { key: "ArrowDown" });
       await waitFor(() => expect(textarea.value).toBe("my draft message"));
     });
@@ -2801,7 +2806,7 @@ describe("ReviewHub", () => {
 
       fireEvent.change(textarea, { target: { value: "some text" } });
       // Caret in middle of text
-      textarea.setSelectionRange(4, 4);
+      focusTextareaAt(textarea, 4);
 
       fireEvent.keyDown(textarea, { key: "ArrowUp" });
       expect(listCommitsMock).not.toHaveBeenCalled();
@@ -2834,19 +2839,19 @@ describe("ReviewHub", () => {
 
       const textarea = screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
 
-      textarea.setSelectionRange(0, 0);
+      focusTextareaAt(textarea, 0);
       fireEvent.keyDown(textarea, { key: "ArrowUp" });
       await waitFor(() => expect(textarea.value).toBe("feat: first commit"));
 
       // Type manually — should reset history index and start fresh on next ArrowUp
       fireEvent.change(textarea, { target: { value: "typed after cycling" } });
 
-      textarea.setSelectionRange(0, 0);
+      focusTextareaAt(textarea, 0);
       fireEvent.keyDown(textarea, { key: "ArrowUp" });
       // Should show most recent again (cycling from start), not the second-oldest
       await waitFor(() => expect(textarea.value).toBe("feat: first commit"));
 
-      textarea.setSelectionRange(0, 0);
+      focusTextareaAt(textarea, 0);
       fireEvent.keyDown(textarea, { key: "ArrowUp" });
       await waitFor(() => expect(textarea.value).toBe("feat: second commit"));
     });
@@ -2859,7 +2864,7 @@ describe("ReviewHub", () => {
 
       const textarea = screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
 
-      textarea.setSelectionRange(0, 0);
+      focusTextareaAt(textarea, 0);
       fireEvent.keyDown(textarea, { key: "ArrowUp" });
       await act(async () => {
         await Promise.resolve();
@@ -2875,7 +2880,7 @@ describe("ReviewHub", () => {
       const textarea = screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
 
       fireEvent.change(textarea, { target: { value: "no history here" } });
-      textarea.setSelectionRange(0, 0);
+      focusTextareaAt(textarea, 0);
 
       fireEvent.keyDown(textarea, { key: "ArrowDown" });
       // Should remain unchanged
@@ -2888,7 +2893,7 @@ describe("ReviewHub", () => {
 
       const textarea = screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
 
-      textarea.setSelectionRange(0, 0);
+      focusTextareaAt(textarea, 0);
 
       fireEvent.keyDown(textarea, { key: "ArrowUp", altKey: true });
       expect(listCommitsMock).not.toHaveBeenCalled();
