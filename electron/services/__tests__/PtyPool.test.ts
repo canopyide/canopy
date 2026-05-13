@@ -764,6 +764,48 @@ describe("PtyPool", () => {
       pool.dispose();
     });
 
+    it("warmPool respects the breaker — drainAndRefill back to a blocked cwd is a no-op", async () => {
+      // Regression for #7892: drainAndRefill() ends with warmPool(). Without
+      // a breaker check in warmPool, switching to /repo-b and back to /repo
+      // after the breaker tripped on /repo would re-enter the crash loop.
+      const procs = Array.from({ length: 12 }, (_, idx) => createFakeProcess(8000 + idx));
+      let i = 0;
+      spawnMock.mockImplementation(() => procs[i++] ?? createFakeProcess(8999));
+
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+      await pool.warmPool();
+
+      // Trip the breaker on /repo env-empty via fast exits.
+      let lastSpawn = 1;
+      for (let k = 0; k < 8; k++) {
+        const spawned = spawnMock.mock.calls.length;
+        const proc = procs[spawned - 1];
+        if (!proc) break;
+        proc.emitExit(1);
+        await settleRefill();
+        const after = spawnMock.mock.calls.length;
+        if (after === spawned) {
+          lastSpawn = after;
+          break;
+        }
+      }
+
+      const spawnsAtBlock = spawnMock.mock.calls.length;
+      expect(lastSpawn).toBeGreaterThan(0);
+
+      // Switch away to /repo-b (warmPool there is fine — different key).
+      await pool.drainAndRefill("/repo-b");
+      // /repo-b warm did spawn one entry.
+      expect(spawnMock.mock.calls.length).toBe(spawnsAtBlock + 1);
+      const spawnsAfterB = spawnMock.mock.calls.length;
+
+      // Switch back to /repo — warmPool must see the still-blocked breaker
+      // and refuse to spawn. Without the fix, this re-enters the crash loop.
+      await pool.drainAndRefill("/repo");
+      expect(spawnMock).toHaveBeenCalledTimes(spawnsAfterB);
+      pool.dispose();
+    });
+
     it("circuit breaker cools down and resumes refill after the backoff window", async () => {
       // Drive the breaker into the blocked state for env-empty, advance
       // virtual time past KEY_BACKOFF_MS, then verify a fresh warmForKey

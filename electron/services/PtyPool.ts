@@ -226,6 +226,13 @@ export class PtyPool {
       }
     }
 
+    // drainAndRefill() ends with warmPool(), which would otherwise let a
+    // post-trip project switch re-enter the crash loop on the same blocked
+    // (cwd, env-empty) key. Gate warmPool with the same breaker as refillPool.
+    if (this.isKeyBlocked(makePoolKey(this.defaultCwd, POOL_ENV_EMPTY_HASH))) {
+      return;
+    }
+
     const promises: Promise<void>[] = [];
     const existing = this.countEntriesForKey(this.defaultCwd, POOL_ENV_EMPTY_HASH);
     const needed = this.poolSize - existing;
@@ -317,8 +324,13 @@ export class PtyPool {
         }
         entry.alive = false;
         entry.dataDisposable.dispose();
-        destroyPty(entry.process);
+        // Remove from the pool BEFORE destroying. Real node-pty delivers
+        // onExit via libuv (always async), so synchronous re-entry can't
+        // happen — but the invariant "removed from map → never re-observed"
+        // matches dispose()/evictIfAtCapacity()/drainAndRefill() and makes
+        // the code easier to reason about.
         this.pool.delete(id);
+        destroyPty(entry.process);
         this.recordFastExit(entry.poolKey, entry.createdAt);
         // Skip refill if this entry belonged to a prior drain cycle — a
         // newer drainAndRefill() already initiated its own refill.
