@@ -29,7 +29,7 @@ export function QuickStateFilterBar({ value, onChange, counts }: QuickStateFilte
   const workingActive = counts !== undefined && counts.working > 0;
   return (
     <div
-      className="grid grid-cols-4 border-b border-border-default"
+      className="flex border-b border-border-default"
       role="toolbar"
       aria-label="Quick state filter"
     >
@@ -47,10 +47,11 @@ export function QuickStateFilterBar({ value, onChange, counts }: QuickStateFilte
             aria-pressed={isActive}
             onClick={() => onChange(isActive ? "all" : option.value)}
             className={cn(
-              "inline-flex items-center justify-center gap-1 min-w-0 px-1 py-1.5 text-[11px] transition-colors",
+              "inline-flex items-center justify-center gap-1 min-w-0 px-2 py-1.5 text-[11px] transition-colors",
+              option.value !== "all" && "flex-1",
               idx > 0 && "border-l border-border-default",
               isActive
-                ? "text-daintree-text font-medium shadow-[inset_0_-2px_0_0_var(--color-text-primary)]"
+                ? "text-daintree-text font-medium shadow-[inset_0_-2px_0_0_var(--color-text-secondary)]"
                 : "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.04]"
             )}
           >
