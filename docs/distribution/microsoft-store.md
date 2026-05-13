@@ -113,6 +113,26 @@ This framing is the difference between a clean review and a back-and-forth on th
 
 **`msstore` CLI subcommand grammar drift** — the CLI is in preview as of 2026 and command names have moved between releases. If the workflow's `msstore submission update / publish` calls fail with "unknown command," run `msstore --help` on the runner output to see the current grammar and update the workflow.
 
+## Screenshots
+
+Microsoft Store screenshots and the website hero are produced by the [`Marketing Screenshots`](../../.github/workflows/screenshots.yml) workflow on the `windows-latest` runner. The capture spec is [`e2e/screenshots/store-reel.spec.ts`](../../e2e/screenshots/store-reel.spec.ts) — it boots Daintree against a different demo repo per scene (surge-checkout, brush-cms, bento-portfolio, launchpad-analytics, orbital-sync, mise-en-place) so each shot has its own title-bar identity.
+
+**Capture pipeline.** The runner sets the OS display to `1920×1080` and Electron launches with `--force-device-scale-factor=2` (configurable via the workflow's `scale` input). The renderer paints at 2× device pixels, Playwright's `page.screenshot()` captures the framebuffer, and each PNG lands at `3840×2160` — Microsoft Store's documented maximum. Scale `3` is also wired and produces a tighter zoom; use it when the UI fits the smaller logical viewport.
+
+**Outputs.** PNGs are uploaded to R2 at `screenshots/<tag>/` (release tag on `release.published`, branch slug + short SHA on manual dispatch) and exposed at `https://updates.daintree.org/screenshots/<tag>/<scene>.png`. The same PNGs are attached as a workflow artifact for 90 days.
+
+**Submission requirements (recap).** PNG only; sRGB; 16:9 landscape preferred; 1 minimum and 10 maximum per submission; 6–9 is typical for the developer-tools category. The 7th scene (`07-hero-asset.png`) is the no-text Super Hero Art — Microsoft Store overlays its own title, so this asset stays clean.
+
+**Sanitization rules** that the demo repos enforce automatically:
+
+- No API-key-shaped strings anywhere in the rendered window (`ANTHROPIC_API_KEY` is set via IPC and never appears in UI).
+- No real-user paths — folder basenames are the project slugs, not tmpdir randomness.
+- No third-party code excerpts — all demo content is original.
+
+Pair the screenshots with the Policy 11.16 AI disclosure in the listing metadata; the listing copy in [`docs/distribution/microsoft-store.md#listing-copy`](#listing-copy) already covers it.
+
+**Local iteration.** `npm run screenshots:dev` runs the same spec locally (on macOS or Linux). The PNGs land in `artifacts/screenshots/`. Local output is for layout iteration only — the canonical store assets are always the windows-latest workflow's output.
+
 ## References
 
 - [Open a developer account](https://learn.microsoft.com/en-us/windows/apps/publish/partner-center/open-a-developer-account)

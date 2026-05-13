@@ -88,5 +88,17 @@ export default defineConfig({
       timeout: 600_000,
       retries: 0,
     },
+    {
+      // Marketing screenshot pipeline — runs on demand via
+      // .github/workflows/screenshots.yml. Each spec opens a separate demo
+      // repo, drives a deterministic UI state, and writes a PNG to
+      // artifacts/screenshots/. Real Anthropic API calls happen for the
+      // agent-state shots, so flake is non-zero; we surface failures rather
+      // than retry them (the workflow is manually rerun).
+      name: "screenshots",
+      testDir: "./e2e/screenshots",
+      timeout: 600_000,
+      retries: 0,
+    },
   ],
 });

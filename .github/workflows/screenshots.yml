@@ -1,0 +1,205 @@
+name: Marketing Screenshots
+
+# Captures Microsoft Store + website marketing screenshots from a windows-latest
+# runner using the existing Playwright/Electron harness. Trigger manually or
+# automatically on a published release.
+#
+# The actual store/marketing reel lives in e2e/screenshots/store-reel.spec.ts.
+# Each scene opens a distinct demo repo (surge-checkout, brush-cms, etc.) so
+# the title bar reads like a realistic project name.
+
+run-name: screenshots · ${{ inputs.scale || '2' }}x · ${{ github.ref_name }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      scale:
+        description: "Device scale factor (2 → 3840×2160, 3 → tighter zoom)"
+        type: choice
+        default: "2"
+        options:
+          - "2"
+          - "3"
+      upload_to_r2:
+        description: "Upload PNGs to R2 (uses DAINTREE_R2_BUCKET + R2 secrets)"
+        type: boolean
+        default: true
+      tag:
+        description: "Subdir under screenshots/ on R2 (default: branch-or-sha)"
+        type: string
+        default: ""
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: screenshots-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  capture:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Harden Windows for Electron screenshot capture
+        shell: pwsh
+        run: |
+          Set-MpPreference -DisableRealtimeMonitoring $true
+          Stop-Service -Name "WSearch" -Force -ErrorAction SilentlyContinue
+          Set-Service -Name "WSearch" -StartupType Disabled -ErrorAction SilentlyContinue
+          Stop-Service -Name "SysMain" -Force -ErrorAction SilentlyContinue
+          Set-Service -Name "SysMain" -StartupType Disabled -ErrorAction SilentlyContinue
+          Stop-Service -Name "DiagTrack" -Force -ErrorAction SilentlyContinue
+          Set-Service -Name "DiagTrack" -StartupType Disabled -ErrorAction SilentlyContinue
+
+          # 1920x1080 OS display + scale=2 device-pixel-factor = 3840x2160 PNG.
+          # Microsoft Store maximum is 3840x2160, so this lands exactly at max.
+          try {
+            Set-DisplayResolution -Width 1920 -Height 1080 -Force -ErrorAction SilentlyContinue
+          } catch {
+            Write-Host "Set-DisplayResolution not available, continuing with default resolution"
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Cache Playwright browsers
+        id: cache-playwright
+        continue-on-error: true
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/AppData/Local/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ hashFiles('package-lock.json') }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        run: npm run build
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Install OpenCode
+        run: npm install -g opencode-ai
+
+      - name: Configure Claude Code
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.claude" | Out-Null
+          '{"hasCompletedOnboarding": true}' | Set-Content "$env:USERPROFILE\.claude.json"
+          '{"model": "claude-haiku-4-5-20251001"}' | Set-Content "$env:USERPROFILE\.claude\settings.json"
+
+      - name: Verify native modules
+        shell: pwsh
+        run: |
+          node -e "try { require('node-pty'); console.log('node-pty: OK') } catch(e) { console.error('node-pty FAILED:', e.message); process.exit(1) }"
+
+      - name: Capture screenshots
+        shell: bash
+        env:
+          ELECTRON_ENABLE_LOGGING: "1"
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DAINTREE_SCREENSHOT_SCALE: ${{ inputs.scale || '2' }}
+          DAINTREE_SCREENSHOT_WIDTH: "1920"
+          DAINTREE_SCREENSHOT_HEIGHT: "1080"
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/screenshots
+
+          # Heartbeat so a slow scene doesn't look like a hung job in the UI.
+          while true; do
+            sleep 60
+            echo "[screenshots] heartbeat $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+            ls -lah artifacts/screenshots/ 2>/dev/null | tail -10 || true
+          done &
+          heartbeat_pid=$!
+          trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
+
+          npx playwright test --project=screenshots
+
+      - name: List captured screenshots
+        if: always()
+        shell: bash
+        run: |
+          if [ -d artifacts/screenshots ]; then
+            ls -lah artifacts/screenshots/
+            echo "Total PNGs:"
+            ls artifacts/screenshots/*.png 2>/dev/null | wc -l || echo "0"
+          else
+            echo "No screenshots produced"
+          fi
+
+      - name: Upload screenshots as workflow artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: marketing-screenshots-${{ github.sha }}
+          path: |
+            artifacts/screenshots/
+            test-results/
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Resolve R2 destination tag
+        if: success() && (github.event_name == 'release' || inputs.upload_to_r2 == true || inputs.upload_to_r2 == 'true')
+        id: r2-tag
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+          else
+            # Use branch name slugified + short SHA so iterations don't collide.
+            BRANCH_SLUG=$(echo "${GITHUB_REF_NAME}" | tr '/' '-' | tr -cs 'a-zA-Z0-9-' '-')
+            TAG="dev/${BRANCH_SLUG}-${GITHUB_SHA::7}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Uploading to: screenshots/${TAG}/"
+
+      - name: Upload screenshots to R2
+        if: success() && (github.event_name == 'release' || inputs.upload_to_r2 == true || inputs.upload_to_r2 == 'true')
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.DAINTREE_R2_BUCKET }}
+          R2_TAG: ${{ steps.r2-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ ! -d artifacts/screenshots ]; then
+            echo "::warning::No screenshots/ directory to upload"
+            exit 0
+          fi
+
+          # Public-cacheable for a year — the tag in the path provides invalidation.
+          aws s3 sync artifacts/screenshots/ "s3://${R2_BUCKET}/screenshots/${R2_TAG}/" \
+            --endpoint-url "${R2_ENDPOINT}" \
+            --no-progress \
+            --exclude "*" \
+            --include "*.png" \
+            --content-type "image/png" \
+            --cache-control "public, max-age=31536000, immutable"
+
+          echo ""
+          echo "✅ Uploaded to R2. Public URLs:"
+          for f in artifacts/screenshots/*.png; do
+            base=$(basename "$f")
+            echo "  https://updates.daintree.org/screenshots/${R2_TAG}/${base}"
+          done
