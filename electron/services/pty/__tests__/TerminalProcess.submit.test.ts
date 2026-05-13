@@ -127,7 +127,7 @@ describe("TerminalProcess.submit", () => {
     vi.useRealTimers();
   });
 
-  it("sends Enter immediately for Copilot with submitEnterDelayMs: 0", async () => {
+  it("delays Enter for Copilot (submitEnterDelayMs: 200) so Ink TUI registers input", async () => {
     vi.useFakeTimers();
     const terminal = createTerminal({ kind: "terminal", launchAgentId: "copilot" });
     // Input protocol is driven by detectedAgentId (live process), not the launch hint.
@@ -141,6 +141,9 @@ describe("TerminalProcess.submit", () => {
     expect(ptyWriteMock).toHaveBeenCalledTimes(1);
     expect(ptyWriteMock).toHaveBeenLastCalledWith("test");
     await vi.advanceTimersByTimeAsync(50);
+    expect(ptyWriteMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(ptyWriteMock).toHaveBeenCalledTimes(2);
     expect(ptyWriteMock).toHaveBeenLastCalledWith("\r");
     vi.useRealTimers();
   });
