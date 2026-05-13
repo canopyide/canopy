@@ -422,7 +422,7 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
 
       await page.waitForTimeout(3500);
       await dismissBlockingPalette(page);
-      await snap(page, "03-dev-preview-bento-portfolio");
+      await snap(page, "03-dev-preview-daintree-site");
     } finally {
       if (captured) await teardown(captured.ctx);
       repo.cleanup();
