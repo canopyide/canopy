@@ -42,18 +42,19 @@ Daintree is the macro-orchestration layer for this workflow. The longer version 
 ## Daintree Assistant
 
 <p align="center">
-  <img alt="Daintree Assistant connecting to six agent terminals — Claude Code, Gemini CLI, Codex, Cursor, GitHub Copilot CLI, and Crush" src="https://cdn.daintree.org/brand/assistant-diagram.svg" width="900">
+  <img alt="Daintree Assistant connecting to six agent terminals — Claude Code, Gemini CLI, Codex, Cursor, GitHub Copilot CLI, and Crush" src="https://cdn.daintree.org/brand/assistant-diagram-v2.svg" width="900">
 </p>
 
-The Assistant is in-app help that runs as a sandboxed AI coding agent inside Daintree itself. It answers questions about the app, watches the state of every other agent you have running, and can react to changes via a `register_listener` tool. Because it connects to a live MCP documentation server (`daintree-docs`), its answers track the current release rather than going stale with the documentation an off-the-shelf model was trained on.
+The **Daintree Assistant** is an AI that runs inside Daintree on the agent CLI you already use — Claude Code, Gemini CLI, Codex, or GitHub Copilot CLI. No extra subscription; it rides your existing auth. From there it drives the rest of the app on your behalf: spawn new agent terminals in any worktree, broadcast a prompt to many at once, watch their progress, inject context, run git operations, report back. Anything you can trigger from the action palette, the Assistant can trigger too.
 
-When you're signed into Claude Code, the Assistant additionally connects to a tier-gated local MCP server (`daintree`) that exposes read-only introspection of the running app. Supported backends are Claude Code, Gemini CLI, Codex CLI, and GitHub Copilot CLI; the Assistant reuses whichever you're already signed into, so there's no extra auth.
+Under the hood it's a sandboxed agent session. When the backend is Claude Code, it attaches to a local `daintree` MCP server that exposes the action system at the authorization tier you grant. It also connects to a live `daintree-docs` server so it can answer how-to questions about Daintree on the side.
 
 What that looks like in practice:
 
-- Answers how-to questions about Daintree features, sourced from the live docs.
-- Tells you which of your agents are waiting on input and which finished while you were away.
-- Reacts to events you register. For example: tell me when the Cursor agent in the `bugfix/foo` worktree stops responding.
+- Spawn six Claude Code terminals across six worktrees and broadcast the same prompt to all of them.
+- Watch every agent panel and tell you which ones are waiting on input and which finished.
+- Run any Daintree action by name — switch projects, dock panels, kick off a dev server, run a git op.
+- Subscribe to events so it pings you when the agent in `bugfix/foo` stops responding.
 
 ## Features
 
