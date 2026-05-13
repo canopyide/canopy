@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img alt="Daintree desktop — four agents working in parallel, Daintree theme on the left half and Hokkaido on the right" src="https://cdn.daintree.org/screenshots/latest/hero.webp">
+  <img alt="Daintree desktop — four agents working in parallel, Daintree theme on the left half and Hokkaido on the right" src="https://cdn.daintree.org/screenshots/latest/hero-v2.webp">
 </p>
 
 ## Install
@@ -28,7 +28,7 @@
 Get Daintree for **[macOS](https://daintree.org/download)**, **[Windows](https://daintree.org/download)**, or **[Linux](https://daintree.org/download)** — all on the same page. macOS ships as a signed-and-notarized DMG (arm64, x64, universal); Linux as AppImage and `.deb`; Windows as a sideloadable `.appx` package while the Microsoft Store listing is in review. Homebrew and winget recipes are in the oven.
 
 <p align="center">
-  <a href="https://daintree.org/download"><img alt="Download Daintree" src="https://cdn.daintree.org/brand/download-button.svg" width="240"></a>
+  <a href="https://daintree.org/download"><img alt="Download Daintree for macOS, Windows, or Linux" src="https://cdn.daintree.org/brand/download-button-v2.svg" width="340"></a>
 </p>
 
 ## The problem
