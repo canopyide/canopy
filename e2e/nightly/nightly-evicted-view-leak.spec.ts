@@ -52,34 +52,58 @@ test.describe.serial("Nightly: Evicted project view leak detection", () => {
     test.setTimeout(180_000);
     const { app } = ctx;
 
-    const initial = await app.evaluate(() => {
-      const g = globalThis as Record<string, unknown>;
-      const getPvm = g.__daintreeGetPvm as (() => unknown) | undefined;
-      const pvm = getPvm?.() as
-        | {
-            getAllViews: () => Array<{
-              view: { webContents: { id: number; isDestroyed: () => boolean } };
-              projectId: string;
-              state: string;
-            }>;
-            getActiveProjectId: () => string | null;
-            setCachedViewLimit: (n: number) => void;
-          }
-        | null
-        | undefined;
-      if (!pvm) return null;
-      return {
-        activeProjectId: pvm.getActiveProjectId(),
-        views: pvm.getAllViews().map((v) => ({
-          projectId: v.projectId,
-          wcId: v.view.webContents.id,
-          state: v.state,
-        })),
-      };
-    });
+    const readPvmState = () =>
+      app.evaluate(() => {
+        const g = globalThis as Record<string, unknown>;
+        const getPvm = g.__daintreeGetPvm as (() => unknown) | undefined;
+        const pvm = getPvm?.() as
+          | {
+              getAllViews: () => Array<{
+                view: { webContents: { id: number; isDestroyed: () => boolean } };
+                projectId: string;
+                state: string;
+              }>;
+              getActiveProjectId: () => string | null;
+              setCachedViewLimit: (n: number) => void;
+            }
+          | null
+          | undefined;
+        if (!pvm) return null;
+        return {
+          activeProjectId: pvm.getActiveProjectId(),
+          views: pvm.getAllViews().map((v) => ({
+            projectId: v.projectId,
+            wcId: v.view.webContents.id,
+            state: v.state,
+          })),
+        };
+      });
 
+    // Poll for the precondition: both projects' views must be registered in
+    // the PVM before we can test eviction. Project switching is async — on
+    // loaded CI runners (especially macOS), `selectExistingProjectAndRefresh`
+    // returning doesn't guarantee that the previous project's view has been
+    // moved into the cache map yet.
+    let lastSnapshot: Awaited<ReturnType<typeof readPvmState>> = null;
+    try {
+      await expect
+        .poll(
+          async () => {
+            lastSnapshot = await readPvmState();
+            return lastSnapshot?.views.length ?? 0;
+          },
+          { timeout: 15_000, intervals: [200, 400, 800, 1600] }
+        )
+        .toBeGreaterThanOrEqual(2);
+    } catch (error) {
+      console.log(
+        `[evicted-view] precondition failed: views=${JSON.stringify(lastSnapshot?.views)}, active=${lastSnapshot?.activeProjectId}`
+      );
+      throw error;
+    }
+
+    const initial = lastSnapshot ?? (await readPvmState());
     expect(initial).not.toBeNull();
-    expect(initial!.views.length).toBeGreaterThanOrEqual(2);
     const activeId = initial!.activeProjectId;
     expect(activeId).not.toBeNull();
     const activeView = initial!.views.find((v) => v.projectId === activeId);
