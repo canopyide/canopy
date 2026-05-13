@@ -18,7 +18,7 @@ import { launchApp, closeApp, type AppContext } from "../../helpers/launch";
 import { createFixtureRepo } from "../../helpers/fixtures";
 import { openAndOnboardProject } from "../../helpers/project";
 import { SEL } from "../../helpers/selectors";
-import { T_SHORT, T_LONG, T_SETTLE } from "../../helpers/timeouts";
+import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../../helpers/timeouts";
 
 interface E2EPerfWindow extends Window {
   __daintreeE2ePerfEntries?: Array<{ duration: number; startTime: number }>;
