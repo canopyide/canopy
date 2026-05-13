@@ -9,6 +9,17 @@ interface ReviewHubProps {
   isOpen: boolean;
   worktreePath: string;
   onClose: () => void;
+  /**
+   * Seed value for the commit message on open. Used by the worktree card to
+   * prefill the AI-note first line; the user can still edit or clear it.
+   */
+  initialCommitMessage?: string;
+  /**
+   * When true, stage all unstaged files on open if there are no staged files
+   * yet. Mirrors the prior `CommitComposerDialog` "quick commit" path: opening
+   * the hub from the worktree card should result in a ready-to-commit state.
+   */
+  autoStageOnOpen?: boolean;
 }
 
 /**
@@ -18,7 +29,13 @@ interface ReviewHubProps {
  * mounted in a non-modal container (e.g., a future review panel kind)
  * without dragging the portal/overlay wrapper with it.
  */
-export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
+export function ReviewHub({
+  isOpen,
+  worktreePath,
+  onClose,
+  initialCommitMessage,
+  autoStageOnOpen,
+}: ReviewHubProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useOverlayState(isOpen);
@@ -63,7 +80,13 @@ export function ReviewHub({ isOpen, worktreePath, onClose }: ReviewHubProps) {
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
-        <ReviewHubContent isOpen={isOpen} worktreePath={worktreePath} onClose={onClose} />
+        <ReviewHubContent
+          isOpen={isOpen}
+          worktreePath={worktreePath}
+          onClose={onClose}
+          initialCommitMessage={initialCommitMessage}
+          autoStageOnOpen={autoStageOnOpen}
+        />
       </div>
     </div>,
     document.body

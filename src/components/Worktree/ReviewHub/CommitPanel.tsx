@@ -6,6 +6,8 @@ import { Spinner } from "@/components/ui/Spinner";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { SplitButton } from "@/components/ui/split-button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { isProtectedBranch } from "@shared/utils/gitConstants";
 
 const MAX_SUBJECT_LENGTH = 72;
 const HISTORY_FETCH_POLL_INTERVAL_MS = 10;
@@ -16,6 +18,8 @@ interface CommitPanelProps {
   hasConflicts: boolean;
   hasRemote: boolean;
   worktreePath: string;
+  /** Current branch name from the staging status; used for the protected-branch confirm gate. */
+  currentBranch?: string | null;
   commitMessage: string;
   onCommitMessageChange: (message: string) => void;
   onCommit: (message: string) => Promise<void>;
@@ -32,6 +36,7 @@ export function CommitPanel({
   hasConflicts,
   hasRemote,
   worktreePath,
+  currentBranch,
   commitMessage,
   onCommitMessageChange,
   onCommit,
@@ -42,6 +47,9 @@ export function CommitPanel({
   pushTargetBranch,
 }: CommitPanelProps) {
   const [isCommitting, setIsCommitting] = useState(false);
+  const [protectedConfirmOpen, setProtectedConfirmOpen] = useState(false);
+
+  const isProtected = isProtectedBranch(currentBranch?.toLowerCase());
 
   const actionInFlightRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -158,11 +166,22 @@ export function CommitPanel({
       return;
     }
     if (hasRemote) {
+      if (isProtected) {
+        // D2 confirmation: pushing to a protected branch is shared-state
+        // mutation. Show the commit message preview before any IPC fires.
+        setProtectedConfirmOpen(true);
+        return;
+      }
       void handleCommitAndPush();
     } else {
       void handleCommit();
     }
-  }, [isBlocked, hasRemote, focusBlocker, handleCommitAndPush, handleCommit]);
+  }, [isBlocked, hasRemote, isProtected, focusBlocker, handleCommitAndPush, handleCommit]);
+
+  const handleConfirmProtectedPush = useCallback(() => {
+    setProtectedConfirmOpen(false);
+    void handleCommitAndPush();
+  }, [handleCommitAndPush]);
 
   const progressEntries = [...pushProgress.values()];
   const hasProgress = progressEntries.length > 0;
@@ -364,6 +383,32 @@ export function CommitPanel({
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={protectedConfirmOpen}
+        onClose={() => setProtectedConfirmOpen(false)}
+        title={`Push to '${currentBranch ?? ""}'?`}
+        description={
+          <span>
+            <span className="font-mono">{currentBranch ?? ""}</span> is a protected branch. Most
+            teams use pull requests instead. Review your commit message before pushing:
+          </span>
+        }
+        confirmLabel={`Push to ${currentBranch ?? "branch"}`}
+        variant="default"
+        zIndex="nested"
+        onConfirm={handleConfirmProtectedPush}
+      >
+        <pre
+          data-testid="commit-panel-protected-confirm-message"
+          className={cn(
+            "max-h-40 overflow-y-auto rounded-[var(--radius-md)] border border-divider",
+            "bg-surface-inset px-3 py-2 text-xs font-mono whitespace-pre-wrap break-words text-daintree-text"
+          )}
+        >
+          {commitMessage}
+        </pre>
+      </ConfirmDialog>
 
       <div className="flex items-center gap-2">
         {hasRemote ? (

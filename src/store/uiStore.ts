@@ -26,6 +26,12 @@ interface UIState {
   pendingReviewHubWorktreeId: string | null;
   setPendingReviewHubWorktreeId: (id: string) => void;
   clearPendingReviewHubWorktreeId: () => void;
+  // Per-worktree disclosure state for the Review Hub file list. Default
+  // (unset) is collapsed so the commit textarea is the focal point on open.
+  // Session-scoped (in-memory only — resets on app restart, no persist
+  // middleware).
+  reviewHubFileListExpanded: Record<string, boolean>;
+  setReviewHubFileListExpanded: (worktreePath: string, expanded: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
@@ -78,5 +84,17 @@ export const useUIStore = create<UIState>((set, get) => ({
     set((state) => {
       if (state.pendingReviewHubWorktreeId === null) return state;
       return { pendingReviewHubWorktreeId: null };
+    }),
+
+  reviewHubFileListExpanded: {},
+  setReviewHubFileListExpanded: (worktreePath, expanded) =>
+    set((state) => {
+      if (state.reviewHubFileListExpanded[worktreePath] === expanded) return state;
+      return {
+        reviewHubFileListExpanded: {
+          ...state.reviewHubFileListExpanded,
+          [worktreePath]: expanded,
+        },
+      };
     }),
 }));

@@ -114,6 +114,7 @@ vi.mock("@/components/ui/tooltip", () => ({
 }));
 
 import { ReviewHub } from "../ReviewHub";
+import { useUIStore } from "@/store/uiStore";
 
 const WORKTREE_PATH = "/home/user/project";
 
@@ -154,6 +155,10 @@ describe("ReviewHub stale visual", () => {
   beforeEach(() => {
     capturedUpdateCallback = null;
     debounceCancelSpy.mockReset();
+
+    // Default disclosure to expanded for tests (defaults to collapsed in
+    // production per issue #7886).
+    useUIStore.getState().setReviewHubFileListExpanded(WORKTREE_PATH, true);
 
     worktreeStoreData.current = new Map([
       [

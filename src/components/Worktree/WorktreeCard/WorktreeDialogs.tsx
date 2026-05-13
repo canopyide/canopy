@@ -5,7 +5,6 @@ import { WorktreeDeleteDialog } from "../WorktreeDeleteDialog";
 import { IssuePickerDialog } from "../IssuePickerDialog";
 import { ReviewHub } from "../ReviewHub/ReviewHub";
 import { PlanFileViewer } from "@/components/FileViewer/PlanFileViewer";
-import { CommitComposerDialog } from "../CommitComposerDialog";
 import type { ConfirmDialogState } from "./hooks/useWorktreeActions";
 
 export interface WorktreeDialogsProps {
@@ -20,18 +19,10 @@ export interface WorktreeDialogsProps {
   onDetachIssue: () => void;
   showReviewHub: boolean;
   onCloseReviewHub: () => void;
+  reviewHubInitialCommitMessage?: string;
+  reviewHubAutoStageOnOpen?: boolean;
   showPlanViewer: boolean;
   onClosePlanViewer: () => void;
-  showCommitComposer: boolean;
-  onCloseCommitComposer: () => void;
-  onConfirmCommitAndPush: (message: string) => void;
-  commitMessage: string;
-  onCommitMessageChange: (next: string) => void;
-  commitComposerDiff: string | null;
-  isCommitComposerDiffLoading: boolean;
-  commitComposerDiffError: string | null;
-  isCommittingAndPushing: boolean;
-  commitAndPushSubmitError: string | null;
 }
 
 export function WorktreeDialogs({
@@ -46,18 +37,10 @@ export function WorktreeDialogs({
   onDetachIssue,
   showReviewHub,
   onCloseReviewHub,
+  reviewHubInitialCommitMessage,
+  reviewHubAutoStageOnOpen,
   showPlanViewer,
   onClosePlanViewer,
-  showCommitComposer,
-  onCloseCommitComposer,
-  onConfirmCommitAndPush,
-  commitMessage,
-  onCommitMessageChange,
-  commitComposerDiff,
-  isCommitComposerDiffLoading,
-  commitComposerDiffError,
-  isCommittingAndPushing,
-  commitAndPushSubmitError,
 }: WorktreeDialogsProps) {
   return (
     <>
@@ -86,30 +69,19 @@ export function WorktreeDialogs({
         onDetach={onDetachIssue}
       />
 
-      <ReviewHub isOpen={showReviewHub} worktreePath={worktree.path} onClose={onCloseReviewHub} />
+      <ReviewHub
+        isOpen={showReviewHub}
+        worktreePath={worktree.path}
+        onClose={onCloseReviewHub}
+        initialCommitMessage={reviewHubInitialCommitMessage}
+        autoStageOnOpen={reviewHubAutoStageOnOpen}
+      />
 
       <PlanFileViewer
         isOpen={showPlanViewer}
         filePath={worktree.planFilePath}
         rootPath={worktree.path}
         onClose={onClosePlanViewer}
-      />
-
-      <CommitComposerDialog
-        isOpen={showCommitComposer}
-        onClose={onCloseCommitComposer}
-        onConfirm={onConfirmCommitAndPush}
-        isSubmitting={isCommittingAndPushing}
-        commitMessage={commitMessage}
-        onCommitMessageChange={onCommitMessageChange}
-        branch={worktree.branch}
-        tracking={worktree.worktreeChanges?.tracking}
-        changes={worktree.worktreeChanges?.changes ?? []}
-        rootPath={worktree.path}
-        diff={commitComposerDiff}
-        isDiffLoading={isCommitComposerDiffLoading}
-        diffError={commitComposerDiffError}
-        submitError={commitAndPushSubmitError}
       />
     </>
   );
