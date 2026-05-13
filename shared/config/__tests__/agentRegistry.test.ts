@@ -814,6 +814,11 @@ describe("copilot configuration", () => {
     expect(config?.capabilities?.submitEnterDelayMs).toBeGreaterThanOrEqual(200);
   });
 
+  it("uses single-write quit so /exit submits as one write (Ink TUI constraint)", () => {
+    const config = getAgentConfig("copilot");
+    expect(config?.capabilities?.quitSubmitMode).toBe("single-write");
+  });
+
   it("has correct npm package and GitHub repo", () => {
     const config = getAgentConfig("copilot");
     expect(config?.version?.npmPackage).toBe("@github/copilot");

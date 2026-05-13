@@ -86,6 +86,10 @@ export const config: AgentConfig = {
     supportsBracketedPaste: true,
     // Ink TUI needs a gap between pasted body and the CR submit; see issue #5830.
     submitEnterDelayMs: 200,
+    // Same Ink-TUI constraint applies to /exit on shutdown: the body and CR must
+    // arrive as one write, or Copilot treats the gap as slow typing and never
+    // submits the slash command. Matches Claude (also Ink-based).
+    quitSubmitMode: "single-write",
   },
   detection: {
     primaryPatterns: ["\\(Esc to cancel\\)", "[∙∘○◎◉]\\s+.+\\(Esc to cancel\\)"],
