@@ -246,7 +246,10 @@ jobs:
 
       - name: Resolve R2 destination tag
         # always() so we still upload partial sets when a single scene fails.
-        if: always() && (startsWith(github.ref, 'refs/tags/v') || inputs.upload_to_r2 == true || inputs.upload_to_r2 == 'true')
+        # github.event_name == 'push' covers both tag pushes (production) and
+        # the temp branch trigger (validation). Manual dispatch still needs
+        # upload_to_r2:true explicitly.
+        if: always() && (github.event_name == 'push' || inputs.upload_to_r2 == true || inputs.upload_to_r2 == 'true')
         id: r2-tag
         shell: bash
         run: |
@@ -270,7 +273,7 @@ jobs:
       - name: Upload screenshots to R2 (per-OS)
         # always() lets us upload partial captures from a run where a single
         # scene failed. The script no-ops if no PNGs exist.
-        if: always() && steps.r2-tag.outputs.tag != '' && (startsWith(github.ref, 'refs/tags/v') || inputs.upload_to_r2 == true || inputs.upload_to_r2 == 'true')
+        if: always() && steps.r2-tag.outputs.tag != '' && (github.event_name == 'push' || inputs.upload_to_r2 == true || inputs.upload_to_r2 == 'true')
         shell: bash
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
