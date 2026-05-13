@@ -1,10 +1,12 @@
 name: Marketing Screenshots
 
-# Captures Microsoft Store + website marketing screenshots across all three
-# distribution platforms (Windows, Linux, macOS) using the existing Playwright/
-# Electron harness. Each OS produces a parallel screenshot set that lands at
-# screenshots/<version>/<os>/ on R2 — Windows for Microsoft Store, macOS for
-# Apple-flavored landing pages, Linux for the AppImage/.deb story.
+# Captures Microsoft Store + website marketing screenshots on a macOS runner.
+# macOS is the canonical capture platform — it's the only one of the three
+# GitHub-hosted runners whose virtual display honors --force-device-scale-factor=2,
+# so we get a real 3840×1940 framebuffer (Microsoft Store maximum). The app
+# is frameless so no OS chrome is captured; screenshots are identical content
+# across platforms, only resolution differs. Windows + Linux capture was
+# removed in #7887 once that became clear.
 #
 # The actual store/marketing reel lives in e2e/screenshots/store-reel.spec.ts.
 # Each scene opens a distinct demo repo (surge-checkout, brush-cms, etc.) so
@@ -27,7 +29,7 @@ on:
   workflow_dispatch:
     inputs:
       scale:
-        description: "Device scale factor (2 → 3840×2160, 3 → tighter zoom)"
+        description: "Device scale factor (2 → 3840×1940, 3 → tighter zoom)"
         type: choice
         default: "2"
         options:
@@ -38,23 +40,13 @@ on:
         type: boolean
         default: true
       tag:
-        description: "Subdir under screenshots/ on R2 (default: <version>-<sha7>)"
+        description: "Subdir under screenshots/ on R2 (default: <version>)"
         type: string
         default: ""
       update_latest:
         description: "Also overwrite screenshots/latest/ (default: only on v* tag pushes)"
         type: boolean
         default: false
-      platforms:
-        description: "Which OSes to capture on"
-        type: choice
-        default: "all"
-        options:
-          - all
-          - windows
-          - linux
-          - macos
-          - non-windows
 
 permissions:
   contents: read
@@ -67,58 +59,12 @@ env:
   NODE_VERSION: "22"
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Resolve the OS matrix based on the workflow input. Default: all three.
-  # ---------------------------------------------------------------------------
-  matrix-setup:
-    runs-on: ubuntu-22.04
-    outputs:
-      matrix: ${{ steps.set.outputs.matrix }}
-    steps:
-      - id: set
-        run: |
-          P="${{ inputs.platforms || 'all' }}"
-          WIN='{"os":"windows-latest","slug":"windows"}'
-          LNX='{"os":"ubuntu-22.04","slug":"linux"}'
-          MAC='{"os":"macos-14","slug":"macos"}'
-          case "$P" in
-            windows)      echo "matrix={\"include\":[$WIN]}" >> "$GITHUB_OUTPUT" ;;
-            linux)        echo "matrix={\"include\":[$LNX]}" >> "$GITHUB_OUTPUT" ;;
-            macos)        echo "matrix={\"include\":[$MAC]}" >> "$GITHUB_OUTPUT" ;;
-            non-windows)  echo "matrix={\"include\":[$LNX,$MAC]}" >> "$GITHUB_OUTPUT" ;;
-            *)            echo "matrix={\"include\":[$WIN,$LNX,$MAC]}" >> "$GITHUB_OUTPUT" ;;
-          esac
-
   capture:
-    needs: matrix-setup
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.matrix-setup.outputs.matrix) }}
-    runs-on: ${{ matrix.os }}
-    name: capture (${{ matrix.slug }})
-    timeout-minutes: 90
+    runs-on: macos-14
+    name: capture
+    timeout-minutes: 60
 
     steps:
-      # -----------------------------------------------------------------------
-      # Per-OS hardening / dependencies. Each step gates on matrix.slug.
-      # -----------------------------------------------------------------------
-      - name: Harden Windows for Electron screenshot capture
-        if: matrix.slug == 'windows'
-        shell: pwsh
-        run: |
-          Set-MpPreference -DisableRealtimeMonitoring $true
-          Stop-Service -Name "WSearch" -Force -ErrorAction SilentlyContinue
-          Set-Service -Name "WSearch" -StartupType Disabled -ErrorAction SilentlyContinue
-          Stop-Service -Name "SysMain" -Force -ErrorAction SilentlyContinue
-          Set-Service -Name "SysMain" -StartupType Disabled -ErrorAction SilentlyContinue
-          Stop-Service -Name "DiagTrack" -Force -ErrorAction SilentlyContinue
-          Set-Service -Name "DiagTrack" -StartupType Disabled -ErrorAction SilentlyContinue
-          try {
-            Set-DisplayResolution -Width 1920 -Height 1080 -Force -ErrorAction SilentlyContinue
-          } catch {
-            Write-Host "Set-DisplayResolution not available, continuing with default resolution"
-          }
-
       - name: Check out repository
         uses: actions/checkout@v6
 
@@ -127,10 +73,7 @@ jobs:
         continue-on-error: true
         uses: actions/cache@v5
         with:
-          path: |
-            ~/.cache/ms-playwright
-            ~/Library/Caches/ms-playwright
-            ~/AppData/Local/ms-playwright
+          path: ~/Library/Caches/ms-playwright
           key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ hashFiles('package-lock.json') }}
 
       - name: Set up Node.js
@@ -138,24 +81,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-
-      - name: Install Linux dependencies
-        if: matrix.slug == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgbm1 \
-            libgtk-3-0 \
-            libnss3 \
-            libasound2 \
-            libxss1 \
-            libxtst6 \
-            libatk1.0-0 \
-            libatk-bridge2.0-0 \
-            libcups2 \
-            libdrm2 \
-            libnotify4 \
-            xvfb
 
       - name: Install dependencies
         run: npm ci
@@ -169,30 +94,16 @@ jobs:
       - name: Install OpenCode
         run: npm install -g opencode-ai
 
-      - name: Configure Claude Code (Windows)
-        if: matrix.slug == 'windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.claude" | Out-Null
-          '{"hasCompletedOnboarding": true}' | Set-Content "$env:USERPROFILE\.claude.json"
-          '{"model": "claude-haiku-4-5-20251001"}' | Set-Content "$env:USERPROFILE\.claude\settings.json"
-
-      - name: Configure Claude Code (macOS/Linux)
-        if: matrix.slug != 'windows'
-        shell: bash
+      - name: Configure Claude Code
         run: |
           mkdir -p ~/.claude
           echo '{"hasCompletedOnboarding": true}' > ~/.claude.json
           echo '{"model": "claude-haiku-4-5-20251001"}' > ~/.claude/settings.json
 
       - name: Verify native modules
-        shell: bash
         run: |
           node -e "try { require('node-pty'); console.log('node-pty: OK') } catch(e) { console.error('node-pty FAILED:', e.message); process.exit(1) }"
 
-      # -----------------------------------------------------------------------
-      # Capture step. Linux uses xvfb-run; macOS and Windows run directly.
-      # -----------------------------------------------------------------------
       - name: Capture screenshots
         shell: bash
         env:
@@ -205,7 +116,7 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts/screenshots
 
-          # Heartbeat so a slow scene doesn't look like a hung job in the UI.
+          # Heartbeat so a slow scene doesn't look like a hung job.
           while true; do
             sleep 60
             echo "[screenshots] heartbeat $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -214,12 +125,7 @@ jobs:
           heartbeat_pid=$!
           trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
 
-          SLUG="${{ matrix.slug }}"
-          if [ "$SLUG" = "linux" ]; then
-            xvfb-run --auto-servernum npx playwright test --project=screenshots
-          else
-            npx playwright test --project=screenshots
-          fi
+          npx playwright test --project=screenshots
 
       - name: List captured screenshots
         if: always()
@@ -237,7 +143,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: marketing-screenshots-${{ matrix.slug }}-${{ github.sha }}
+          name: marketing-screenshots-${{ github.sha }}
           path: |
             artifacts/screenshots/
             test-results/
@@ -247,18 +153,14 @@ jobs:
       - name: Resolve R2 destination tag
         # always() so we still upload partial sets when a single scene fails.
         # github.event_name == 'push' covers both tag pushes (production) and
-        # the temp branch trigger (validation). Manual dispatch still needs
-        # upload_to_r2:true explicitly.
+        # the temp branch trigger (validation).
         if: always() && (github.event_name == 'push' || inputs.upload_to_r2 == true || inputs.upload_to_r2 == 'true')
         id: r2-tag
         shell: bash
         run: |
           # Versioned destination — package.json version is the canonical
-          # source so screenshots/0.9.1/, screenshots/0.9.2/ etc. sit side by
-          # side on R2. Tag pushes, branch validation runs, and manual
-          # dispatch all land in the same versioned folder for that version;
-          # re-runs overwrite. (Manual dispatch can still override with an
-          # explicit `tag` input when iterating on the same version.)
+          # source. screenshots/0.9.1/, screenshots/0.9.2/ etc. sit side by
+          # side on R2; re-runs of the same version overwrite.
           PKG_VERSION=$(node -p "require('./package.json').version")
           if [ -n "${{ inputs.tag }}" ]; then
             TAG="${{ inputs.tag }}"
@@ -269,9 +171,9 @@ jobs:
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "pkg_version=${PKG_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Uploading to: screenshots/${TAG}/${{ matrix.slug }}/"
+          echo "Uploading to: screenshots/${TAG}/"
 
-      - name: Upload screenshots to R2 (per-OS)
+      - name: Upload screenshots to R2
         # always() lets us upload partial captures from a run where a single
         # scene failed. The script no-ops if no PNGs exist.
         if: always() && steps.r2-tag.outputs.tag != '' && (github.event_name == 'push' || inputs.upload_to_r2 == true || inputs.upload_to_r2 == 'true')
@@ -283,7 +185,6 @@ jobs:
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_BUCKET: ${{ secrets.DAINTREE_R2_BUCKET }}
           R2_TAG: ${{ steps.r2-tag.outputs.tag }}
-          R2_SLUG: ${{ matrix.slug }}
         run: |
           set -euo pipefail
           if [ ! -d artifacts/screenshots ] || [ -z "$(ls -A artifacts/screenshots/*.png 2>/dev/null)" ]; then
@@ -291,8 +192,7 @@ jobs:
             exit 0
           fi
 
-          # screenshots/<tag>/<os>/<scene>.png so per-OS sets don't collide.
-          aws s3 sync artifacts/screenshots/ "s3://${R2_BUCKET}/screenshots/${R2_TAG}/${R2_SLUG}/" \
+          aws s3 sync artifacts/screenshots/ "s3://${R2_BUCKET}/screenshots/${R2_TAG}/" \
             --endpoint-url "${R2_ENDPOINT}" \
             --no-progress \
             --exclude "*" \
@@ -301,13 +201,13 @@ jobs:
             --cache-control "public, max-age=31536000, immutable"
 
           echo ""
-          echo "✅ Uploaded ${R2_SLUG} to R2. Public URLs:"
+          echo "✅ Uploaded to R2. Public URLs:"
           for f in artifacts/screenshots/*.png; do
             base=$(basename "$f")
-            echo "  https://updates.daintree.org/screenshots/${R2_TAG}/${R2_SLUG}/${base}"
+            echo "  https://updates.daintree.org/screenshots/${R2_TAG}/${base}"
           done
 
-      - name: Mirror to screenshots/latest/<os>/
+      - name: Mirror to screenshots/latest/
         # Always refresh latest/ on any successful capture run. The version
         # folder above keeps the immutable history; `latest/` is the single
         # stable URL the website pins to.
@@ -319,7 +219,6 @@ jobs:
           AWS_DEFAULT_REGION: auto
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_BUCKET: ${{ secrets.DAINTREE_R2_BUCKET }}
-          R2_SLUG: ${{ matrix.slug }}
         run: |
           set -euo pipefail
           if [ ! -d artifacts/screenshots ] || [ -z "$(ls -A artifacts/screenshots/*.png 2>/dev/null)" ]; then
@@ -327,8 +226,7 @@ jobs:
             exit 0
           fi
 
-          # latest/<os>/ mirrors the most recent successful run for that OS.
-          aws s3 sync artifacts/screenshots/ "s3://${R2_BUCKET}/screenshots/latest/${R2_SLUG}/" \
+          aws s3 sync artifacts/screenshots/ "s3://${R2_BUCKET}/screenshots/latest/" \
             --endpoint-url "${R2_ENDPOINT}" \
             --no-progress \
             --delete \
@@ -338,8 +236,8 @@ jobs:
             --cache-control "public, max-age=300, must-revalidate"
 
           echo ""
-          echo "🔄 Mirrored ${R2_SLUG} to screenshots/latest/. Stable URLs:"
+          echo "🔄 Mirrored to screenshots/latest/. Stable URLs:"
           for f in artifacts/screenshots/*.png; do
             base=$(basename "$f")
-            echo "  https://updates.daintree.org/screenshots/latest/${R2_SLUG}/${base}"
+            echo "  https://updates.daintree.org/screenshots/latest/${base}"
           done

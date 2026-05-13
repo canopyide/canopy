@@ -115,16 +115,18 @@ This framing is the difference between a clean review and a back-and-forth on th
 
 ## Screenshots
 
-Microsoft Store screenshots and the website hero are produced by the [`Marketing Screenshots`](../../.github/workflows/screenshots.yml) workflow on the `windows-latest` runner. The capture spec is [`e2e/screenshots/store-reel.spec.ts`](../../e2e/screenshots/store-reel.spec.ts) — it boots Daintree against a different demo repo per scene (surge-checkout, brush-cms, bento-portfolio, launchpad-analytics, orbital-sync, mise-en-place) so each shot has its own title-bar identity.
+Microsoft Store screenshots and the website hero are produced by the [`Marketing Screenshots`](../../.github/workflows/screenshots.yml) workflow on a `macos-14` GitHub-hosted runner. The capture spec is [`e2e/screenshots/store-reel.spec.ts`](../../e2e/screenshots/store-reel.spec.ts) — it boots Daintree against a different demo repo per scene (surge-checkout, brush-cms, bento-portfolio, launchpad-analytics, orbital-sync, mise-en-place) so each shot has its own title-bar identity.
 
-**Capture pipeline.** The runner sets the OS display to `1920×1080` and Electron launches with `--force-device-scale-factor=2` (configurable via the workflow's `scale` input). The renderer paints at 2× device pixels, Playwright's `page.screenshot()` captures the framebuffer, and each PNG lands at `3840×2160` — Microsoft Store's documented maximum. Scale `3` is also wired and produces a tighter zoom; use it when the UI fits the smaller logical viewport.
+**Capture pipeline.** Electron launches with `--force-device-scale-factor=2` (configurable via the workflow's `scale` input). The renderer paints at 2× device pixels, Playwright's `page.screenshot()` captures the framebuffer, and each PNG lands at `3840×1940` — at the Microsoft Store maximum. Scale `3` is also wired and produces a tighter zoom; use it when the UI fits the smaller logical viewport.
 
-**Outputs.** Captured per-OS across `windows`, `linux`, and `macos` (3-leg matrix). PNGs land at `screenshots/<version>/<os>/` for tagged releases (e.g. `screenshots/0.9.2/windows/`) and `screenshots/<version>-<sha7>/<os>/` for manual dispatch — versioned folders sit side by side on R2 so older sets stay browseable. The same sets mirror to `screenshots/latest/<os>/` on every `v*` tag push (and on manual runs if `update_latest: true`). PNGs are also attached as workflow artifacts (one per OS) for 90 days. The workflow fires automatically on every `v*` tag push (same trigger as `release.yml`).
+macOS is the only GitHub-hosted runner OS whose virtual display honors the scale flag (Windows + Linux runners cap at the OS display's physical pixels, ~1080p). Since Daintree's window is frameless, no OS chrome is captured — screenshots are content-identical across platforms, only resolution differs — so we capture only on macOS.
 
-Stable URLs (substitute `<os>` with `windows`, `linux`, or `macos`):
+**Outputs.** PNGs land at `screenshots/<version>/` (e.g. `screenshots/0.9.2/01-hero-surge-checkout.png`) for tagged releases. Re-runs of the same version overwrite. The same set mirrors to `screenshots/latest/` on every push — the website pins to the `latest/` URLs and never needs to know the current version. PNGs are also attached as a workflow artifact for 90 days. The workflow fires automatically on every `v*` tag push (same trigger as `release.yml`).
 
-- Versioned: `https://updates.daintree.org/screenshots/<version>/<os>/<scene>.png`
-- Latest: `https://updates.daintree.org/screenshots/latest/<os>/<scene>.png`
+Stable URLs:
+
+- Versioned: `https://updates.daintree.org/screenshots/<version>/<scene>.png`
+- Latest: `https://updates.daintree.org/screenshots/latest/<scene>.png`
 
 **Submission requirements (recap).** PNG only; sRGB; 16:9 landscape preferred; 1 minimum and 10 maximum per submission; 6–9 is typical for the developer-tools category. The reel ships exactly 6 scenes (scene 1 doubles as the Microsoft Store hero — earlier 7-shot attempts hit resource exhaustion on the cold 7th launch).
 
