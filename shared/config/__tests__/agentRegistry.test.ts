@@ -809,6 +809,11 @@ describe("copilot configuration", () => {
     expect(config?.capabilities?.blockAltScreen).toBeUndefined();
   });
 
+  it("uses submitEnterDelayMs >= 200 so Ink TUI registers input before CR (issue #5830)", () => {
+    const config = getAgentConfig("copilot");
+    expect(config?.capabilities?.submitEnterDelayMs).toBeGreaterThanOrEqual(200);
+  });
+
   it("has correct npm package and GitHub repo", () => {
     const config = getAgentConfig("copilot");
     expect(config?.version?.npmPackage).toBe("@github/copilot");

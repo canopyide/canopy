@@ -84,7 +84,8 @@ export const config: AgentConfig = {
     blockMouseReporting: true,
     resizeStrategy: "settled",
     supportsBracketedPaste: true,
-    submitEnterDelayMs: 0,
+    // Ink TUI needs a gap between pasted body and the CR submit; see issue #5830.
+    submitEnterDelayMs: 200,
   },
   detection: {
     primaryPatterns: ["\\(Esc to cancel\\)", "[∙∘○◎◉]\\s+.+\\(Esc to cancel\\)"],
