@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img alt="Daintree desktop — four agents working in parallel, Daintree theme on the left half and Hokkaido on the right" src="https://cdn.daintree.org/screenshots/latest/hero-v2.webp">
+  <img alt="Daintree desktop: four agents working in parallel, Daintree theme on the left half and Hokkaido on the right" src="https://cdn.daintree.org/screenshots/latest/hero-v2.webp">
 </p>
 
 ## Install
@@ -42,10 +42,11 @@ Daintree is the macro-orchestration layer for this workflow. The longer version 
 ## Daintree Assistant
 
 <p align="center">
-  <img alt="Daintree Assistant connecting to six agent terminals — Claude Code, Gemini CLI, Codex, Cursor, GitHub Copilot CLI, and Crush" src="https://cdn.daintree.org/brand/assistant-diagram-v2.svg" width="900">
+  <img alt="Daintree Assistant connecting to six agent terminals: Claude Code, Gemini CLI, Codex, Cursor, GitHub Copilot CLI, and Crush" src="https://cdn.daintree.org/brand/assistant-diagram-v3.svg" width="900">
+
 </p>
 
-Daintree is built for running a lot of agent terminals across a lot of worktrees in parallel — that's the main job of the app. The **Daintree Assistant** sits on top of that and drives it for you. It runs on the agent CLI you already use — Claude Code, Gemini CLI, Codex, or GitHub Copilot CLI — so there's no extra subscription, it rides your existing auth. From there it can spawn new agent terminals in any worktree, broadcast a prompt to many at once, watch their progress, inject context, run git operations, and report back. Anything you can trigger from the action palette, the Assistant can trigger too.
+Daintree is built for running a large number of AI coding agent terminals in parallel across many git worktrees. That's the main job of the app. The **Daintree Assistant** sits on top of that and drives it for you. It runs on the agent CLI you already have, whether that's Claude Code, Gemini CLI, Codex, or GitHub Copilot CLI, so there's no extra subscription. From there it can spawn new agent terminals in any worktree, broadcast a single prompt to many at once, watch their progress, inject context, run git operations, and report back. Anything you can trigger from Daintree's action palette, the Assistant can trigger too.
 
 Under the hood it's a sandboxed agent session. When the backend is Claude Code, it attaches to a local `daintree` MCP server that exposes the action system at the authorization tier you grant. It also connects to a live `daintree-docs` server so it can answer how-to questions about Daintree on the side.
 
@@ -53,7 +54,7 @@ What that looks like in practice:
 
 - Spawn six Claude Code terminals across six worktrees and broadcast the same prompt to all of them.
 - Watch every agent panel and tell you which ones are waiting on input and which finished.
-- Run any Daintree action by name — switch projects, dock panels, kick off a dev server, run a git op.
+- Run any Daintree action by name: switch projects, dock panels, kick off a dev server, run a git op.
 - Subscribe to events so it pings you when the agent in `bugfix/foo` stops responding.
 
 ## Features
@@ -140,11 +141,11 @@ pipx install aider-chat                     # Aider (pipx)
 
 ## Documentation
 
-- [Architecture](docs/architecture/) — system design, IPC patterns, terminal lifecycle
-- [Development guide](docs/development.md) — setup, debugging, contribution workflow
-- [Theme system](docs/themes/theme-system.md) — theme pipeline, tokens, runtime
-- [E2E testing](docs/e2e-testing.md) — Playwright setup and patterns
-- [Release process](docs/release.md) — versioning and release workflow
+- [Architecture](docs/architecture/): system design, IPC patterns, terminal lifecycle
+- [Development guide](docs/development.md): setup, debugging, contribution workflow
+- [Theme system](docs/themes/theme-system.md): theme pipeline, tokens, runtime
+- [E2E testing](docs/e2e-testing.md): Playwright setup and patterns
+- [Release process](docs/release.md): versioning and release workflow
 
 ## License
 
