@@ -151,6 +151,7 @@ export const SEL = {
     unstageButton: (path: string) => `[aria-label="Unstage ${path}"]`,
     stageAllButton: '[data-testid="review-hub-stage-section-button"]',
     unstageAllButton: '[data-testid="review-hub-unstage-section-button"]',
+    fileListToggle: '[data-testid="review-hub-file-list-toggle"]',
     noStagedFiles: 'text="No staged files"',
     noUnstagedChanges: 'text="No unstaged changes"',
   },

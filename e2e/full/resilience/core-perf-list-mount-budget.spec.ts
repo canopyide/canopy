@@ -103,9 +103,15 @@ test.describe.serial("Core: List Mount Perf Budget", () => {
       // Confirm the hub is showing file data, not an empty state
       await expect(hub.locator(SEL.reviewHub.cleanState)).not.toBeVisible({ timeout: T_SHORT });
 
-      // PR #7890 auto-stages files when the hub is launched from a worktree
-      // card. Reset to an unstaged baseline so the perf measurement below
-      // exercises the same Unstaged-list mount path as before.
+      // PR #7890 collapses the file list by default and auto-stages all
+      // unstaged files for the card-launched flow. Expand the list so the
+      // perf measurement below mounts the same list span as before, then
+      // unstage so files exercise the Unstaged-list mount path.
+      const fileListToggle = hub.locator(SEL.reviewHub.fileListToggle);
+      await expect(fileListToggle).toBeVisible({ timeout: T_LONG });
+      if ((await fileListToggle.getAttribute("aria-expanded")) !== "true") {
+        await fileListToggle.click();
+      }
       await expect(hub.locator(SEL.reviewHub.unstageAllButton)).toBeVisible({ timeout: T_LONG });
       await hub.locator(SEL.reviewHub.unstageAllButton).click();
       await expect(hub.locator(SEL.reviewHub.noStagedFiles)).toBeVisible({ timeout: T_MEDIUM });
