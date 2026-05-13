@@ -2740,23 +2740,18 @@ describe("ReviewHub", () => {
         limit: 8,
       });
 
-      // Wait for the async fetch to resolve and re-render
-      await act(async () => {
-        await Promise.resolve();
-      });
-
       // After fetch, the textarea should show the most recent commit message
-      expect(textarea.value).toBe("feat: most recent commit");
+      await waitFor(() => expect(textarea.value).toBe("feat: most recent commit"));
 
       // ArrowUp again → next older commit (with body)
       textarea.setSelectionRange(0, 0);
       fireEvent.keyDown(textarea, { key: "ArrowUp" });
-      expect(textarea.value).toBe("fix: older commit\n\nDetailed body text.");
+      await waitFor(() => expect(textarea.value).toBe("fix: older commit\n\nDetailed body text."));
 
       // ArrowUp again → no more commits, stays at last
       textarea.setSelectionRange(0, 0);
       fireEvent.keyDown(textarea, { key: "ArrowUp" });
-      expect(textarea.value).toBe("fix: older commit\n\nDetailed body text.");
+      await waitFor(() => expect(textarea.value).toBe("fix: older commit\n\nDetailed body text."));
     });
 
     it("ArrowDown unwinds through history and restores original draft", async () => {
@@ -2784,16 +2779,12 @@ describe("ReviewHub", () => {
       textarea.setSelectionRange(0, 0);
 
       fireEvent.keyDown(textarea, { key: "ArrowUp" });
-      await act(async () => {
-        await Promise.resolve();
-      });
-
-      expect(textarea.value).toBe("feat: most recent commit");
+      await waitFor(() => expect(textarea.value).toBe("feat: most recent commit"));
 
       // ArrowDown → back to draft
       textarea.setSelectionRange(0, 0);
       fireEvent.keyDown(textarea, { key: "ArrowDown" });
-      expect(textarea.value).toBe("my draft message");
+      await waitFor(() => expect(textarea.value).toBe("my draft message"));
     });
 
     it("does not intercept ArrowUp when caret is not at position 0", async () => {
@@ -2839,10 +2830,7 @@ describe("ReviewHub", () => {
 
       textarea.setSelectionRange(0, 0);
       fireEvent.keyDown(textarea, { key: "ArrowUp" });
-      await act(async () => {
-        await Promise.resolve();
-      });
-      expect(textarea.value).toBe("feat: first commit");
+      await waitFor(() => expect(textarea.value).toBe("feat: first commit"));
 
       // Type manually — should reset history index and start fresh on next ArrowUp
       fireEvent.change(textarea, { target: { value: "typed after cycling" } });
@@ -2850,11 +2838,11 @@ describe("ReviewHub", () => {
       textarea.setSelectionRange(0, 0);
       fireEvent.keyDown(textarea, { key: "ArrowUp" });
       // Should show most recent again (cycling from start), not the second-oldest
-      expect(textarea.value).toBe("feat: first commit");
+      await waitFor(() => expect(textarea.value).toBe("feat: first commit"));
 
       textarea.setSelectionRange(0, 0);
       fireEvent.keyDown(textarea, { key: "ArrowUp" });
-      expect(textarea.value).toBe("feat: second commit");
+      await waitFor(() => expect(textarea.value).toBe("feat: second commit"));
     });
 
     it("ArrowUp does nothing when there is no commit history", async () => {
