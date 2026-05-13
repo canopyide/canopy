@@ -98,7 +98,11 @@ jobs:
         run: |
           mkdir -p ~/.claude
           echo '{"hasCompletedOnboarding": true}' > ~/.claude.json
-          echo '{"model": "claude-haiku-4-5-20251001"}' > ~/.claude/settings.json
+          # defaultMode: bypassPermissions skips per-action "allow this tool?"
+          # prompts that would otherwise leave Claude stuck mid-response in
+          # CI (no human to click yes). Combined with CLAUDE_CODE_SIMPLE=1
+          # (set via Daintree's globalEnv) this gives a fully unattended run.
+          echo '{"model":"claude-haiku-4-5-20251001","defaultMode":"bypassPermissions"}' > ~/.claude/settings.json
 
       - name: Verify native modules
         run: |

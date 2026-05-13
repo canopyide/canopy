@@ -273,110 +273,96 @@ export function handleAuthRedirect(): void {
   });
 }
 
-/** Scene 3 — 🍱 bento-portfolio — personal site with a live dev server. */
-export function createBentoPortfolioRepo(): DemoRepo {
+/**
+ * Scene 3 — 🌴 daintree-site — the Daintree marketing site itself.
+ * The dev preview shows daintree.org via a local reverse proxy. Slightly
+ * meta, but it sells the "live preview while you edit" story with real
+ * production content instead of a fake portfolio.
+ */
+export function createDaintreeSiteRepo(): DemoRepo {
   return createDemoRepo({
-    slug: "bento-portfolio",
+    slug: "daintree-site",
     files: {
-      "README.md": `# 🍱 bento-portfolio
+      "README.md": `# 🌴 daintree-site
 
-A minimalist personal portfolio in the bento-grid style.
+The Daintree marketing site. \`npm run dev\` starts a local reverse proxy
+to daintree.org so you can preview production while editing.
 `,
       "package.json": JSON.stringify(
         {
-          name: "bento-portfolio",
-          version: "0.2.1",
+          name: "daintree-site",
+          version: "1.4.0",
           private: true,
           scripts: { dev: "node dev-server.cjs" },
         },
         null,
         2
       ),
-      "dev-server.cjs": `// Minimal preview server for the dev preview screenshot scene.
+      "dev-server.cjs": `// Reverse proxy to daintree.org for the dev preview screenshot scene.
+// Strips X-Frame-Options / CSP frame-ancestors so the preview can render
+// inside Daintree's webview. Falls back to an offline placeholder if
+// daintree.org is unreachable.
 const http = require("http");
+const https = require("https");
 
-const html = \`<!doctype html>
-<html lang="en"><head>
-  <meta charset="utf-8" />
-  <title>🍱 bento-portfolio</title>
-  <style>
-    :root { color-scheme: dark; }
-    body {
-      margin: 0;
-      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-      background: linear-gradient(135deg, #0f172a, #1e293b);
-      color: #f1f5f9;
-      min-height: 100vh;
-      display: grid;
-      grid-template-rows: auto 1fr;
-    }
-    header { padding: 32px 48px; }
-    h1 {
-      font-size: 56px; margin: 0; letter-spacing: -0.02em;
-      background: linear-gradient(135deg, #f97316, #ec4899, #8b5cf6);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    }
-    p.tag { margin: 8px 0 0; color: #94a3b8; font-size: 18px; }
-    main { padding: 0 48px 48px; }
-    .grid {
-      display: grid;
-      grid-template-columns: 2fr 1fr 1fr;
-      grid-auto-rows: 160px;
-      gap: 16px;
-    }
-    .cell {
-      border-radius: 18px; padding: 22px;
-      background: rgba(15, 23, 42, 0.6);
-      border: 1px solid rgba(148, 163, 184, 0.15);
-      display: flex; flex-direction: column; justify-content: space-between;
-    }
-    .cell h3 { margin: 0; font-size: 20px; }
-    .cell p { margin: 0; color: #94a3b8; font-size: 14px; }
-    .cell.featured {
-      grid-column: span 2; grid-row: span 2;
-      background: linear-gradient(135deg, rgba(249, 115, 22, 0.2), rgba(139, 92, 246, 0.2));
-    }
-    .cell.contact { background: rgba(34, 197, 94, 0.15); }
-  </style>
-</head><body>
-  <header>
-    <h1>Reina Okafor</h1>
-    <p class="tag">design engineer · sydney · building soft tools</p>
-  </header>
-  <main>
-    <div class="grid">
-      <div class="cell featured">
-        <h3>Currently</h3>
-        <p>Designing onboarding for a small team of agronomists. Lots of sketching.</p>
-      </div>
-      <div class="cell"><h3>Notes</h3><p>52 essays, mostly about software.</p></div>
-      <div class="cell"><h3>Speaking</h3><p>Sydney CSS · UI Salon</p></div>
-      <div class="cell"><h3>Projects</h3><p>Bento, Snippet, Wax.</p></div>
-      <div class="cell"><h3>Reading</h3><p>The Timeless Way of Building</p></div>
-      <div class="cell contact"><h3>Contact</h3><p>hello@reina.dev</p></div>
-    </div>
-  </main>
-</body></html>\`;
+const TARGET_HOST = "daintree.org";
+const PORT = Number(process.env.PORT) || 4173;
 
-const port = Number(process.env.PORT) || 4173;
-http
-  .createServer((_req, res) => {
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    res.end(html);
-  })
-  .listen(port, () => {
-    console.log(\`Listening on http://localhost:\${port}\`);
+const FALLBACK_HTML = \`<!doctype html><html><head><meta charset="utf-8"/>
+<title>Daintree — local preview</title>
+<style>body{font-family:ui-sans-serif,system-ui,sans-serif;background:#0e0e0d;color:#e5e7eb;display:grid;place-items:center;min-height:100vh;margin:0}h1{font-size:48px;margin:0}</style>
+</head><body><div><h1>🌴 Daintree</h1><p>Live preview unavailable in this environment.</p></div></body></html>\`;
+
+function proxy(req, res) {
+  const opts = {
+    hostname: TARGET_HOST,
+    port: 443,
+    path: req.url,
+    method: req.method,
+    headers: { ...req.headers, host: TARGET_HOST },
+    timeout: 8000,
+  };
+  delete opts.headers["accept-encoding"]; // let the response be uncompressed
+
+  const upstream = https.request(opts, (ures) => {
+    const headers = { ...ures.headers };
+    // Strip frame-blocking headers so this renders in the dev preview webview.
+    delete headers["x-frame-options"];
+    delete headers["content-security-policy"];
+    delete headers["content-security-policy-report-only"];
+    res.writeHead(ures.statusCode || 502, headers);
+    ures.pipe(res);
   });
-`,
-      "src/index.tsx": `import { Hero } from "./Hero";
+  upstream.on("timeout", () => upstream.destroy(new Error("upstream timeout")));
+  upstream.on("error", () => {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end(FALLBACK_HTML);
+  });
+  req.pipe(upstream);
+}
 
-export function App() {
-  return <Hero />;
-}
+http.createServer(proxy).listen(PORT, () => {
+  console.log("Listening on http://localhost:" + PORT + " (proxy → https://" + TARGET_HOST + ")");
+});
 `,
-      "src/Hero.tsx": `export function Hero() {
-  return <h1 className="hero">Reina Okafor</h1>;
-}
+      "src/pages/index.astro": `---
+// Daintree marketing homepage
+---
+<html>
+  <head><title>Daintree — orchestrate AI coding agents</title></head>
+  <body>
+    <h1>Daintree</h1>
+    <p>Run Claude, OpenCode, and Codex side by side.</p>
+  </body>
+</html>
+`,
+      "src/components/Hero.astro": `---
+// Hero section for the marketing homepage
+---
+<section class="hero">
+  <h1>Orchestrate AI coding agents</h1>
+  <p>Worktree dashboard. Live preview. Multi-agent recipes.</p>
+</section>
 `,
     },
   });

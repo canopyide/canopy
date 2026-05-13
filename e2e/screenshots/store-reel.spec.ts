@@ -9,7 +9,7 @@
  * Scenes:
  *   1. 🌊 surge-checkout         — hero: Claude agent at work
  *   2. 🎨 brush-cms              — worktree dashboard with mixed states
- *   3. 🍱 bento-portfolio        — dev preview live (split with agent)
+ *   3. 🌴 daintree-site          — dev preview live (daintree.org proxy)
  *   4. 🚀 launchpad-analytics    — action palette open
  *   5. 🛰️ orbital-sync           — multi-agent (Claude + OpenCode)
  *   6. 🍳 mise-en-place          — settings / agent overview
@@ -39,7 +39,7 @@ import { writeTerminalInput, getTerminalText } from "../helpers/terminal";
 import {
   createSurgeCheckoutRepo,
   createBrushCmsRepo,
-  createBentoPortfolioRepo,
+  createDaintreeSiteRepo,
   createLaunchpadAnalyticsRepo,
   createOrbitalSyncRepo,
   createMiseEnPlaceRepo,
@@ -306,9 +306,11 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
         "Read src/checkout.ts and src/refund.ts, then propose a 4-step plan for adding " +
         "an idempotent partial-refund flow. Output the plan as a numbered list, then stop.";
       await sendPrompt(page, claudePanel, prompt);
+      // Hero shot — wait long enough for actual streamed output (tool-use
+      // blocks + numbered list), not just the "thinking" marker.
       await waitForAgentResponse(claudePanel, page, baseline, {
-        minWaitMs: 60_000,
-        maxWaitMs: 240_000,
+        minWaitMs: 120_000,
+        maxWaitMs: 300_000,
       });
       await dismissBlockingPalette(page);
 
@@ -359,13 +361,13 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
   // -------------------------------------------------------------------------
   // Scene 3 — 🍱 bento-portfolio : Dev preview live
   // -------------------------------------------------------------------------
-  test("scene-3-dev-preview-bento-portfolio", async () => {
-    const repo = createBentoPortfolioRepo();
+  test("scene-3-dev-preview-daintree-site", async () => {
+    const repo = createDaintreeSiteRepo();
     let captured: CaptureContext | undefined;
     try {
       captured = await bootProject(repo, {
-        displayName: "Bento Portfolio",
-        emoji: "🍱",
+        displayName: "Daintree Site",
+        emoji: "🌴",
       });
       const { ctx, page } = captured;
 
@@ -394,11 +396,11 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
       await sendPrompt(
         page,
         claudePanel,
-        "Brighten the hero gradient in src/Hero.tsx — replace the current colors with a warmer orange-to-pink sweep. Show me the diff before saving."
+        "Update the hero copy in src/components/Hero.astro to lead with the worktree dashboard and multi-agent story. Show me the diff before saving."
       );
       await waitForAgentResponse(claudePanel, page, claudeBaseline, {
-        minWaitMs: 30_000,
-        maxWaitMs: 150_000,
+        minWaitMs: 90_000,
+        maxWaitMs: 240_000,
       });
 
       // Open the dev preview panel.
@@ -509,12 +511,12 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
       // Both agents are running by now — wait for each to start streaming.
       // 180s upper bound per agent on Windows cold launches.
       await waitForAgentResponse(claudePanel, page, claudeBaseline, {
-        minWaitMs: 25_000,
-        maxWaitMs: 180_000,
+        minWaitMs: 90_000,
+        maxWaitMs: 240_000,
       });
       await waitForAgentResponse(opencodePanel, page, opencodeBaseline, {
-        minWaitMs: 25_000,
-        maxWaitMs: 180_000,
+        minWaitMs: 90_000,
+        maxWaitMs: 240_000,
       });
 
       await dismissBlockingPalette(page);
