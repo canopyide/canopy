@@ -69,6 +69,12 @@ const config: KnipConfig = {
     "src/components/QuickSwitcher/index.ts",
     "src/components/TerminalPalette/index.ts",
     "src/components/ThemePalette/index.ts",
+
+    // why: codegen test fixtures loaded dynamically by
+    // scripts/codegen/__tests__/ipc-map.test.ts via path.join(__dirname,
+    // "fixtures"). Knip cannot trace runtime path resolution, so these
+    // files appear unused.
+    "scripts/codegen/__tests__/fixtures/*.ts",
   ],
 
   // why: these packages are consumed via mechanisms Knip can't trace:
