@@ -11,6 +11,12 @@ name: Marketing Screenshots
 run-name: screenshots · ${{ inputs.scale || '2' }}x · ${{ github.ref_name }}
 
 on:
+  # Temporary: lets the workflow fire on push to the feature branch so we can
+  # validate it before merge. Strip this `push:` block before merging — the
+  # canonical triggers are workflow_dispatch + release.published.
+  push:
+    branches:
+      - feat/marketing-screenshots-workflow
   workflow_dispatch:
     inputs:
       scale:
