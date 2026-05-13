@@ -154,7 +154,10 @@ export function setupBrowserWindow(
   ) {
     colorSchemeId = themeConfig.colorSchemeId.trim();
   } else {
-    colorSchemeId = nativeTheme.shouldUseDarkColors ? "daintree" : "bondi";
+    // Daintree always defaults to its dark theme on first run, regardless of
+    // the OS color-scheme preference. Users who want light or system-following
+    // behavior can opt in via Settings → Appearance.
+    colorSchemeId = "daintree";
   }
 
   // Apply lazy migration for legacy string-encoded customSchemes

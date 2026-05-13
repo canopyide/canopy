@@ -253,18 +253,19 @@ jobs:
         id: r2-tag
         shell: bash
         run: |
-          # Versioned destination — the package.json version is the canonical
+          # Versioned destination — package.json version is the canonical
           # source so screenshots/0.9.1/, screenshots/0.9.2/ etc. sit side by
-          # side on R2. Tag push uses just the version; manual/dev dispatch
-          # adds a -<sha7> qualifier so multiple iterations of the same
-          # version don't overwrite each other.
+          # side on R2. Tag pushes, branch validation runs, and manual
+          # dispatch all land in the same versioned folder for that version;
+          # re-runs overwrite. (Manual dispatch can still override with an
+          # explicit `tag` input when iterating on the same version.)
           PKG_VERSION=$(node -p "require('./package.json').version")
           if [ -n "${{ inputs.tag }}" ]; then
             TAG="${{ inputs.tag }}"
           elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF_NAME#v}"
           else
-            TAG="${PKG_VERSION}-${GITHUB_SHA::7}"
+            TAG="${PKG_VERSION}"
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "pkg_version=${PKG_VERSION}" >> "$GITHUB_OUTPUT"
@@ -307,7 +308,10 @@ jobs:
           done
 
       - name: Mirror to screenshots/latest/<os>/
-        if: always() && (startsWith(github.ref, 'refs/tags/v') || inputs.update_latest == true || inputs.update_latest == 'true')
+        # Always refresh latest/ on any successful capture run. The version
+        # folder above keeps the immutable history; `latest/` is the single
+        # stable URL the website pins to.
+        if: always() && (github.event_name == 'push' || inputs.update_latest == true || inputs.update_latest == 'true')
         shell: bash
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}

@@ -83,7 +83,10 @@ interface CaptureContext {
   page: Page;
 }
 
-async function bootProject(repo: DemoRepo): Promise<CaptureContext> {
+async function bootProject(
+  repo: DemoRepo,
+  options: { displayName?: string; emoji?: string } = {}
+): Promise<CaptureContext> {
   const ctx = await launchApp({
     screenshotScale: SCREENSHOT_SCALE,
     windowSize: { width: WINDOW_WIDTH, height: WINDOW_HEIGHT },
@@ -105,6 +108,26 @@ async function bootProject(repo: DemoRepo): Promise<CaptureContext> {
   // scene to include an agent without touching boot logic.
   if (hasClaudeApiKey()) {
     await configureClaudeAuthEnv(page);
+  }
+
+  // Marketing polish: set a proper display name + emoji on the project so
+  // the title bar / project switcher / project header read like a real
+  // user's project rather than a kebab-case folder slug.
+  if (options.displayName || options.emoji) {
+    await page.evaluate(
+      async (overrides) => {
+        const current = await window.electron.project.getCurrent();
+        if (!current?.id) return;
+        await window.electron.project.update(current.id, {
+          ...(overrides.displayName ? { name: overrides.displayName } : {}),
+          ...(overrides.emoji ? { emoji: overrides.emoji } : {}),
+        });
+      },
+      { displayName: options.displayName, emoji: options.emoji }
+    );
+    // Settle so the new name/emoji propagates to the title bar before any
+    // screenshot is taken.
+    await page.waitForTimeout(800);
   }
 
   page = await refreshActiveWindow(ctx.app, page);
@@ -266,20 +289,26 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
     const repo = createSurgeCheckoutRepo();
     let captured: CaptureContext | undefined;
     try {
-      captured = await bootProject(repo);
+      captured = await bootProject(repo, {
+        displayName: "Surge Checkout",
+        emoji: "🌊",
+      });
       const { ctx, page } = captured;
 
       const claudePanel = await launchClaude(ctx.app, page);
       await waitForAgentReady(claudePanel, page);
 
+      // Scroll past the welcome banner so the visible panel is just the
+      // conversation. Two `/clear`-like newlines pushes the banner off-screen
+      // without invoking a real slash command (which could change behaviour).
       const baseline = await getTerminalText(claudePanel).catch(() => "");
       const prompt =
         "Read src/checkout.ts and src/refund.ts, then propose a 4-step plan for adding " +
         "an idempotent partial-refund flow. Output the plan as a numbered list, then stop.";
       await sendPrompt(page, claudePanel, prompt);
       await waitForAgentResponse(claudePanel, page, baseline, {
-        minWaitMs: 30_000,
-        maxWaitMs: 180_000,
+        minWaitMs: 60_000,
+        maxWaitMs: 240_000,
       });
       await dismissBlockingPalette(page);
 
@@ -297,7 +326,10 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
     const repo = createBrushCmsRepo();
     let captured: CaptureContext | undefined;
     try {
-      captured = await bootProject(repo);
+      captured = await bootProject(repo, {
+        displayName: "Brush CMS",
+        emoji: "🎨",
+      });
       const { page } = captured;
 
       // Make sure the sidebar is open + the worktree section is expanded
@@ -331,11 +363,15 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
     const repo = createBentoPortfolioRepo();
     let captured: CaptureContext | undefined;
     try {
-      captured = await bootProject(repo);
-      const { page } = captured;
+      captured = await bootProject(repo, {
+        displayName: "Bento Portfolio",
+        emoji: "🍱",
+      });
+      const { ctx, page } = captured;
 
-      // Configure the dev server command via IPC so the unsaved-changes
-      // dialog never appears.
+      // Configure the dev server command via IPC first — needs a reload to
+      // take effect, and the reload would kill any agent panel we'd opened.
+      // So: settings → reload → THEN agent + preview.
       await page.evaluate(async () => {
         const current = await window.electron.project.getCurrent();
         if (!current?.id) return;
@@ -345,12 +381,25 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
           devServerCommand: "node dev-server.cjs",
         });
       });
-
-      // Reload so the renderer picks up the dev-server command.
       await page.reload({ waitUntil: "domcontentloaded" });
       await page.locator(SEL.toolbar.toggleSidebar).waitFor({ state: "visible", timeout: 30_000 });
       await dismissTelemetryConsent(page);
       await page.addStyleTag({ content: POLISH_CSS });
+
+      // Launch a Claude panel and send a real edit prompt so the screenshot
+      // shows "agent driving live preview" rather than just "dev preview".
+      const claudePanel = await launchClaude(ctx.app, page);
+      await waitForAgentReady(claudePanel, page);
+      const claudeBaseline = await getTerminalText(claudePanel).catch(() => "");
+      await sendPrompt(
+        page,
+        claudePanel,
+        "Brighten the hero gradient in src/Hero.tsx — replace the current colors with a warmer orange-to-pink sweep. Show me the diff before saving."
+      );
+      await waitForAgentResponse(claudePanel, page, claudeBaseline, {
+        minWaitMs: 30_000,
+        maxWaitMs: 150_000,
+      });
 
       // Open the dev preview panel.
       const devBtn = page.locator(SEL.toolbar.openDevPreview);
@@ -385,7 +434,10 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
     const repo = createLaunchpadAnalyticsRepo();
     let captured: CaptureContext | undefined;
     try {
-      captured = await bootProject(repo);
+      captured = await bootProject(repo, {
+        displayName: "Launchpad Analytics",
+        emoji: "🚀",
+      });
       const { page } = captured;
 
       // Summon the action palette. Double-Shift is the standard binding.
@@ -399,8 +451,9 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
       }
       await expect(palette).toBeVisible({ timeout: 10_000 });
 
-      // Filter to a few high-signal actions.
-      await page.locator(SEL.actionPalette.searchInput).fill("open");
+      // Filter to Daintree-specific actions rather than generic GitHub
+      // commands — communicates what's unique about this app.
+      await page.locator(SEL.actionPalette.searchInput).fill("claude");
       await page.waitForTimeout(500);
 
       await snap(page, "04-action-palette-launchpad");
@@ -419,7 +472,10 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
     const repo = createOrbitalSyncRepo();
     let captured: CaptureContext | undefined;
     try {
-      captured = await bootProject(repo);
+      captured = await bootProject(repo, {
+        displayName: "Orbital Sync",
+        emoji: "🛰️",
+      });
       const { ctx, page } = captured;
 
       const claudePanel = await launchClaude(ctx.app, page);
@@ -472,11 +528,14 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
   // -------------------------------------------------------------------------
   // Scene 6 — 🍳 mise-en-place : Recipe library
   // -------------------------------------------------------------------------
-  test("scene-6-recipes-mise-en-place", async () => {
+  test("scene-6-agent-overview-mise-en-place", async () => {
     const repo = createMiseEnPlaceRepo();
     let captured: CaptureContext | undefined;
     try {
-      captured = await bootProject(repo);
+      captured = await bootProject(repo, {
+        displayName: "Mise en Place",
+        emoji: "🍳",
+      });
       const { page } = captured;
 
       // Give the project view a moment to fully paint — paint-gate races
@@ -503,7 +562,7 @@ test.describe.serial("Marketing Screenshots — Daintree Store Reel", () => {
       }
 
       await page.waitForTimeout(1500);
-      await snap(page, "06-recipes-mise-en-place");
+      await snap(page, "06-agent-overview-mise-en-place");
     } finally {
       if (captured) await teardown(captured.ctx);
       repo.cleanup();
