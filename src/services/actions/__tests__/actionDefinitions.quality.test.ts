@@ -214,3 +214,85 @@ describe("duplicate registrations", () => {
     expect(true).toBe(true);
   });
 });
+
+/**
+ * Destructive actions whose definitions must carry `danger: "confirm"`. The set
+ * is the regression guard for #7881 — see docs/architecture/destructive-action-safeguards.md.
+ * Demoting any of these to `"safe"` re-enables them for `action.repeatLast` and
+ * the action-palette MRU rail, which is wrong for destructive operations.
+ *
+ * This is a **minimum-floor** guard, not an exhaustive list. The audit doc is
+ * the source of truth for which actions belong in this set; when a new
+ * destructive action is added to the registry or an existing action is
+ * reclassified, update both the audit table and this list. The list does NOT
+ * prove every destructive action carries `danger:"confirm"` — only that the
+ * named ones still do.
+ */
+const EXPECTED_CONFIRM_DANGER: ReadonlyArray<ActionId> = [
+  "git.push",
+  "git.snapshotRevert",
+  "git.snapshotDelete",
+  "worktree.delete",
+  "worktree.sessions.endAll",
+  "worktree.sessions.trashAll",
+  "fleet.kill",
+  "fleet.trash",
+  "fleet.restart",
+];
+
+describe("destructive-action danger metadata", () => {
+  it('every action in EXPECTED_CONFIRM_DANGER is registered with danger:"confirm"', async () => {
+    const { registry } = await createRegistryWithAudit();
+
+    const mismatches: string[] = [];
+    for (const id of EXPECTED_CONFIRM_DANGER) {
+      const factory = registry.get(id);
+      if (!factory) {
+        mismatches.push(`${id} (not registered)`);
+        continue;
+      }
+      const def = factory();
+      if (def.danger !== "confirm") {
+        mismatches.push(`${id} (danger="${def.danger}", expected "confirm")`);
+      }
+    }
+
+    expect(mismatches).toEqual([]);
+  });
+
+  it("every action in EXPECTED_CONFIRM_DANGER blocks agent dispatch without confirmed:true", async () => {
+    // This proves the ActionService.ts:283 agent-source gate fires for every
+    // listed action — the only runtime safety the `danger` field provides for
+    // built-in dispatch (user/keybinding sources are gated by call-site dialogs
+    // tracked separately in the audit). If this regresses, MCP agents could
+    // invoke destructive ops without confirmation.
+    const { ActionService } = await import("../../ActionService");
+    const { registry } = await createRegistryWithAudit();
+    const service = new ActionService();
+    for (const id of EXPECTED_CONFIRM_DANGER) {
+      const factory = registry.get(id);
+      if (factory) service.register(factory());
+    }
+
+    // Many destructive actions require a `worktreeId` arg; arg validation runs
+    // before the confirm gate, so undefined args would short-circuit with
+    // VALIDATION_ERROR. Provide a placeholder so the danger gate is what fires.
+    const placeholderArgs = { worktreeId: "wt-placeholder" };
+
+    const failures: string[] = [];
+    for (const id of EXPECTED_CONFIRM_DANGER) {
+      const result = await service.dispatch(id, placeholderArgs, { source: "agent" });
+      if (result.ok) {
+        failures.push(`${id} (agent dispatch succeeded without confirmed:true)`);
+        continue;
+      }
+      if (result.error.code !== "CONFIRMATION_REQUIRED") {
+        failures.push(
+          `${id} (got error code "${result.error.code}", expected CONFIRMATION_REQUIRED)`
+        );
+      }
+    }
+
+    expect(failures).toEqual([]);
+  });
+});
