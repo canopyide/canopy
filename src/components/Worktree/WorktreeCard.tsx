@@ -40,7 +40,6 @@ import {
 import { useInputReceiptKey } from "./WorktreeCard/hooks/useInputReceiptKey";
 import { useWorktreeActions } from "./WorktreeCard/hooks/useWorktreeActions";
 import { copyContextWithFeedback } from "@/hooks/useWorktreeActions";
-import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { useCopyWithFeedback } from "@/hooks/useCopyWithFeedback";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { CONTEXT_COMPONENTS, WorktreeMenuItems } from "./WorktreeMenuItems";
@@ -435,21 +434,6 @@ export function WorktreeCard({
   const [showIssuePicker, setShowIssuePicker] = useState(false);
   const [showReviewHub, setShowReviewHub] = useState(false);
   const [showPlanViewer, setShowPlanViewer] = useState(false);
-  const [isCommittingAndPushing, setIsCommittingAndPushing] = useState(false);
-  const [commitAndPushError, setCommitAndPushError] = useState<string | null>(null);
-  const commitAndPushInFlightRef = useRef(false);
-  // Tracks whether `commit` already succeeded for the currently-open composer
-  // session. If it did and `push` failed, a retry must skip stage+commit
-  // (which would no-op then fail "nothing to commit") and go straight to push.
-  const commitSucceededRef = useRef(false);
-  const [showCommitComposer, setShowCommitComposer] = useState(false);
-  const [commitMessage, setCommitMessage] = useState("");
-  const [commitComposerDiff, setCommitComposerDiff] = useState<string | null>(null);
-  const [isDiffLoading, setIsDiffLoading] = useState(false);
-  const [diffError, setDiffError] = useState<string | null>(null);
-  // Monotonic ID per open — late responses from a prior open are dropped
-  // even when the worktree path stays the same.
-  const diffRequestIdRef = useRef(0);
 
   const onCloseReviewHub = () => setShowReviewHub(false);
   const onClosePlanViewer = () => setShowPlanViewer(false);
@@ -484,84 +468,6 @@ export function WorktreeCard({
   }, [worktree.id]);
 
   const aiNoteFirstLine = effectiveNote?.split("\n")[0]?.trim() ?? "";
-  const commitMessageDefault = aiNoteFirstLine;
-
-  const clearCommitAndPushError = () => setCommitAndPushError(null);
-
-  useEffect(() => {
-    if (reviewState !== "has-changes") {
-      setCommitAndPushError(null);
-    }
-  }, [reviewState]);
-
-  const handleOpenCommitComposer = () => {
-    if (commitAndPushInFlightRef.current) return;
-    setCommitMessage(commitMessageDefault);
-    setCommitComposerDiff(null);
-    setIsDiffLoading(true);
-    setDiffError(null);
-    setCommitAndPushError(null);
-    commitSucceededRef.current = false;
-    setShowCommitComposer(true);
-
-    const requestId = ++diffRequestIdRef.current;
-    const requestPath = worktree.path;
-    void window.electron.git
-      .getWorkingDiff(requestPath, "unstaged")
-      .then((raw) => {
-        if (requestId !== diffRequestIdRef.current) return;
-        setCommitComposerDiff(raw ?? "");
-        setIsDiffLoading(false);
-      })
-      .catch((err) => {
-        if (requestId !== diffRequestIdRef.current) return;
-        setDiffError(formatErrorMessage(err, "Couldn't load diff preview"));
-        setIsDiffLoading(false);
-      });
-  };
-
-  const handleCloseCommitComposer = () => {
-    if (commitAndPushInFlightRef.current) return;
-    commitSucceededRef.current = false;
-    setShowCommitComposer(false);
-  };
-
-  const handleConfirmCommitAndPush = async (message: string) => {
-    if (commitAndPushInFlightRef.current) return;
-    const trimmed = message.trim();
-    if (!trimmed) return;
-    commitAndPushInFlightRef.current = true;
-    setIsCommittingAndPushing(true);
-    setCommitAndPushError(null);
-    try {
-      if (!commitSucceededRef.current) {
-        try {
-          await window.electron.git.stageAll(worktree.path);
-        } catch (err) {
-          setCommitAndPushError(formatErrorMessage(err, "Couldn't stage changes"));
-          return;
-        }
-        try {
-          await window.electron.git.commit(worktree.path, trimmed);
-        } catch (err) {
-          setCommitAndPushError(formatErrorMessage(err, "Couldn't commit changes"));
-          return;
-        }
-        commitSucceededRef.current = true;
-      }
-      try {
-        await window.electron.git.push(worktree.path);
-      } catch (err) {
-        setCommitAndPushError(formatErrorMessage(err, "Couldn't push to remote"));
-        return;
-      }
-      commitSucceededRef.current = false;
-      setShowCommitComposer(false);
-    } finally {
-      setIsCommittingAndPushing(false);
-      commitAndPushInFlightRef.current = false;
-    }
-  };
 
   const handleAttachIssue = async (issue: GitHubIssue) => {
     await worktreeClient.attachIssue({
@@ -944,10 +850,6 @@ export function WorktreeCard({
                     onDismissError={dismissError}
                     onRetryError={handleErrorRetry}
                     onOpenReviewHub={openReviewHubForThisWorktree}
-                    onCommitAndPush={handleOpenCommitComposer}
-                    isCommitting={isCommittingAndPushing}
-                    commitError={commitAndPushError}
-                    clearCommitError={clearCommitAndPushError}
                     isLifecycleRunning={isLifecycleRunning}
                     lifecycleLabel={lifecycleLabel}
                     hasResourceConfig={hasResourceConfig}
@@ -985,18 +887,10 @@ export function WorktreeCard({
                 onDetachIssue={() => void handleDetachIssue()}
                 showReviewHub={showReviewHub}
                 onCloseReviewHub={onCloseReviewHub}
+                reviewHubInitialCommitMessage={aiNoteFirstLine}
+                reviewHubAutoStageOnOpen={true}
                 showPlanViewer={showPlanViewer}
                 onClosePlanViewer={onClosePlanViewer}
-                showCommitComposer={showCommitComposer}
-                onCloseCommitComposer={handleCloseCommitComposer}
-                onConfirmCommitAndPush={(msg) => void handleConfirmCommitAndPush(msg)}
-                commitMessage={commitMessage}
-                onCommitMessageChange={setCommitMessage}
-                commitComposerDiff={commitComposerDiff}
-                isCommitComposerDiffLoading={isDiffLoading}
-                commitComposerDiffError={diffError}
-                isCommittingAndPushing={isCommittingAndPushing}
-                commitAndPushSubmitError={commitAndPushError}
               />
             </div>
           </div>

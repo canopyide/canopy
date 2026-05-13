@@ -304,93 +304,22 @@ describe("WorktreeDetailsSection — reviewState surfaces", () => {
     expect(screen.queryByText(/files/)).toBeNull();
   });
 
-  it("renders the Commit & push button when there are changes", () => {
-    const onCommitAndPush = vi.fn();
-    renderSection({
-      reviewState: "has-changes",
-      onCommitAndPush,
-    });
-    const button = screen.getByLabelText("Commit and push");
-    expect(button).toBeDefined();
-    fireEvent.click(button);
-    expect(onCommitAndPush).toHaveBeenCalledTimes(1);
-  });
-
-  it("renders the Commit & push button even when no AI note is present", () => {
-    renderSection({
-      reviewState: "has-changes",
-      onCommitAndPush: vi.fn(),
-    });
-    // The composer dialog now collects the message, so the button must show
-    // whenever there are changes — even without a prefilled message source.
-    expect(screen.queryByLabelText("Commit and push")).not.toBeNull();
-  });
-
-  it('hides the Commit & push button when reviewState is "conflicted"', () => {
-    renderSection({
-      reviewState: "conflicted",
-      onCommitAndPush: vi.fn(),
-      worktree: withChanges({
-        changedFileCount: 2,
-        changes: [{ path: "a.ts", status: "conflicted", insertions: null, deletions: null }],
-      }),
-    });
-    expect(screen.queryByLabelText("Commit and push")).toBeNull();
-  });
-
-  it("swaps the button for a spinner while committing", () => {
-    renderSection({
-      reviewState: "has-changes",
-      onCommitAndPush: vi.fn(),
-      isCommitting: true,
-    });
-    expect(screen.queryByLabelText("Commit and push")).toBeNull();
-    expect(screen.getByLabelText("Committing and pushing")).toBeDefined();
-  });
-
-  it("renders an inline error banner with commitError", () => {
-    renderSection({
-      reviewState: "has-changes",
-      onCommitAndPush: vi.fn(),
-      commitError: "Couldn't push to remote",
-      clearCommitError: vi.fn(),
-      onOpenReviewHub: vi.fn(),
-    });
-    expect(screen.getByText("Couldn't push to remote")).toBeDefined();
-    expect(screen.getByText("Open review hub")).toBeDefined();
-  });
-
-  it("invokes clearCommitError and onOpenReviewHub from the banner CTA", () => {
-    const clearCommitError = vi.fn();
+  it("renders the Review & Commit button when there are changes", () => {
     const onOpenReviewHub = vi.fn();
     renderSection({
       reviewState: "has-changes",
-      onCommitAndPush: vi.fn(),
-      commitError: "Couldn't push to remote",
-      clearCommitError,
       onOpenReviewHub,
     });
-    fireEvent.click(screen.getByText("Open review hub"));
-    expect(clearCommitError).toHaveBeenCalledTimes(1);
+    const button = screen.getByLabelText("Open Review & Commit");
+    expect(button).toBeDefined();
+    fireEvent.click(button);
     expect(onOpenReviewHub).toHaveBeenCalledTimes(1);
   });
 
-  it("dismisses the banner via the Dismiss button", () => {
-    const clearCommitError = vi.fn();
-    renderSection({
-      reviewState: "has-changes",
-      commitError: "Couldn't push to remote",
-      clearCommitError,
-    });
-    fireEvent.click(screen.getByLabelText("Dismiss error"));
-    expect(clearCommitError).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not render Commit & push or conflict callout when reviewState is "unpushed-clean"', () => {
+  it('renders no commit-side button when reviewState is "unpushed-clean"', () => {
     renderSection({
       reviewState: "unpushed-clean",
       hasChanges: false,
-      onCommitAndPush: vi.fn(),
       computedSubtitle: { text: "fix: stuff", tone: "muted" },
       worktree: {
         ...baseWorktree,
@@ -401,19 +330,9 @@ describe("WorktreeDetailsSection — reviewState surfaces", () => {
         } as WorktreeChanges,
       },
     });
-    expect(screen.queryByLabelText("Commit and push")).toBeNull();
+    expect(screen.queryByLabelText("Open Review & Commit")).toBeNull();
     expect(screen.queryByText("Conflicts need review")).toBeNull();
     expect(screen.getByText("fix: stuff")).toBeDefined();
-  });
-
-  it("hides the error banner when expanded", () => {
-    renderSection({
-      isExpanded: true,
-      reviewState: "has-changes",
-      commitError: "Couldn't push to remote",
-      clearCommitError: vi.fn(),
-    });
-    expect(screen.queryByText("Couldn't push to remote")).toBeNull();
   });
 });
 

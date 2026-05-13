@@ -16,7 +16,6 @@ import {
   GitCommitHorizontal,
   Plug,
   Play,
-  Send,
   Square,
   Trash2,
 } from "lucide-react";
@@ -47,10 +46,6 @@ export interface WorktreeDetailsSectionProps {
   onDismissError: (id: string) => void;
   onRetryError: (id: string, action: RetryAction, args?: Record<string, unknown>) => Promise<void>;
   onOpenReviewHub?: () => void;
-  onCommitAndPush?: () => void;
-  isCommitting?: boolean;
-  commitError?: string | null;
-  clearCommitError?: () => void;
   isLifecycleRunning?: boolean;
   lifecycleLabel?: string;
 
@@ -80,10 +75,6 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
     onDismissError,
     onRetryError,
     onOpenReviewHub,
-    onCommitAndPush,
-    isCommitting,
-    commitError,
-    clearCommitError,
     reviewState,
     isLifecycleRunning,
     lifecycleLabel,
@@ -131,10 +122,8 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
   }, [changedFileCount, prefersReducedMotion, animate, countScope]);
 
   const isConflicted = reviewState === "conflicted";
-  const showCommitAndPushButton =
-    !!onCommitAndPush && reviewState === "has-changes" && !isCommitting;
   const showReviewHubButton = !!onOpenReviewHub && hasChanges;
-  const rightButtonGroupShown = showReviewHubButton || showCommitAndPushButton || !!isCommitting;
+  const rightButtonGroupShown = showReviewHubButton;
 
   const rsLower = resourceStatus?.toLowerCase();
   const showResourceResume =
@@ -399,7 +388,7 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
                   className={cn(
                     "shrink-0 border-l border-border-default px-2 py-1 transition-colors",
                     "text-[var(--color-state-active)]/70 hover:bg-[var(--color-state-active)]/10 hover:text-[var(--color-state-active)]",
-                    !showCommitAndPushButton && !isCommitting && "rounded-r-[var(--radius-lg)]",
+                    "rounded-r-[var(--radius-lg)]",
                     "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent"
                   )}
                   aria-label="Open Review & Commit"
@@ -410,72 +399,6 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
               <TooltipContent side="bottom">Review & Commit</TooltipContent>
             </Tooltip>
           )}
-
-          {showCommitAndPushButton && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={onCommitAndPush}
-                  className={cn(
-                    "shrink-0 border-l border-border-default px-2 py-1 transition-colors",
-                    "text-status-success/70 hover:bg-status-success/10 hover:text-status-success",
-                    "rounded-r-[var(--radius-lg)]",
-                    "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent"
-                  )}
-                  aria-label="Commit and push"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Commit & push</TooltipContent>
-            </Tooltip>
-          )}
-
-          {isCommitting && (
-            <div
-              role="status"
-              aria-label="Committing and pushing"
-              className={cn(
-                "shrink-0 border-l border-border-default px-2 py-1",
-                "text-status-success",
-                "rounded-r-[var(--radius-lg)]",
-                "flex items-center"
-              )}
-            >
-              <Spinner size="xs" />
-            </div>
-          )}
-        </div>
-      )}
-
-      {!isExpanded && commitError && (
-        <div className="-mx-3 -mb-3 mt-3 flex items-start gap-2 rounded-b-[var(--radius-lg)] border-t border-border-default bg-surface-inset px-3 py-2 text-xs text-status-error">
-          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" aria-hidden="true" />
-          <span className="flex-1 break-words">{commitError}</span>
-          <div className="flex shrink-0 items-center gap-2">
-            {onOpenReviewHub && (
-              <button
-                type="button"
-                onClick={() => {
-                  clearCommitError?.();
-                  onOpenReviewHub?.();
-                }}
-                className="text-status-error underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent rounded"
-              >
-                Open review hub
-              </button>
-            )}
-            {clearCommitError && (
-              <button
-                type="button"
-                onClick={clearCommitError}
-                aria-label="Dismiss error"
-                className="text-text-muted hover:text-text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent rounded"
-              >
-                Dismiss
-              </button>
-            )}
-          </div>
         </div>
       )}
     </div>

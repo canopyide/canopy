@@ -18,6 +18,7 @@ import {
   X,
   RefreshCw,
   CheckSquare,
+  ChevronRight,
   ExternalLink,
   Square,
   AlertTriangle,
@@ -31,6 +32,8 @@ import {
   ChevronDown,
   Search,
 } from "lucide-react";
+import { isProtectedBranch } from "@shared/utils/gitConstants";
+import { useUIStore } from "@/store/uiStore";
 import type { GitHubPRCIStatus } from "@shared/types/github";
 import { Spinner } from "@/components/ui/Spinner";
 import { FileStageRow, type FileStageRowSection } from "./FileStageRow";
@@ -95,6 +98,18 @@ export interface ReviewHubContentProps {
    * isn't attached yet, gate the prop yourself rather than passing `null`.
    */
   keyboardScope?: Document | HTMLElement | null;
+  /**
+   * Seed value for the commit message on open. The first open after `isOpen`
+   * flips from false to true populates the textarea with this value if it is
+   * not empty; subsequent edits by the user are preserved. Reset to empty on
+   * close so a future reopen without a seed starts blank.
+   */
+  initialCommitMessage?: string;
+  /**
+   * When true, stage all unstaged files on open if there are no staged files
+   * yet. Fires once per open; reopening the hub re-evaluates.
+   */
+  autoStageOnOpen?: boolean;
 }
 
 function prCIStatusVisual(
@@ -217,6 +232,8 @@ export function ReviewHubContent({
   worktreePath,
   onClose,
   keyboardScope,
+  initialCommitMessage,
+  autoStageOnOpen,
 }: ReviewHubContentProps) {
   const [status, setStatus] = useState<StagingStatus | null>(null);
   const [loading, setLoading] = useState(false);
@@ -262,6 +279,14 @@ export function ReviewHubContent({
   const unstagedSectionRef = useRef<HTMLDivElement>(null);
   const selectionAnchorRef = useRef<string | null>(null);
   const isBulkStagingRef = useRef(false);
+  // One-shot guard for the auto-stage-on-open behavior. Resets in the close
+  // branch of the isOpen effect so reopening re-arms the check.
+  const hasAutoStagedRef = useRef(false);
+
+  const fileListExpanded = useUIStore(
+    (s) => s.reviewHubFileListExpanded[worktreePath] ?? false
+  );
+  const setFileListExpanded = useUIStore((s) => s.setReviewHubFileListExpanded);
 
   const [stagedView, setStagedView] = useState<SectionViewState>(DEFAULT_SECTION_STATE);
   const [changesView, setChangesView] = useState<SectionViewState>(DEFAULT_SECTION_STATE);
@@ -494,10 +519,16 @@ export function ReviewHubContent({
     setShowPushDetails(false);
   }, [pushError]);
 
+  // Read the latest initialCommitMessage without re-running the open/close
+  // effect when the AI-note changes mid-session — protects user edits per #4220.
+  const readInitialCommitMessage = useEffectEvent(() => initialCommitMessage ?? "");
+
   useEffect(() => {
     if (isOpen) {
       setActionError(null);
       setPushError(null);
+      const seed = readInitialCommitMessage();
+      if (seed) setCommitMessage(seed);
       void refresh();
     } else {
       refreshIdRef.current++;
@@ -523,6 +554,7 @@ export function ReviewHubContent({
       setSelectedPaths(new Set());
       setSelectionSection(null);
       selectionAnchorRef.current = null;
+      hasAutoStagedRef.current = false;
       // Filter state lives in `stagedView`/`changesView` rather than refs, so the
       // modal-shell path (which unmounts on close) never noticed leftover
       // filters. Once mounted as a non-modal panel, the same component instance
@@ -536,6 +568,25 @@ export function ReviewHubContent({
       setChangesView(DEFAULT_SECTION_STATE);
     }
   }, [isOpen, refresh]);
+
+  useEffect(() => {
+    if (!isOpen || !autoStageOnOpen) return;
+    if (!status) return;
+    if (hasAutoStagedRef.current) return;
+    if (status.staged.length > 0) {
+      // Already staged from a prior session — skip and mark as handled.
+      hasAutoStagedRef.current = true;
+      return;
+    }
+    if (status.unstaged.length === 0) return;
+    hasAutoStagedRef.current = true;
+    void handleStageAll();
+    // handleStageAll is intentionally not in the dep list: it depends on
+    // `refresh`/`worktreePath`, both of which are stable for a given open.
+    // Adding it would re-fire the effect after refresh() updates `status`,
+    // re-tripping the guard immediately. The ref guard is the source of truth.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, autoStageOnOpen, status]);
 
   useEffect(() => {
     if (diffMode === "base-branch" && status?.currentBranch === mainBranch) {
@@ -1094,6 +1145,15 @@ export function ReviewHubContent({
                 </span>
               </TruncatedTooltip>
             )}
+            {status?.currentBranch && isProtectedBranch(status.currentBranch.toLowerCase()) && (
+              <span
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-status-warning/10 border border-status-warning/30 text-[11px] text-status-warning shrink-0"
+                data-testid="review-hub-protected-branch-chip"
+              >
+                <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
+                <span>Protected</span>
+              </span>
+            )}
             {status?.hasRemote &&
               worktreePR &&
               worktreePR.prUrl &&
@@ -1460,6 +1520,35 @@ export function ReviewHubContent({
                 </div>
               ) : status ? (
                 <div>
+                  {/* File-list disclosure — default collapsed so the commit
+                      textarea is the focal point on open. Persisted per worktree
+                      in uiStore so reopening preserves the user's choice. */}
+                  <div className="px-4 py-2 bg-overlay-subtle border-b border-divider flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setFileListExpanded(worktreePath, !fileListExpanded)}
+                      aria-expanded={fileListExpanded}
+                      aria-controls={`review-hub-files-${worktreePath}`}
+                      data-testid="review-hub-file-list-toggle"
+                      className={cn(
+                        "inline-flex items-center gap-1 text-[11px] font-medium text-daintree-text/70 hover:text-daintree-text transition-colors",
+                        "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent rounded"
+                      )}
+                    >
+                      <ChevronRight
+                        className={cn(
+                          "w-3 h-3 transition-transform duration-150",
+                          fileListExpanded && "rotate-90"
+                        )}
+                        aria-hidden="true"
+                      />
+                      <span>
+                        {fileListExpanded ? "Hide" : "Show"} files ({totalChanges})
+                      </span>
+                    </button>
+                  </div>
+                  {fileListExpanded && (
+                  <div id={`review-hub-files-${worktreePath}`}>
                   {/* Conflict warning */}
                   {hasConflicts && (
                     <div
@@ -1877,6 +1966,8 @@ export function ReviewHubContent({
                       </div>
                     )}
                   </div>
+                  </div>
+                  )}
                 </div>
               ) : null}
             </>
@@ -1895,6 +1986,7 @@ export function ReviewHubContent({
               hasConflicts={hasConflicts}
               hasRemote={status.hasRemote}
               worktreePath={worktreePath}
+              currentBranch={status.currentBranch}
               commitMessage={commitMessage}
               onCommitMessageChange={setCommitMessage}
               onCommit={handleCommit}

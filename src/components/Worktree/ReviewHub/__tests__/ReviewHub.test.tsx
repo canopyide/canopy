@@ -323,6 +323,7 @@ vi.mock("@/components/ui/EmptyState", () => ({
 }));
 
 import { ReviewHub } from "../ReviewHub";
+import { useUIStore } from "@/store/uiStore";
 
 const WORKTREE_PATH = "/home/user/project";
 
@@ -359,6 +360,11 @@ describe("ReviewHub", () => {
   beforeEach(() => {
     capturedUpdateCallback = null;
     debounceCancelSpy.mockReset();
+
+    // The Review Hub's file-list disclosure defaults to collapsed (issue
+    // #7886). Existing tests assume rows are visible — expand the disclosure
+    // for the canonical worktree path so suite-wide assertions keep working.
+    useUIStore.getState().setReviewHubFileListExpanded(WORKTREE_PATH, true);
 
     worktreeStoreData.current = new Map([
       [
