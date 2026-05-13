@@ -12,6 +12,7 @@ interface FakePtyProcess {
   onData: ReturnType<typeof vi.fn>;
   onExit: ReturnType<typeof vi.fn>;
   kill: ReturnType<typeof vi.fn>;
+  destroy: ReturnType<typeof vi.fn>;
   emitExit: (exitCode: number) => void;
 }
 
@@ -22,7 +23,7 @@ interface FakePtyProcessWithEmit extends FakePtyProcess {
 
 function createFakeProcess(
   pid: number | "missing" = 100,
-  options: { emitDuringOnData?: string[] } = {}
+  options: { emitDuringOnData?: string[]; markDeadOnAcquire?: boolean } = {}
 ): FakePtyProcessWithEmit {
   let onExitHandler: ((event: { exitCode: number }) => void) | null = null;
   const dataHandlers = new Set<(chunk: string) => void>();
@@ -54,6 +55,10 @@ function createFakeProcess(
         onExitHandler?.({ exitCode: 0 });
       }
     }),
+    // destroy() is called by destroyPty() to close the master FD. Real node-pty
+    // also fires onExit via SIGHUP, but the helper calls kill() too so the
+    // mock doesn't need to double-emit here.
+    destroy: vi.fn(),
     emitExit: (exitCode: number) => {
       alive = false;
       onExitHandler?.({ exitCode });
@@ -70,6 +75,17 @@ function createFakeProcess(
  * to flush the microtask queue before asserting on its side effects.
  */
 const flushMicrotasks = () => Promise.resolve();
+
+/**
+ * Drain enough microtask ticks for `refillPool`'s `.then().catch().finally()`
+ * chain to clear `refillInProgress`. A single `await Promise.resolve()` only
+ * advances one microtask, but the chain needs ~3-4 to settle.
+ */
+const settleRefill = async () => {
+  for (let i = 0; i < 6; i++) {
+    await Promise.resolve();
+  }
+};
 
 describe("PtyPool", () => {
   const originalShell = process.env.SHELL;
@@ -535,6 +551,307 @@ describe("PtyPool", () => {
 
       expect(spawnMock).toHaveBeenCalledTimes(1);
       pool.dispose();
+    });
+
+    it("destroys the pooled PTY on unexpected exit so the master FD is released (#7892)", async () => {
+      const first = createFakeProcess(2001);
+      const second = createFakeProcess(2002);
+      spawnMock.mockReturnValueOnce(first).mockReturnValueOnce(second);
+
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+      await pool.warmPool();
+
+      // emitExit simulates the kernel teardown (e.g. shell rc syntax error
+      // killing the shell on startup). destroy() must be called by the pool
+      // so /dev/ptmx is closed; kill() alone leaves it open and contributes
+      // to the system-wide ptmx_max leak that #7892 reported.
+      first.emitExit(1);
+
+      expect(first.destroy).toHaveBeenCalledTimes(1);
+      pool.dispose();
+    });
+
+    it("destroys pooled PTYs during dispose() so dispose leaks no FDs", async () => {
+      const proc = createFakeProcess(2101);
+      spawnMock.mockReturnValueOnce(proc);
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+      await pool.warmPool();
+
+      pool.dispose();
+
+      expect(proc.destroy).toHaveBeenCalledTimes(1);
+    });
+
+    it("destroys pooled PTYs during drainAndRefill() so cwd transitions leak no FDs", async () => {
+      const initial = createFakeProcess(2201);
+      const refilled = createFakeProcess(2202);
+      spawnMock.mockReturnValueOnce(initial).mockReturnValueOnce(refilled);
+
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/home/tester" });
+      await pool.warmPool();
+
+      await pool.drainAndRefill("/repo");
+
+      expect(initial.destroy).toHaveBeenCalledTimes(1);
+      pool.dispose();
+    });
+
+    it("destroys pooled PTYs during LRU eviction so capacity transitions leak no FDs", async () => {
+      const procs = [createFakeProcess(2301), createFakeProcess(2302), createFakeProcess(2303)];
+      let i = 0;
+      spawnMock.mockImplementation(() => procs[i++] ?? createFakeProcess(2399));
+
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo", maxEntries: 2 });
+
+      pool.warmForKey("/repo", undefined, "env-a");
+      await flushMicrotasks();
+      pool.warmForKey("/repo", undefined, "env-b");
+      await flushMicrotasks();
+      pool.warmForKey("/repo", undefined, "env-c");
+      await flushMicrotasks();
+
+      // env-a was the victim — must be destroyed (not just killed).
+      expect(procs[0]?.destroy).toHaveBeenCalledTimes(1);
+      pool.dispose();
+    });
+
+    it("blocks refill after MAX_KEY_FAILURES fast exits to prevent crash-loop FD leak (#7892)", async () => {
+      // Consecutive fast exits should trip the circuit breaker. The refill
+      // that would otherwise be triggered by the post-trip onExit→refillPool
+      // must NOT happen — otherwise a misconfigured shell crash-loops the
+      // pool and burns ~60 FDs per cycle (the FD leak in #7892).
+      const procs = Array.from({ length: 8 }, (_, idx) => createFakeProcess(3000 + idx));
+      let i = 0;
+      spawnMock.mockImplementation(() => procs[i++] ?? createFakeProcess(3999));
+
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+      await pool.warmPool();
+
+      // Walk the chain: each emitExit removes the current entry and (when
+      // the breaker is open) refillPool replaces it synchronously. We must
+      // drain the `.then().finally()` chain between exits to clear
+      // `refillInProgress`; otherwise sequential refills are dropped.
+      let callIdx = 0;
+      while (callIdx < procs.length) {
+        const before = spawnMock.mock.calls.length;
+        procs[callIdx]?.emitExit(1);
+        await settleRefill();
+        const after = spawnMock.mock.calls.length;
+        callIdx += 1;
+        if (after === before) {
+          // No new spawn — breaker is now blocking refill.
+          break;
+        }
+      }
+
+      // The breaker should have tripped before exhausting all the procs.
+      // We don't pin the exact spawn count (it depends on timing of
+      // `refillInProgress` clearing across microtasks); we pin the
+      // observable invariant: pool ends up empty AND the next fast exit
+      // does not trigger a new spawn.
+      expect(pool.getPoolSize()).toBe(0);
+      const spawnsAtBlock = spawnMock.mock.calls.length;
+      procs[callIdx]?.emitExit(1);
+      await settleRefill();
+      expect(spawnMock).toHaveBeenCalledTimes(spawnsAtBlock);
+      pool.dispose();
+    });
+
+    it("blocks warmForKey for a key whose breaker has tripped", async () => {
+      // Force the breaker on env-x by tripping fast exits via warmForKey,
+      // then verify a fresh warmForKey for the same key is a no-op.
+      const procs = Array.from({ length: 6 }, (_, idx) => createFakeProcess(3500 + idx));
+      let i = 0;
+      spawnMock.mockImplementation(() => procs[i++] ?? createFakeProcess(3599));
+
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+
+      // First warmForKey + immediate fast exit, repeated. Each fast exit
+      // calls refillPool, but refillPool only warms the env-empty key — for
+      // arbitrary keys we drive the loop manually via warmForKey.
+      for (let k = 0; k < 5; k++) {
+        pool.warmForKey("/repo", undefined, "env-x");
+        await settleRefill();
+        // Find the entry in the pool for env-x (if any) and emit exit on
+        // the underlying fake. We use the test-known proc index since each
+        // warmForKey produces exactly one spawn until the breaker trips.
+        const spawnedCount = spawnMock.mock.calls.length;
+        const proc = procs[spawnedCount - 1];
+        if (proc) proc.emitExit(1);
+        await settleRefill();
+      }
+
+      const spawnsAtBlock = spawnMock.mock.calls.length;
+      pool.warmForKey("/repo", undefined, "env-x");
+      await settleRefill();
+      // No new spawn — breaker is gating warmForKey.
+      expect(spawnMock).toHaveBeenCalledTimes(spawnsAtBlock);
+      pool.dispose();
+    });
+
+    it("does not count long-lived idle exits toward the circuit breaker", async () => {
+      // Long-lived (>FAST_EXIT_THRESHOLD_MS) exits should never trip the
+      // breaker — only fast exits indicate a misconfigured key. Use a
+      // monotonically-advancing Date.now mock so each entry's lifetime
+      // crosses the threshold without relying on fake timers (which
+      // wouldn't help since the implementation reads Date.now() directly).
+      const procs = Array.from({ length: 8 }, (_, idx) => createFakeProcess(4000 + idx));
+      let i = 0;
+      spawnMock.mockImplementation(() => procs[i++] ?? createFakeProcess(4999));
+
+      const realNow = Date.now.bind(Date);
+      let nowOffset = 0;
+      const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => realNow() + nowOffset);
+
+      try {
+        const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+        await pool.warmPool();
+
+        // Walk many exits, advancing well past the fast-exit window between
+        // them. If long-lived exits counted, the breaker would trip after
+        // MAX_KEY_FAILURES; with the threshold check they should not.
+        for (let k = 0; k < 6; k++) {
+          nowOffset += 10_000;
+          const spawned = spawnMock.mock.calls.length;
+          const proc = procs[spawned - 1];
+          if (!proc) break;
+          proc.emitExit(0);
+          await settleRefill();
+        }
+
+        // The pool should still be refilling; if the breaker had tripped,
+        // the pool would be empty for at least the cooldown window.
+        expect(pool.getPoolSize()).toBe(1);
+        pool.dispose();
+      } finally {
+        nowSpy.mockRestore();
+      }
+    });
+
+    it("circuit breaker is per-key — a tripped key does not block other keys", async () => {
+      // Trip env-a's breaker; env-b must still warm freely.
+      const procs = Array.from({ length: 10 }, (_, idx) => createFakeProcess(5000 + idx));
+      let i = 0;
+      spawnMock.mockImplementation(() => procs[i++] ?? createFakeProcess(5999));
+
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+
+      // Drive env-a into a fast-exit loop until warmForKey is gated.
+      let lastSpawnCount = 0;
+      for (let k = 0; k < 6; k++) {
+        pool.warmForKey("/repo", undefined, "env-a");
+        await settleRefill();
+        const spawned = spawnMock.mock.calls.length;
+        const proc = procs[spawned - 1];
+        if (proc && spawned > lastSpawnCount) {
+          lastSpawnCount = spawned;
+          proc.emitExit(1);
+          await settleRefill();
+        } else {
+          // warmForKey was a no-op → breaker is now blocking env-a.
+          break;
+        }
+      }
+
+      const callsAfterEnvA = spawnMock.mock.calls.length;
+
+      // env-b should still warm freely — distinct key, distinct breaker.
+      pool.warmForKey("/repo", undefined, "env-b");
+      await settleRefill();
+
+      expect(spawnMock).toHaveBeenCalledTimes(callsAfterEnvA + 1);
+      expect(spawnMock.mock.calls[callsAfterEnvA]?.[2]).toMatchObject({ cwd: "/repo" });
+      pool.dispose();
+    });
+
+    it("warmPool respects the breaker — drainAndRefill back to a blocked cwd is a no-op", async () => {
+      // Regression for #7892: drainAndRefill() ends with warmPool(). Without
+      // a breaker check in warmPool, switching to /repo-b and back to /repo
+      // after the breaker tripped on /repo would re-enter the crash loop.
+      const procs = Array.from({ length: 12 }, (_, idx) => createFakeProcess(8000 + idx));
+      let i = 0;
+      spawnMock.mockImplementation(() => procs[i++] ?? createFakeProcess(8999));
+
+      const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+      await pool.warmPool();
+
+      // Trip the breaker on /repo env-empty via fast exits.
+      let lastSpawn = 1;
+      for (let k = 0; k < 8; k++) {
+        const spawned = spawnMock.mock.calls.length;
+        const proc = procs[spawned - 1];
+        if (!proc) break;
+        proc.emitExit(1);
+        await settleRefill();
+        const after = spawnMock.mock.calls.length;
+        if (after === spawned) {
+          lastSpawn = after;
+          break;
+        }
+      }
+
+      const spawnsAtBlock = spawnMock.mock.calls.length;
+      expect(lastSpawn).toBeGreaterThan(0);
+
+      // Switch away to /repo-b (warmPool there is fine — different key).
+      await pool.drainAndRefill("/repo-b");
+      // /repo-b warm did spawn one entry.
+      expect(spawnMock.mock.calls.length).toBe(spawnsAtBlock + 1);
+      const spawnsAfterB = spawnMock.mock.calls.length;
+
+      // Switch back to /repo — warmPool must see the still-blocked breaker
+      // and refuse to spawn. Without the fix, this re-enters the crash loop.
+      await pool.drainAndRefill("/repo");
+      expect(spawnMock).toHaveBeenCalledTimes(spawnsAfterB);
+      pool.dispose();
+    });
+
+    it("circuit breaker cools down and resumes refill after the backoff window", async () => {
+      // Drive the breaker into the blocked state for env-empty, advance
+      // virtual time past KEY_BACKOFF_MS, then verify a fresh warmForKey
+      // succeeds. We mock Date.now directly because the implementation
+      // reads it inline and fake timers wouldn't intercept that.
+      const procs = Array.from({ length: 12 }, (_, idx) => createFakeProcess(6000 + idx));
+      let i = 0;
+      spawnMock.mockImplementation(() => procs[i++] ?? createFakeProcess(6999));
+
+      const realNow = Date.now.bind(Date);
+      let nowOffset = 0;
+      const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => realNow() + nowOffset);
+
+      try {
+        const pool = new PtyPool({ poolSize: 1, defaultCwd: "/repo" });
+        await pool.warmPool();
+
+        // Drive fast exits until the breaker engages.
+        let lastSpawn = 0;
+        for (let k = 0; k < 8; k++) {
+          const spawned = spawnMock.mock.calls.length;
+          const proc = procs[spawned - 1];
+          if (!proc) break;
+          proc.emitExit(1);
+          await settleRefill();
+          const after = spawnMock.mock.calls.length;
+          if (after === spawned) {
+            lastSpawn = after;
+            break;
+          }
+        }
+
+        // Breaker should now be blocking — additional emitExit drives no
+        // new spawn. (Pool is empty at this point.)
+        expect(pool.getPoolSize()).toBe(0);
+
+        // Advance virtual time past the 30s cooldown.
+        nowOffset += 31_000;
+        pool.warmForKey("/repo", undefined, "env-empty");
+        await settleRefill();
+
+        expect(spawnMock.mock.calls.length).toBeGreaterThan(lastSpawn);
+        pool.dispose();
+      } finally {
+        nowSpy.mockRestore();
+      }
     });
 
     it("evicts an idle entry from a different key when global cap is reached", async () => {

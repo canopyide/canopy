@@ -13,6 +13,7 @@ interface FakePooledPty {
   write: ReturnType<typeof vi.fn>;
   resize: ReturnType<typeof vi.fn>;
   kill: ReturnType<typeof vi.fn>;
+  destroy: ReturnType<typeof vi.fn>;
 }
 
 interface FakeDataHandoff {
@@ -31,6 +32,7 @@ function createFakePooledPty(): FakePooledPty {
     write: vi.fn(),
     resize: vi.fn(),
     kill: vi.fn(),
+    destroy: vi.fn(),
   };
 }
 
@@ -170,6 +172,10 @@ describe("acquirePtyProcess pool handling", () => {
     const result = acquirePtyProcess("t1", baseOptions, {}, "/bin/bash", [], pool, () => {});
 
     expect(dataHandoff.dispose).toHaveBeenCalledTimes(1);
+    // destroyPty() closes the master FD (destroy) and signals the process
+    // (kill); without destroy the /dev/ptmx FD leaks on every resize-failure
+    // fallback. See #7892.
+    expect(pooled.destroy).toHaveBeenCalledTimes(1);
     expect(pooled.kill).toHaveBeenCalledTimes(1);
     expect(spawnMock).toHaveBeenCalledTimes(1);
     expect(result.ptyProcess).toBe(spawnedPty);
