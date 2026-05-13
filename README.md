@@ -9,7 +9,7 @@
 <p align="center"><strong>A habitat for your AI coding agents.</strong></p>
 
 <p align="center">
-  Multiple agents working side by side — isolated, observable, and under your control.
+  Run several agents in parallel, each in its own worktree, isolated and observable, with you still in the loop.
 </p>
 
 <p align="center">
@@ -25,19 +25,47 @@
 
 ## Install
 
-Get Daintree for **[macOS](https://daintree.org/download)**, **[Windows](https://daintree.org/download)**, or **[Linux](https://daintree.org/download)** — all on the same page. macOS ships as a signed-and-notarized DMG (arm64, x64, universal); Linux as AppImage and `.deb`; Windows as a sideloadable `.appx` package while the Microsoft Store listing is in review. Homebrew and winget recipes are in the oven.
+Builds for macOS, Windows, and Linux live at [daintree.org/download](https://daintree.org/download). macOS ships as a signed-and-notarized DMG in `arm64`, `x64`, and universal variants. Linux ships as `AppImage` and `.deb`. Windows ships as a sideloadable `.appx` while the Microsoft Store listing is in review. Homebrew and winget recipes are coming.
 
 <p align="center">
-  <a href="https://daintree.org/download"><img alt="Download Daintree for macOS, Windows, or Linux" src="https://cdn.daintree.org/brand/download-button-v2.svg" width="340"></a>
+  <a href="https://daintree.org/download"><img alt="Download Daintree for macOS, Windows, or Linux" src="https://cdn.daintree.org/brand/download-button-v3.svg" width="340"></a>
 </p>
 
 ## The problem
 
-- **Agent fatigue.** Five terminals, three agents, no idea who's stuck.
-- **Worktree sprawl.** Each agent wants its own branch — managing five at once is its own job.
-- **Review is the bottleneck.** Generation is fast; supervising what came back is what eats the day.
+- **Agent fatigue.** Five terminals, three agents, no clue who's stuck.
+- **Worktree sprawl.** Every agent wants its own branch. Managing five at once is its own job.
+- **Review is the bottleneck.** Generation is fast. Supervising what came back is what eats the day.
 
-Daintree is the macro-orchestration layer for this workflow. [Read the full vision →](docs/vision.md)
+Daintree is the macro-orchestration layer for this workflow. The longer version of the pitch is in [docs/vision.md](docs/vision.md).
+
+## Daintree Assistant
+
+<p align="center">
+  <img alt="Daintree Assistant connecting to six agent terminals — Claude Code, Gemini CLI, Codex, Cursor, GitHub Copilot CLI, and Crush" src="https://cdn.daintree.org/brand/assistant-diagram.svg" width="900">
+</p>
+
+The Assistant is in-app help that runs as a sandboxed AI coding agent inside Daintree itself. It answers questions about the app, watches the state of every other agent you have running, and can react to changes via a `register_listener` tool. Because it connects to a live MCP documentation server (`daintree-docs`), its answers track the current release rather than going stale with the documentation an off-the-shelf model was trained on.
+
+When you're signed into Claude Code, the Assistant additionally connects to a tier-gated local MCP server (`daintree`) that exposes read-only introspection of the running app. Supported backends are Claude Code, Gemini CLI, Codex CLI, and GitHub Copilot CLI; the Assistant reuses whichever you're already signed into, so there's no extra auth.
+
+What that looks like in practice:
+
+- Answers how-to questions about Daintree features, sourced from the live docs.
+- Tells you which of your agents are waiting on input and which finished while you were away.
+- Reacts to events you register. For example: tell me when the Cursor agent in the `bugfix/foo` worktree stops responding.
+
+## Features
+
+- **Fleet Broadcasting.** One prompt fans out to N agents. Target filtering, live draft preview, per-agent edits before send.
+- **Worktree Dashboard.** Every branch in one view. Auto PR and issue detection, dev-server lifecycle, commit composer.
+- **Context Injection.** Select files, ship structured context into any agent's terminal. Built on [CopyTree](https://github.com/gregpriday/copytree).
+- **MCP Server.** Agents call Daintree actions directly. Per-tier authorization, audit log, idempotency.
+- **Action Palette + 14 themes.** Over 300 keyboard-first actions and a palette-based theme system with accessibility tokens.
+- **Notification Center.** Agents run unattended. The inbox tells you what needs you and what can wait.
+- **Voice input.** OpenAI Realtime dictation for quick prompts. Optional, needs an API key.
+
+A screenshot-driven feature grid lands in the next pass.
 
 ## Works with
 
@@ -45,48 +73,35 @@ Claude Code, Gemini CLI, Codex, GitHub Copilot CLI, Cursor, Aider, OpenCode, Goo
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://cdn.daintree.org/brand/agents-row-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="https://cdn.daintree.org/brand/agents-row-light.png">
-    <img alt="Supported agents" src="https://cdn.daintree.org/brand/agents-row-dark.png" width="900">
+    <source media="(prefers-color-scheme: dark)" srcset="https://cdn.daintree.org/brand/agents-row-dark-v2.png">
+    <source media="(prefers-color-scheme: light)" srcset="https://cdn.daintree.org/brand/agents-row-light-v2.png">
+    <img alt="Supported agents" src="https://cdn.daintree.org/brand/agents-row-dark-v2.png" width="900">
   </picture>
 </p>
 
-## Features
+## Build from source
 
-- **Fleet Broadcasting** — One prompt, N agents. Armed-target filtering, live drafting preview, per-agent customization.
-- **Daintree Assistant** — In-app help that reads agent state. Backed by Claude, Gemini, Codex, Copilot CLI, or Gemini CLI.
-- **Worktree Dashboard** — Every branch in one view. Auto PR/issue detection, dev-server lifecycle, commit composer.
-- **Context Injection** — Select files, ship structured context into any agent's terminal. Built on [CopyTree](https://github.com/gregpriday/copytree).
-- **MCP Server** — Agents invoke Daintree actions directly. Per-tier authorization, audit log, idempotency.
-- **Action Palette · 14 themes** — 300+ keyboard-first actions. Palette-based theme system with accessibility tokens.
-- **Notification Center** — Agents run unattended; the inbox surfaces what needs you and what can wait.
-- **Voice input** — OpenAI Realtime-backed dictation for quick prompts (optional, requires an API key).
-
-> A feature grid with screenshots ships in the next pass once captures are finalized.
-
-## Getting started
-
-### Prerequisites
-
-- **Node.js** v22+
-- **Git** v2.30+
-
-### Install
+Clone, install, then run the package command for your platform. Builds land in `release/`.
 
 ```bash
 git clone https://github.com/daintreehq/daintree.git
 cd daintree
 npm install
-npm run dev
 ```
 
-The `postinstall` script rebuilds native modules (`node-pty`) for Electron automatically. If you see PTY errors, run `npm run rebuild`.
+| Platform | Command                 | Output                                 |
+| -------- | ----------------------- | -------------------------------------- |
+| macOS    | `npm run package:mac`   | `.dmg`, `.zip` (arm64, x64, universal) |
+| Windows  | `npm run package:win`   | `.appx`, `.msix`                       |
+| Linux    | `npm run package:linux` | `.AppImage`, `.deb`                    |
 
-For AI features, open **Settings** (bottom-left sidebar) to configure your GitHub token and per-agent defaults.
+The `postinstall` step rebuilds `node-pty` for Electron automatically. If you see PTY errors, run `npm run rebuild`.
 
-### Install agent CLIs
+For AI features, open **Settings** (bottom-left sidebar) and configure your GitHub token and per-agent defaults.
 
-Daintree works with any agent you have installed. The Settings → Agents tab lists every supported agent with a one-click installer for your platform; the commands below are the canonical recipes for reference.
+## Install agent CLIs
+
+Daintree works with whatever agent you've already installed. **Settings → Agents** has a one-click installer for each platform; the commands below are the canonical recipes for reference.
 
 **npm (cross-platform):**
 
@@ -124,11 +139,11 @@ pipx install aider-chat                     # Aider (pipx)
 
 ## Documentation
 
-- [Architecture](docs/architecture/) — System design, IPC patterns, terminal lifecycle
-- [Development guide](docs/development.md) — Setup, debugging, contribution workflow
-- [Theme system](docs/themes/theme-system.md) — Theme pipeline, tokens, and runtime
-- [E2E testing](docs/e2e-testing.md) — Playwright testing setup and patterns
-- [Release process](docs/release.md) — Versioning and release workflow
+- [Architecture](docs/architecture/) — system design, IPC patterns, terminal lifecycle
+- [Development guide](docs/development.md) — setup, debugging, contribution workflow
+- [Theme system](docs/themes/theme-system.md) — theme pipeline, tokens, runtime
+- [E2E testing](docs/e2e-testing.md) — Playwright setup and patterns
+- [Release process](docs/release.md) — versioning and release workflow
 
 ## License
 
