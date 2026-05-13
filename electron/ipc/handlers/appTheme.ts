@@ -62,7 +62,10 @@ function getAppThemeConfig(): AppThemeConfig {
   // below honors `followSystem` once it's enabled).
   return {
     ...(config && typeof config === "object" && !Array.isArray(config) ? config : {}),
-    colorSchemeId: process.env.DAINTREE_SCREENSHOT_SCALE || nativeTheme.shouldUseDarkColors ? DEFAULT_DARK_SCHEME : DEFAULT_LIGHT_SCHEME,
+    colorSchemeId:
+      process.env.DAINTREE_SCREENSHOT_SCALE || nativeTheme.shouldUseDarkColors
+        ? DEFAULT_DARK_SCHEME
+        : DEFAULT_LIGHT_SCHEME,
     customSchemes: [],
   } as AppThemeConfig;
 }

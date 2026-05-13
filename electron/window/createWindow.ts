@@ -1,4 +1,12 @@
-import { app, BrowserWindow, WebContentsView, dialog, ipcMain, session, nativeTheme } from "electron";
+import {
+  app,
+  BrowserWindow,
+  WebContentsView,
+  dialog,
+  ipcMain,
+  session,
+  nativeTheme,
+} from "electron";
 import {
   getWindowForWebContents,
   registerWebContents,
@@ -149,7 +157,10 @@ export function setupBrowserWindow(
     // Daintree always defaults to its dark theme on first run, regardless of
     // the OS color-scheme preference. Users who want light or system-following
     // behavior can opt in via Settings → Appearance.
-    colorSchemeId = process.env.DAINTREE_SCREENSHOT_SCALE || nativeTheme.shouldUseDarkColors ? "daintree" : "bondi";
+    colorSchemeId =
+      process.env.DAINTREE_SCREENSHOT_SCALE || nativeTheme.shouldUseDarkColors
+        ? "daintree"
+        : "bondi";
   }
 
   // Apply lazy migration for legacy string-encoded customSchemes
