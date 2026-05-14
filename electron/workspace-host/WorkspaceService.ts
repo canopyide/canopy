@@ -1060,7 +1060,7 @@ export class WorkspaceService {
     const promises = Array.from(this.monitors.values()).map((monitor) =>
       this.pollQueue.add(async () => {
         try {
-          await monitor.updateGitStatus(true);
+          await monitor.refresh();
         } finally {
           if (monitor.isRunning && this.pollingEnabled) {
             monitor.reschedulePolling();

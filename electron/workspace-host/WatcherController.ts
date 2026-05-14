@@ -296,6 +296,11 @@ export class WatcherController {
    * require a full project reload. Gated by a session cap to prevent
    * thrashing on truly constrained systems.
    *
+   * Resets on any non-zero counter, not only exhaustion — a user hitting
+   * refresh during the backoff window (count 1-4) may want immediate relief
+   * and doesn't need to wait for budget exhaustion before the recovery path
+   * is available. The session cap still bounds total resets.
+   *
    * Returns `true` when the budget was actually reset (non-zero counter,
    * under the cap); callers can use this to decide whether a re-arm attempt
    * is worthwhile.
