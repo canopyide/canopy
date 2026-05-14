@@ -1,7 +1,7 @@
 import type { CrashType } from "@shared/types/pty-host";
 import { terminalRegistryController } from "@/controllers";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
-import { logInfo, logError } from "@/utils/logger";
+import { logInfo, logError, logWarn } from "@/utils/logger";
 import { DisposableStore, toDisposable } from "@/utils/disposable";
 import { usePanelStore } from "@/store/panelStore";
 
@@ -54,7 +54,7 @@ export function setupBackendHealthListeners(): DisposableStore {
   d.add(
     toDisposable(
       terminalRegistryController.onBackendRecovering((details) => {
-        logError("Backend recovering (auto-restart in progress)", undefined, { details });
+        logWarn("Backend recovering (auto-restart in progress)", { details });
 
         if (recoveryTimer) {
           clearTimeout(recoveryTimer);
