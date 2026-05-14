@@ -9,6 +9,19 @@ import {
 } from "../../../schemas/ipc.js";
 import { getCrashRecoveryService } from "../../../services/CrashRecoveryService.js";
 
+export const CRASH_CRITICAL_FIELDS = new Set([
+  "terminals",
+  "panelGridConfig",
+  "focusMode",
+  "focusPanelState",
+  "activeWorktreeId",
+  "recipes",
+  "mruList",
+  "actionMruList",
+  "developerMode",
+  "fleetScopeMode",
+]);
+
 import { getGpuFeatureStatus, isWebGLHardwareAccelerated } from "../../../utils/gpuDetection.js";
 import { isGpuDisabledByFlag } from "../../../services/GpuCrashMonitorService.js";
 import { getCrashLoopGuard } from "../../../services/CrashLoopGuardService.js";
@@ -516,6 +529,10 @@ export function registerAppStateHandlers(deps?: HandlerDependencies): () => void
         } else {
           store.set(`appState.${field}`, value);
         }
+      }
+
+      if (Object.keys(updates).some((k) => CRASH_CRITICAL_FIELDS.has(k))) {
+        getCrashRecoveryService().scheduleBackup();
       }
 
       // Note: We intentionally do NOT save per-project terminal state.
