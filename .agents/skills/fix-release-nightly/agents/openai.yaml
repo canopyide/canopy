@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fix Release/Nightly"
+  short_description: "Fix release dry-run and nightly CI failures."
+  default_prompt: "Use $fix-release-nightly to fix the current Daintree release dry-run or nightly workflow failure until CI passes."
