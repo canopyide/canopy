@@ -594,18 +594,48 @@ describe("AutoUpdaterService", () => {
     });
 
     it("manual checks are no-ops on MSIX (Windows Store) builds", () => {
+      // Initialize first on non-Store platform so `this.initialized` is true —
+      // proves the `isWindowsStoreBuild()` guard in checkForUpdatesManually()
+      // fires independently of the `!this.initialized` short-circuit.
+      Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+      autoUpdaterService.initialize();
+      autoUpdaterMock.checkForUpdates.mockClear();
+
       Object.defineProperty(process, "platform", { value: "win32", configurable: true });
       Object.defineProperty(process, "windowsStore", { value: true, configurable: true });
-
-      autoUpdaterService.initialize();
       autoUpdaterService.checkForUpdatesManually();
 
       expect(autoUpdaterMock.checkForUpdates).not.toHaveBeenCalled();
     });
 
+    it("quitAndInstallIfReady is a no-op on MSIX (Windows Store) builds", () => {
+      Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+      Object.defineProperty(process, "windowsStore", { value: true, configurable: true });
+
+      autoUpdaterService.initialize();
+      const result = autoUpdaterService.quitAndInstallIfReady();
+
+      expect(result).toBe(false);
+      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+    });
+
     it("does NOT suppress the updater on non-Store Windows builds (NSIS/Squirrel)", () => {
       Object.defineProperty(process, "platform", { value: "win32", configurable: true });
       delete (process as NodeJS.Process & { windowsStore?: boolean }).windowsStore;
+
+      autoUpdaterService.initialize();
+
+      const registeredChannels = (ipcMainMock.handle as Mock).mock.calls.map((args) => args[0]);
+      expect(registeredChannels).toContain(CHANNELS.UPDATE_CHECK_FOR_UPDATES);
+      expect(registeredChannels).toContain(CHANNELS.UPDATE_QUIT_AND_INSTALL);
+      // Setup runs end-to-end: feed URL configured and event listeners attached.
+      expect(autoUpdaterMock.setFeedURL).toHaveBeenCalled();
+      expect(autoUpdaterMock.on).toHaveBeenCalled();
+    });
+
+    it("does NOT suppress the updater when process.windowsStore is explicitly false", () => {
+      Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+      Object.defineProperty(process, "windowsStore", { value: false, configurable: true });
 
       autoUpdaterService.initialize();
 

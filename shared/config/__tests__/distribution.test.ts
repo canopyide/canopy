@@ -64,6 +64,19 @@ describe("distribution config", () => {
       (globalThis as { window?: unknown }).window = { electron: { isWindowsStoreBuild: false } };
       expect(isWindowsStoreBuild()).toBe(false);
     });
+
+    it("prefers the renderer bridge over process.windowsStore when window is defined", () => {
+      // Renderer bridge says false, but process.windowsStore is true — the
+      // renderer must trust the bridge (which was stamped from the preload's
+      // authoritative read) and not the renderer-side process global.
+      Object.defineProperty(process, "windowsStore", { value: true, configurable: true });
+      (globalThis as { window?: unknown }).window = { electron: { isWindowsStoreBuild: false } };
+      try {
+        expect(isWindowsStoreBuild()).toBe(false);
+      } finally {
+        delete (process as WindowsStoreProcess).windowsStore;
+      }
+    });
   });
 
   describe("getRuntimePlatform", () => {
