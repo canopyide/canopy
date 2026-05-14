@@ -61,6 +61,27 @@ export function XtermAdapter({
   const resizeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingFitRef = useRef(false);
   const initialFitDoneRef = useRef(false);
+  const launchAgentIdRef = useRef(launchAgentId);
+  const detectedAgentIdRef = useRef(detectedAgentId);
+  const onReadyRef = useRef(onReady);
+  const onExitRef = useRef(onExit);
+  const onInputRef = useRef(onInput);
+  const cwdRef = useRef(cwd);
+
+  useLayoutEffect(() => {
+    launchAgentIdRef.current = launchAgentId;
+    detectedAgentIdRef.current = detectedAgentId;
+    onReadyRef.current = onReady;
+    onExitRef.current = onExit;
+    onInputRef.current = onInput;
+    cwdRef.current = cwd;
+  }, [launchAgentId, detectedAgentId, onReady, onExit, onInput, cwd]);
+
+  const stableOnInput = useCallback((data: string) => {
+    onInputRef.current?.(data);
+  }, []);
+
+  const stableCwdProvider = useCallback(() => cwdRef.current ?? "", []);
 
   // Store the latest getRefreshTier in a ref to prevent stale closures.
   // This ensures the service always calls the current version of the callback.
@@ -104,7 +125,7 @@ export function XtermAdapter({
   );
 
   // Attach image paste and file drag-and-drop handlers to the xterm container
-  useTerminalFileTransfer(containerRef, { terminalId, isInputLocked, onInput });
+  useTerminalFileTransfer(containerRef, { terminalId, isInputLocked, onInput: stableOnInput });
 
   const hasVisibleBufferContent = useCallback(() => {
     const managed = terminalInstanceService.get(terminalId);
@@ -216,14 +237,13 @@ export function XtermAdapter({
       launchAgentId,
       terminalOptions,
       stableRefreshTierProvider,
-      onInput,
-      cwd ? () => cwd : undefined
+      stableOnInput,
+      stableCwdProvider
     );
 
     const wasDetachedForSwitch = managed.isDetached === true;
     const hasSavedTargetDims = !!(managed.targetCols && managed.targetRows);
     managed.isAttaching = true;
-    terminalInstanceService.setInputLocked(terminalId, !!isInputLocked);
 
     terminalInstanceService.attach(terminalId, container);
     const attachGen = terminalInstanceService.getAttachGeneration(terminalId);
@@ -352,10 +372,12 @@ export function XtermAdapter({
             // Soft-newline sequence follows the live process. If a Codex
             // session is currently running, use its sequence even if this
             // terminal was launched as Claude or as a plain shell.
-            const softNewline = getSoftNewlineSequence(detectedAgentId ?? launchAgentId);
+            const softNewline = getSoftNewlineSequence(
+              detectedAgentIdRef.current ?? launchAgentIdRef.current
+            );
             writeTerminalInputOrFleet(terminalId, softNewline);
             terminalInstanceService.notifyUserInput(terminalId);
-            onInput?.(softNewline);
+            stableOnInput(softNewline);
           }
           return false;
         }
@@ -373,7 +395,7 @@ export function XtermAdapter({
             const submit = "\r";
             writeTerminalInputOrFleet(terminalId, submit);
             terminalInstanceService.notifyUserInput(terminalId);
-            onInput?.(submit);
+            stableOnInput(submit);
           }
           return false;
         }
@@ -383,7 +405,7 @@ export function XtermAdapter({
     }
 
     exitUnsubRef.current = terminalInstanceService.addExitListener(terminalId, (code) => {
-      onExit?.(code);
+      onExitRef.current?.(code);
     });
 
     if (!wasDetachedForSwitch || !hasSavedTargetDims) {
@@ -408,7 +430,7 @@ export function XtermAdapter({
         });
     }
 
-    onReady?.();
+    onReadyRef.current?.();
 
     return () => {
       disposed = true;
@@ -432,18 +454,18 @@ export function XtermAdapter({
   }, [
     terminalId,
     launchAgentId,
-    detectedAgentId,
-    isInputLocked,
     terminalOptions,
-    onExit,
-    onReady,
     performFit,
     stableRefreshTierProvider,
-    onInput,
-    cwd,
+    stableOnInput,
+    stableCwdProvider,
     restoreOnAttach,
     hasVisibleBufferContent,
   ]);
+
+  useLayoutEffect(() => {
+    terminalInstanceService.setInputLocked(terminalId, !!isInputLocked);
+  }, [terminalId, isInputLocked]);
 
   // Resolve current tier for dependency tracking
   const currentTier = useMemo(
