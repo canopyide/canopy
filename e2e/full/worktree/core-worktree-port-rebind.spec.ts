@@ -18,6 +18,9 @@ let fixtureCleanups: Array<() => void> = [];
 let repoA = "";
 let repoB = "";
 let repoC = "";
+let projectIdA = "";
+let projectIdB = "";
+let projectIdC = "";
 
 /**
  * Force the PVM's cached-view limit to a specific value via the E2E-only
@@ -36,8 +39,11 @@ async function setPvmCacheLimit(app: AppContext["app"], limit: number): Promise<
         }
       | null
       | undefined;
-    pvm?.setLowMemoryFreeThresholdMb?.(null);
-    pvm?.setCachedViewLimit(n);
+    if (!pvm) {
+      throw new Error("[port-rebind] __daintreeGetPvm not available — E2E accessor not wired");
+    }
+    pvm.setLowMemoryFreeThresholdMb?.(null);
+    pvm.setCachedViewLimit(n);
   }, limit);
 }
 
@@ -46,7 +52,7 @@ interface PvmSnapshot {
   viewProjectIds: string[];
 }
 
-async function readPvmSnapshot(app: AppContext["app"]): Promise<PvmSnapshot | null> {
+async function readPvmSnapshot(app: AppContext["app"]): Promise<PvmSnapshot> {
   return app.evaluate(() => {
     const g = globalThis as Record<string, unknown>;
     const getPvm = g.__daintreeGetPvm as (() => unknown) | undefined;
@@ -57,7 +63,9 @@ async function readPvmSnapshot(app: AppContext["app"]): Promise<PvmSnapshot | nu
         }
       | null
       | undefined;
-    if (!pvm) return null;
+    if (!pvm) {
+      throw new Error("[port-rebind] __daintreeGetPvm not available — E2E accessor not wired");
+    }
     return {
       activeProjectId: pvm.getActiveProjectId(),
       viewProjectIds: pvm.getAllViews().map((v) => v.projectId),
@@ -84,14 +92,22 @@ test.describe.serial("Core: Worktree Port Rebinding", () => {
     await setPvmCacheLimit(ctx.app, 4);
 
     ctx.window = await openAndOnboardProject(ctx.app, ctx.window, repoA, PROJECT_A);
+    projectIdA = (await readPvmSnapshot(ctx.app)).activeProjectId ?? "";
+    expect(projectIdA).not.toBe("");
+
     ctx.window = await addAndSwitchToProject(ctx.app, ctx.window, repoB, PROJECT_B);
+    projectIdB = (await readPvmSnapshot(ctx.app)).activeProjectId ?? "";
+    expect(projectIdB).not.toBe("");
+
     ctx.window = await addAndSwitchToProject(ctx.app, ctx.window, repoC, PROJECT_C);
+    projectIdC = (await readPvmSnapshot(ctx.app)).activeProjectId ?? "";
+    expect(projectIdC).not.toBe("");
 
     // Wait for all three views to be registered before tests run. Project
     // switching is async — `addAndSwitchToProject` returning doesn't guarantee
     // the previous project's view has been moved to the cache map yet.
     await expect
-      .poll(async () => (await readPvmSnapshot(ctx.app))?.viewProjectIds.length ?? 0, {
+      .poll(async () => (await readPvmSnapshot(ctx.app)).viewProjectIds.length, {
         timeout: 15_000,
         intervals: [200, 400, 800, 1600],
       })
@@ -110,9 +126,13 @@ test.describe.serial("Core: Worktree Port Rebinding", () => {
     // Switch away from C so its view is cached (limit=4 keeps all live).
     ctx.window = await selectExistingProjectAndRefresh(ctx.app, ctx.window, PROJECT_A);
 
-    // Confirm C is still registered (cached, not evicted).
+    // Confirm C is still registered (cached, not evicted) and A is now active.
+    // Pins this test to the cached-reactivation path it claims to cover —
+    // without this, a stray eviction would silently pivot the test to a cold
+    // load.
     const snap = await readPvmSnapshot(app);
-    expect(snap?.viewProjectIds.length ?? 0).toBeGreaterThanOrEqual(2);
+    expect(snap.activeProjectId).toBe(projectIdA);
+    expect(snap.viewProjectIds).toContain(projectIdC);
 
     // Pause so the monitor's self-trigger cooldown (GIT_WATCH_SELF_TRIGGER_COOLDOWN_MS
     // = 1000ms) expires before the external mutation.
@@ -161,7 +181,7 @@ test.describe.serial("Core: Worktree Port Rebinding", () => {
 
     // Poll until only the active view (C) remains.
     await expect
-      .poll(async () => (await readPvmSnapshot(app))?.viewProjectIds.length ?? 0, {
+      .poll(async () => (await readPvmSnapshot(app)).viewProjectIds.length, {
         timeout: 10_000,
         intervals: [200, 400, 800],
       })
@@ -208,9 +228,10 @@ test.describe.serial("Core: Worktree Port Rebinding", () => {
     test.setTimeout(180_000);
     const { app } = ctx;
 
-    // Restore the cache so this test isolates the isolation claim from
-    // eviction mechanics — every view stays live and rebinds via the cached
-    // path.
+    // Restore the cache so this test exercises isolation without further
+    // eviction. Test 2's setCachedViewLimit(1) evicted A; the upcoming switch
+    // to A is therefore a cold load (isNew:true), while the round-trip back
+    // to B hits the cached path. Both port-rebind paths are covered here.
     await setPvmCacheLimit(app, 4);
 
     // Test 2 left B with an uncommitted file (rebind-evicted-b2.txt). Commit
@@ -254,5 +275,19 @@ test.describe.serial("Core: Worktree Port Rebinding", () => {
     await expect(mainCardBAfter).toBeVisible({ timeout: T_LONG });
     await expect(mainCardBAfter).toContainText("external-commit-b2", { timeout: T_LONG });
     await expect(mainCardBAfter).not.toContainText("external-commit-a1");
+
+    // Live-port durability: write an external file to B AFTER returning to it
+    // and assert B's card flips to dirty. This proves B's rebound live port
+    // delivers B-specific events post-round-trip — not just that the static
+    // snapshot is correct.
+    await ctx.window.waitForTimeout(1500);
+    writeFileSync(path.join(repoB, "rebind-isolation-b3.txt"), "b3\n");
+
+    await expect
+      .poll(() => mainCardBAfter.getAttribute("aria-label"), {
+        timeout: T_LONG,
+        message: "Project B's live port must deliver B-specific events after the round-trip",
+      })
+      .toContain("has uncommitted changes");
   });
 });
