@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { logWarn } from "@/utils/logger";
 
 export interface AudioDevice {
@@ -65,8 +66,7 @@ async function refreshDevices(): Promise<void> {
   } catch (err) {
     if (gen !== enumerationGen) return;
     cachedDevices = [{ value: SYSTEM_DEFAULT_VALUE, label: "System default" }];
-    const message = err instanceof Error ? err.message : String(err);
-    cachedError = `Could not enumerate audio devices: ${message}`;
+    cachedError = `Could not enumerate audio devices: ${formatErrorMessage(err, "enumerate audio devices")}`;
     logWarn("useAudioDevices enumerateDevices failed", { err });
   }
 
@@ -108,8 +108,8 @@ function subscribe(callback: () => void): () => void {
 export function useAudioDevices(): Snapshot & { refresh: () => void } {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
-  // eslint-disable-next-line react-compiler/react-compiler -- module-level state writes are the point of this useSyncExternalStore hook
   const refresh = useCallback(() => {
+    // eslint-disable-next-line react-compiler/react-compiler -- module-level state writes are the point of this useSyncExternalStore hook
     cachedLoading = true;
     notifyListeners();
     void refreshDevices();
