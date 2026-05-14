@@ -322,10 +322,10 @@ const TabButtonComponent = forwardRef<HTMLDivElement, TabButtonProps>(function T
               animate={{ opacity: 1 }}
               transition={{ duration: 0.1 }}
               className={cn(
-                "text-xs bg-daintree-bg/80 border px-1 h-4 min-w-[60px] max-w-[100px] text-daintree-text select-text transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-daintree-accent",
+                "text-xs bg-overlay-soft border px-1 h-4 min-w-[60px] max-w-[100px] text-daintree-text select-text transition-colors focus:outline-hidden",
                 showRenameError
                   ? "border-status-error duration-150"
-                  : "border-border-strong duration-250",
+                  : "border-transparent duration-250",
                 showRenameErrorTint && "bg-status-error/5"
               )}
               aria-label={`Rename tab ${title}`}
