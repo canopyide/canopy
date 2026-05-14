@@ -165,6 +165,8 @@ describe("useUpdateListener", () => {
 
   it("does not subscribe to update events on Windows Store builds", () => {
     Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window.electron as any).isWindowsStoreBuild = true;
 
     renderHook(() => useUpdateListener());
 

@@ -289,15 +289,26 @@ describe("createApplicationMenu", () => {
 
 describe("update menu lifecycle", () => {
   const originalPlatform = process.platform;
+  const originalWindowsStore = (
+    process as Partial<NodeJS.Process & { windowsStore?: boolean }> & NodeJS.Process
+  ).windowsStore;
 
   beforeEach(() => {
     vi.clearAllMocks();
     capturedTemplate = [];
     autoUpdaterServiceMock.__setMenuState("idle");
+    Object.defineProperty(process, "windowsStore", {
+      value: originalWindowsStore,
+      configurable: true,
+    });
   });
 
   afterEach(() => {
     Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
+    Object.defineProperty(process, "windowsStore", {
+      value: originalWindowsStore,
+      configurable: true,
+    });
     Object.defineProperty(app, "isPackaged", { value: false, configurable: true });
   });
 
@@ -386,6 +397,7 @@ describe("update menu lifecycle", () => {
   describe("on Windows Store builds (packaged)", () => {
     beforeEach(() => {
       Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+      Object.defineProperty(process, "windowsStore", { value: true, configurable: true });
       Object.defineProperty(app, "isPackaged", { value: true, configurable: true });
       createApplicationMenu(mockBrowserWindow as unknown as Electron.BrowserWindow);
     });

@@ -110,6 +110,8 @@ describe("useMainProcessToastListener", () => {
 
   it("ignores update retry toast actions on Windows Store builds", () => {
     Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window.electron as any).isWindowsStoreBuild = true;
     const checkForUpdatesMock = vi.fn(() => Promise.resolve());
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window.electron as any).update = {
