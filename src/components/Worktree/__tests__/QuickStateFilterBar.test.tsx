@@ -2,10 +2,17 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { QuickStateFilterBar } from "../QuickStateFilterBar";
+import { TooltipProvider } from "@/components/ui/tooltip";
+
+// Each segment is a Radix tooltip trigger, so the bar needs a TooltipProvider
+// ancestor — the real app supplies one at App.tsx.
+function renderBar(ui: Parameters<typeof render>[0]) {
+  return render(ui, { wrapper: TooltipProvider });
+}
 
 describe("QuickStateFilterBar", () => {
   it("renders all four segments addressable by accessible name when counts are omitted", () => {
-    render(<QuickStateFilterBar value="all" onChange={() => {}} />);
+    renderBar(<QuickStateFilterBar value="all" onChange={() => {}} />);
     // "All" keeps its visible text anchor; the status segments go icon-only.
     expect(screen.getByText("All")).toBeTruthy();
     expect(screen.queryByText("Working")).toBeNull();
@@ -17,7 +24,7 @@ describe("QuickStateFilterBar", () => {
   });
 
   it("renders the bare count digit for every segment including All", () => {
-    render(
+    renderBar(
       <QuickStateFilterBar
         value="all"
         onChange={() => {}}
@@ -37,7 +44,7 @@ describe("QuickStateFilterBar", () => {
   });
 
   it("shows the count digit even for empty buckets", () => {
-    render(
+    renderBar(
       <QuickStateFilterBar
         value="all"
         onChange={() => {}}
@@ -57,7 +64,7 @@ describe("QuickStateFilterBar", () => {
   });
 
   it("keeps the visible count out of the accessible name via aria-hidden", () => {
-    render(
+    renderBar(
       <QuickStateFilterBar
         value="all"
         onChange={() => {}}
@@ -72,7 +79,7 @@ describe("QuickStateFilterBar", () => {
   });
 
   it("exposes the count in the button's accessible name with singular/plural nouns", () => {
-    render(
+    renderBar(
       <QuickStateFilterBar
         value="all"
         onChange={() => {}}
@@ -85,27 +92,8 @@ describe("QuickStateFilterBar", () => {
     expect(screen.getByRole("button", { name: "Finished, 2 worktrees" })).toBeTruthy();
   });
 
-  it("names each segment with a hover tooltip", () => {
-    render(
-      <QuickStateFilterBar
-        value="all"
-        onChange={() => {}}
-        counts={{ all: 9, working: 3, waiting: 1, finished: 2 }}
-      />
-    );
-    expect(screen.getByRole("button", { name: /Working/ }).getAttribute("title")).toBe(
-      "Working (3)"
-    );
-    expect(screen.getByRole("button", { name: /^All/ }).getAttribute("title")).toBe("All (9)");
-  });
-
-  it("falls back to the bare status name in the tooltip when counts are omitted", () => {
-    render(<QuickStateFilterBar value="all" onChange={() => {}} />);
-    expect(screen.getByRole("button", { name: "Waiting" }).getAttribute("title")).toBe("Waiting");
-  });
-
   it("marks the active segment with aria-pressed=true", () => {
-    render(
+    renderBar(
       <QuickStateFilterBar
         value="working"
         onChange={() => {}}
@@ -126,7 +114,7 @@ describe("QuickStateFilterBar", () => {
 
   it("clicking an inactive segment calls onChange with that value", () => {
     const onChange = vi.fn();
-    render(
+    renderBar(
       <QuickStateFilterBar
         value="all"
         onChange={onChange}
@@ -139,7 +127,7 @@ describe("QuickStateFilterBar", () => {
 
   it('clicking the active segment toggles back to "all"', () => {
     const onChange = vi.fn();
-    render(
+    renderBar(
       <QuickStateFilterBar
         value="waiting"
         onChange={onChange}
@@ -151,12 +139,12 @@ describe("QuickStateFilterBar", () => {
   });
 
   it('"All" is aria-pressed when value is "all"', () => {
-    render(<QuickStateFilterBar value="all" onChange={() => {}} />);
+    renderBar(<QuickStateFilterBar value="all" onChange={() => {}} />);
     expect(screen.getByRole("button", { name: /^All/ }).getAttribute("aria-pressed")).toBe("true");
   });
 
   it("renders a state icon on each non-All segment and no icon on All", () => {
-    render(
+    renderBar(
       <QuickStateFilterBar
         value="all"
         onChange={() => {}}
@@ -174,7 +162,7 @@ describe("QuickStateFilterBar", () => {
   });
 
   it("spins the working icon when counts.working > 0 even if Working is not the active filter", () => {
-    render(
+    renderBar(
       <QuickStateFilterBar
         value="all"
         onChange={() => {}}
@@ -190,7 +178,7 @@ describe("QuickStateFilterBar", () => {
   });
 
   it("keeps the working icon spinning while Working is the active filter", () => {
-    render(
+    renderBar(
       <QuickStateFilterBar
         value="working"
         onChange={() => {}}
@@ -205,7 +193,7 @@ describe("QuickStateFilterBar", () => {
   });
 
   it("does not spin the working icon when counts.working is zero", () => {
-    render(
+    renderBar(
       <QuickStateFilterBar
         value="all"
         onChange={() => {}}
@@ -219,7 +207,7 @@ describe("QuickStateFilterBar", () => {
   });
 
   it("does not spin the working icon when counts prop is omitted", () => {
-    render(<QuickStateFilterBar value="all" onChange={() => {}} />);
+    renderBar(<QuickStateFilterBar value="all" onChange={() => {}} />);
     const working = screen.getByRole("button", { name: "Working" });
     const svg = working.querySelector("svg");
     expect(svg).not.toBeNull();
@@ -227,7 +215,7 @@ describe("QuickStateFilterBar", () => {
   });
 
   it("marks each segment icon as aria-hidden so the accessible name stays clean", () => {
-    render(
+    renderBar(
       <QuickStateFilterBar
         value="all"
         onChange={() => {}}
@@ -243,7 +231,7 @@ describe("QuickStateFilterBar", () => {
   });
 
   it("renders the optional trailing slot past a divider", () => {
-    render(
+    renderBar(
       <QuickStateFilterBar
         value="all"
         onChange={() => {}}

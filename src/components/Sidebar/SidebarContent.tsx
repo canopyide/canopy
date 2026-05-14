@@ -26,6 +26,7 @@ import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
 import { WorktreeSidebarSearchBar, QuickStateFilterBar } from "@/components/Worktree";
 import { BulkCreateWorktreeDialog } from "@/components/GitHub/BulkCreateWorktreeDialog";
 import { FleetPickerPalette } from "@/components/Fleet/FleetPickerPalette";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { getWorktreeSortDragId } from "@/components/DragDrop/SortableWorktreeCard";
@@ -686,26 +687,30 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         ? "All matching terminals are armed"
         : "All terminals are armed";
   const armMatchingButton = (
-    <button
-      type="button"
-      disabled={!canArmMatching}
-      onClick={() =>
-        actionService.dispatch(
-          "fleet.armMatchingFilter",
-          { worktreeIds: filteredWorktrees.map((w) => w.id) },
-          { source: "user" }
-        )
-      }
-      className={`inline-flex items-center justify-center self-stretch px-1.5 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-daintree-accent ${
-        canArmMatching
-          ? "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.06]"
-          : "text-daintree-text/25 cursor-not-allowed"
-      }`}
-      aria-label={armMatchingLabel}
-      title={armMatchingLabel}
-    >
-      <Zap className="w-3.5 h-3.5" aria-hidden="true" />
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          disabled={!canArmMatching}
+          onClick={() =>
+            actionService.dispatch(
+              "fleet.armMatchingFilter",
+              { worktreeIds: filteredWorktrees.map((w) => w.id) },
+              { source: "user" }
+            )
+          }
+          className={`inline-flex items-center justify-center self-stretch px-1.5 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-daintree-accent ${
+            canArmMatching
+              ? "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.06]"
+              : "text-daintree-text/25 cursor-not-allowed"
+          }`}
+          aria-label={armMatchingLabel}
+        >
+          <Zap className="w-3.5 h-3.5" aria-hidden="true" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{armMatchingLabel}</TooltipContent>
+    </Tooltip>
   );
   const worktreeMatchesQuery = (w: WorktreeState) => {
     if (!query) return true;

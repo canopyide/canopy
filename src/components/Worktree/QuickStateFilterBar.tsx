@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { QuickStateFilter } from "@/lib/worktreeFilters";
 import { HollowCircle, SpinnerCircle } from "@/components/icons";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { STATE_COLORS } from "./terminalStateConfig";
 
 const FILTER_OPTIONS: { value: QuickStateFilter; label: string }[] = [
@@ -55,59 +56,61 @@ export function QuickStateFilterBar({
         // gone; the name lives in the accessible name and the hover tooltip.
         const noun = rawCount === 1 ? "worktree" : "worktrees";
         const accessibleName = hasCount ? `${option.label}, ${rawCount} ${noun}` : option.label;
-        const tooltip = hasCount ? `${option.label} (${rawCount})` : option.label;
         return (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={isActive}
-            aria-label={accessibleName}
-            title={tooltip}
-            onClick={() => onChange(isActive ? "all" : option.value)}
-            className={cn(
-              "inline-flex items-center justify-center gap-1.5 min-w-0 px-2 py-1.5 transition-colors",
-              "focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-daintree-accent",
-              // "All" is the only labelled segment and always carries the
-              // total — give it the lion's share; the icon-only status
-              // segments split the rest equally.
-              option.value === "all" ? "flex-[2]" : "flex-1",
-              idx > 0 && "border-l border-border-default",
-              isActive
-                ? "bg-overlay-subtle shadow-[inset_0_-2px_0_0_var(--color-text-secondary)]"
-                : "hover:bg-tint/[0.04]"
-            )}
-          >
-            {Icon && visual ? (
-              <Icon
+          <Tooltip key={option.value}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-pressed={isActive}
+                aria-label={accessibleName}
+                onClick={() => onChange(isActive ? "all" : option.value)}
                 className={cn(
-                  "w-3.5 h-3.5 shrink-0",
-                  visual.color,
-                  isSpinningWorking && "animate-spin-slow motion-reduce:animate-none"
-                )}
-              />
-            ) : (
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "text-[11px]",
-                  isActive ? "font-medium text-daintree-text" : "text-daintree-text/60"
+                  "inline-flex items-center justify-center gap-1.5 min-w-0 px-2 py-1.5 transition-colors",
+                  "focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-daintree-accent",
+                  // "All" is the only labelled segment and always carries the
+                  // total — give it the lion's share; the icon-only status
+                  // segments split the rest equally.
+                  option.value === "all" ? "flex-[2]" : "flex-1",
+                  idx > 0 && "border-l border-border-default",
+                  isActive
+                    ? "bg-overlay-subtle shadow-[inset_0_-2px_0_0_var(--color-text-secondary)]"
+                    : "hover:bg-tint/[0.04]"
                 )}
               >
-                All
-              </span>
-            )}
-            {hasCount && (
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "text-[11px] tabular-nums",
-                  isActive ? "font-medium text-daintree-text" : "text-daintree-text/50"
+                {Icon && visual ? (
+                  <Icon
+                    className={cn(
+                      "w-3.5 h-3.5 shrink-0",
+                      visual.color,
+                      isSpinningWorking && "animate-spin-slow motion-reduce:animate-none"
+                    )}
+                  />
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "text-[11px]",
+                      isActive ? "font-medium text-daintree-text" : "text-daintree-text/60"
+                    )}
+                  >
+                    All
+                  </span>
                 )}
-              >
-                {rawCount}
-              </span>
-            )}
-          </button>
+                {hasCount && (
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "text-[11px] tabular-nums",
+                      isActive ? "font-medium text-daintree-text" : "text-daintree-text/50"
+                    )}
+                  >
+                    {rawCount}
+                  </span>
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{option.label}</TooltipContent>
+          </Tooltip>
         );
       })}
       {trailing && <div className="flex shrink-0 border-l border-border-default">{trailing}</div>}
