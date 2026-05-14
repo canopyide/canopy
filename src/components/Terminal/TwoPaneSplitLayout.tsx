@@ -269,10 +269,19 @@ export function TwoPaneSplitLayout({
   }, [containerWidth]);
 
   const clampedRatio = Math.max(minRatio, Math.min(maxRatio, ratio));
-  const leftWidth =
-    containerWidth > 0 ? containerWidth * clampedRatio - DIVIDER_WIDTH_PX / 2 : "50%";
-  const rightWidth =
-    containerWidth > 0 ? containerWidth * (1 - clampedRatio) - DIVIDER_WIDTH_PX / 2 : "50%";
+  // Size the panes with a CSS grid template rather than JS-measured pixel
+  // widths. The fractional (`fr`) tracks distribute the space around the fixed
+  // divider track natively — the same self-correcting sizing the multi-panel
+  // grid gets — so layout no longer depends on a measured `containerWidth`.
+  // That measurement broke the two-pane layout whenever it was zero (first
+  // paint) or stale (gated behind the sidebar transition lock): the old inline
+  // pixel widths stopped matching the real container and, with `flexShrink: 0`,
+  // overflowed instead of correcting. `minmax(0, …)` lets the tracks shrink
+  // instead of overflowing on sub-pixel rounding; the MIN_TERMINAL_WIDTH_PX
+  // floor is still enforced by the min/max-ratio clamp during drags.
+  // `containerWidth` is still measured below, but only feeds that clamp now —
+  // it is no longer load-bearing for layout.
+  const gridTemplateColumns = `minmax(0, ${clampedRatio}fr) ${DIVIDER_WIDTH_PX}px minmax(0, ${1 - clampedRatio}fr)`;
 
   const panelIds = useMemo(() => terminals.map((t) => t.id), [terminals]);
 
@@ -300,7 +309,11 @@ export function TwoPaneSplitLayout({
     }, delay);
 
     return () => clearTimeout(timeoutId);
-  }, [leftWidth, rightWidth, terminals, isDraggingDivider]);
+    // `leftWidth`/`rightWidth` are now ratio-derived calc() strings, so they no
+    // longer change on container resize — depend on `clampedRatio` (ratio drags,
+    // double-click reset) and `containerWidth` (container/sidebar reflow) so
+    // terminals still re-fit on both.
+  }, [clampedRatio, containerWidth, terminals, isDraggingDivider]);
 
   return (
     <>
@@ -311,19 +324,17 @@ export function TwoPaneSplitLayout({
       >
         <div
           ref={containerRef}
-          className={cn("h-full flex bg-noise p-1")}
+          className={cn("h-full grid bg-noise p-1")}
           style={{
             gap: 0,
+            gridTemplateColumns,
             backgroundColor: "var(--color-grid-bg)",
           }}
           id="panel-grid"
           data-grid-container="true"
           data-split-mode="true"
         >
-          <div
-            style={{ width: leftWidth, minWidth: MIN_TERMINAL_WIDTH_PX, flexShrink: 0 }}
-            className="relative"
-          >
+          <div className="relative min-w-0">
             <SortableTerminal
               terminal={terminals[0]}
               sourceLocation="grid"
@@ -351,10 +362,7 @@ export function TwoPaneSplitLayout({
             maxRatio={maxRatio}
           />
 
-          <div
-            style={{ width: rightWidth, minWidth: MIN_TERMINAL_WIDTH_PX, flexShrink: 0 }}
-            className="relative"
-          >
+          <div className="relative min-w-0">
             <SortableTerminal
               terminal={terminals[1]}
               sourceLocation="grid"
