@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // Verifies that every binary referenced in the generated update metadata
-// (release/<prefix>-mac.yml, release/<prefix>-linux.yml) is reachable at the
-// public CDN URL with a matching Content-Length before the metadata files
-// are uploaded.
+// (release/<prefix>-{mac,linux,win}.yml) is reachable at the public CDN URL
+// with a matching Content-Length before the metadata files are uploaded.
 //
 // Without this gap check, a CDN propagation race or a partial binary upload
 // would publish update metadata pointing at a 404 or a truncated artifact.
@@ -74,7 +73,7 @@ export async function verifyWithRetries(
 
 export async function findMetadataFiles(releaseDir, prefix) {
   const entries = await readdir(releaseDir);
-  const platforms = ["mac", "linux"];
+  const platforms = ["mac", "linux", "win"];
   const found = [];
   for (const platform of platforms) {
     const target = `${prefix}-${platform}.yml`;
@@ -152,7 +151,7 @@ async function main() {
   const metadataFiles = await findMetadataFiles(releaseDir, prefix);
   if (metadataFiles.length === 0) {
     console.error(
-      `::error::No update metadata files found in ${releaseDir} matching ${prefix}-{mac,linux}.yml`
+      `::error::No update metadata files found in ${releaseDir} matching ${prefix}-{mac,linux,win}.yml`
     );
     process.exit(1);
   }

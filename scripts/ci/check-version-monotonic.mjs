@@ -25,7 +25,7 @@ import semver from "semver";
 
 const FEED_BASE_URL = "https://updates.daintree.org/releases";
 const FETCH_TIMEOUT_MS = 15_000;
-const PLATFORMS = ["mac", "linux"];
+const PLATFORMS = ["mac", "linux", "win"];
 const ALLOWED_PREFIXES = ["latest", "rc", "beta"];
 
 function fail(message) {
@@ -176,16 +176,17 @@ async function main() {
     fail(error instanceof Error ? error.message : String(error));
   }
 
-  const [macLocal, linuxLocal] = locals;
-  if (macLocal.version !== linuxLocal.version) {
+  const newVersion = locals[0].version;
+  const mismatches = locals.filter((entry) => entry.version !== newVersion);
+  if (mismatches.length > 0) {
+    const summary = locals
+      .map((entry, idx) => `${PLATFORMS[idx]}=${entry.version} (${entry.filePath})`)
+      .join(" ");
     fail(
-      `mac and linux artifacts disagree on the new version: ` +
-        `mac=${macLocal.version} (${macLocal.filePath}) ` +
-        `linux=${linuxLocal.version} (${linuxLocal.filePath}) — ` +
+      `platform artifacts disagree on the new version: ${summary} — ` +
         `something went wrong in the matrix build.`
     );
   }
-  const newVersion = macLocal.version;
 
   // Fetch every channel feed in parallel so a transient mac error and a real
   // linux regression both surface in the same `::error::` annotation block,

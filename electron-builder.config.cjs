@@ -109,7 +109,10 @@ module.exports = async function () {
     },
     win: {
       icon: "build/icon.ico",
-      target: [{ target: "appx", arch: ["x64"] }],
+      target: [
+        { target: "appx", arch: ["x64"] },
+        { target: "nsis", arch: ["x64", "arm64"] },
+      ],
     },
     // Identity values must match Partner Center → Daintree → Product Identity
     // verbatim or `msstore submission update` fails with `Invalid Identity`.
@@ -121,6 +124,21 @@ module.exports = async function () {
       applicationId: "Daintree",
       displayName: "Daintree",
       languages: ["en-US"],
+    },
+    // NSIS (non-Store) Windows installer. Produces a single combined x64+arm64
+    // `.exe`; the installer selects the right payload at runtime. Auto-update
+    // is delivered via the generic provider URL above — gated in the renderer
+    // by `process.windowsStore` so MSIX/AppX builds keep using the Store path.
+    nsis: {
+      oneClick: false,
+      perMachine: false,
+      allowToChangeInstallationDirectory: true,
+      allowElevation: true,
+      createDesktopShortcut: true,
+      createStartMenuShortcut: true,
+      shortcutName: "Daintree",
+      uninstallDisplayName: "Daintree",
+      differentialPackage: true,
     },
     linux: {
       icon: "build/icon.png",

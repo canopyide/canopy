@@ -74,6 +74,12 @@ exports.default = async function afterPack(context) {
   console.log(`[afterPack] node-pty found at: ${nodePtyPath}`);
 
   if (electronPlatformName === "win32") {
+    // electron-builder passes `context.arch` as an integer from the `Arch` enum
+    // (ia32=0, x64=1, armv7l=2, arm64=3, universal=5). Map to the conpty
+    // distribution folder name used by node-pty's third_party layout.
+    const conptyArchFolder = context.arch === 3 ? "win10-arm64" : "win10-x64";
+    console.log(`[afterPack] Windows arch: ${context.arch} (conpty folder: ${conptyArchFolder})`);
+
     // Windows uses ConPTY exclusively (winpty removed in node-pty 1.2.0-beta)
     const compiledBinaries = ["conpty.node", "conpty_console_list.node"];
     const postInstallBinaries = ["conpty/conpty.dll", "conpty/OpenConsole.exe"];
@@ -106,9 +112,12 @@ exports.default = async function afterPack(context) {
         );
       }
       const versionFolder = fs.readdirSync(thirdPartyDir)[0];
-      const sourceDir = path.join(thirdPartyDir, versionFolder, "win10-x64");
+      const sourceDir = path.join(thirdPartyDir, versionFolder, conptyArchFolder);
       if (!fs.existsSync(sourceDir)) {
-        throw new Error(`[afterPack] CRITICAL: conpty source directory not found: ${sourceDir}`);
+        throw new Error(
+          `[afterPack] CRITICAL: conpty source directory not found for arch ${context.arch}: ${sourceDir}. ` +
+            "Ensure node-pty's post-install ran with the correct npm_config_arch."
+        );
       }
       fs.mkdirSync(conptyDestDir, { recursive: true });
       for (const file of ["conpty.dll", "OpenConsole.exe"]) {
