@@ -437,6 +437,20 @@ export const terminalClient = {
   },
 
   /**
+   * Listen for backend recovering events (during auto-restart backoff).
+   */
+  onBackendRecovering: (
+    callback: (data: {
+      crashType: string;
+      code: number | null;
+      signal: string | null;
+      timestamp: number;
+    }) => void
+  ): (() => void) => {
+    return window.electron.terminal.onBackendRecovering(callback);
+  },
+
+  /**
    * Listen for backend ready events (after crash recovery).
    */
   onBackendReady: (callback: () => void): (() => void) => {

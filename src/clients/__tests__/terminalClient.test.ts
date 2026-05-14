@@ -42,6 +42,7 @@ const mockElectronTerminal = {
   forceResume: vi.fn(),
   onStatus: vi.fn(() => () => {}),
   onBackendCrashed: vi.fn(() => () => {}),
+  onBackendRecovering: vi.fn(() => () => {}),
   onBackendReady: vi.fn(() => () => {}),
   onSpawnResult: vi.fn(() => () => {}),
   onReduceScrollback: vi.fn(() => () => {}),

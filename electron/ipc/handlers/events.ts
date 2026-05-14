@@ -42,6 +42,7 @@ const EVENT_BUS_BRIDGED_MANIFEST = {
   "app-agent:dispatch-action-request": "external",
   "app-agent:confirmation-request": "external",
   "terminal:backend-crashed": "external",
+  "terminal:backend-recovering": "external",
   "terminal:backend-ready": "external",
 
   // Terminal observability (relayed from TypedEventBus via PtyEventsBridge)

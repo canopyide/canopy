@@ -316,6 +316,17 @@ class TerminalRegistryController {
     return terminalClient.onBackendCrashed(handler);
   }
 
+  onBackendRecovering(
+    handler: (data: {
+      crashType: string;
+      code: number | null;
+      signal: string | null;
+      timestamp: number;
+    }) => void
+  ) {
+    return terminalClient.onBackendRecovering(handler);
+  }
+
   onBackendReady(handler: () => void) {
     return terminalClient.onBackendReady(handler);
   }

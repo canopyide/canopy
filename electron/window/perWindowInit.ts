@@ -122,9 +122,21 @@ export function initPerWindowServices(
     setAgentVersionService(versionSvc);
     setAgentUpdateHandler(new AgentUpdateHandler(ptyClient, versionSvc, cliAvailabilityService));
 
+    let lastCrashDetails: {
+      crashType: string;
+      code: number | null;
+      signal: string | null;
+      timestamp: number;
+    } | null = null;
+
     ptyClient.on("host-crash-details", (details) => {
       console.error(`[MAIN] Pty Host crashed:`, details);
-      // Broadcast to all windows
+      lastCrashDetails = {
+        crashType: details.crashType,
+        code: details.code,
+        signal: details.signal,
+        timestamp: details.timestamp,
+      };
       if (windowRegistry) {
         for (const wCtx of windowRegistry.all()) {
           const w = wCtx.browserWindow;
@@ -133,7 +145,7 @@ export function initPerWindowServices(
             if (!wc.isDestroyed()) {
               try {
                 wc.send(CHANNELS.EVENTS_PUSH, {
-                  name: "terminal:backend-crashed",
+                  name: "terminal:backend-recovering",
                   payload: {
                     crashType: details.crashType,
                     code: details.code,
@@ -151,6 +163,31 @@ export function initPerWindowServices(
     });
     ptyClient.on("host-crash", (code) => {
       console.error(`[MAIN] Pty Host crashed with code ${code} (max restarts exceeded)`);
+      const payload = lastCrashDetails ?? {
+        crashType: "UNKNOWN_CRASH",
+        code,
+        signal: null,
+        timestamp: Date.now(),
+      };
+      lastCrashDetails = null;
+      if (windowRegistry) {
+        for (const wCtx of windowRegistry.all()) {
+          const w = wCtx.browserWindow;
+          if (!w.isDestroyed()) {
+            const wc = getAppWebContents(w);
+            if (!wc.isDestroyed()) {
+              try {
+                wc.send(CHANNELS.EVENTS_PUSH, {
+                  name: "terminal:backend-crashed",
+                  payload,
+                });
+              } catch {
+                // Silently ignore send failures during window disposal.
+              }
+            }
+          }
+        }
+      }
     });
     ptyClient.on("host-throttled", (payload) => {
       if (!payload.isThrottled) {

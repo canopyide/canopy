@@ -2042,6 +2042,12 @@ export interface IpcEventMap {
     signal: string | null;
     timestamp: number;
   };
+  "terminal:backend-recovering": {
+    crashType: string;
+    code: number | null;
+    signal: string | null;
+    timestamp: number;
+  };
   "terminal:backend-ready": void;
   "terminal:reduce-scrollback": { terminalIds: string[]; targetLines: number };
   "terminal:restore-scrollback": { terminalIds: string[] };
@@ -2355,6 +2361,7 @@ export type IpcEventBusMap = Pick<
   // Terminal lifecycle (non-data) — exit, spawn-result, backend crash/ready
   | "terminal:exit"
   | "terminal:backend-crashed"
+  | "terminal:backend-recovering"
   | "terminal:backend-ready"
   | "terminal:spawn-result"
   // Terminal observability

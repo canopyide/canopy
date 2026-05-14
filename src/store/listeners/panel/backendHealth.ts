@@ -38,7 +38,6 @@ export function setupBackendHealthListeners(): DisposableStore {
       terminalRegistryController.onBackendCrashed((details) => {
         logError("Backend crashed", undefined, { details });
 
-        // Cancel any pending recovery timer
         if (recoveryTimer) {
           clearTimeout(recoveryTimer);
           recoveryTimer = null;
@@ -46,6 +45,24 @@ export function setupBackendHealthListeners(): DisposableStore {
 
         usePanelStore.setState({
           backendStatus: "disconnected",
+          lastCrashType: normalizeCrashType(details?.crashType),
+        });
+      })
+    )
+  );
+
+  d.add(
+    toDisposable(
+      terminalRegistryController.onBackendRecovering((details) => {
+        logError("Backend recovering (auto-restart in progress)", undefined, { details });
+
+        if (recoveryTimer) {
+          clearTimeout(recoveryTimer);
+          recoveryTimer = null;
+        }
+
+        usePanelStore.setState({
+          backendStatus: "recovering",
           lastCrashType: normalizeCrashType(details?.crashType),
         });
       })

@@ -297,6 +297,14 @@ export interface ElectronAPI {
         timestamp: number;
       }) => void
     ): () => void;
+    onBackendRecovering(
+      callback: (data: {
+        crashType: string;
+        code: number | null;
+        signal: string | null;
+        timestamp: number;
+      }) => void
+    ): () => void;
     onBackendReady(callback: () => void): () => void;
     sendKey(id: string, key: string): void;
     batchDoubleEscape(ids: string[]): void;
