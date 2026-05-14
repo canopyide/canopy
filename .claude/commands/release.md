@@ -9,6 +9,8 @@ You are the **Daintree Release Manager**. You execute a complete gitflow release
 
 **This is an interactive process.** You MUST use `AskUserQuestion` at every decision point listed below. Never proceed past a checkpoint without explicit user approval. The user drives this release — you facilitate it.
 
+**Before you start**, read `docs/release.md`. The "Release Notes Format" section there is the source of truth for `CHANGELOG.md` and GitHub release notes formatting. Don't restate or paraphrase those rules — load and apply them.
+
 ### Interactive Checkpoints (8 total)
 
 1. **Version selection** (Phase 0) — Confirm target version
@@ -221,43 +223,14 @@ Wait for explicit confirmation before proceeding.
 
 If the file doesn't exist, create it. If it exists, prepend the new release section.
 
-**Format:**
+**Format:** follow the `CHANGELOG.md` rules in `docs/release.md` → "Release Notes Format". Key points to enforce here:
 
-```markdown
-# Changelog
-
-## [0.X.0] - YYYY-MM-DD
-
-### Features
-
-- Description of feature (#issue)
-
-### Bug Fixes
-
-- Description of fix (#issue)
-
-### Performance
-
-- Description of improvement (#issue)
-
-### Other Changes
-
-- Description (#issue)
-
----
-
-## [previous version] - date
-
-...
-```
-
-**Rules:**
-
-- Each entry should be a concise, user-facing description — not a raw commit message.
-- Reference issue numbers as `#NNN` — they auto-link on GitHub.
-- Omit the "Other Changes" section if there's nothing meaningful (don't list chore commits that users don't care about).
-- For the **initial release**, write a "Highlights" section instead of granular entries. Summarize the major capabilities of the app as shipped.
-- Keep entries concise. One line per item. No paragraphs.
+- The new section is anchored by `## [X.Y.Z] - YYYY-MM-DD`.
+- A 1-2 sentence intro paragraph follows the heading, summarising the release theme. Draft this — don't leave a placeholder.
+- Section headings (`### Features`, `### Bug Fixes`, `### Performance`, `### Breaking Changes`, `### Other Changes`) are all `###`.
+- Group long sections by `**Subcategory**` bold paragraphs where it aids skimming.
+- Entries are concise, user-facing, one line each. Reference issues as `#NNN`.
+- For the **initial release**, replace granular sections with a single `### Highlights` summarising the major capabilities of the app as shipped.
 
 Show the user the full generated changelog section using `AskUserQuestion`. Ask:
 
@@ -397,10 +370,16 @@ Tell the user they should set `develop` as the default branch in GitHub repo set
    gh run watch
    ```
 
-2. **GitHub Release:** Use `AskUserQuestion` to ask if they want to create a GitHub Release. Show a preview of the release notes (extracted from the current version's CHANGELOG.md section). If yes:
+2. **GitHub Release:** Derive the release body from the new `CHANGELOG.md` section, transformed per `docs/release.md` → "Release Notes Format" → "GitHub Release notes":
+   - Take the new `## [X.Y.Z] - YYYY-MM-DD` section from `CHANGELOG.md`.
+   - **Strip the `## [X.Y.Z] - YYYY-MM-DD` heading line.** GitHub renders the version and date in the page header already.
+   - Keep the intro summary paragraph and every `###` section verbatim.
+   - Do not append a manual "Full Changelog" link or trailing `---` — GitHub shows the compare link in the release header automatically.
+
+   Write the transformed body to a temp file (e.g. `/tmp/release-notes-vX.Y.Z.md`). Use `AskUserQuestion` to preview it and confirm. On approval:
 
    ```bash
-   gh release create vX.Y.Z --title "vX.Y.Z" --notes-file CHANGELOG_SECTION.md
+   gh release create vX.Y.Z --title "vX.Y.Z" --notes-file /tmp/release-notes-vX.Y.Z.md
    ```
 
 3. **Clean up stale branches:** First prune stale remote-tracking refs, then check for merged remote branches. If any exist, use `AskUserQuestion` to list them and ask which (if any) to delete:

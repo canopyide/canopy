@@ -30,11 +30,9 @@ These cover ~90% of what the assistant is asked to do. They all live in the defa
 
 ### Spawn an agent on a task
 
-1. `agent.launch({ agentId: "claude" | "codex" | "gemini" | …, prompt: <task>, worktreeId: <id> })` — single round-trip. The `prompt` field becomes the agent's first message; you don't need to send it separately.
-2. Poll `terminal.getStatus` (using the returned `terminalId`) until `agentState` settles to `working` or `waiting`.
-3. **Pace sequentially.** Spawn one agent per turn. Don't fan out parallel `agent.launch` calls — that's how runs get tangled and the user loses visibility of which agent is which. If the user asks for N agents, launch one, confirm it's running, then launch the next on the following turn (use `ScheduleWakeup` to come back).
-
-(Broadcasting is parallel; spawning is sequential. The difference: broadcast targets terminals that already exist; spawn creates new ones, and the user wants to see them come up one at a time.)
+1. `agent.launch({ agentId: "claude" | "codex" | "gemini" | …, prompt: <task>, worktreeId: <id> })` — single round-trip per agent. The `prompt` field becomes the agent's first message; you don't need to send it separately. Each call returns a `terminalId` you can map back to the prompt you sent.
+2. **Fan out in parallel batches of up to 4.** For N agents, fire up to 4 `agent.launch` calls in parallel within a single message. The Claude Code harness executes multi-tool turns concurrently, so the calls land at the backend together. For N > 4, chunk into multiple messages of ≤ 4 so the user sees natural progress between batches. Do **not** insert `terminal.getStatus` round-trips between launches — that's the slow loop we're avoiding.
+3. Once every batch is dispatched, do **one** `terminal.getStatus({ terminalIds: [<all ids>], includeOutput: { lines: 20 } })` to confirm each terminal picked up its prompt, then report a state summary grouped by `working` / `waiting` / `completed` / `exited`. Sequential one-at-a-time pacing is only appropriate when the user explicitly asks for it.
 
 ### Close terminals
 

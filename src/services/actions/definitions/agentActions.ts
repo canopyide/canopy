@@ -12,7 +12,7 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
     id: "agent.launch",
     title: "Launch Agent",
     description:
-      "Launch an AI agent in a new terminal. Returns terminalId and location. Call sequentially — never in parallel.",
+      "Launch an AI agent in a new terminal. Returns terminalId. For multiple agents, fire up to 4 calls in parallel per message and chunk larger sets across messages; verify with one batch terminal.getStatus afterward.",
     category: "agent",
     kind: "command",
     danger: "safe",
