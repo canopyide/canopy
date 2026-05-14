@@ -710,3 +710,230 @@ export async function mockOpenDialog(
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [dirPath] });
   }, directoryPath);
 }
+
+export interface WindowHandle {
+  page: Page;
+  windowId: number;
+}
+
+async function listKnownWindowIds(app: ElectronApplication): Promise<number[]> {
+  return app.evaluate(({ BrowserWindow }) => {
+    return BrowserWindow.getAllWindows()
+      .filter((w) => !w.isDestroyed())
+      .map((w) => w.id);
+  });
+}
+
+async function getAttachedProjectUrlForWindow(
+  app: ElectronApplication,
+  windowId: number
+): Promise<string | null> {
+  try {
+    return await app.evaluate(({ BrowserWindow }, id) => {
+      const win = BrowserWindow.fromId(id);
+      if (!win || win.isDestroyed()) return null;
+      const views = win.contentView?.children ?? [];
+      let fallback: string | null = null;
+      for (let i = views.length - 1; i >= 0; i--) {
+        const wc = (views[i] as Electron.WebContentsView).webContents;
+        if (!wc || wc.isDestroyed()) continue;
+        const url = wc.getURL();
+        if (url.includes("projectId=")) return url;
+        if (fallback === null) fallback = url;
+      }
+      return fallback;
+    }, windowId);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve the active appView Page for a specific BrowserWindow id.
+ * Use after opening a second window — the global `getActiveAppWindow`
+ * targets `BrowserWindow.getAllWindows()[0]`, which is Z-ordered and may
+ * return the wrong window once more than one exists.
+ */
+export async function getWindowPage(
+  app: ElectronApplication,
+  windowId: number,
+  timeoutMs = getRefreshTimeout()
+): Promise<Page> {
+  const deadline = Date.now() + timeoutMs;
+  let lastUrl: string | null = null;
+  while (Date.now() < deadline) {
+    const attachedUrl = await getAttachedProjectUrlForWindow(app, windowId);
+    if (attachedUrl && attachedUrl.includes("projectId=")) {
+      for (const w of app.windows()) {
+        if (w.url() === attachedUrl) return w;
+      }
+      lastUrl = attachedUrl;
+    } else if (attachedUrl) {
+      lastUrl = attachedUrl;
+    }
+    await wait(150);
+  }
+  const urls = app.windows().map((w) => w.url());
+  throw new Error(
+    `No project view found for windowId=${windowId}. Last attached URL: ${lastUrl ?? "none"}. Available pages: ${urls.join(", ")}`
+  );
+}
+
+/**
+ * Open a second BrowserWindow via `window.electron.window.openNew(projectPath?)`
+ * and return its handle (page + windowId). When `projectPath` is provided,
+ * the new window auto-opens that project via `handleDirectoryOpen` — the
+ * same path the `app.newWindow` action takes when invoked with args.
+ *
+ * Captures the BrowserWindow id-snapshot before the call so the newly-created
+ * window can be identified without relying on the Z-ordered `getAllWindows()`
+ * array order (which is unstable in Electron 41).
+ *
+ * The returned `page` is the BW sentinel page (`data:` URL). For the active
+ * project view, call `getWindowPage(app, handle.windowId)` after the
+ * project finishes loading.
+ */
+export async function openSecondWindow(
+  app: ElectronApplication,
+  driverPage: Page,
+  options: { projectPath?: string; timeoutMs?: number } = {}
+): Promise<WindowHandle> {
+  const timeoutMs = options.timeoutMs ?? getRefreshTimeout();
+  const knownIds = new Set(await listKnownWindowIds(app));
+
+  await driverPage.evaluate(async (projectPath?: string) => {
+    const api = (
+      window as unknown as {
+        electron?: { window?: { openNew?: (p?: string) => Promise<void> } };
+      }
+    ).electron?.window;
+    if (!api?.openNew) {
+      throw new Error("window.electron.window.openNew is not available");
+    }
+    await api.openNew(projectPath);
+  }, options.projectPath);
+
+  const idDeadline = Date.now() + timeoutMs;
+  let newWindowId: number | null = null;
+  while (Date.now() < idDeadline) {
+    const ids = await listKnownWindowIds(app);
+    const fresh = ids.filter((id) => !knownIds.has(id));
+    if (fresh.length > 0) {
+      newWindowId = fresh[fresh.length - 1];
+      break;
+    }
+    await wait(150);
+  }
+  if (newWindowId === null) {
+    throw new Error(`Second BrowserWindow did not appear within ${timeoutMs}ms after openNew`);
+  }
+
+  const pageDeadline = Date.now() + timeoutMs;
+  let sentinelPage: Page | null = null;
+  while (Date.now() < pageDeadline) {
+    const sentinelUrl = await app
+      .evaluate(({ BrowserWindow }, id) => {
+        const win = BrowserWindow.fromId(id);
+        if (!win || win.isDestroyed()) return null;
+        return win.webContents.getURL();
+      }, newWindowId)
+      .catch(() => null);
+
+    if (sentinelUrl) {
+      for (const w of app.windows()) {
+        if (w.url() === sentinelUrl) {
+          sentinelPage = w;
+          break;
+        }
+      }
+      if (sentinelPage) break;
+    }
+    await wait(150);
+  }
+
+  if (!sentinelPage) {
+    throw new Error(`Second window sentinel page did not appear within ${timeoutMs}ms`);
+  }
+
+  return { page: sentinelPage, windowId: newWindowId };
+}
+
+/**
+ * Focus a specific BrowserWindow + its project view so CDP keyboard input
+ * routes to that page. Mirrors the warm-up sequence in `refreshActiveWindow`
+ * but scoped to a windowId rather than the Z-ordered `getAllWindows()[0]`.
+ */
+export async function focusWindow(
+  app: ElectronApplication,
+  windowId: number,
+  page: Page
+): Promise<void> {
+  try {
+    const url = page.url();
+    const match = url.match(/[?&]projectId=([^&]+)/);
+    const projectId = match ? decodeURIComponent(match[1]) : null;
+
+    await app.evaluate(
+      ({ BrowserWindow }, { id, pid }) => {
+        const win = BrowserWindow.fromId(id);
+        if (!win || win.isDestroyed()) return;
+        win.focus();
+        if (!pid) return;
+        const views = win.contentView?.children ?? [];
+        for (const child of views) {
+          const wc = (child as Electron.WebContentsView).webContents;
+          if (!wc || wc.isDestroyed()) continue;
+          if (wc.getURL().includes(`projectId=${encodeURIComponent(pid)}`)) {
+            wc.focus();
+            break;
+          }
+        }
+      },
+      { id: windowId, pid: projectId }
+    );
+
+    await page.bringToFront().catch(() => {});
+
+    const grid = page.locator('[data-grid-container="true"]').first();
+    const clickTarget = (await grid.isVisible({ timeout: 2_000 }).catch(() => false))
+      ? grid
+      : page.locator("body");
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await clickTarget.click({ position: { x: 5, y: 5 }, force: true });
+      const hasFocus = await page.evaluate(() => document.hasFocus()).catch(() => false);
+      if (hasFocus) break;
+      await wait(200);
+    }
+
+    await page.keyboard.press("Control").catch(() => {});
+  } catch {
+    // Best-effort focus; tests can still proceed.
+  }
+}
+
+/**
+ * Close a specific BrowserWindow by id and wait until it's destroyed.
+ * Used by multi-window specs that need to verify per-window cleanup
+ * without tearing down the entire ElectronApplication.
+ */
+export async function closeWindow(
+  app: ElectronApplication,
+  windowId: number,
+  timeoutMs = getRefreshTimeout()
+): Promise<void> {
+  await app.evaluate(({ BrowserWindow }, id) => {
+    const win = BrowserWindow.fromId(id);
+    if (win && !win.isDestroyed()) win.close();
+  }, windowId);
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const stillAlive = await app.evaluate(({ BrowserWindow }, id) => {
+      const win = BrowserWindow.fromId(id);
+      return !!win && !win.isDestroyed();
+    }, windowId);
+    if (!stillAlive) return;
+    await wait(150);
+  }
+  throw new Error(`Window ${windowId} did not close within ${timeoutMs}ms`);
+}
