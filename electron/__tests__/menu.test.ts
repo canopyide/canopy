@@ -138,6 +138,11 @@ vi.mock("../window/webContentsRegistry.js", () => ({
   getAppWebContents: vi.fn(() => mockWebContents),
 }));
 
+const isWindowsStoreBuildMock = vi.hoisted(() => vi.fn(() => true));
+vi.mock("../../shared/config/distribution.js", () => ({
+  isWindowsStoreBuild: isWindowsStoreBuildMock,
+}));
+
 import { createApplicationMenu } from "../menu.js";
 import { webContents, app, Menu } from "electron";
 
@@ -319,6 +324,7 @@ describe("update menu lifecycle", () => {
     beforeEach(() => {
       Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
       Object.defineProperty(app, "isPackaged", { value: true, configurable: true });
+      isWindowsStoreBuildMock.mockReturnValue(false);
       createApplicationMenu(mockBrowserWindow as unknown as Electron.BrowserWindow);
     });
 
@@ -368,6 +374,7 @@ describe("update menu lifecycle", () => {
     beforeEach(() => {
       Object.defineProperty(process, "platform", { value: "linux", configurable: true });
       Object.defineProperty(app, "isPackaged", { value: true, configurable: true });
+      isWindowsStoreBuildMock.mockReturnValue(false);
       createApplicationMenu(mockBrowserWindow as unknown as Electron.BrowserWindow);
     });
 
@@ -387,6 +394,7 @@ describe("update menu lifecycle", () => {
     beforeEach(() => {
       Object.defineProperty(process, "platform", { value: "win32", configurable: true });
       Object.defineProperty(app, "isPackaged", { value: true, configurable: true });
+      isWindowsStoreBuildMock.mockReturnValue(true);
       createApplicationMenu(mockBrowserWindow as unknown as Electron.BrowserWindow);
     });
 
@@ -405,6 +413,7 @@ describe("update menu lifecycle", () => {
     beforeEach(() => {
       Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
       Object.defineProperty(app, "isPackaged", { value: true, configurable: true });
+      isWindowsStoreBuildMock.mockReturnValue(false);
       createApplicationMenu(mockBrowserWindow as unknown as Electron.BrowserWindow);
     });
 
@@ -612,6 +621,7 @@ describe("update menu lifecycle", () => {
     beforeEach(() => {
       Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
       Object.defineProperty(app, "isPackaged", { value: true, configurable: true });
+      isWindowsStoreBuildMock.mockReturnValue(false);
       createApplicationMenu(mockBrowserWindow as unknown as Electron.BrowserWindow);
 
       // The most-recent createApplicationMenu call registers the listener via
