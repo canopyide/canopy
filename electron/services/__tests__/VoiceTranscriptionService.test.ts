@@ -126,6 +126,7 @@ const BASE_SETTINGS: VoiceInputSettings = {
   correctionCustomInstructions: "",
   paragraphingStrategy: "spoken-command",
   resolveFileLinks: true,
+  deviceId: "",
 };
 
 function latestInstance(): MockWebSocket {
