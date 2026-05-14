@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  classifyError,
-  type ErrorClassification,
-  type Retryability,
-} from "../errorClassification.js";
+import { classifyError } from "../errorClassification.js";
 import {
   ConfigError,
   FileSystemError,

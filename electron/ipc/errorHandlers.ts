@@ -14,7 +14,6 @@ import type { WorkspaceClient } from "../services/WorkspaceClient.js";
 import type {
   ErrorRecord,
   ErrorRetryability,
-  ErrorType,
   RetryAction,
 } from "../../shared/types/ipc/errors.js";
 import type { SpawnResult } from "../../shared/types/pty-host.js";
@@ -117,11 +116,8 @@ function createErrorRecord(
     recoveryHint: classification.recoveryHint,
     gitReason: classification.gitReason,
     recoveryAction: classification.recoveryAction,
+    isCritical: classification.isCritical,
   };
-}
-
-function isCriticalErrorType(type: ErrorType): boolean {
-  return type === "config" || type === "filesystem";
 }
 
 const VALID_RETRYABILITY: ReadonlySet<ErrorRetryability> = new Set([
@@ -178,7 +174,7 @@ class ErrorService {
       this.pendingQueue.shift();
     }
 
-    if (isCriticalErrorType(error.type) && error.retryability !== "auto") {
+    if (error.isCritical && error.retryability !== "auto") {
       this.persistError(error);
     }
   }
@@ -408,6 +404,11 @@ class ErrorService {
           if (isAbortError(error)) throw error;
           signal.throwIfAborted();
 
+          // classifyError called here on the caught retry failure, and again
+          // in notifyError→createErrorRecord when the error is re-thrown below.
+          // This is a residual double-classify — acceptable because Node.js
+          // errno exceptions use plain data properties that don't mutate between
+          // reads, so the two classifications are always identical.
           if (classifyError(error).retryability !== "auto" || attempt === maxAttempts) {
             throw error;
           }

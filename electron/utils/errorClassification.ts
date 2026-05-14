@@ -59,7 +59,7 @@ function isTlsProxyError(error: unknown): boolean {
 function isSpawnSyscall(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const syscall = (error as NodeJS.ErrnoException).syscall;
-  if (syscall?.startsWith("spawn")) return true;
+  if (typeof syscall === "string" && syscall.startsWith("spawn")) return true;
   if (error instanceof Error && error.message.includes("posix_spawnp")) return true;
   return false;
 }
@@ -128,6 +128,7 @@ function getErrnoCode(error: unknown): string | undefined {
 export function classifyError(error: unknown): ErrorClassification {
   const code = getErrnoCode(error);
   const spawn = isSpawnSyscall(error);
+  const tlsProxy = isTlsProxyError(error);
 
   // ── errorType ────────────────────────────────────────────────────────
   let errorType: ErrorType;
@@ -143,7 +144,7 @@ export function classifyError(error: unknown): ErrorClassification {
     errorType = "config";
   } else if (code && NETWORK_CODES.has(code)) {
     errorType = "network";
-  } else if (isTlsProxyError(error)) {
+  } else if (tlsProxy) {
     errorType = "network";
   } else {
     errorType = "unknown";
@@ -171,7 +172,7 @@ export function classifyError(error: unknown): ErrorClassification {
     }
   } else if (error instanceof ConfigError) {
     recoveryHint = "The configuration file may be corrupted — check the logs.";
-  } else if (isTlsProxyError(error)) {
+  } else if (tlsProxy) {
     recoveryHint =
       "TLS inspection proxy detected. Set NODE_EXTRA_CA_CERTS=/path/to/corp-ca.pem (or NODE_USE_SYSTEM_CA=1 to use the OS keychain), then restart Daintree.";
   } else if (code) {
