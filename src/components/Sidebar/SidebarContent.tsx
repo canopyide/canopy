@@ -30,7 +30,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { getWorktreeSortDragId } from "@/components/DragDrop/SortableWorktreeCard";
 import { usePanelStore, useWorktreeSelectionStore, useProjectStore } from "@/store";
-import { useFleetArmingStore } from "@/store/fleetArmingStore";
+import { useFleetArmingStore, collectFilterArmEligibleIds } from "@/store/fleetArmingStore";
 import { useShallow } from "zustand/react/shallow";
 import { systemClient } from "@/clients";
 import { useWorktreeFilterStore } from "@/store/worktreeFilterStore";
@@ -131,7 +131,8 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const [isFleetPickerOpen, setIsFleetPickerOpen] = useState(false);
   const openFleetPicker = useCallback(() => setIsFleetPickerOpen(true), []);
   const closeFleetPicker = useCallback(() => setIsFleetPickerOpen(false), []);
-  const armedSize = useFleetArmingStore((s) => s.armedIds.size);
+  const armedIds = useFleetArmingStore((s) => s.armedIds);
+  const armedSize = armedIds.size;
 
   // Filter/sort state - destructured for stable memoization
   const {
@@ -178,6 +179,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   // trips React's external-store snapshot guard.
   const worktreeIds = useWorktreeIds();
   const worktreeIdList = useMemo(() => deferredWorktrees.map((w) => w.id), [deferredWorktrees]);
+  const panelIds = usePanelStore((state) => state.panelIds);
   const panelIdsByWorktreeId = usePanelStore((state) => state.panelIdsByWorktreeId);
   const panelsById = usePanelStore((state) => state.panelsById);
   const isInTrash = usePanelStore((state) => state.isInTrash);
@@ -532,6 +534,26 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 
   const dragStartOrder = useMemo(() => filteredWorktrees.map((w) => w.id), [filteredWorktrees]);
 
+  // Fleet-eligible terminals inside the currently visible worktrees, split so an
+  // arm/disarm elsewhere only re-walks the unarmed tally rather than re-scanning
+  // every panel. Drives the QuickStateFilterBar arm affordance.
+  const filterArmEligibleIds = useMemo(
+    () =>
+      collectFilterArmEligibleIds(
+        filteredWorktrees.map((w) => w.id),
+        panelIds,
+        panelsById
+      ),
+    [filteredWorktrees, panelIds, panelsById]
+  );
+  const filterArmUnarmedCount = useMemo(() => {
+    let unarmed = 0;
+    for (const id of filterArmEligibleIds) {
+      if (!armedIds.has(id)) unarmed++;
+    }
+    return unarmed;
+  }, [filterArmEligibleIds, armedIds]);
+
   // Hoisted before early returns so the dialog still mounts when the zero-
   // worktrees branch fires — its empty-state nudge dispatches
   // worktree.createDialog.open and the dialog has nowhere else to live.
@@ -639,6 +661,52 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     quickStateFilter !== "all" &&
     hasResultsWithoutQuickState &&
     hasNonMainWorktrees;
+
+  // Compact arm affordance pinned to the QuickStateFilterBar's trailing edge —
+  // replaces the former full-width banner button. Enabled whenever the visible
+  // worktrees still hold unarmed fleet-eligible terminals; with "All" selected
+  // and no filters that means "arm everything". Otherwise it rests dimmed and
+  // disabled so the layout stays stable and the affordance stays discoverable.
+  const filterArmEligibleCount = filterArmEligibleIds.length;
+  const canArmMatching = filterArmUnarmedCount > 0;
+  const armNoun = filterArmUnarmedCount === 1 ? "terminal" : "terminals";
+  const armMatchingLabel = canArmMatching
+    ? hasFilters
+      ? armedSize > 0
+        ? `Arm ${filterArmUnarmedCount} more matching ${armNoun}`
+        : `Arm ${filterArmUnarmedCount} matching ${armNoun}`
+      : armedSize > 0
+        ? `Arm ${filterArmUnarmedCount} more ${armNoun}`
+        : `Arm all ${filterArmUnarmedCount} ${armNoun}`
+    : filterArmEligibleCount === 0
+      ? hasFilters
+        ? "No arm-eligible terminals match the filter"
+        : "No arm-eligible terminals"
+      : hasFilters
+        ? "All matching terminals are armed"
+        : "All terminals are armed";
+  const armMatchingButton = (
+    <button
+      type="button"
+      disabled={!canArmMatching}
+      onClick={() =>
+        actionService.dispatch(
+          "fleet.armMatchingFilter",
+          { worktreeIds: filteredWorktrees.map((w) => w.id) },
+          { source: "user" }
+        )
+      }
+      className={`inline-flex items-center justify-center self-stretch px-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-daintree-accent ${
+        canArmMatching
+          ? "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.06]"
+          : "text-daintree-text/25 cursor-not-allowed"
+      }`}
+      aria-label={armMatchingLabel}
+      title={armMatchingLabel}
+    >
+      <Zap className="w-3.5 h-3.5" aria-hidden="true" />
+    </button>
+  );
   const worktreeMatchesQuery = (w: WorktreeState) => {
     if (!query) return true;
     const exactNum = parseExactNumber(query);
@@ -803,38 +871,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         <WorktreeSidebarSearchBar inputRef={searchInputRef} chipCounts={chipCounts} />
       )}
 
-      {/* Arm all terminals matching the active filter — only when a filter narrows the list */}
-      {hasNonMainWorktrees && hasFilters && filteredWorktrees.length > 0 && (
-        <div className="shrink-0 px-4 py-1.5 border-b border-divider">
-          <button
-            type="button"
-            onClick={() =>
-              actionService.dispatch(
-                "fleet.armMatchingFilter",
-                { worktreeIds: filteredWorktrees.map((w) => w.id) },
-                { source: "user" }
-              )
-            }
-            className="w-full flex items-center justify-center gap-1.5 text-xs px-2 py-1 text-text-secondary hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
-            aria-label={
-              armedSize > 0
-                ? `Arm ${filteredWorktrees.length} more matching worktrees`
-                : `Arm ${filteredWorktrees.length} matching worktrees`
-            }
-            title={
-              armedSize > 0
-                ? `Add eligible terminals in the ${filteredWorktrees.length} worktrees visible below to the existing armed selection`
-                : `Arm all eligible terminals in the ${filteredWorktrees.length} worktrees visible below`
-            }
-          >
-            <Zap className="w-3 h-3" />
-            {armedSize > 0
-              ? `Arm ${filteredWorktrees.length} more matching`
-              : `Arm ${filteredWorktrees.length} matching`}
-          </button>
-        </div>
-      )}
-
       {/* Worktree list — single role="grid" with roving tab stop spans pinned + scrollable rows */}
       <div
         ref={gridRef}
@@ -890,6 +926,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                   value={quickStateFilter}
                   onChange={setQuickStateFilter}
                   counts={quickStateCounts}
+                  trailing={armMatchingButton}
                 />
               )}
               {showQuickStateEmptyState ? (

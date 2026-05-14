@@ -23,9 +23,20 @@ interface QuickStateFilterBarProps {
   value: QuickStateFilter;
   onChange: (value: QuickStateFilter) => void;
   counts?: Record<QuickStateFilter, number>;
+  /**
+   * Optional affordance pinned to the trailing edge of the filter row, past a
+   * divider — currently the compact "arm matching terminals" icon button. Kept
+   * as an opaque slot so this stays a pure presentational component.
+   */
+  trailing?: React.ReactNode;
 }
 
-export function QuickStateFilterBar({ value, onChange, counts }: QuickStateFilterBarProps) {
+export function QuickStateFilterBar({
+  value,
+  onChange,
+  counts,
+  trailing,
+}: QuickStateFilterBarProps) {
   const workingActive = counts !== undefined && counts.working > 0;
   return (
     <div
@@ -48,6 +59,7 @@ export function QuickStateFilterBar({ value, onChange, counts }: QuickStateFilte
             onClick={() => onChange(isActive ? "all" : option.value)}
             className={cn(
               "inline-flex items-center justify-center gap-1 min-w-0 px-2 py-1.5 text-[11px] transition-colors",
+              "focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-daintree-accent",
               option.value !== "all" && "flex-1",
               idx > 0 && "border-l border-border-default",
               isActive
@@ -74,6 +86,7 @@ export function QuickStateFilterBar({ value, onChange, counts }: QuickStateFilte
           </button>
         );
       })}
+      {trailing && <div className="flex shrink-0 border-l border-border-default">{trailing}</div>}
     </div>
   );
 }
