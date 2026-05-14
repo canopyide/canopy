@@ -452,6 +452,15 @@ export class PtyHostLifecycle {
     this.isInitialized = false;
     this.child = null; // Prevent posting to dead process
 
+    // Cancel any stability timer the prior `markReady()` armed. If it stayed
+    // alive, it could fire moments after a crash and wipe `crashTimestamps`
+    // even though the host never ran cleanly for the full window — defeating
+    // the three-crash guard for crash-ready-crash-ready patterns.
+    if (this.stabilityTimer) {
+      clearTimeout(this.stabilityTimer);
+      this.stabilityTimer = null;
+    }
+
     if (this.callbacks.isDisposed()) {
       // Expected shutdown - drop any buffered reason so it can't leak.
       this.pendingChildProcessGoneReason = null;

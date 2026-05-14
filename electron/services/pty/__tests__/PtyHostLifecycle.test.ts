@@ -619,18 +619,42 @@ describe("PtyHostLifecycle", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(lifecycle.crashTimestamps).toHaveLength(1);
 
-    // manualRestart clears both the window and the stability timer.
+    // manualRestart clears both the window and any pending stability timer.
     const child2 = createMockChild();
     shared.forkMock.mockReturnValueOnce(child2);
     lifecycle.manualRestart();
     lifecycle.waitForReady().catch(() => undefined);
     expect(lifecycle.crashTimestamps).toHaveLength(0);
 
-    // Advance past STABILITY_TIMEOUT_MS — if the timer had been left alive,
-    // it would fire here and clear the window. Since we just spawned a fresh
-    // host without markReady, the window should stay empty (no timer scheduled).
+    // Record a new crash AFTER the manual restart, then advance past the
+    // original stability deadline. If the old timer had survived, it would
+    // fire here and wipe the freshly recorded crash. Asserting the entry
+    // survives proves the old timer was cancelled.
+    child2.emit("exit", 1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(lifecycle.crashTimestamps).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(300_001);
-    expect(lifecycle.crashTimestamps).toHaveLength(0);
+    expect(lifecycle.crashTimestamps).toHaveLength(1);
+  });
+
+  it("stability timer from a prior ready is cancelled on crash", async () => {
+    const { lifecycle, callbacks } = makeLifecycle();
+    lifecycle.start();
+    lifecycle.markReady();
+
+    // Run almost to the stability deadline, then crash. The stability timer
+    // is now ~100ms from firing; if it weren't cancelled it would wipe the
+    // crash window after the crash, defeating the three-strike guard for any
+    // crash-near-ready pattern.
+    await vi.advanceTimersByTimeAsync(299_900);
+    mockChild.emit("exit", 1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(lifecycle.crashTimestamps).toHaveLength(1);
+
+    // Advance past the stale deadline — the crash entry must survive.
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(lifecycle.crashTimestamps).toHaveLength(1);
+    expect(callbacks.log.onMaxRestartsCalls).toHaveLength(0);
   });
 
   it("dispose removes the child-process-gone listener", () => {
