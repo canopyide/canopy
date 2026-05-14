@@ -134,6 +134,9 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const [isRestartConfirmOpen, setIsRestartConfirmOpen] = useState(false);
   const openFleetPicker = useCallback(() => setIsFleetPickerOpen(true), []);
   const closeFleetPicker = useCallback(() => setIsFleetPickerOpen(false), []);
+  useEffect(() => {
+    if (!error) setIsRestartConfirmOpen(false);
+  }, [error]);
   const armedIds = useFleetArmingStore((s) => s.armedIds);
   const armedSize = armedIds.size;
 
