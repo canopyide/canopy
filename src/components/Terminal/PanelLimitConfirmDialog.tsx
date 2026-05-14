@@ -24,7 +24,7 @@ export function PanelLimitConfirmDialog() {
     <ErrorBoundary
       variant="component"
       componentName="PanelLimitConfirmDialog"
-      resetKeys={[Number(pendingConfirm != null)]}
+      resetKeys={[`${panelCount}-${memoryMB}`]}
     >
       <ConfirmDialog
         isOpen={true}

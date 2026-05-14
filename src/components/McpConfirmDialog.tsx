@@ -21,6 +21,7 @@ const CONFIRMATION_TIMEOUT_MS = 28_000;
 export function McpConfirmDialog() {
   const current = useMcpConfirmStore((state) => state.current);
   const resolveCurrent = useMcpConfirmStore((state) => state.resolveCurrent);
+  const resetKey = current?.requestId ?? "null";
 
   useEffect(() => {
     if (current === null) return;
@@ -38,11 +39,7 @@ export function McpConfirmDialog() {
 
   if (current === null) {
     return (
-      <ErrorBoundary
-        variant="component"
-        componentName="McpConfirmDialog"
-        resetKeys={[Number(current != null)]}
-      >
+      <ErrorBoundary variant="component" componentName="McpConfirmDialog" resetKeys={[resetKey]}>
         <ConfirmDialog
           isOpen={false}
           title=""
@@ -55,11 +52,7 @@ export function McpConfirmDialog() {
   }
 
   return (
-    <ErrorBoundary
-      variant="component"
-      componentName="McpConfirmDialog"
-      resetKeys={[Number(current != null)]}
-    >
+    <ErrorBoundary variant="component" componentName="McpConfirmDialog" resetKeys={[resetKey]}>
       <ConfirmDialog
         isOpen={true}
         onClose={() => resolveCurrent("rejected")}
