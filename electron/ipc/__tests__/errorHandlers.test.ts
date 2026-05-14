@@ -1712,7 +1712,7 @@ describe("errorHandlers", () => {
     it("sets occurrenceCount to 1 on first occurrence", async () => {
       const CHANNELS = await getChannels();
       const mockWindow = createMockWindow();
-      storeMock.store.get.mockImplementation((key: string) => {
+      storeMock.store.get.mockImplementation((key?: string) => {
         if (key === "errorFingerprints") return {};
         return [];
       });
@@ -1735,7 +1735,7 @@ describe("errorHandlers", () => {
       const mockWindow = createMockWindow();
 
       const existing = { "unknown|test|spawn failed": { count: 3, firstSeen: 1, lastSeen: 1 } };
-      storeMock.store.get.mockImplementation((key: string) => {
+      storeMock.store.get.mockImplementation((key?: string) => {
         if (key === "errorFingerprints") return { ...existing };
         return [];
       });
@@ -1757,7 +1757,7 @@ describe("errorHandlers", () => {
       const mockWindow = createMockWindow();
 
       const existing = { "unknown|test|error A": { count: 5, firstSeen: 1, lastSeen: 1 } };
-      storeMock.store.get.mockImplementation((key: string) => {
+      storeMock.store.get.mockImplementation((key?: string) => {
         if (key === "errorFingerprints") return { ...existing };
         return [];
       });
@@ -1776,7 +1776,7 @@ describe("errorHandlers", () => {
 
     it("persists fingerprint to store after recording", async () => {
       createMockWindow();
-      storeMock.store.get.mockImplementation((key: string) => {
+      storeMock.store.get.mockImplementation((key?: string) => {
         if (key === "errorFingerprints") return {};
         return [];
       });
@@ -1807,7 +1807,7 @@ describe("errorHandlers", () => {
       for (let i = 0; i < 200; i++) {
         entries[`unknown||entry-${i}`] = { count: 1, firstSeen: i, lastSeen: i };
       }
-      storeMock.store.get.mockImplementation((key: string) => {
+      storeMock.store.get.mockImplementation((key?: string) => {
         if (key === "errorFingerprints") return { ...entries };
         return [];
       });
