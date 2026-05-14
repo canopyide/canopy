@@ -118,7 +118,7 @@ describe("useAudioDevices", () => {
     renderHook(() => useAudioDevices());
     await waitFor(() => expect(enumerateSpy).toHaveBeenCalledTimes(1));
 
-    const deviceChangeHandler = addEventListenerSpy.mock.calls[0][1] as () => void;
+    const deviceChangeHandler = addEventListenerSpy.mock.calls[0]?.[1] as () => void;
 
     enumerateSpy.mockClear();
     enumerateSpy.mockResolvedValue([

@@ -65,7 +65,8 @@ async function refreshDevices(): Promise<void> {
   } catch (err) {
     if (gen !== enumerationGen) return;
     cachedDevices = [{ value: SYSTEM_DEFAULT_VALUE, label: "System default" }];
-    cachedError = `Could not enumerate audio devices: ${err instanceof Error ? err.message : String(err)}`;
+    const message = err instanceof Error ? err.message : String(err);
+    cachedError = `Could not enumerate audio devices: ${message}`;
     logWarn("useAudioDevices enumerateDevices failed", { err });
   }
 
@@ -98,13 +99,8 @@ function subscribe(callback: () => void): () => void {
   return () => {
     listeners = listeners.filter((l) => l !== callback);
     listenerCount--;
-    if (
-      listenerCount === 0 &&
-      subscribedToDeviceChange &&
-      navigator?.mediaDevices?.removeEventListener
-    ) {
+    if (listenerCount === 0 && subscribedToDeviceChange) {
       subscribedToDeviceChange = false;
-      // devicechange listener is long-lived; keep it as it's harmless and idempotent
     }
   };
 }
@@ -112,6 +108,7 @@ function subscribe(callback: () => void): () => void {
 export function useAudioDevices(): Snapshot & { refresh: () => void } {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
+  // eslint-disable-next-line react-compiler/react-compiler -- module-level state writes are the point of this useSyncExternalStore hook
   const refresh = useCallback(() => {
     cachedLoading = true;
     notifyListeners();
