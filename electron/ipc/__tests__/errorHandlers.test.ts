@@ -1580,7 +1580,7 @@ describe("errorHandlers", () => {
 
       registerErrorHandlers(null, null);
       const handler = getInvokeHandler(CHANNELS.ERROR_GET_PENDING);
-      const result = handler({} as never) as Array<Record<string, unknown>>;
+      const result = (await handler({} as never)) as Array<Record<string, unknown>>;
 
       expect(result[0]).toMatchObject({
         id: "error-legacy-transient",
@@ -1615,7 +1615,7 @@ describe("errorHandlers", () => {
 
       registerErrorHandlers(null, null);
       const handler = getInvokeHandler(CHANNELS.ERROR_GET_PENDING);
-      const result = handler({} as never) as Array<Record<string, unknown>>;
+      const result = (await handler({} as never)) as Array<Record<string, unknown>>;
 
       expect(result[0].retryability).toBe("auto");
       expect(result[0].isTransient).toBeUndefined();

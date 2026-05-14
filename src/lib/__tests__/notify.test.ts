@@ -1979,34 +1979,38 @@ describe("shouldEscalateTransientError", () => {
   });
 
   it("returns false for second occurrence within window", () => {
-    const error = { type: "process" as const, message: "EAGAIN", retryability: "auto" };
+    const error = { type: "process" as const, message: "EAGAIN", retryability: "auto" as const };
     shouldEscalateTransientError(error);
     expect(shouldEscalateTransientError(error)).toBe(false);
   });
 
   it("returns true when local-resource error hits threshold (3) within 5s window", () => {
-    const error = { type: "filesystem" as const, message: "EBUSY", retryability: "auto" };
+    const error = { type: "filesystem" as const, message: "EBUSY", retryability: "auto" as const };
     shouldEscalateTransientError(error);
     shouldEscalateTransientError(error);
     expect(shouldEscalateTransientError(error)).toBe(true);
   });
 
   it("returns true when network error hits threshold (3) within 120s window", () => {
-    const error = { type: "network" as const, message: "ETIMEDOUT", retryability: "auto" };
+    const error = { type: "network" as const, message: "ETIMEDOUT", retryability: "auto" as const };
     shouldEscalateTransientError(error);
     shouldEscalateTransientError(error);
     expect(shouldEscalateTransientError(error)).toBe(true);
   });
 
   it("treats 'unknown' as network profile", () => {
-    const error = { type: "unknown" as const, message: "something failed", retryability: "auto" };
+    const error = {
+      type: "unknown" as const,
+      message: "something failed",
+      retryability: "auto" as const,
+    };
     shouldEscalateTransientError(error);
     shouldEscalateTransientError(error);
     expect(shouldEscalateTransientError(error)).toBe(true);
   });
 
   it("resets counter after local-resource window expires (5s)", () => {
-    const error = { type: "filesystem" as const, message: "EBUSY", retryability: "auto" };
+    const error = { type: "filesystem" as const, message: "EBUSY", retryability: "auto" as const };
     const realDateNow = Date.now;
 
     let now = 1000;
@@ -2022,7 +2026,7 @@ describe("shouldEscalateTransientError", () => {
   });
 
   it("does not re-escalate after escalation is consumed (one-shot per group)", () => {
-    const error = { type: "network" as const, message: "ETIMEDOUT", retryability: "auto" };
+    const error = { type: "network" as const, message: "ETIMEDOUT", retryability: "auto" as const };
     shouldEscalateTransientError(error);
     shouldEscalateTransientError(error);
     const escalated = shouldEscalateTransientError(error);
@@ -2035,7 +2039,7 @@ describe("shouldEscalateTransientError", () => {
   });
 
   it("re-escalates if first escalation was not consumed (toast suppressed)", () => {
-    const error = { type: "network" as const, message: "ETIMEDOUT", retryability: "auto" };
+    const error = { type: "network" as const, message: "ETIMEDOUT", retryability: "auto" as const };
     shouldEscalateTransientError(error);
     shouldEscalateTransientError(error);
     expect(shouldEscalateTransientError(error)).toBe(true);
@@ -2050,7 +2054,7 @@ describe("shouldEscalateTransientError", () => {
   });
 
   it("allows re-escalation after cooldown expires", () => {
-    const error = { type: "network" as const, message: "ETIMEDOUT", retryability: "auto" };
+    const error = { type: "network" as const, message: "ETIMEDOUT", retryability: "auto" as const };
     const realDateNow = Date.now;
 
     let now = 1000;
@@ -2077,13 +2081,13 @@ describe("shouldEscalateTransientError", () => {
       type: "network" as const,
       message: "ECONNRESET",
       source: "git-poll",
-      retryability: "auto",
+      retryability: "auto" as const,
     };
     const error2 = {
       type: "network" as const,
       message: "ECONNRESET",
       source: "terminal",
-      retryability: "auto",
+      retryability: "auto" as const,
     };
 
     // Different source = different group
