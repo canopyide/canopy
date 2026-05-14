@@ -363,3 +363,105 @@ describe("isActiveVoiceSession helper", () => {
     expect(isActiveVoiceSession("error")).toBe(false);
   });
 });
+
+describe("VoiceRecordingService — microphone device selection", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    suspendCallbacks.length = 0;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("passes audio: true when selectedDeviceId is empty", async () => {
+    setupGlobals();
+
+    const { voiceRecordingService } = await import("../VoiceRecordingService");
+    voiceRecordingService.initialize();
+
+    // Default electron stub returns getSettings without deviceId,
+    // so selectedDeviceId stays "".
+    const getUserMediaSpy = vi.mocked(navigator.mediaDevices.getUserMedia);
+
+    await voiceRecordingService.start({ panelId: "panel-1", panelTitle: "Test" });
+
+    expect(getUserMediaSpy).toHaveBeenCalledWith({ audio: true, video: false });
+  });
+
+  it("passes ideal deviceId constraint when selectedDeviceId is set", async () => {
+    const electron = buildElectronStub();
+    electron.voiceInput.getSettings.mockResolvedValue({
+      enabled: true,
+      openaiApiKey: "sk-key",
+      correctionEnabled: false,
+      deviceId: "preferred-mic-id",
+    });
+
+    setupGlobals(electron);
+
+    const { voiceRecordingService } = await import("../VoiceRecordingService");
+    voiceRecordingService.initialize();
+
+    // refreshConfiguration runs async; wait it out.
+    await vi.waitFor(() => {
+      expect(electron.voiceInput.getSettings).toHaveBeenCalled();
+    });
+
+    const getUserMediaSpy = vi.mocked(navigator.mediaDevices.getUserMedia);
+
+    await voiceRecordingService.start({ panelId: "panel-1", panelTitle: "Test" });
+
+    expect(getUserMediaSpy).toHaveBeenCalledWith({
+      audio: { deviceId: { ideal: "preferred-mic-id" } },
+      video: false,
+    });
+  });
+
+  it("logs mismatch when actual deviceId differs from requested", async () => {
+    const electron = buildElectronStub();
+    electron.voiceInput.getSettings.mockResolvedValue({
+      enabled: true,
+      openaiApiKey: "sk-key",
+      correctionEnabled: false,
+      deviceId: "preferred-mic-id",
+    });
+
+    setupGlobals(electron);
+
+    // Override getUserMedia to return a track with a different deviceId
+    const getUserMediaMock = vi.mocked(navigator.mediaDevices.getUserMedia);
+    getUserMediaMock.mockResolvedValue({
+      getTracks: () => [{ stop: vi.fn() }],
+      getAudioTracks: () => [
+        {
+          label: "Other Mic",
+          enabled: true,
+          muted: false,
+          readyState: "live",
+          getSettings: () => ({ deviceId: "different-mic-id" }),
+        },
+      ],
+    } as unknown as MediaStream);
+
+    const { logWarn } = await import("@/utils/logger");
+
+    const { voiceRecordingService } = await import("../VoiceRecordingService");
+    voiceRecordingService.initialize();
+
+    await vi.waitFor(() => {
+      expect(electron.voiceInput.getSettings).toHaveBeenCalled();
+    });
+
+    await voiceRecordingService.start({ panelId: "panel-1", panelTitle: "Test" });
+
+    expect(logWarn).toHaveBeenCalledWith(
+      expect.stringContaining("Microphone device mismatch"),
+      expect.objectContaining({
+        requested: "preferred-mic-id",
+        actual: "different-mic-id",
+      })
+    );
+  });
+});

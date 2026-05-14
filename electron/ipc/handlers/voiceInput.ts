@@ -35,6 +35,7 @@ const VOICE_INPUT_DEFAULTS: VoiceInputSettings = {
   correctionCustomInstructions: "",
   paragraphingStrategy: "spoken-command",
   resolveFileLinks: true,
+  deviceId: "",
 };
 
 /** Read voiceInput settings with defaults for fields added after initial store creation. */

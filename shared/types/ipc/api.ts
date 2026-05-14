@@ -1525,6 +1525,8 @@ export interface VoiceInputSettings {
   paragraphingStrategy: VoiceParagraphingStrategy;
   /** When enabled, voice commands like "link to X" resolve to @file references. Defaults to true. */
   resolveFileLinks: boolean;
+  /** Microphone device ID to use for recording. Empty string means system default. */
+  deviceId: string;
 }
 
 export type HelpAssistantAuditRetention = 7 | 30 | 0;

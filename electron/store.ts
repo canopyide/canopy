@@ -189,6 +189,7 @@ export interface StoreSchema {
     correctionCustomInstructions: string;
     paragraphingStrategy: string;
     resolveFileLinks: boolean;
+    deviceId: string;
   };
   mcpServer: {
     enabled: boolean;
@@ -364,6 +365,7 @@ const storeOptions = {
       correctionCustomInstructions: "",
       paragraphingStrategy: "spoken-command",
       resolveFileLinks: true,
+      deviceId: "",
     },
     mcpServer: {
       enabled: false,
