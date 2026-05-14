@@ -6,7 +6,28 @@ let mockContextLossDispose: ReturnType<typeof vi.fn>;
 let mockOnContextLoss: ReturnType<typeof vi.fn>;
 
 function createMockAddon() {
-  return { dispose: mockAddonDispose, onContextLoss: mockOnContextLoss };
+  // Per-instance so a resync test can fire one addon's merge event and assert
+  // every co-owning addon's clearTextureAtlas() ran.
+  const removeAtlasHandlers = new Set<() => void>();
+  return {
+    dispose: mockAddonDispose,
+    onContextLoss: mockOnContextLoss,
+    clearTextureAtlas: vi.fn(),
+    onRemoveTextureAtlasCanvas: vi.fn((handler: () => void) => {
+      removeAtlasHandlers.add(handler);
+      return {
+        dispose: () => {
+          removeAtlasHandlers.delete(handler);
+        },
+      };
+    }),
+    // Test helper — simulate a shared-atlas page merge for this addon.
+    __fireRemoveTextureAtlasCanvas(): void {
+      for (const handler of [...removeAtlasHandlers]) {
+        handler();
+      }
+    },
+  };
 }
 
 vi.mock("@xterm/addon-webgl", () => ({
@@ -161,6 +182,16 @@ describe("TerminalWebGLManager", () => {
     manager = new mod.TerminalWebGLManager();
   });
 
+  // vitest types .mock.results[n] as possibly-undefined; the resync tests only
+  // ever read back an addon they just constructed via ensureContext().
+  function addonAt(index: number): ReturnType<typeof createMockAddon> {
+    const result = WebglAddonMock.mock.results[index];
+    if (!result) {
+      throw new Error(`no mock addon constructed at index ${index}`);
+    }
+    return result.value;
+  }
+
   it("attaches WebGL addon via ensureContext", () => {
     const managed = makeManagedTerminal();
     manager.ensureContext("t1", managed);
@@ -197,6 +228,130 @@ describe("TerminalWebGLManager", () => {
     expect(manager.isActive("t1")).toBe(true);
     expect(manager.isActive("t2")).toBe(true);
     expect(mockAddonDispose).not.toHaveBeenCalled();
+  });
+
+  it("resyncs every co-owner when a shared-atlas merge fires", () => {
+    const managed1 = makeManagedTerminal();
+    const managed2 = makeManagedTerminal();
+    manager.ensureContext("t1", managed1);
+    manager.ensureContext("t2", managed2);
+
+    const addon1 = addonAt(0);
+    const addon2 = addonAt(1);
+
+    // A real merge reindexes the shared atlas, and xterm forwards the event to
+    // every co-owning renderer — each must drop and rebuild its GPU texture
+    // cache, not just the one that triggered the merge.
+    addon1.__fireRemoveTextureAtlasCanvas();
+    addon2.__fireRemoveTextureAtlasCanvas();
+
+    expect(addon1.clearTextureAtlas).toHaveBeenCalledTimes(1);
+    expect(addon2.clearTextureAtlas).toHaveBeenCalledTimes(1);
+  });
+
+  it("only resyncs the terminals whose merge event fired", () => {
+    const managed1 = makeManagedTerminal();
+    const managed2 = makeManagedTerminal();
+    manager.ensureContext("t1", managed1);
+    manager.ensureContext("t2", managed2);
+
+    const addon1 = addonAt(0);
+    const addon2 = addonAt(1);
+
+    // Terminals on a different font/theme config own a different atlas, so a
+    // merge there forwards the event only to that atlas's co-owners. t2 never
+    // fired, so clearing it would be wasted work on an unaffected renderer.
+    addon1.__fireRemoveTextureAtlasCanvas();
+
+    expect(addon1.clearTextureAtlas).toHaveBeenCalledTimes(1);
+    expect(addon2.clearTextureAtlas).not.toHaveBeenCalled();
+  });
+
+  it("coalesces a burst of merge events into a single resync", () => {
+    const managed1 = makeManagedTerminal();
+    const managed2 = makeManagedTerminal();
+    manager.ensureContext("t1", managed1);
+    manager.ensureContext("t2", managed2);
+
+    const addon1 = addonAt(0);
+    const addon2 = addonAt(1);
+
+    // _mergePages fires onRemoveTextureAtlasCanvas once per merged-away page,
+    // per co-owner — many events for one merge. Queue the rAF so the burst
+    // coalesces into one resync covering every co-owner that fired.
+    rafMode = "queued";
+    expect(flushRafFrame()).toBe(false); // nothing queued before the burst
+    addon1.__fireRemoveTextureAtlasCanvas();
+    addon1.__fireRemoveTextureAtlasCanvas();
+    addon2.__fireRemoveTextureAtlasCanvas();
+    addon1.__fireRemoveTextureAtlasCanvas();
+
+    expect(addon1.clearTextureAtlas).not.toHaveBeenCalled();
+    expect(flushRafFrame()).toBe(true);
+
+    expect(addon1.clearTextureAtlas).toHaveBeenCalledTimes(1);
+    expect(addon2.clearTextureAtlas).toHaveBeenCalledTimes(1);
+    // The burst collapsed to one frame — nothing else is queued.
+    expect(flushRafFrame()).toBe(false);
+  });
+
+  it("resyncs the rest of the fired set when one clearTextureAtlas throws", () => {
+    const managed1 = makeManagedTerminal();
+    const managed2 = makeManagedTerminal();
+    manager.ensureContext("t1", managed1);
+    manager.ensureContext("t2", managed2);
+
+    const addon1 = addonAt(0);
+    const addon2 = addonAt(1);
+    addon1.clearTextureAtlas.mockImplementation(() => {
+      throw new Error("context lost mid-resync");
+    });
+
+    // Both fire into one frame so the throw happens mid-loop — it must not
+    // abort the resync for the co-owners after it.
+    rafMode = "queued";
+    addon1.__fireRemoveTextureAtlasCanvas();
+    addon2.__fireRemoveTextureAtlasCanvas();
+    flushRafFrame();
+
+    expect(addon1.clearTextureAtlas).toHaveBeenCalledTimes(1);
+    expect(addon2.clearTextureAtlas).toHaveBeenCalledTimes(1);
+  });
+
+  it("dispose() cancels a pending atlas resync frame", () => {
+    const managed1 = makeManagedTerminal();
+    manager.ensureContext("t1", managed1);
+    const addon1 = addonAt(0);
+
+    rafMode = "queued";
+    addon1.__fireRemoveTextureAtlasCanvas();
+    manager.dispose();
+
+    // The queued frame was cancelled — flushing finds nothing — and the
+    // resync never runs.
+    expect(flushRafFrame()).toBe(false);
+    expect(addon1.clearTextureAtlas).not.toHaveBeenCalled();
+  });
+
+  it("stops listening for merges after a terminal is released", () => {
+    const managed1 = makeManagedTerminal();
+    const managed2 = makeManagedTerminal();
+    manager.ensureContext("t1", managed1);
+    manager.ensureContext("t2", managed2);
+
+    const addon1 = addonAt(0);
+    const addon2 = addonAt(1);
+
+    manager.releaseContext("t1");
+
+    rafMode = "queued";
+    addon1.__fireRemoveTextureAtlasCanvas();
+
+    // The released terminal's subscription is disposed: no frame is scheduled
+    // and no addon is cleared.
+    expect(flushRafFrame()).toBe(false);
+    expect(addon1.clearTextureAtlas).not.toHaveBeenCalled();
+    expect(addon2.clearTextureAtlas).not.toHaveBeenCalled();
   });
 
   it("releaseContext disposes only the targeted entry", () => {
