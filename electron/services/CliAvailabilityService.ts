@@ -18,7 +18,7 @@ import { refreshPath, expandWindowsEnvVars } from "../setup/environment.js";
 import { store } from "../store.js";
 import { CHANNELS } from "../ipc/channels.js";
 import { broadcastToRenderer } from "../ipc/utils.js";
-import { listFirstWslDistro } from "../utils/wsl.js";
+import { getDefaultWslDistro } from "../utils/wsl.js";
 
 interface ProbeSuccess {
   status: "found";
@@ -737,7 +737,7 @@ export class CliAvailabilityService {
   }
 
   private async probeWsl(command: string): Promise<ProbeResult> {
-    const distro = await listFirstWslDistro();
+    const distro = await getDefaultWslDistro();
     if (!distro) return { status: "missing" };
 
     return new Promise((resolve) => {
