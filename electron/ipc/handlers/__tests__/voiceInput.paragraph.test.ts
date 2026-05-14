@@ -29,6 +29,7 @@ const shared = vi.hoisted(() => ({
   drainResolve: null as (() => void) | null,
   /** When true, stopGracefully uses a deferred promise instead of resolving immediately. */
   useDeferredDrain: false,
+  correctionCalls: [] as Array<{ request: unknown; settings: unknown }>,
 }));
 
 vi.mock("../../../services/VoiceTranscriptionService.js", () => ({
@@ -56,12 +57,13 @@ vi.mock("../../../services/VoiceTranscriptionService.js", () => ({
 
 vi.mock("../../../services/VoiceCorrectionService.js", () => ({
   VoiceCorrectionService: function VoiceCorrectionService(this: Record<string, unknown>) {
-    this.correct = function () {
+    this.correct = function (request: unknown, settings: unknown) {
+      shared.correctionCalls.push({ request, settings });
       return Promise.resolve({
-        action: "no_change",
-        correctedText: "",
+        action: "replace",
+        correctedText: "hello world",
         confidence: "high",
-        confirmedText: "",
+        confirmedText: "hello world",
       });
     };
     this.detectFileLinkTokens = function () {
@@ -116,6 +118,7 @@ vi.mock("../../channels.js", () => ({
     VOICE_INPUT_REQUEST_MIC_PERMISSION: "voice-input:request-mic-permission",
     VOICE_INPUT_OPEN_MIC_SETTINGS: "voice-input:open-mic-settings",
     VOICE_INPUT_VALIDATE_API_KEY: "voice-input:validate-api-key",
+    VOICE_INPUT_CORRECT: "voice-input:correct",
     VOICE_INPUT_FLUSH_PARAGRAPH: "voice-input:flush-paragraph",
     VOICE_INPUT_PARAGRAPH_BOUNDARY: "voice-input:paragraph-boundary",
     VOICE_INPUT_FILE_TOKEN_RESOLVED: "voice-input:file-token-resolved",
@@ -124,6 +127,7 @@ vi.mock("../../channels.js", () => ({
 
 // ── Module import (once) ───────────────────────────────────────────────────
 import { registerVoiceInputHandlers, getVoiceSettings } from "../voiceInput.js";
+import { ValidationError } from "../../validationError.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -174,6 +178,7 @@ describe("voiceInput — IPC handler surface", () => {
     shared.transcriptionEventCallback = null;
     shared.drainResolve = null;
     shared.useDeferredDrain = false;
+    shared.correctionCalls = [];
 
     win = buildMainWindow();
     cleanup = registerVoiceInputHandlers({
@@ -216,6 +221,44 @@ describe("voiceInput — IPC handler surface", () => {
     const handleFlush = getHandler("voice-input:flush-paragraph");
     const result = handleFlush(fakeEvent) as { rawText: string | null };
     expect(result).toEqual({ rawText: null });
+  });
+
+  it("correct validates payloads and returns the corrected text", async () => {
+    const handleCorrect = getHandler("voice-input:correct");
+
+    const result = await (handleCorrect as (e: unknown, request: unknown) => Promise<unknown>)(
+      fakeEvent,
+      { rawText: "helo world", recentContext: ["previous sentence"] }
+    );
+
+    expect(result).toEqual({ action: "replace", correctedText: "hello world" });
+    expect(shared.correctionCalls).toHaveLength(1);
+    expect(shared.correctionCalls[0]?.request).toMatchObject({
+      rawText: "helo world",
+      recentContext: ["previous sentence"],
+      reason: "stop",
+    });
+    expect(shared.correctionCalls[0]?.settings).toMatchObject({
+      model: "gpt-5-mini",
+      apiKey: "sk-test",
+    });
+  });
+
+  it("correct rejects malformed payloads before invoking correction", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const handleCorrect = getHandler("voice-input:correct");
+
+      await expect(
+        (handleCorrect as (e: unknown, request: unknown) => Promise<unknown>)(fakeEvent, {
+          recentContext: [],
+        })
+      ).rejects.toBeInstanceOf(ValidationError);
+
+      expect(shared.correctionCalls).toHaveLength(0);
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it("status events are forwarded to the renderer unchanged", () => {

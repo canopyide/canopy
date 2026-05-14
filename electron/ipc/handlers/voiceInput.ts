@@ -11,7 +11,11 @@ import { logDebug } from "../../utils/logger.js";
 import { applyDictationCommands } from "../../services/voiceDictationCommands.js";
 import { getAppWebContents } from "../../window/webContentsRegistry.js";
 import { voiceFileLinkResolver } from "../../services/VoiceFileLinkResolver.js";
-import { typedHandle, typedHandleWithContext } from "../utils.js";
+import { typedHandle, typedHandleValidated, typedHandleWithContext } from "../utils.js";
+import {
+  VoiceInputCorrectPayloadSchema,
+  type VoiceInputCorrectPayload,
+} from "../../schemas/ipc.js";
 
 let service: VoiceTranscriptionService | null = null;
 let activeEventUnsubscribe: (() => void) | null = null;
@@ -385,10 +389,9 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
   // Whole-passage cleanup pass. The renderer calls this once after recording
   // stops, with the full dictated text; correction runs as a single gpt-5-mini
   // request rather than the old per-segment streaming pipeline.
-  const handleCorrect = async (request: {
-    rawText: string;
-    recentContext?: string[];
-  }): Promise<{ action: "no_change" | "replace"; correctedText: string }> => {
+  const handleCorrect = async (
+    request: VoiceInputCorrectPayload
+  ): Promise<{ action: "no_change" | "replace"; correctedText: string }> => {
     const settings = getVoiceSettings();
     if (!settings.correctionEnabled || !settings.openaiApiKey || !request.rawText.trim()) {
       return { action: "no_change", correctedText: request.rawText };
@@ -428,7 +431,11 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
     typedHandle(CHANNELS.VOICE_INPUT_REQUEST_MIC_PERMISSION, handleRequestMicPermission),
     typedHandle(CHANNELS.VOICE_INPUT_OPEN_MIC_SETTINGS, handleOpenMicSettings),
     typedHandle(CHANNELS.VOICE_INPUT_VALIDATE_API_KEY, handleValidateApiKey),
-    typedHandle(CHANNELS.VOICE_INPUT_CORRECT, handleCorrect),
+    typedHandleValidated(
+      CHANNELS.VOICE_INPUT_CORRECT,
+      VoiceInputCorrectPayloadSchema,
+      handleCorrect
+    ),
     typedHandle(CHANNELS.VOICE_INPUT_FLUSH_PARAGRAPH, handleFlushParagraph),
   ];
 

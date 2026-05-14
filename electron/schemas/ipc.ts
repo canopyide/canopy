@@ -406,6 +406,11 @@ export const FileReadPayloadSchema = z.object({
     .regex(/^[^\x00]*$/, "Null bytes not allowed"),
 });
 
+export const VoiceInputCorrectPayloadSchema = z.object({
+  rawText: z.string(),
+  recentContext: z.array(z.string()).optional(),
+});
+
 export const SystemOpenExternalPayloadSchema = z.object({
   url: z.string().url(),
 });
@@ -612,6 +617,7 @@ export type CopyTreeCancelPayload = z.infer<typeof CopyTreeCancelPayloadSchema>;
 export type CopyTreeProgress = z.infer<typeof CopyTreeProgressSchema>;
 export type CopyTreeGetFileTreePayload = z.infer<typeof CopyTreeGetFileTreePayloadSchema>;
 export type FileReadPayload = z.infer<typeof FileReadPayloadSchema>;
+export type VoiceInputCorrectPayload = z.infer<typeof VoiceInputCorrectPayloadSchema>;
 export type SystemOpenExternalPayload = z.infer<typeof SystemOpenExternalPayloadSchema>;
 export type SystemOpenPathPayload = z.infer<typeof SystemOpenPathPayloadSchema>;
 export type SystemOpenInEditorPayload = z.infer<typeof SystemOpenInEditorPayloadSchema>;
