@@ -210,6 +210,10 @@ describe("shouldTriggerBackup", () => {
     );
   });
 
+  it("returns true for focusPanelState undefined (clearing on focus-mode exit)", () => {
+    expect(shouldTriggerBackup({ focusPanelState: undefined })).toBe(true);
+  });
+
   it("returns false for empty object", () => {
     expect(shouldTriggerBackup({})).toBe(false);
   });
