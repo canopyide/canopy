@@ -77,6 +77,13 @@ describe("normalize", () => {
     expect(normalize("//server/share/foo/../bar")).toBe("//server/share/bar");
   });
 
+  it("treats UNC share as unescapable root", () => {
+    expect(normalize("//server/share/..")).toBe("//server/share");
+    expect(normalize("//server/share/foo/../..")).toBe("//server/share");
+    expect(normalize("//server/share")).toBe("//server/share");
+    expect(normalize("//server")).toBe("//server");
+  });
+
   it("is idempotent", () => {
     const inputs = ["/foo/bar", "C:/foo", "//server/share/x", "../foo", "."];
     for (const input of inputs) {
@@ -109,6 +116,16 @@ describe("basename", () => {
   it("handles single-segment paths", () => {
     expect(basename("foo")).toBe("foo");
   });
+
+  it("returns empty string for UNC roots", () => {
+    expect(basename("//server")).toBe("");
+    expect(basename("//server/share")).toBe("");
+  });
+
+  it("returns last segment for UNC-rooted files", () => {
+    expect(basename("//server/share/file.txt")).toBe("file.txt");
+    expect(basename("//server/share/dir/file.txt")).toBe("file.txt");
+  });
 });
 
 describe("dirname", () => {
@@ -132,6 +149,16 @@ describe("dirname", () => {
   it("returns root for root", () => {
     expect(dirname("/")).toBe("/");
     expect(dirname("C:/")).toBe("C:/");
+  });
+
+  it("returns UNC root unchanged when input is the share root", () => {
+    expect(dirname("//server/share")).toBe("//server/share");
+    expect(dirname("//server")).toBe("//server");
+  });
+
+  it("returns UNC share root for files under it", () => {
+    expect(dirname("//server/share/file.txt")).toBe("//server/share");
+    expect(dirname("//server/share/dir/file.txt")).toBe("//server/share/dir");
   });
 });
 
@@ -192,9 +219,10 @@ describe("join", () => {
 
 describe("cross-platform output stability", () => {
   it("always emits forward slashes regardless of input separator", () => {
-    expect(normalize("foo\\bar")).toMatch(/^[^\\]*$/);
-    expect(join("foo\\bar", "baz")).toMatch(/^[^\\]*$/);
-    expect(resolve("foo\\bar", "baz")).toMatch(/^[^\\]*$/);
-    expect(dirname("foo\\bar\\baz")).toMatch(/^[^\\]*$/);
+    expect(normalize("foo\\bar")).toBe("foo/bar");
+    expect(join("foo\\bar", "baz")).toBe("foo/bar/baz");
+    expect(resolve("foo\\bar", "baz")).toBe("foo/bar/baz");
+    expect(dirname("foo\\bar\\baz")).toBe("foo/bar");
+    expect(basename("foo\\bar\\baz")).toBe("baz");
   });
 });

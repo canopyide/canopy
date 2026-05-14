@@ -6,6 +6,9 @@ const WINDOWS_DRIVE_PREFIX = /^[A-Za-z]:\//;
 const WINDOWS_DRIVE_ONLY = /^[A-Za-z]:$/;
 const WINDOWS_DRIVE_ROOT = /^[A-Za-z]:\/?$/;
 const ABSOLUTE_PREFIX = /^([A-Za-z]:[\\/]|[\\/]{2}|[\\/])/;
+// UNC roots: `//`, `//server`, or `//server/share`. The share component
+// (when present) is the unescapable root floor — matches `path.win32` semantics.
+const UNC_ROOT_EXACT = /^\/\/[^/]*(\/[^/]+)?$/;
 
 export function isAbsolute(input: string): boolean {
   return ABSOLUTE_PREFIX.test(input);
@@ -19,9 +22,29 @@ export function normalize(input: string): string {
   let rest = source;
 
   if (source.startsWith("//")) {
-    // UNC path (\\server\share or //server/share) — preserve the double-slash root
-    prefix = "//";
-    rest = source.slice(2);
+    // UNC path (\\server\share or //server/share) — `\\server\share` is the
+    // unescapable root: `..` cannot pop above the share. Anchor the prefix at
+    // the share boundary so the segment pop logic treats it as the floor.
+    const afterDoubleSlash = source.slice(2);
+    const slashIndex = afterDoubleSlash.indexOf("/");
+    if (slashIndex === -1) {
+      // Just "//server" (or "//") — entire input is the root
+      prefix = source;
+      rest = "";
+    } else {
+      const server = afterDoubleSlash.slice(0, slashIndex);
+      const remainder = afterDoubleSlash.slice(slashIndex + 1);
+      const nextSlash = remainder.indexOf("/");
+      if (nextSlash === -1) {
+        // "//server/share" — entire input is the root
+        prefix = source;
+        rest = "";
+      } else {
+        const share = remainder.slice(0, nextSlash);
+        prefix = `//${server}/${share}`;
+        rest = remainder.slice(nextSlash + 1);
+      }
+    }
   } else if (WINDOWS_DRIVE_PREFIX.test(source)) {
     prefix = source.slice(0, 3);
     rest = source.slice(3);
@@ -61,7 +84,11 @@ export function normalize(input: string): string {
 
 export function basename(input: string): string {
   const normalized = normalize(input);
-  if (normalized === "/" || normalized === "//" || WINDOWS_DRIVE_ROOT.test(normalized)) {
+  if (
+    normalized === "/" ||
+    WINDOWS_DRIVE_ROOT.test(normalized) ||
+    UNC_ROOT_EXACT.test(normalized)
+  ) {
     return "";
   }
   const parts = normalized.split("/");
@@ -70,7 +97,11 @@ export function basename(input: string): string {
 
 export function dirname(input: string): string {
   const normalized = normalize(input);
-  if (normalized === "/" || normalized === "//" || WINDOWS_DRIVE_ROOT.test(normalized)) {
+  if (
+    normalized === "/" ||
+    WINDOWS_DRIVE_ROOT.test(normalized) ||
+    UNC_ROOT_EXACT.test(normalized)
+  ) {
     return normalized;
   }
 
