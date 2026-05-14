@@ -2,6 +2,7 @@
 import { renderHook, act } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { useCrashRecoveryGate } from "../app/useCrashRecoveryGate";
+import { useRestoreConfirmationStore } from "@/store/restoreConfirmationStore";
 import type { PendingCrash, CrashRecoveryConfig, CrashRecoveryAction } from "@shared/types/ipc";
 
 const mockPanels = [
@@ -48,6 +49,7 @@ function makeElectron(overrides?: {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useRestoreConfirmationStore.setState({ visible: false, suspectCount: 0, crashCount: 0 });
 });
 
 describe("useCrashRecoveryGate", () => {
@@ -278,5 +280,138 @@ describe("useCrashRecoveryGate", () => {
     });
 
     expect(result.current.state.status).toBe("none");
+  });
+
+  it("signals restore confirmation store on silent auto-restore with suspect panels", async () => {
+    const resolve = vi.fn(async () => {});
+    const suspectPanels = [
+      { id: "t1", kind: "terminal", title: "Shell", location: "grid" as const, isSuspect: true },
+      { id: "t2", kind: "terminal", title: "Claude", location: "dock" as const, isSuspect: false },
+      { id: "t3", kind: "terminal", title: "Server", location: "grid" as const, isSuspect: true },
+    ];
+    Object.defineProperty(window, "electron", {
+      configurable: true,
+      writable: true,
+      value: makeElectron({
+        pending: { ...mockCrash, panels: suspectPanels, crashCount: 1 },
+        config: { autoRestoreOnCrash: true },
+        resolve,
+      }),
+    });
+
+    renderHook(() => useCrashRecoveryGate());
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(resolve).toHaveBeenCalled();
+    const storeState = useRestoreConfirmationStore.getState();
+    expect(storeState.visible).toBe(true);
+    expect(storeState.suspectCount).toBe(2);
+    expect(storeState.crashCount).toBe(1);
+  });
+
+  it("signals restore confirmation store with zero suspects on clean restore", async () => {
+    const resolve = vi.fn(async () => {});
+    Object.defineProperty(window, "electron", {
+      configurable: true,
+      writable: true,
+      value: makeElectron({
+        pending: { ...mockCrash, crashCount: 1 },
+        config: { autoRestoreOnCrash: true },
+        resolve,
+      }),
+    });
+
+    renderHook(() => useCrashRecoveryGate());
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(resolve).toHaveBeenCalled();
+    const storeState = useRestoreConfirmationStore.getState();
+    expect(storeState.visible).toBe(true);
+    expect(storeState.suspectCount).toBe(0);
+    expect(storeState.crashCount).toBe(1);
+  });
+
+  it("signals restore confirmation store with zero suspects when panels is undefined", async () => {
+    const resolve = vi.fn(async () => {});
+    Object.defineProperty(window, "electron", {
+      configurable: true,
+      writable: true,
+      value: makeElectron({
+        pending: { ...mockCrash, panels: undefined, crashCount: 0 },
+        config: { autoRestoreOnCrash: true },
+        resolve,
+      }),
+    });
+
+    renderHook(() => useCrashRecoveryGate());
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(resolve).toHaveBeenCalled();
+    const storeState = useRestoreConfirmationStore.getState();
+    expect(storeState.visible).toBe(true);
+    expect(storeState.suspectCount).toBe(0);
+    expect(storeState.crashCount).toBe(0);
+  });
+
+  it("does not signal restore confirmation on explicit dialog path", async () => {
+    Object.defineProperty(window, "electron", {
+      configurable: true,
+      writable: true,
+      value: makeElectron({ pending: mockCrash }),
+    });
+
+    renderHook(() => useCrashRecoveryGate());
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const storeState = useRestoreConfirmationStore.getState();
+    expect(storeState.visible).toBe(false);
+  });
+
+  it("does not signal restore confirmation when resolve rejects", async () => {
+    const resolve = vi.fn(async () => {
+      throw new Error("resolve failed");
+    });
+    Object.defineProperty(window, "electron", {
+      configurable: true,
+      writable: true,
+      value: makeElectron({
+        pending: { ...mockCrash, crashCount: 1 },
+        config: { autoRestoreOnCrash: true },
+        resolve,
+      }),
+    });
+
+    renderHook(() => useCrashRecoveryGate());
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(resolve).toHaveBeenCalled();
+    const storeState = useRestoreConfirmationStore.getState();
+    expect(storeState.visible).toBe(false);
   });
 });

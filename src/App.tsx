@@ -47,6 +47,7 @@ import { SafeModeBanner } from "./components/Recovery/SafeModeBanner";
 import { CloudSyncBanner } from "./components/Recovery/CloudSyncBanner";
 import { GitHubTokenBanner } from "./components/Recovery/GitHubTokenBanner";
 import { HostCrashBanner } from "./components/Recovery/HostCrashBanner";
+import { RestoreConfirmationBanner } from "./components/Recovery/RestoreConfirmationBanner";
 import {
   useAppHydration,
   useProjectSwitchRehydration,
@@ -674,6 +675,7 @@ function App() {
           >
             <E2EFaultInjector />
             {isSafeMode && <SafeModeBanner />}
+            <RestoreConfirmationBanner />
             <GitHubTokenBanner />
             <CloudSyncBanner />
             <HostCrashBanner />
