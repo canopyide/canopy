@@ -69,7 +69,7 @@ vi.mock("../SystemSleepService.js", () => ({
   }),
 }));
 
-import { app, BrowserWindow } from "electron";
+import { BrowserWindow } from "electron";
 import { CrashRecoveryService } from "../CrashRecoveryService.js";
 
 function makeService(): CrashRecoveryService {
