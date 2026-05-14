@@ -1170,9 +1170,9 @@ describe("KeybindingService", () => {
       ]);
 
       const conflicts = service.findConflicts("Ctrl+Shift+F4");
-      expect(
-        conflicts.some((c) => c.actionId === "test.target" && c.kind === "conflict")
-      ).toBe(true);
+      expect(conflicts.some((c) => c.actionId === "test.target" && c.kind === "conflict")).toBe(
+        true
+      );
     });
 
     it("matchesEvent ignores AltGr guard on macOS (AltGr does not exist there)", () => {
