@@ -4,7 +4,12 @@ import type {
   KeybindingConflict,
   KeybindingResolutionResult,
 } from "./keybindingUtils";
-import { CHORD_TIMEOUT_MS, normalizeKeyForBinding, parseCombo } from "./keybindingUtils";
+import {
+  CHORD_TIMEOUT_MS,
+  combosFieldsEqual,
+  normalizeKeyForBinding,
+  parseCombo,
+} from "./keybindingUtils";
 import { DEFAULT_KEYBINDINGS } from "./defaultKeybindings";
 import { isMac } from "@/lib/platform";
 
@@ -13,39 +18,6 @@ export * from "./defaultKeybindings";
 
 function scopesConflict(a: KeyScope, b: KeyScope): boolean {
   return a === b || a === "global" || b === "global";
-}
-
-function singleComboFieldsEqual(a: string, b: string, mac: boolean): boolean {
-  const pa = parseCombo(a);
-  const pb = parseCombo(b);
-  // On non-Mac, Cmd and Ctrl bindings both fire on the physical Ctrl key, so
-  // "Cmd+Shift+E" and "Ctrl+Shift+E" must compare equal for conflict detection
-  // and registration guards. On Mac the keys are physically distinct — keep
-  // them separate. (#7941)
-  const aCmd = mac ? pa.cmd : pa.cmd || pa.ctrl;
-  const bCmd = mac ? pb.cmd : pb.cmd || pb.ctrl;
-  const aCtrl = mac ? pa.ctrl : false;
-  const bCtrl = mac ? pb.ctrl : false;
-  return (
-    aCmd === bCmd &&
-    aCtrl === bCtrl &&
-    pa.shift === pb.shift &&
-    pa.alt === pb.alt &&
-    pa.key.toLowerCase() === pb.key.toLowerCase()
-  );
-}
-
-// Compare two combo strings field-by-field with platform-aware Cmd/Ctrl folding.
-// Handles both single combos ("Cmd+Shift+E") and chord sequences ("Cmd+K Cmd+W")
-// by splitting on whitespace and comparing each segment individually.
-function combosFieldsEqual(a: string, b: string, mac = isMac()): boolean {
-  const segmentsA = a.trim().split(/\s+/);
-  const segmentsB = b.trim().split(/\s+/);
-  if (segmentsA.length !== segmentsB.length) return false;
-  for (let i = 0; i < segmentsA.length; i++) {
-    if (!singleComboFieldsEqual(segmentsA[i]!, segmentsB[i]!, mac)) return false;
-  }
-  return true;
 }
 
 class KeybindingService {
@@ -150,9 +122,8 @@ class KeybindingService {
     scope: KeyScope = "global"
   ): KeybindingConflict[] {
     const conflicts: KeybindingConflict[] = [];
-    const trimmedCombo = combo.trim();
-    if (!trimmedCombo) return conflicts;
-    const candidateParts = trimmedCombo.split(" ");
+    const candidateParts = combo.trim().split(/\s+/).filter(Boolean);
+    if (candidateParts.length === 0) return conflicts;
 
     for (const arr of this.bindings.values()) {
       for (const binding of arr) {
@@ -165,10 +136,8 @@ class KeybindingService {
 
         let matched: "conflict" | "shadowed" | null = null;
         for (const existingCombo of effectiveCombos) {
-          const trimmedExisting = existingCombo.trim();
-          if (!trimmedExisting) continue;
-
-          const existingParts = trimmedExisting.split(" ");
+          const existingParts = existingCombo.trim().split(/\s+/).filter(Boolean);
+          if (existingParts.length === 0) continue;
           if (
             existingParts.length === candidateParts.length &&
             existingParts.every((p, i) => combosFieldsEqual(p, candidateParts[i]!))

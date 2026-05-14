@@ -155,6 +155,23 @@ describe("KeybindingService", () => {
       expect(service.matchesEvent(event, "Ctrl+Alt+E")).toBe(false);
     });
 
+    it("rejects Ctrl+Alt+E on Linux AltGr when ctrlKey+altKey are also synthesized", () => {
+      // Some X11/Wayland setups synthesize ctrlKey+altKey alongside the
+      // AltGraph modifier. The explicit guard must still reject the match.
+      setPlatform("Linux x86_64");
+
+      const service = new KeybindingService();
+      const event = createKeyboardEvent({
+        key: "€",
+        code: "KeyE",
+        ctrlKey: true,
+        altKey: true,
+        getModifierState: altGraphModifierState(),
+      });
+
+      expect(service.matchesEvent(event, "Ctrl+Alt+E")).toBe(false);
+    });
+
     it("matches legitimate Ctrl+Alt+E on US-layout Windows (positive control)", () => {
       setPlatform("Win32");
 
@@ -1089,6 +1106,11 @@ describe("KeybindingService", () => {
       // A silent shadow is two defaults with overlapping scope + identical
       // platform-normalized combo + identical priority — that's the failure
       // mode this audit catches.
+      //
+      // Note: this filters to kind === "conflict" only. A future regression
+      // where a standalone `Cmd+K` default shadowed the entire `Cmd+K ...`
+      // chord namespace would surface as kind === "shadowed" and be missed
+      // here. No such standalone exists in defaults today.
       setPlatform("Win32");
       const service = new KeybindingService();
       const silentShadows: string[] = [];
@@ -1127,6 +1149,30 @@ describe("KeybindingService", () => {
 
       expect(service.matchesEvent(event, "Ctrl+Alt+E")).toBe(false);
       expect(service.matchesEvent(event, "Cmd+Alt+E")).toBe(false);
+    });
+
+    it("findConflicts surfaces cross-form clashes against user-stored Cmd+ overrides on non-Mac", () => {
+      // A user has rebound some action to "Cmd+Shift+F4" via setOverride.
+      // When another rebind UI run queries findConflicts("Ctrl+Shift+F4")
+      // on Windows, the override must still surface as a conflict.
+      setPlatform("Win32");
+      const service = new KeybindingService();
+      service.registerBinding({
+        actionId: "test.target",
+        combo: "",
+        scope: "global",
+        priority: 0,
+      });
+      // Simulate an existing user override on test.target via direct map
+      // manipulation — bypasses the IPC layer the public setOverride uses.
+      (service as unknown as { overrides: Map<string, string[]> }).overrides.set("test.target", [
+        "Cmd+Shift+F4",
+      ]);
+
+      const conflicts = service.findConflicts("Ctrl+Shift+F4");
+      expect(
+        conflicts.some((c) => c.actionId === "test.target" && c.kind === "conflict")
+      ).toBe(true);
     });
 
     it("matchesEvent ignores AltGr guard on macOS (AltGr does not exist there)", () => {

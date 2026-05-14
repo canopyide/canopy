@@ -127,3 +127,42 @@ export function parseCombo(combo: string): {
     key,
   };
 }
+
+function singleComboFieldsEqual(a: string, b: string, mac: boolean): boolean {
+  const pa = parseCombo(a);
+  const pb = parseCombo(b);
+  // On non-Mac, Cmd and Ctrl bindings both fire on the physical Ctrl key, so
+  // "Cmd+Shift+E" and "Ctrl+Shift+E" must compare equal for conflict detection
+  // and registration guards. On Mac the keys are physically distinct — keep
+  // them separate. (#7941)
+  const aCmd = mac ? pa.cmd : pa.cmd || pa.ctrl;
+  const bCmd = mac ? pb.cmd : pb.cmd || pb.ctrl;
+  const aCtrl = mac ? pa.ctrl : false;
+  const bCtrl = mac ? pb.ctrl : false;
+  return (
+    aCmd === bCmd &&
+    aCtrl === bCtrl &&
+    pa.shift === pb.shift &&
+    pa.alt === pb.alt &&
+    pa.key.toLowerCase() === pb.key.toLowerCase()
+  );
+}
+
+/**
+ * Compare two combo strings field-by-field with platform-aware Cmd/Ctrl
+ * folding. Handles both single combos ("Cmd+Shift+E") and chord sequences
+ * ("Cmd+K Cmd+W") by splitting on whitespace and comparing each segment.
+ *
+ * On non-Mac platforms, "Cmd+X" and "Ctrl+X" are considered equal because
+ * they map to the same physical key. On Mac they remain distinct.
+ */
+export function combosFieldsEqual(a: string, b: string, mac = isMac()): boolean {
+  const segmentsA = a.trim().split(/\s+/).filter(Boolean);
+  const segmentsB = b.trim().split(/\s+/).filter(Boolean);
+  if (segmentsA.length === 0 || segmentsB.length === 0) return false;
+  if (segmentsA.length !== segmentsB.length) return false;
+  for (let i = 0; i < segmentsA.length; i++) {
+    if (!singleComboFieldsEqual(segmentsA[i]!, segmentsB[i]!, mac)) return false;
+  }
+  return true;
+}

@@ -5,16 +5,22 @@ import { render, screen, fireEvent, act } from "@testing-library/react";
 import { SettingsShortcutCapture } from "../SettingsShortcutCapture";
 
 // Mock dependencies
-vi.mock("@/services/KeybindingService", () => ({
-  CHORD_TIMEOUT_MS: 1000,
-  keybindingService: {
-    findConflicts: vi.fn(() => []),
-    formatComboForDisplay: vi.fn((combo: string) => combo),
-    getOverride: vi.fn(() => undefined),
-    getDefaultCombo: vi.fn(() => undefined),
-  },
-  normalizeKeyForBinding: vi.fn((e: KeyboardEvent) => e.key),
-}));
+vi.mock("@/services/KeybindingService", async () => {
+  const actual = await vi.importActual<typeof import("@/services/KeybindingService")>(
+    "@/services/KeybindingService"
+  );
+  return {
+    ...actual,
+    CHORD_TIMEOUT_MS: 1000,
+    keybindingService: {
+      findConflicts: vi.fn(() => []),
+      formatComboForDisplay: vi.fn((combo: string) => combo),
+      getOverride: vi.fn(() => undefined),
+      getDefaultCombo: vi.fn(() => undefined),
+    },
+    normalizeKeyForBinding: vi.fn((e: KeyboardEvent) => e.key),
+  };
+});
 
 vi.mock("@/lib/platform", () => ({
   isMac: vi.fn(() => false),
