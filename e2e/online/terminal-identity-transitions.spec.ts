@@ -182,9 +182,10 @@ async function expectAgentChromeSurvivesIdle(
   terminalId: string,
   agentId: string
 ): Promise<void> {
+  await page.waitForTimeout(AGENT_IDLE_STICKINESS_MS * SLOW_HOST_MULTIPLIER);
   await expect
     .poll(() => panel.getAttribute("data-chrome-agent-id"), {
-      timeout: AGENT_IDLE_STICKINESS_MS + 25_000,
+      timeout: 25_000 * SLOW_HOST_MULTIPLIER,
       intervals: [1_000, 5_000],
     })
     .toBe(agentId);
