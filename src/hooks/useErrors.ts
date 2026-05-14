@@ -78,7 +78,11 @@ function routeError(error: ErrorRecord): void {
   const copyAction = priority === "low" ? undefined : buildCopyDetailsAction(error);
 
   let retryNotificationAction: NotificationAction | undefined;
-  if (error.retryAction) {
+  // Match ErrorBanner's gate: a stored retryAction without "auto"
+  // retryability means the retry loop already exhausted (or the failure was
+  // never auto-retryable) — surfacing a Retry button would re-run the same
+  // failed loop. "user-gated" surfaces its own recovery CTA elsewhere.
+  if (error.retryAction && error.retryability === "auto") {
     retryNotificationAction = {
       label: "Retry",
       successLabel: "Retried",

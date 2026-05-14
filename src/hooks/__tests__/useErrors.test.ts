@@ -140,6 +140,38 @@ describe("useErrors — onError path", () => {
     expect(notifyMock).toHaveBeenCalledWith(expect.objectContaining({ priority: "low" }));
     unmount();
   });
+
+  it("includes a Retry action in the toast for retryability='auto' + retryAction", async () => {
+    const { useErrors } = await import("../useErrors");
+    const { unmount } = renderHook(() => useErrors());
+
+    const error = makeError({
+      type: "network",
+      retryability: "auto",
+      retryAction: "git",
+    });
+    act(() => capturedOnError(error));
+
+    const call = notifyMock.mock.calls.at(-1)?.[0] as { action?: { label?: string } };
+    expect(call?.action?.label).toBe("Retry");
+    unmount();
+  });
+
+  it("does NOT include a Retry action for retryability='exhausted' even with retryAction set", async () => {
+    const { useErrors } = await import("../useErrors");
+    const { unmount } = renderHook(() => useErrors());
+
+    const error = makeError({
+      type: "network",
+      retryability: "exhausted",
+      retryAction: "git",
+    });
+    act(() => capturedOnError(error));
+
+    const call = notifyMock.mock.calls.at(-1)?.[0] as { action?: { label?: string } };
+    expect(call?.action?.label).not.toBe("Retry");
+    unmount();
+  });
 });
 
 describe("useErrors — getPending path", () => {
@@ -513,7 +545,7 @@ describe("useErrors — retry action on toast", () => {
 
     const error = makeError({
       type: "git",
-      retryability: "none",
+      retryability: "auto",
       retryAction: "git",
       retryArgs: { branch: "main" },
     });
@@ -540,13 +572,17 @@ describe("useErrors — retry action on toast", () => {
     unmount();
   });
 
-  it("includes Copy details as a secondary action when both retry and copy are present", async () => {
+  it("includes Copy details as a secondary action when an auto error escalates to high priority", async () => {
+    // copyAction is gated on `priority === "high"` (toast scale) — an "auto"
+    // error normally routes low-priority to the inbox, so it has no Copy
+    // details secondary. Escalation lifts it to high and surfaces both.
+    shouldEscalateMock.mockReturnValueOnce(true);
     const { useErrors } = await import("../useErrors");
     const { unmount } = renderHook(() => useErrors());
 
     const error = makeError({
       type: "git",
-      retryability: "none",
+      retryability: "auto",
       retryAction: "git",
     });
     act(() => capturedOnError(error));
@@ -564,7 +600,7 @@ describe("useErrors — retry action on toast", () => {
 
     const error = makeError({
       type: "network",
-      retryability: "none",
+      retryability: "auto",
       retryAction: "terminal",
       retryArgs: { terminalId: "term-1" },
     });
@@ -586,7 +622,7 @@ describe("useErrors — retry action on toast", () => {
 
     const error = makeError({
       type: "network",
-      retryability: "none",
+      retryability: "auto",
       retryAction: "terminal",
     });
     act(() => capturedOnError(error));
@@ -607,7 +643,7 @@ describe("useErrors — retry action on toast", () => {
 
     const error = makeError({
       type: "network",
-      retryability: "none",
+      retryability: "auto",
       retryAction: "git",
     });
     act(() => capturedOnError(error));
@@ -626,7 +662,7 @@ describe("useErrors — retry action on toast", () => {
       type: "git",
       message: "fetch failed",
       source: "GitService",
-      retryability: "none",
+      retryability: "auto",
     });
     act(() => capturedOnError(first));
 
@@ -635,7 +671,7 @@ describe("useErrors — retry action on toast", () => {
       type: "git",
       message: "fetch failed",
       source: "GitService",
-      retryability: "none",
+      retryability: "auto",
       retryAction: "git",
       retryArgs: { branch: "main" },
     });
@@ -660,7 +696,7 @@ describe("useErrors — retry action on toast", () => {
       type: "git",
       message: "fetch failed",
       source: "GitService",
-      retryability: "none",
+      retryability: "auto",
       retryAction: "git",
       retryArgs: { branch: "old" },
     });
@@ -670,7 +706,7 @@ describe("useErrors — retry action on toast", () => {
       type: "git",
       message: "fetch failed",
       source: "GitService",
-      retryability: "none",
+      retryability: "auto",
       retryAction: "git",
       retryArgs: { branch: "new" },
     });
@@ -692,7 +728,7 @@ describe("useErrors — retry action on toast", () => {
 
     const error = makeError({
       type: "network",
-      retryability: "none",
+      retryability: "auto",
       retryAction: "git",
     });
     act(() => capturedOnError(error));

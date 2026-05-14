@@ -270,15 +270,25 @@ function isCriticalErrorType(type: ErrorType): boolean {
   return type === "config" || type === "filesystem";
 }
 
+const VALID_RETRYABILITY: ReadonlySet<ErrorRetryability> = new Set([
+  "auto",
+  "user-gated",
+  "exhausted",
+  "none",
+]);
+
 /**
  * Read-time migration for records persisted by older builds that wrote the
  * legacy `isTransient: boolean` field. Maps `true → "auto"` and `false → "none"`
- * and strips the legacy key so subsequent writes use the new shape.
+ * and strips the legacy key so subsequent writes use the new shape. An invalid
+ * retryability string (corrupted store, dev-time write) is rejected and falls
+ * back to the same `isTransient`-based default so we never surface an
+ * unrecognised discriminant to the renderer.
  */
 function migrateLegacyPersistedError(entry: unknown): ErrorRecord {
   const record = (entry ?? {}) as Partial<ErrorRecord> & { isTransient?: boolean };
   let { retryability } = record;
-  if (!retryability) {
+  if (!retryability || !VALID_RETRYABILITY.has(retryability)) {
     retryability = record.isTransient === true ? "auto" : "none";
   }
   const { isTransient: _legacy, ...rest } = record;
@@ -615,11 +625,18 @@ export function registerErrorHandlers(
       if (isAbortError(error)) {
         throw error;
       }
+      // Only label as "exhausted" when the loop actually used up its retry
+      // budget — that requires the error to have been intrinsically auto-
+      // retryable in the first place. A first-attempt throw of a non-
+      // transient error (e.g. GitOperationError("auth-failed")) needs to
+      // keep its intrinsic classification so the renderer can still surface
+      // the recovery CTA.
+      const intrinsic = getRetryability(error);
       errorService.notifyError(error, {
         source: `retry-${actionForError ?? "unknown"}`,
         retryAction: actionForError,
         retryArgs: argsForError,
-        retryability: "exhausted",
+        retryability: intrinsic === "auto" ? "exhausted" : intrinsic,
       });
       throw error;
     }

@@ -192,6 +192,33 @@ describe("errorStore", () => {
     });
   });
 
+  it("propagates recoveryAction and gitReason on dedup when classification upgrades", () => {
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const firstId = useErrorStore.getState().addError({
+      type: "git",
+      message: "Push failed",
+      source: "git",
+      retryability: "auto",
+      context: { worktreeId: "w-1" },
+    });
+
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.200Z"));
+    useErrorStore.getState().addError({
+      type: "git",
+      message: "Push failed",
+      source: "git",
+      retryability: "user-gated",
+      gitReason: "auth-failed",
+      recoveryAction: { label: "Reconnect", actionId: "github.connect" },
+      context: { worktreeId: "w-1" },
+    });
+
+    const stored = useErrorStore.getState().errors.find((e) => e.id === firstId);
+    expect(stored?.retryability).toBe("user-gated");
+    expect(stored?.recoveryAction?.actionId).toBe("github.connect");
+    expect(stored?.gitReason).toBe("auth-failed");
+  });
+
   it("overwrites retryability on dedup so 'exhausted' transitions are visible", () => {
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
     const firstId = useErrorStore.getState().addError({

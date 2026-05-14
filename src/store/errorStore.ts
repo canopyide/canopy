@@ -91,10 +91,16 @@ const createErrorStore: StateCreator<ErrorStore> = (set, get) => ({
                 timestamp: now,
                 // Overwrite retryability from the incoming record so state
                 // transitions (e.g. an auto-retrying error landing as
-                // "exhausted" after the retry loop gives up) become visible
-                // even when the duplicate-suppression window collapses the
-                // two records into one.
+                // "exhausted" after the retry loop gives up, or upgrading
+                // from "auto" to "user-gated" once the classifier sees a
+                // gitReason) become visible even when the duplicate-
+                // suppression window collapses the two records into one.
+                // recoveryAction and gitReason are part of that state — a
+                // banner that ends up "user-gated" without its CTA would
+                // silently fall back to "View errors".
                 retryability: error.retryability,
+                recoveryAction: error.recoveryAction ?? e.recoveryAction,
+                gitReason: error.gitReason ?? e.gitReason,
                 retryAction: error.retryAction ?? e.retryAction,
                 retryArgs: error.retryArgs ?? e.retryArgs,
                 recoveryHint: e.recoveryHint ?? error.recoveryHint,
