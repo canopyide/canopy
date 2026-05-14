@@ -1405,7 +1405,8 @@ describe("errorHandlers", () => {
       expect(sentError.gitReason).toBe("auth-failed");
       expect(sentError.recoveryAction).toEqual({
         label: "Sign in with GitHub",
-        actionId: "github.auth",
+        actionId: "app.settings.openTab",
+        args: { tab: "github" },
       });
       expect(sentError.recoveryHint).toContain("credentials");
       expect(sentError.type).toBe("git");
