@@ -9,10 +9,19 @@ function createMockAddon() {
   // Per-instance so a resync test can fire one addon's merge event and assert
   // every co-owning addon's clearTextureAtlas() ran.
   const removeAtlasHandlers = new Set<() => void>();
+  const changeAtlasHandlers = new Set<() => void>();
   return {
     dispose: mockAddonDispose,
     onContextLoss: mockOnContextLoss,
     clearTextureAtlas: vi.fn(),
+    onChangeTextureAtlas: vi.fn((handler: () => void) => {
+      changeAtlasHandlers.add(handler);
+      return {
+        dispose: () => {
+          changeAtlasHandlers.delete(handler);
+        },
+      };
+    }),
     onRemoveTextureAtlasCanvas: vi.fn((handler: () => void) => {
       removeAtlasHandlers.add(handler);
       return {
@@ -24,6 +33,11 @@ function createMockAddon() {
     // Test helper — simulate a shared-atlas page merge for this addon.
     __fireRemoveTextureAtlasCanvas(): void {
       for (const handler of [...removeAtlasHandlers]) {
+        handler();
+      }
+    },
+    __fireChangeTextureAtlas(): void {
+      for (const handler of [...changeAtlasHandlers]) {
         handler();
       }
     },
@@ -247,6 +261,8 @@ describe("TerminalWebGLManager", () => {
 
     expect(addon1.clearTextureAtlas).toHaveBeenCalledTimes(1);
     expect(addon2.clearTextureAtlas).toHaveBeenCalledTimes(1);
+    expect(managed1.terminal.refresh).toHaveBeenCalledWith(0, 23);
+    expect(managed2.terminal.refresh).toHaveBeenCalledWith(0, 23);
   });
 
   it("only resyncs the terminals whose merge event fired", () => {
@@ -265,6 +281,20 @@ describe("TerminalWebGLManager", () => {
 
     expect(addon1.clearTextureAtlas).toHaveBeenCalledTimes(1);
     expect(addon2.clearTextureAtlas).not.toHaveBeenCalled();
+    expect(managed1.terminal.refresh).toHaveBeenCalledWith(0, 23);
+    expect(managed2.terminal.refresh).not.toHaveBeenCalled();
+  });
+
+  it("resyncs and refreshes when the renderer switches atlas objects", () => {
+    const managed = makeManagedTerminal();
+    manager.ensureContext("t1", managed);
+    const addon = addonAt(0);
+
+    addon.__fireChangeTextureAtlas();
+
+    expect(addon.clearTextureAtlas).toHaveBeenCalledTimes(1);
+    expect(managed.terminal.refresh).toHaveBeenCalledTimes(1);
+    expect(managed.terminal.refresh).toHaveBeenCalledWith(0, 23);
   });
 
   it("coalesces a burst of merge events into a single resync", () => {
@@ -291,6 +321,8 @@ describe("TerminalWebGLManager", () => {
 
     expect(addon1.clearTextureAtlas).toHaveBeenCalledTimes(1);
     expect(addon2.clearTextureAtlas).toHaveBeenCalledTimes(1);
+    expect(managed1.terminal.refresh).toHaveBeenCalledTimes(1);
+    expect(managed2.terminal.refresh).toHaveBeenCalledTimes(1);
     // The burst collapsed to one frame — nothing else is queued.
     expect(flushRafFrame()).toBe(false);
   });
@@ -316,6 +348,26 @@ describe("TerminalWebGLManager", () => {
 
     expect(addon1.clearTextureAtlas).toHaveBeenCalledTimes(1);
     expect(addon2.clearTextureAtlas).toHaveBeenCalledTimes(1);
+    expect(managed1.terminal.refresh).not.toHaveBeenCalled();
+    expect(managed2.terminal.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips the post-clear refresh when the terminal has no rows", () => {
+    const managed = makeManagedTerminal({
+      terminal: {
+        loadAddon: vi.fn(),
+        element: makeFakeElement(),
+        rows: 0,
+        refresh: vi.fn(),
+      } as unknown as ManagedTerminal["terminal"],
+    });
+    manager.ensureContext("t1", managed);
+    const addon = addonAt(0);
+
+    addon.__fireRemoveTextureAtlasCanvas();
+
+    expect(addon.clearTextureAtlas).toHaveBeenCalledTimes(1);
+    expect(managed.terminal.refresh).not.toHaveBeenCalled();
   });
 
   it("dispose() cancels a pending atlas resync frame", () => {
@@ -331,6 +383,7 @@ describe("TerminalWebGLManager", () => {
     // resync never runs.
     expect(flushRafFrame()).toBe(false);
     expect(addon1.clearTextureAtlas).not.toHaveBeenCalled();
+    expect(managed1.terminal.refresh).not.toHaveBeenCalled();
   });
 
   it("stops listening for merges after a terminal is released", () => {
@@ -352,6 +405,8 @@ describe("TerminalWebGLManager", () => {
     expect(flushRafFrame()).toBe(false);
     expect(addon1.clearTextureAtlas).not.toHaveBeenCalled();
     expect(addon2.clearTextureAtlas).not.toHaveBeenCalled();
+    expect(managed1.terminal.refresh).not.toHaveBeenCalled();
+    expect(managed2.terminal.refresh).not.toHaveBeenCalled();
   });
 
   it("releaseContext disposes only the targeted entry", () => {
