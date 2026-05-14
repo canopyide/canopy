@@ -446,7 +446,7 @@ export class HelpSessionService {
     // (rather than being swallowed) because launching with a stale or missing
     // scratch path is worse than a clean provision failure.
     const scratchPath = getScratchDirForSession(sessionId);
-    await fs.mkdir(scratchPath, { recursive: true });
+    await fs.mkdir(scratchPath, { recursive: true, mode: 0o700 });
     await fs.chmod(scratchPath, 0o700).catch(() => {});
 
     // Write the scratch-path addendum to each per-agent markdown file in the

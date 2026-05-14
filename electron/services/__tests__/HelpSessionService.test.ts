@@ -1636,6 +1636,7 @@ describe("HelpSessionService", () => {
       await fs.mkdir(path.join(altHelp, ".gemini"), { recursive: true });
       // Write in REVERSE order from makeBundledHelpFolder to test stability.
       await fs.writeFile(path.join(altHelp, "GEMINI.md"), "# Gemini Help");
+      await fs.writeFile(path.join(altHelp, "AGENTS.md"), "# Agents Help");
       await fs.writeFile(path.join(altHelp, "CLAUDE.md"), "# Help");
       await fs.writeFile(
         path.join(altHelp, ".gemini", "settings.json"),
