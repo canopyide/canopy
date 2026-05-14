@@ -4,19 +4,8 @@ import { ipcMain, BrowserWindow, shell } from "electron";
 import { CHANNELS } from "./channels.js";
 import { getLogFilePath, logError as logErrorUtil } from "../utils/logger.js";
 import { broadcastToRenderer, typedHandle } from "./utils.js";
-import { ValidationError } from "./validationError.js";
-import {
-  GitError,
-  GitOperationError,
-  ProcessError,
-  FileSystemError,
-  ConfigError,
-  getUserMessage,
-  getErrorDetails,
-  getRetryability,
-  isTransientError,
-} from "../utils/errorTypes.js";
-import { getGitRecoveryAction, getGitRecoveryHint } from "../../shared/utils/gitOperationErrors.js";
+import { getErrorDetails, getRetryability, getUserMessage } from "../utils/errorTypes.js";
+import { classifyError } from "../utils/errorClassification.js";
 import { store } from "../store.js";
 import { appendPendingError, MAX_PENDING_ERRORS } from "./pendingErrorsStore.js";
 import { FAULT_MODE_ENABLED } from "./faultRegistry.js";
@@ -89,139 +78,6 @@ function parseRetryPayload(payload: unknown): RetryPayload {
   };
 }
 
-// TLS error codes emitted by Node when an upstream cert chain doesn't validate.
-// In corporate environments these almost always mean a TLS-inspection proxy is
-// re-signing traffic with a private CA that isn't in Node's bundled root store
-// — surface a recovery hint that points at NODE_EXTRA_CA_CERTS / NODE_USE_SYSTEM_CA
-// rather than a generic "check your network" message.
-const TLS_PROXY_CODES = new Set([
-  "UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
-  "SELF_SIGNED_CERT_IN_CHAIN",
-  "CERT_UNTRUSTED",
-  "DEPTH_ZERO_SELF_SIGNED_CERT",
-  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
-  "ERR_TLS_CERT_ALTNAME_INVALID",
-]);
-
-function isTlsProxyError(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const code = (error as { code?: unknown }).code;
-  if (typeof code === "string" && TLS_PROXY_CODES.has(code)) {
-    return true;
-  }
-  // Fallback for cases where libraries strip `error.code` but preserve the
-  // OpenSSL message verbatim. Kept narrow to the canonical OpenSSL phrasings
-  // so unrelated "unable to verify ..." or "certificate ..." errors don't
-  // get pushed to the NODE_EXTRA_CA_CERTS recovery path. Case-insensitive in
-  // case a wrapper transforms the message.
-  const message = error instanceof Error ? error.message.toLowerCase() : "";
-  if (!message) return false;
-  return (
-    message.includes("unable to verify the first certificate") ||
-    message.includes("self signed certificate") ||
-    message.includes("self-signed certificate") ||
-    message.includes("unable to get local issuer certificate")
-  );
-}
-
-function getErrorType(error: unknown): ErrorType {
-  if (error instanceof ValidationError) return "validation";
-  if (error instanceof GitError) return "git";
-  if (error instanceof ProcessError) return "process";
-  if (error instanceof FileSystemError) return "filesystem";
-  if (error instanceof ConfigError) return "config";
-
-  if (error && typeof error === "object") {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ECONNREFUSED" || code === "ENOTFOUND" || code === "ETIMEDOUT") {
-      return "network";
-    }
-    if (isTlsProxyError(error)) {
-      return "network";
-    }
-  }
-
-  return "unknown";
-}
-
-function isSpawnSyscall(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const syscall = (error as NodeJS.ErrnoException).syscall;
-  if (syscall?.startsWith("spawn")) return true;
-  if (error instanceof Error && error.message.includes("posix_spawnp")) return true;
-  return false;
-}
-
-function getRecoveryHint(error: unknown): string | undefined {
-  if (error instanceof ProcessError) {
-    return "The terminal process could not start.";
-  }
-
-  if (error instanceof GitOperationError) {
-    return getGitRecoveryHint(error.reason);
-  }
-
-  if (error instanceof GitError) {
-    const msg = error.message + (error.cause ? ` ${error.cause.message}` : "");
-    if (msg.includes("not a git repository")) {
-      return "Run 'git init' or open a folder containing a git repo.";
-    }
-    if (msg.includes("Authentication failed") || msg.includes("authentication")) {
-      return "Check your Git credentials or SSH key configuration.";
-    }
-    return undefined;
-  }
-
-  if (error instanceof ConfigError) {
-    return "The configuration file may be corrupted — check the logs.";
-  }
-
-  if (!error || typeof error !== "object") return undefined;
-
-  if (isTlsProxyError(error)) {
-    return "TLS inspection proxy detected. Set NODE_EXTRA_CA_CERTS=/path/to/corp-ca.pem (or NODE_USE_SYSTEM_CA=1 to use the OS keychain), then restart Daintree.";
-  }
-
-  const code = (error as NodeJS.ErrnoException).code;
-  const spawn = isSpawnSyscall(error);
-
-  if (!code && spawn) {
-    return "Install the tool or add it to your PATH.";
-  }
-
-  switch (code) {
-    case "EACCES":
-    case "EPERM":
-      return spawn
-        ? "The file exists but is not executable — check permissions."
-        : "Check file permissions or run with elevated privileges.";
-    case "ENOENT":
-      return spawn
-        ? "Install the tool or add it to your PATH."
-        : "Verify the file path is correct and the file exists.";
-    case "ENOTFOUND":
-      return "Check your internet connection and DNS settings.";
-    case "ECONNREFUSED":
-      return "Ensure the target server or service is running.";
-    case "ETIMEDOUT":
-      return "Check your network connection and try again.";
-    case "ECONNRESET":
-      return "The connection was reset — try again in a moment.";
-    case "EMFILE":
-      return "Close some terminals to free up file descriptors and retry.";
-    case "ENOMEM":
-      return "Close other applications to free up memory and retry.";
-    case "ENXIO":
-      return "Close some terminals to free PTY resources and retry.";
-    case "EBUSY":
-      return "Close other applications using this file and retry.";
-    case "EAGAIN":
-      return "System is temporarily busy — wait a moment and retry.";
-  }
-
-  return undefined;
-}
-
 function generateErrorId(): string {
   return `error-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -243,26 +99,24 @@ function createErrorRecord(
 ): ErrorRecord {
   const details = getErrorDetails(error);
   const correlationId = randomUUID();
-
-  const gitReason = error instanceof GitOperationError ? error.reason : undefined;
-  const recoveryAction = gitReason ? getGitRecoveryAction(gitReason) : undefined;
+  const classification = classifyError(error);
 
   return {
     id: generateErrorId(),
     timestamp: Date.now(),
-    type: getErrorType(error),
+    type: classification.errorType,
     message: getUserMessage(error),
     details: details.stack as string | undefined,
     source: options.source,
     context: options.context,
-    retryability: options.retryability ?? getRetryability(error, gitReason),
+    retryability: options.retryability ?? classification.retryability,
     dismissed: false,
     retryAction: options.retryAction,
     retryArgs: options.retryArgs,
     correlationId,
-    recoveryHint: getRecoveryHint(error),
-    gitReason,
-    recoveryAction,
+    recoveryHint: classification.recoveryHint,
+    gitReason: classification.gitReason,
+    recoveryAction: classification.recoveryAction,
   };
 }
 
@@ -554,7 +408,7 @@ class ErrorService {
           if (isAbortError(error)) throw error;
           signal.throwIfAborted();
 
-          if (!isTransientError(error) || attempt === maxAttempts) {
+          if (classifyError(error).retryability !== "auto" || attempt === maxAttempts) {
             throw error;
           }
 
