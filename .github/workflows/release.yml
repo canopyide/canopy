@@ -53,9 +53,19 @@ jobs:
         run: npm run check
 
   unit-tests:
-    name: Unit Tests
-    runs-on: ubuntu-22.04
+    name: Unit Tests (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            name: Linux
+          - os: macos-14
+            name: macOS
+          - os: windows-latest
+            name: Windows
     steps:
       - uses: actions/checkout@v6
 
@@ -65,11 +75,19 @@ jobs:
           cache: npm
 
       - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y libarchive-tools
 
+      - name: Install dependencies (Windows)
+        if: matrix.os == 'windows-latest'
+        run: npm ci
+        env:
+          npm_config_msvs_version: "2022"
+
       - name: Install dependencies
+        if: matrix.os != 'windows-latest'
         run: npm ci
 
       - name: Test
