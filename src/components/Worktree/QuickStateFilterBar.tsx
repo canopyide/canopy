@@ -80,7 +80,7 @@ export function QuickStateFilterBar({
                 {Icon && visual ? (
                   <Icon
                     className={cn(
-                      "w-2.5 h-2.5 shrink-0",
+                      "w-3 h-3 shrink-0",
                       visual.color,
                       isSpinningWorking && "animate-spin-slow motion-reduce:animate-none"
                     )}
@@ -89,7 +89,7 @@ export function QuickStateFilterBar({
                   <span
                     aria-hidden="true"
                     className={cn(
-                      "text-[10px]",
+                      "text-xs",
                       isActive ? "font-medium text-daintree-text" : "text-daintree-text/60"
                     )}
                   >
@@ -100,7 +100,7 @@ export function QuickStateFilterBar({
                   <span
                     aria-hidden="true"
                     className={cn(
-                      "text-[10px] font-mono tabular-nums",
+                      "text-xs tabular-nums",
                       isActive ? "text-daintree-text/70" : "text-daintree-text/50"
                     )}
                   >
