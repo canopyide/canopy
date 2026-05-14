@@ -47,7 +47,7 @@ export function registerWorktreeServiceActions(
       "Restart the workspace host. Available after the service has crashed and could not recover automatically.",
     category: "worktree",
     kind: "command",
-    danger: "safe",
+    danger: "confirm",
     scope: "renderer",
     keywords: ["workspace", "backend", "recover", "host"],
     isEnabled: () => {
