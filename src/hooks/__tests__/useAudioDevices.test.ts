@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { useAudioDevices, __resetForTesting } from "@/hooks/useAudioDevices";
+import { useAudioDevices, __resetForTesting, SYSTEM_DEFAULT_VALUE } from "@/hooks/useAudioDevices";
 
 describe("useAudioDevices", () => {
   let enumerateSpy: ReturnType<typeof vi.fn>;
@@ -36,7 +36,7 @@ describe("useAudioDevices", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.devices).toEqual([
-      { value: "", label: "System default" },
+      { value: SYSTEM_DEFAULT_VALUE, label: "System default" },
       { value: "mic1", label: "Built-in Mic" },
     ]);
     expect(result.current.error).toBeNull();
@@ -54,7 +54,10 @@ describe("useAudioDevices", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.devices).toHaveLength(2);
-    expect(result.current.devices[0]).toEqual({ value: "", label: "System default" });
+    expect(result.current.devices[0]).toEqual({
+      value: SYSTEM_DEFAULT_VALUE,
+      label: "System default",
+    });
     expect(result.current.devices[1]).toEqual({ value: "default", label: "Default" });
   });
 
@@ -69,7 +72,7 @@ describe("useAudioDevices", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.devices).toEqual([
-      { value: "", label: "System default" },
+      { value: SYSTEM_DEFAULT_VALUE, label: "System default" },
       { value: "a", label: "Microphone 1" },
       { value: "b", label: "Microphone 2" },
     ]);
@@ -82,7 +85,9 @@ describe("useAudioDevices", () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    expect(result.current.devices).toEqual([{ value: "", label: "System default" }]);
+    expect(result.current.devices).toEqual([
+      { value: SYSTEM_DEFAULT_VALUE, label: "System default" },
+    ]);
     expect(result.current.error).toContain("Could not enumerate audio devices");
   });
 
@@ -92,7 +97,9 @@ describe("useAudioDevices", () => {
     const { result } = renderHook(() => useAudioDevices());
 
     expect(result.current.loading).toBe(false);
-    expect(result.current.devices).toEqual([{ value: "", label: "System default" }]);
+    expect(result.current.devices).toEqual([
+      { value: SYSTEM_DEFAULT_VALUE, label: "System default" },
+    ]);
     expect(result.current.error).toContain("Media devices API not available");
   });
 

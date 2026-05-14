@@ -6,6 +6,9 @@ export interface AudioDevice {
   label: string;
 }
 
+/** Sentinel value for the "System default" option in Radix Select (which rejects empty strings). */
+export const SYSTEM_DEFAULT_VALUE = "__system_default__";
+
 interface Snapshot {
   devices: AudioDevice[];
   loading: boolean;
@@ -16,17 +19,18 @@ let cachedDevices: AudioDevice[] | null = null;
 let cachedError: string | null = null;
 let cachedLoading = true;
 let listeners: Array<() => void> = [];
+let listenerCount = 0;
 let subscribedToDeviceChange = false;
+let enumerationGen = 0;
 let stableSnapshot: Snapshot = {
-  devices: [{ value: "", label: "System default" }],
+  devices: [{ value: SYSTEM_DEFAULT_VALUE, label: "System default" }],
   loading: true,
   error: null,
 };
 
 function notifyListeners() {
-  // Always update the stable snapshot before firing listeners
   stableSnapshot = {
-    devices: cachedDevices ?? [{ value: "", label: "System default" }],
+    devices: cachedDevices ?? [{ value: SYSTEM_DEFAULT_VALUE, label: "System default" }],
     loading: cachedLoading,
     error: cachedError,
   };
@@ -36,8 +40,10 @@ function notifyListeners() {
 }
 
 async function refreshDevices(): Promise<void> {
+  const gen = ++enumerationGen;
+
   if (!navigator?.mediaDevices?.enumerateDevices) {
-    cachedDevices = [{ value: "", label: "System default" }];
+    cachedDevices = [{ value: SYSTEM_DEFAULT_VALUE, label: "System default" }];
     cachedError = "Media devices API not available";
     cachedLoading = false;
     notifyListeners();
@@ -46,9 +52,10 @@ async function refreshDevices(): Promise<void> {
 
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
+    if (gen !== enumerationGen) return;
     const audioInputs = devices.filter((d) => d.kind === "audioinput");
     cachedDevices = [
-      { value: "", label: "System default" },
+      { value: SYSTEM_DEFAULT_VALUE, label: "System default" },
       ...audioInputs.map((d, i) => ({
         value: d.deviceId,
         label: d.label || `Microphone ${i + 1}`,
@@ -56,11 +63,13 @@ async function refreshDevices(): Promise<void> {
     ];
     cachedError = null;
   } catch (err) {
-    cachedDevices = [{ value: "", label: "System default" }];
+    if (gen !== enumerationGen) return;
+    cachedDevices = [{ value: SYSTEM_DEFAULT_VALUE, label: "System default" }];
     cachedError = `Could not enumerate audio devices: ${err instanceof Error ? err.message : String(err)}`;
     logWarn("useAudioDevices enumerateDevices failed", { err });
   }
 
+  if (gen !== enumerationGen) return;
   cachedLoading = false;
   notifyListeners();
 }
@@ -71,6 +80,7 @@ function getSnapshot(): Snapshot {
 
 function subscribe(callback: () => void): () => void {
   listeners = [...listeners, callback];
+  listenerCount++;
 
   if (!subscribedToDeviceChange && navigator?.mediaDevices?.addEventListener) {
     subscribedToDeviceChange = true;
@@ -79,14 +89,23 @@ function subscribe(callback: () => void): () => void {
       notifyListeners();
       void refreshDevices();
     });
+  }
 
-    void refreshDevices();
-  } else if (cachedDevices === null) {
+  if (cachedDevices === null) {
     void refreshDevices();
   }
 
   return () => {
     listeners = listeners.filter((l) => l !== callback);
+    listenerCount--;
+    if (
+      listenerCount === 0 &&
+      subscribedToDeviceChange &&
+      navigator?.mediaDevices?.removeEventListener
+    ) {
+      subscribedToDeviceChange = false;
+      // devicechange listener is long-lived; keep it as it's harmless and idempotent
+    }
   };
 }
 
@@ -108,9 +127,11 @@ export function __resetForTesting(): void {
   cachedError = null;
   cachedLoading = true;
   listeners = [];
+  listenerCount = 0;
   subscribedToDeviceChange = false;
+  enumerationGen = 0;
   stableSnapshot = {
-    devices: [{ value: "", label: "System default" }],
+    devices: [{ value: SYSTEM_DEFAULT_VALUE, label: "System default" }],
     loading: true,
     error: null,
   };

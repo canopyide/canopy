@@ -27,7 +27,7 @@ import { SettingsTextarea } from "./SettingsTextarea";
 import { useSettingsTabValidation } from "./SettingsValidationRegistry";
 import { dispatchVoiceInputSettingsChanged } from "@/lib/voiceInputSettingsEvents";
 import { logWarn } from "@/utils/logger";
-import { useAudioDevices } from "@/hooks/useAudioDevices";
+import { useAudioDevices, SYSTEM_DEFAULT_VALUE } from "@/hooks/useAudioDevices";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { CORE_CORRECTION_PROMPT } from "@shared/config/voiceCorrection";
 import type {
@@ -92,7 +92,12 @@ export function VoiceInputSettingsTab() {
   const [newDictionaryWord, setNewDictionaryWord] = useState("");
   const dictionaryInputRef = useRef<HTMLInputElement>(null);
 
-  const { devices, loading: devicesLoading, refresh: refreshDevices } = useAudioDevices();
+  const {
+    devices,
+    loading: devicesLoading,
+    error: devicesError,
+    refresh: refreshDevices,
+  } = useAudioDevices();
 
   useEffect(() => {
     let settled = false;
@@ -226,12 +231,15 @@ export function VoiceInputSettingsTab() {
               <SettingsSelect
                 label="Microphone"
                 description={
-                  devicesLoading
-                    ? "Detecting devices..."
-                    : "Select which microphone to use for dictation"
+                  devicesError
+                    ? devicesError
+                    : devicesLoading
+                      ? "Detecting devices..."
+                      : "Select which microphone to use for dictation"
                 }
-                value={settings.deviceId}
-                onValueChange={(v) => update({ deviceId: v })}
+                error={devicesError ?? undefined}
+                value={settings.deviceId || SYSTEM_DEFAULT_VALUE}
+                onValueChange={(v) => update({ deviceId: v === SYSTEM_DEFAULT_VALUE ? "" : v })}
                 options={devices}
                 disabled={devicesLoading && devices.length <= 1}
               />
