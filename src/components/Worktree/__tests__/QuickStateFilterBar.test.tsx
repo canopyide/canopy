@@ -4,15 +4,19 @@ import { render, screen, fireEvent, within } from "@testing-library/react";
 import { QuickStateFilterBar } from "../QuickStateFilterBar";
 
 describe("QuickStateFilterBar", () => {
-  it("renders all four pills without counts when counts prop is omitted", () => {
+  it("renders all four segments addressable by accessible name when counts are omitted", () => {
     render(<QuickStateFilterBar value="all" onChange={() => {}} />);
+    // "All" keeps its visible text anchor; the status segments go icon-only.
     expect(screen.getByText("All")).toBeTruthy();
-    expect(screen.getByText("Working")).toBeTruthy();
-    expect(screen.getByText("Waiting")).toBeTruthy();
-    expect(screen.getByText("Finished")).toBeTruthy();
+    expect(screen.queryByText("Working")).toBeNull();
+    expect(screen.queryByText("Waiting")).toBeNull();
+    expect(screen.queryByText("Finished")).toBeNull();
+    expect(screen.getByRole("button", { name: "Working" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Waiting" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Finished" })).toBeTruthy();
   });
 
-  it("renders counts in parentheses for every tab including All", () => {
+  it("renders the bare count digit for every segment including All", () => {
     render(
       <QuickStateFilterBar
         value="all"
@@ -24,13 +28,15 @@ describe("QuickStateFilterBar", () => {
     const working = screen.getByRole("button", { name: /Working/ });
     const waiting = screen.getByRole("button", { name: /Waiting/ });
     const finished = screen.getByRole("button", { name: /Finished/ });
-    expect(within(all).getByText("(9)", { exact: false })).toBeTruthy();
-    expect(within(working).getByText("(3)", { exact: false })).toBeTruthy();
-    expect(within(waiting).getByText("(1)", { exact: false })).toBeTruthy();
-    expect(within(finished).getByText("(5)", { exact: false })).toBeTruthy();
+    expect(within(all).getByText("9")).toBeTruthy();
+    expect(within(working).getByText("3")).toBeTruthy();
+    expect(within(waiting).getByText("1")).toBeTruthy();
+    expect(within(finished).getByText("5")).toBeTruthy();
+    // No parenthesised count anymore — just the digit.
+    expect(within(working).queryByText("(3)", { exact: false })).toBeNull();
   });
 
-  it("hides zero counts entirely so empty buckets stay compact", () => {
+  it("shows the count digit even for empty buckets", () => {
     render(
       <QuickStateFilterBar
         value="all"
@@ -41,15 +47,16 @@ describe("QuickStateFilterBar", () => {
     const working = screen.getByRole("button", { name: /Working/ });
     const waiting = screen.getByRole("button", { name: /Waiting/ });
     const finished = screen.getByRole("button", { name: /Finished/ });
-    expect(within(working).queryByText("(0)", { exact: false })).toBeNull();
-    expect(within(waiting).queryByText("(0)", { exact: false })).toBeNull();
-    expect(within(finished).queryByText("(0)", { exact: false })).toBeNull();
+    // Empty buckets still show "0" — a missing digit reads as broken, not empty.
+    expect(within(working).getByText("0")).toBeTruthy();
+    expect(within(waiting).getByText("0")).toBeTruthy();
+    expect(within(finished).getByText("0")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Working, 0 worktrees" })).toBeTruthy();
+    // The count digit stays out of the accessible name.
     expect(working.textContent).not.toContain("worktree");
-    expect(waiting.textContent).not.toContain("worktree");
-    expect(finished.textContent).not.toContain("worktree");
   });
 
-  it("hides the visual count from screen readers and adds an sr-only count", () => {
+  it("keeps the visible count out of the accessible name via aria-hidden", () => {
     render(
       <QuickStateFilterBar
         value="all"
@@ -58,21 +65,13 @@ describe("QuickStateFilterBar", () => {
       />
     );
     const working = screen.getByRole("button", { name: /Working/ });
-    const visibleCount = within(working).getByText("(3)", { exact: false });
+    const visibleCount = within(working).getByText("3");
     expect(visibleCount.getAttribute("aria-hidden")).toBe("true");
-    const workingSrOnly = within(working).getByText(", 3 worktrees");
-    expect(workingSrOnly.className).toContain("sr-only");
-
-    const waiting = screen.getByRole("button", { name: /Waiting/ });
-    const waitingSrOnly = within(waiting).getByText(", 1 worktree");
-    expect(waitingSrOnly.className).toContain("sr-only");
-
-    const finished = screen.getByRole("button", { name: /Finished/ });
-    const finishedSrOnly = within(finished).getByText(", 2 worktrees");
-    expect(finishedSrOnly.className).toContain("sr-only");
+    // The count reaches screen readers only through the button's accessible name.
+    expect(screen.getByRole("button", { name: "Working, 3 worktrees" })).toBeTruthy();
   });
 
-  it("exposes the count in the button's accessible name", () => {
+  it("exposes the count in the button's accessible name with singular/plural nouns", () => {
     render(
       <QuickStateFilterBar
         value="all"
@@ -80,12 +79,32 @@ describe("QuickStateFilterBar", () => {
         counts={{ all: 9, working: 3, waiting: 1, finished: 2 }}
       />
     );
+    expect(screen.getByRole("button", { name: "All, 9 worktrees" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Working, 3 worktrees" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Waiting, 1 worktree" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Finished, 2 worktrees" })).toBeTruthy();
   });
 
-  it("marks the active pill with aria-pressed=true", () => {
+  it("names each segment with a hover tooltip", () => {
+    render(
+      <QuickStateFilterBar
+        value="all"
+        onChange={() => {}}
+        counts={{ all: 9, working: 3, waiting: 1, finished: 2 }}
+      />
+    );
+    expect(screen.getByRole("button", { name: /Working/ }).getAttribute("title")).toBe(
+      "Working (3)"
+    );
+    expect(screen.getByRole("button", { name: /^All/ }).getAttribute("title")).toBe("All (9)");
+  });
+
+  it("falls back to the bare status name in the tooltip when counts are omitted", () => {
+    render(<QuickStateFilterBar value="all" onChange={() => {}} />);
+    expect(screen.getByRole("button", { name: "Waiting" }).getAttribute("title")).toBe("Waiting");
+  });
+
+  it("marks the active segment with aria-pressed=true", () => {
     render(
       <QuickStateFilterBar
         value="working"
@@ -105,7 +124,7 @@ describe("QuickStateFilterBar", () => {
     );
   });
 
-  it("clicking an inactive pill calls onChange with that value", () => {
+  it("clicking an inactive segment calls onChange with that value", () => {
     const onChange = vi.fn();
     render(
       <QuickStateFilterBar
@@ -118,7 +137,7 @@ describe("QuickStateFilterBar", () => {
     expect(onChange).toHaveBeenCalledWith("working");
   });
 
-  it('clicking the active pill toggles back to "all"', () => {
+  it('clicking the active segment toggles back to "all"', () => {
     const onChange = vi.fn();
     render(
       <QuickStateFilterBar
@@ -136,7 +155,7 @@ describe("QuickStateFilterBar", () => {
     expect(screen.getByRole("button", { name: /^All/ }).getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("renders a state icon on each non-All pill and no icon on All", () => {
+  it("renders a state icon on each non-All segment and no icon on All", () => {
     render(
       <QuickStateFilterBar
         value="all"
@@ -201,13 +220,13 @@ describe("QuickStateFilterBar", () => {
 
   it("does not spin the working icon when counts prop is omitted", () => {
     render(<QuickStateFilterBar value="all" onChange={() => {}} />);
-    const working = screen.getByRole("button", { name: /Working/ });
+    const working = screen.getByRole("button", { name: "Working" });
     const svg = working.querySelector("svg");
     expect(svg).not.toBeNull();
     expect(svg?.getAttribute("class") ?? "").not.toContain("animate-spin-slow");
   });
 
-  it("marks each pill icon as aria-hidden so the accessible name stays clean", () => {
+  it("marks each segment icon as aria-hidden so the accessible name stays clean", () => {
     render(
       <QuickStateFilterBar
         value="all"
@@ -221,5 +240,17 @@ describe("QuickStateFilterBar", () => {
       expect(svg).not.toBeNull();
       expect(svg?.getAttribute("aria-hidden")).toBe("true");
     }
+  });
+
+  it("renders the optional trailing slot past a divider", () => {
+    render(
+      <QuickStateFilterBar
+        value="all"
+        onChange={() => {}}
+        counts={{ all: 9, working: 1, waiting: 1, finished: 1 }}
+        trailing={<button type="button">Arm</button>}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Arm" })).toBeTruthy();
   });
 });

@@ -47,41 +47,65 @@ export function QuickStateFilterBar({
       {FILTER_OPTIONS.map((option, idx) => {
         const isActive = option.value === value;
         const rawCount = counts ? counts[option.value] : undefined;
-        const showCount = rawCount !== undefined && rawCount > 0;
+        const hasCount = rawCount !== undefined;
         const visual = option.value === "all" ? null : FILTER_VISUALS[option.value];
         const isSpinningWorking = option.value === "working" && workingActive;
         const Icon = isSpinningWorking ? SpinnerCircle : visual?.Icon;
+        // The status icon + count carry the meaning now that the text label is
+        // gone; the name lives in the accessible name and the hover tooltip.
+        const noun = rawCount === 1 ? "worktree" : "worktrees";
+        const accessibleName = hasCount ? `${option.label}, ${rawCount} ${noun}` : option.label;
+        const tooltip = hasCount ? `${option.label} (${rawCount})` : option.label;
         return (
           <button
             key={option.value}
             type="button"
             aria-pressed={isActive}
+            aria-label={accessibleName}
+            title={tooltip}
             onClick={() => onChange(isActive ? "all" : option.value)}
             className={cn(
-              "inline-flex items-center justify-center gap-1 min-w-0 px-2 py-1.5 text-[11px] transition-colors",
+              "inline-flex items-center justify-center gap-1.5 min-w-0 px-2 py-1.5 transition-colors",
               "focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-daintree-accent",
-              option.value !== "all" && "flex-1",
+              // "All" is the only labelled segment and always carries the
+              // total — give it the lion's share; the icon-only status
+              // segments split the rest equally.
+              option.value === "all" ? "flex-[2]" : "flex-1",
               idx > 0 && "border-l border-border-default",
               isActive
-                ? "text-daintree-text font-medium shadow-[inset_0_-2px_0_0_var(--color-text-secondary)]"
-                : "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.04]"
+                ? "bg-overlay-subtle shadow-[inset_0_-2px_0_0_var(--color-text-secondary)]"
+                : "hover:bg-tint/[0.04]"
             )}
           >
-            {Icon && visual && (
+            {Icon && visual ? (
               <Icon
                 className={cn(
-                  "w-3 h-3 shrink-0",
+                  "w-3.5 h-3.5 shrink-0",
                   visual.color,
                   isSpinningWorking && "animate-spin-slow motion-reduce:animate-none"
                 )}
               />
+            ) : (
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "text-[11px]",
+                  isActive ? "font-medium text-daintree-text" : "text-daintree-text/60"
+                )}
+              >
+                All
+              </span>
             )}
-            <span className="truncate">{option.label}</span>
-            {showCount && (
-              <>
-                <span aria-hidden="true">{` (${rawCount})`}</span>
-                <span className="sr-only">{`, ${rawCount} ${rawCount === 1 ? "worktree" : "worktrees"}`}</span>
-              </>
+            {hasCount && (
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "text-[11px] tabular-nums",
+                  isActive ? "font-medium text-daintree-text" : "text-daintree-text/50"
+                )}
+              >
+                {rawCount}
+              </span>
             )}
           </button>
         );
