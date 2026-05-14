@@ -99,9 +99,7 @@ describe("RestoreConfirmationBanner", () => {
       vi.advanceTimersByTime(10_000);
     });
 
-    // Store should still be visible since dismiss was not called (timer was cleaned up)
-    // The dismiss in setTimeout fires but it's fine since Zustand handles it gracefully
-    // The key assertion: no crash from setState-after-unmount
-    expect(true).toBe(true);
+    // Timer cleanup prevented dismiss from firing; store still visible
+    expect(useRestoreConfirmationStore.getState().visible).toBe(true);
   });
 });
