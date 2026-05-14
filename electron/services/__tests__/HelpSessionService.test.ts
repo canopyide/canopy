@@ -103,7 +103,22 @@ async function makeBundledHelpFolder(root: string): Promise<string> {
   );
   await fs.writeFile(path.join(helpDir, "CLAUDE.md"), "# Help");
   await fs.writeFile(path.join(helpDir, "GEMINI.md"), "# Gemini Help");
+  await fs.writeFile(path.join(helpDir, "AGENTS.md"), "# Agents Help");
   return helpDir;
+}
+
+/**
+ * Removes the scratch-folder addendum block (#7947) plus its trailing
+ * whitespace from a markdown file body so a template-body equality assertion
+ * can ignore the addendum that `doProvision` appends unconditionally.
+ */
+function stripScratchAddendum(content: string): string {
+  return content
+    .replace(
+      /\n*<!-- DAINTREE_ASSISTANT_SCRATCH_START -->[\s\S]*?<!-- DAINTREE_ASSISTANT_SCRATCH_END -->\n*/,
+      ""
+    )
+    .replace(/\n+$/, "");
 }
 
 describe("HelpSessionService", () => {
@@ -1476,7 +1491,10 @@ describe("HelpSessionService", () => {
       expect(cpSpy).not.toHaveBeenCalled();
 
       const claude = await fs.readFile(path.join(second.sessionPath, "CLAUDE.md"), "utf-8");
-      expect(claude).toBe("# mutated");
+      // The user's session-dir mutation must be preserved across the
+      // hash-gate short-circuit. The scratch-folder addendum is appended
+      // unconditionally outside the gate (#7947) — strip it before checking.
+      expect(stripScratchAddendum(claude)).toBe("# mutated");
       cpSpy.mockRestore();
     });
 
@@ -1494,7 +1512,9 @@ describe("HelpSessionService", () => {
       if (!second) throw new Error("expected second provision");
 
       const claude = await fs.readFile(path.join(second.sessionPath, "CLAUDE.md"), "utf-8");
-      expect(claude).toBe("# Help v2");
+      // Strip the unconditional scratch-folder addendum (#7947) before
+      // comparing against the bundled template body.
+      expect(stripScratchAddendum(claude)).toBe("# Help v2");
 
       const secondStamp = (
         await fs.readFile(path.join(second.sessionPath, ".template-hash"), "utf-8")
@@ -1558,7 +1578,9 @@ describe("HelpSessionService", () => {
       readSpy.mockRestore();
 
       const claude = await fs.readFile(path.join(first.sessionPath, "CLAUDE.md"), "utf-8");
-      expect(claude).toBe("# Help");
+      // Scratch-folder addendum (#7947) is appended unconditionally outside
+      // the hash gate. Strip it to compare against the bundled template body.
+      expect(stripScratchAddendum(claude)).toBe("# Help");
     });
 
     it("rewrites .mcp.json with a fresh bearer on every provision, even when the template copy is skipped", async () => {
@@ -1701,6 +1723,86 @@ describe("HelpSessionService", () => {
       expect(mockMcpServerService.recordTurnOutcome).toHaveBeenCalledWith(
         expect.objectContaining({ outcome: "mcp-not-ready" })
       );
+    });
+  });
+
+  describe("assistant scratch folder", () => {
+    it("creates a per-session scratch dir under userData/assistant-scratch", async () => {
+      const result = await service.provisionSession(provisionInput());
+      if (!result) throw new Error("expected result");
+
+      const expectedRoot = path.join(userData, "assistant-scratch");
+      const stat = await fs.stat(expectedRoot);
+      expect(stat.isDirectory()).toBe(true);
+
+      // The exact path is exposed via getAssistantScratchEnv — verify the
+      // directory it points at exists and lives under the assistant-scratch
+      // root (under a per-instance subdir).
+      const env = service.getAssistantScratchEnv(result.token);
+      expect(env).not.toBeNull();
+      if (!env) throw new Error("expected env");
+      const scratchDir = env.DAINTREE_ASSISTANT_SCRATCH_DIR;
+      expect(scratchDir).toBeDefined();
+      expect(scratchDir.startsWith(expectedRoot + path.sep)).toBe(true);
+      const scratchStat = await fs.stat(scratchDir);
+      expect(scratchStat.isDirectory()).toBe(true);
+    });
+
+    it("exposes DAINTREE_ASSISTANT_SCRATCH_DIR via getAssistantScratchEnv", async () => {
+      const result = await service.provisionSession(provisionInput());
+      if (!result) throw new Error("expected result");
+
+      const env = service.getAssistantScratchEnv(result.token);
+      expect(env).not.toBeNull();
+      expect(env!.DAINTREE_ASSISTANT_SCRATCH_DIR).toMatch(/assistant-scratch/);
+    });
+
+    it("returns null from getAssistantScratchEnv for unknown or revoked tokens", async () => {
+      expect(service.getAssistantScratchEnv("")).toBeNull();
+      expect(service.getAssistantScratchEnv("unknown-token")).toBeNull();
+
+      const result = await service.provisionSession(provisionInput());
+      if (!result) throw new Error("expected result");
+      await service.revokeSession(result.sessionId);
+      expect(service.getAssistantScratchEnv(result.token)).toBeNull();
+    });
+
+    it("writes the scratch-path addendum into CLAUDE.md, AGENTS.md, and GEMINI.md", async () => {
+      const result = await service.provisionSession(provisionInput());
+      if (!result) throw new Error("expected result");
+
+      const env = service.getAssistantScratchEnv(result.token);
+      const scratchDir = env!.DAINTREE_ASSISTANT_SCRATCH_DIR;
+
+      for (const name of ["CLAUDE.md", "AGENTS.md", "GEMINI.md"]) {
+        const content = await fs.readFile(path.join(result.sessionPath, name), "utf-8");
+        expect(content).toContain("<!-- DAINTREE_ASSISTANT_SCRATCH_START -->");
+        expect(content).toContain("<!-- DAINTREE_ASSISTANT_SCRATCH_END -->");
+        expect(content).toContain(scratchDir);
+        expect(content).toContain("DAINTREE_ASSISTANT_SCRATCH_DIR");
+      }
+    });
+
+    it("replaces the managed addendum block on re-provision rather than duplicating it", async () => {
+      const first = await service.provisionSession(provisionInput());
+      if (!first) throw new Error("expected result");
+      const second = await service.provisionSession(provisionInput());
+      if (!second) throw new Error("expected result");
+
+      // The session dir is reused per-project, so both provisions write into
+      // the same CLAUDE.md. The marker block must appear exactly once and
+      // contain the second (current) scratch path — never the first.
+      const claudeMd = await fs.readFile(path.join(second.sessionPath, "CLAUDE.md"), "utf-8");
+      const startMatches = claudeMd.match(/<!-- DAINTREE_ASSISTANT_SCRATCH_START -->/g) ?? [];
+      expect(startMatches).toHaveLength(1);
+
+      const firstEnv = service.getAssistantScratchEnv(first.token);
+      const secondEnv = service.getAssistantScratchEnv(second.token);
+      // First session was displaced (single-backend invariant) — its env
+      // getter returns null; the addendum should reference the live session.
+      expect(firstEnv).toBeNull();
+      expect(secondEnv).not.toBeNull();
+      expect(claudeMd).toContain(secondEnv!.DAINTREE_ASSISTANT_SCRATCH_DIR);
     });
   });
 });

@@ -379,6 +379,18 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
         }
       }
 
+      // Inject the per-session assistant scratch dir into the PTY spawn env
+      // for every help-session agent (Claude, Codex, Gemini, Copilot).
+      // Paired with the markdown addendum written into the session dir at
+      // provision time so the agent has both a literal path in its
+      // instruction surface and an env var for shell substitution. Merged
+      // unconditionally — the path is cleared on every app start and stays
+      // valid for the lifetime of this process.
+      const scratchEnv = helpSessionService.getAssistantScratchEnv(helpToken);
+      if (scratchEnv) {
+        spawnEnv = { ...(spawnEnv ?? {}), ...scratchEnv };
+      }
+
       // Bind this terminalId to the help session so HelpSessionService can
       // kill the PTY when the session is displaced or revoked (#7509). Owns
       // the binding from main-process spawn time, so it doesn't depend on
