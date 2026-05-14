@@ -84,10 +84,11 @@ export function buildCommandLaunchShell(
     }
     if (isCmdShell(shell)) {
       // cmd /K runs <command> and then returns to an interactive prompt.
-      // node-pty passes the args array to CreateProcess directly, so we
-      // don't need to re-quote `command` for cmd's parser at this layer —
-      // upstream uses `quoteCommandArg` with cmd-style escaping for any
-      // app-controlled values it spliced in.
+      // node-pty's Windows agent joins the args array into a command-line
+      // string for CreateProcess, and cmd.exe then parses everything after
+      // `/K` — `%VAR%` expansion and `^` escape sequences apply. Upstream
+      // is responsible for embedding only cmd-safe values via
+      // `quoteCommandArg` (double-quote escaping); we do not re-quote here.
       return { shell, args: ["/K", command] };
     }
     return null;
