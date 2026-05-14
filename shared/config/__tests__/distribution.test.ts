@@ -9,14 +9,14 @@ describe("distribution config", () => {
     let originalHadFlag: boolean;
 
     beforeEach(() => {
-      const proc = process as WithStoreFlag;
+      const proc = process as any;
       originalHadFlag = "windowsStore" in proc;
       originalStoreFlag = proc.windowsStore;
       delete proc.windowsStore;
     });
 
     afterEach(() => {
-      const proc = process as WithStoreFlag;
+      const proc = process as any;
       if (originalHadFlag) {
         proc.windowsStore = originalStoreFlag;
       } else {
