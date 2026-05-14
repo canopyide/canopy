@@ -531,8 +531,9 @@ test.describe.serial("E2E: Voice Input — OpenAI Realtime IPC Lifecycle", () =>
     const transcription = audio.input.transcription as { model: string; language: string };
     expect(transcription.model).toBe("gpt-realtime-whisper");
     expect(transcription.language).toBe("en");
-    const turnDetection = audio.input.turn_detection as { type: string };
-    expect(turnDetection.type).toBe("server_vad");
+    // `gpt-realtime-whisper` does its own segmentation and rejects an explicit
+    // `turn_detection` block — VoiceTranscriptionService must not send one.
+    expect(audio.input.turn_detection).toBeUndefined();
 
     const captured = await getCapturedEvents(ctx.window);
     expect(captured.completes).toEqual([{ text: "hello world", willCorrect: false }]);
