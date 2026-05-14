@@ -1113,6 +1113,21 @@ describe("inferWorktreeIdFromCwd", () => {
     const worktrees = [{ id: "C:\\repo\\wt-a", path: "C:\\repo\\wt-a" }];
     expect(inferWorktreeIdFromCwd("C:\\repo\\wt-a\\src\\lib", worktrees)).toBe("C:\\repo\\wt-a");
   });
+
+  it("matches when cwd uses backslashes but worktree path uses forward slashes", () => {
+    const worktrees = [{ id: "C:/repo/wt-a", path: "C:/repo/wt-a" }];
+    expect(inferWorktreeIdFromCwd("C:\\repo\\wt-a\\src\\lib", worktrees)).toBe("C:/repo/wt-a");
+  });
+
+  it("matches when cwd uses forward slashes but worktree path uses backslashes", () => {
+    const worktrees = [{ id: "C:\\repo\\wt-a", path: "C:\\repo\\wt-a" }];
+    expect(inferWorktreeIdFromCwd("C:/repo/wt-a/src/lib", worktrees)).toBe("C:\\repo\\wt-a");
+  });
+
+  it("ignores trailing separators on worktree paths", () => {
+    const worktrees = [{ id: "C:/repo/wt-a", path: "C:/repo/wt-a/" }];
+    expect(inferWorktreeIdFromCwd("C:/repo/wt-a/src", worktrees)).toBe("C:/repo/wt-a");
+  });
 });
 
 describe("buildArgsForBackendTerminal — extensionState", () => {
