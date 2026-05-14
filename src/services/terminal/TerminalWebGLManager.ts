@@ -52,8 +52,24 @@ function forceGpuSlotRelease(addon: WebglAddonType): void {
   }
 }
 
+function combineDisposables(disposables: IDisposable[]): IDisposable | null {
+  if (disposables.length === 0) return null;
+  return {
+    dispose(): void {
+      for (const disposable of disposables) {
+        try {
+          disposable.dispose();
+        } catch {
+          // ignore — teardown should continue for the rest of the listeners
+        }
+      }
+    },
+  };
+}
+
 interface WebGLEntry {
   addon: WebglAddonType;
+  managed: ManagedTerminal;
   contextLossDisposable: IDisposable;
   captureDisposable: (() => void) | null;
   atlasResyncDisposable: IDisposable | null;
@@ -100,17 +116,14 @@ export class TerminalWebGLManager {
   // matching font/theme config. A page-merge (TextureAtlas._mergePages) splices
   // pages and rewrites glyph texturePage indices, but a WebGL context's GPU
   // texture cache (GlyphRenderer._atlasTextures) is only invalidated by
-  // setAtlas() at attach — so co-owning renderers keep a stale page->texture
-  // mapping and paint the wrong glyph image (right cell, wrong picture; worst
-  // on late-rasterized colored glyphs). The atlas fires onRemoveTextureAtlasCanvas
-  // only on a merge, forwarded to every co-owning renderer, so the set of ids
-  // that fire is exactly the co-owners of the merged atlas — terminals on a
-  // different config own a different atlas and stay untouched. clearTextureAtlas()
-  // is the only public lever: it drops the model and re-rasterizes, which churns
-  // page versions enough that the version-gated GPU re-upload fires (not a hard
-  // _atlasTextures reset, but reliable in practice). Coalesced through one rAF
-  // because a single merge fires the event once per merged-away page, per
-  // co-owner.
+  // setAtlas() at attach. The atlas fires onRemoveTextureAtlasCanvas on a merge,
+  // forwarded to every co-owning renderer, so the fired ids are exactly the
+  // co-owners of the merged atlas. The renderer also fires onChangeTextureAtlas
+  // when it swaps to a different atlas object (font/theme/DPR resize path).
+  // clearTextureAtlas() plus a full terminal.refresh() is the public recovery:
+  // it clears the local render model and forces vertex buffers to be rebuilt
+  // from the corrected atlas pointers. Coalesce through one rAF because a
+  // single merge fires once per merged-away page, per co-owner.
   private atlasResyncPending = new Set<string>();
   private atlasResyncRafId: number | null = null;
 
@@ -267,10 +280,23 @@ export class TerminalWebGLManager {
     const ids = [...this.atlasResyncPending];
     this.atlasResyncPending.clear();
     for (const id of ids) {
+      const entry = this.pool.get(id);
+      if (!entry) continue;
       try {
-        this.pool.get(id)?.addon.clearTextureAtlas();
+        entry.addon.clearTextureAtlas();
       } catch {
         // ignore — renderer may be mid-teardown or its context lost
+        continue;
+      }
+      try {
+        // Re-check identity after clearTextureAtlas(): the addon can synchronously
+        // lose context and release itself before we ask xterm to repaint.
+        if (this.pool.get(id) !== entry) continue;
+        if (entry.managed.isOpened && entry.managed.terminal.rows > 0) {
+          entry.managed.terminal.refresh(0, entry.managed.terminal.rows - 1);
+        }
+      } catch {
+        // ignore — DOM-renderer fallback or a later WebGL ensure will repaint
       }
     }
   };
@@ -296,6 +322,7 @@ export class TerminalWebGLManager {
     let clDisposable: IDisposable | null = null;
     let captureDisposable: (() => void) | null = null;
     let atlasResyncDisposable: IDisposable | null = null;
+    const atlasResyncDisposables: IDisposable[] = [];
     try {
       addon = new AddonClass();
       const ownAddon = addon;
@@ -308,18 +335,23 @@ export class TerminalWebGLManager {
       });
       managed.terminal.loadAddon(addon);
 
-      // Watch the shared TextureAtlas for page merges. The pinned addon always
-      // exposes this event (its typings declare it); the guard + catch only
-      // keep test mocks that omit it from failing the whole attach.
-      if (typeof addon.onRemoveTextureAtlasCanvas === "function") {
+      // Watch the shared TextureAtlas for page merges, and the renderer for
+      // atlas-object swaps caused by font/theme/DPR changes. The pinned addon
+      // typings declare both events; the guards keep older test mocks working.
+      const subscribeAtlasEvent = (
+        eventName: "onRemoveTextureAtlasCanvas" | "onChangeTextureAtlas"
+      ): void => {
+        const subscribe = addon?.[eventName];
+        if (typeof subscribe !== "function") return;
         try {
-          atlasResyncDisposable = addon.onRemoveTextureAtlasCanvas(() => {
-            this.scheduleAtlasResync(id);
-          });
+          atlasResyncDisposables.push(subscribe(() => this.scheduleAtlasResync(id)));
         } catch {
           // ignore — resync stays best-effort if the event is unavailable
         }
-      }
+      };
+      subscribeAtlasEvent("onRemoveTextureAtlasCanvas");
+      subscribeAtlasEvent("onChangeTextureAtlas");
+      atlasResyncDisposable = combineDisposables(atlasResyncDisposables);
 
       // Capture-phase listener on the terminal element fires before xterm's
       // own webglcontextlost handler (which would otherwise sit on a 3s
@@ -346,6 +378,7 @@ export class TerminalWebGLManager {
       }
       this.pool.set(id, {
         addon,
+        managed,
         contextLossDisposable: clDisposable,
         captureDisposable,
         atlasResyncDisposable,

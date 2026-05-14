@@ -1,4 +1,12 @@
-import React, { Suspense, lazy, useEffect, useEffectEvent, useRef, useState } from "react";
+import React, {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Settings } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
@@ -463,28 +471,31 @@ function TerminalPaneComponent({
     };
   }, [id, updateVisibility]);
 
-  const handleReady = () => {};
+  const handleReady = useCallback(() => {}, []);
 
-  const handleInput = (data: string) => {
-    const results = inputTracker.process(data);
+  const handleInput = useCallback(
+    (data: string) => {
+      const results = inputTracker.process(data);
 
-    for (const result of results) {
-      if (result.isClear) {
-        const managed = terminalInstanceService.get(id);
-        if (managed?.terminal) {
-          try {
-            managed.terminal.clear();
-          } catch (error) {
-            console.warn(`Failed to clear terminal ${id}:`, error);
+      for (const result of results) {
+        if (result.isClear) {
+          const managed = terminalInstanceService.get(id);
+          if (managed?.terminal) {
+            try {
+              managed.terminal.clear();
+            } catch (error) {
+              console.warn(`Failed to clear terminal ${id}:`, error);
+            }
           }
         }
-      }
 
-      if (result.command) {
-        updateLastCommand(id, result.command);
+        if (result.command) {
+          updateLastCommand(id, result.command);
+        }
       }
-    }
-  };
+    },
+    [id, inputTracker, updateLastCommand]
+  );
 
   useEffect(() => {
     const handleFindInPanel = () => {
@@ -531,10 +542,10 @@ function TerminalPaneComponent({
     }
   };
 
-  const getRefreshTierCallback = () => {
+  const getRefreshTierCallback = useCallback(() => {
     const terminal = getTerminal(id);
     return getTerminalRefreshTier(terminal, isFocused, { isFleetArmed: isArmed });
-  };
+  }, [getTerminal, id, isArmed, isFocused]);
 
   const handleClick = (e?: React.MouseEvent) => {
     const target = e?.target as HTMLElement | null;

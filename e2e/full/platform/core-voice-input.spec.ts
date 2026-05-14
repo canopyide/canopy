@@ -86,6 +86,22 @@ function send(ws: WebSocket, event: Record<string, unknown>): void {
   ws.send(JSON.stringify(event));
 }
 
+/**
+ * Mimics the `?intent=transcription` endpoint: a committed segment's transcript
+ * arrives as `conversation.item.done` with the text on the `input_audio`
+ * content part (preceded by the `conversation.item.added` item shell).
+ */
+function sendTranscript(ws: WebSocket, transcript: string): void {
+  send(ws, {
+    type: "conversation.item.added",
+    item: { content: [{ type: "input_audio" }] },
+  });
+  send(ws, {
+    type: "conversation.item.done",
+    item: { content: [{ type: "input_audio", transcript }] },
+  });
+}
+
 function resetMockState(state: MockState): void {
   state.scenario = {};
   state.received = [];
@@ -170,6 +186,18 @@ async function ipcStop(window: Page): Promise<void> {
   await window.evaluate(async () => {
     await (window as any).electron.voiceInput.stop();
   });
+}
+
+/**
+ * Pushes one audio chunk above MIN_COMMIT_BYTES so the service's commit path
+ * fires. E2E drives the voice IPC directly without real mic capture, so without
+ * this the interval/stop commits are skipped as undersized and no transcript
+ * is ever requested.
+ */
+async function ipcSendAudio(window: Page, bytes = 6_000): Promise<void> {
+  await window.evaluate((n) => {
+    (window as any).electron.voiceInput.sendAudioChunk(new ArrayBuffer(n));
+  }, bytes);
 }
 
 async function ipcSetSettings(window: Page, patch: Record<string, unknown>): Promise<void> {
@@ -491,11 +519,7 @@ test.describe.serial("E2E: Voice Input — OpenAI Realtime IPC Lifecycle", () =>
   test("start → session.updated → status 'recording'; stop → commit → completed transcript", async () => {
     mockState.scenario = {
       onSessionUpdate: (ws) => send(ws, { type: "session.updated" }),
-      onCommit: (ws) =>
-        send(ws, {
-          type: "conversation.item.input_audio_transcription.completed",
-          transcript: "hello world",
-        }),
+      onCommit: (ws) => sendTranscript(ws, "hello world"),
     };
 
     const startResult = await ipcStart(ctx.window);
@@ -505,6 +529,7 @@ test.describe.serial("E2E: Voice Input — OpenAI Realtime IPC Lifecycle", () =>
       .poll(async () => (await getCapturedEvents(ctx.window)).statuses, { timeout: T_MEDIUM })
       .toContain("recording");
 
+    await ipcSendAudio(ctx.window);
     await ipcStop(ctx.window);
 
     await expect
@@ -531,9 +556,11 @@ test.describe.serial("E2E: Voice Input — OpenAI Realtime IPC Lifecycle", () =>
     const transcription = audio.input.transcription as { model: string; language: string };
     expect(transcription.model).toBe("gpt-realtime-whisper");
     expect(transcription.language).toBe("en");
-    // `gpt-realtime-whisper` does its own segmentation and rejects an explicit
-    // `turn_detection` block — VoiceTranscriptionService must not send one.
-    expect(audio.input.turn_detection).toBeUndefined();
+    // `gpt-realtime-whisper` does not support server VAD. `turn_detection` must
+    // be EXPLICITLY null — omitting it makes the server apply a default VAD and
+    // silently emit no transcription. Segmentation is driven client-side via
+    // interval `input_audio_buffer.commit` calls.
+    expect(audio.input.turn_detection).toBeNull();
 
     const captured = await getCapturedEvents(ctx.window);
     expect(captured.completes).toEqual([{ text: "hello world", willCorrect: false }]);
@@ -552,11 +579,7 @@ test.describe.serial("E2E: Voice Input — OpenAI Realtime IPC Lifecycle", () =>
           delta: "world",
         });
       },
-      onCommit: (ws) =>
-        send(ws, {
-          type: "conversation.item.input_audio_transcription.completed",
-          transcript: "hello world",
-        }),
+      onCommit: (ws) => sendTranscript(ws, "hello world"),
     };
 
     await ipcStart(ctx.window);
@@ -565,6 +588,7 @@ test.describe.serial("E2E: Voice Input — OpenAI Realtime IPC Lifecycle", () =>
       .poll(async () => (await getCapturedEvents(ctx.window)).deltas, { timeout: T_MEDIUM })
       .toEqual(["hello ", "world"]);
 
+    await ipcSendAudio(ctx.window);
     await ipcStop(ctx.window);
 
     await expect
@@ -577,14 +601,11 @@ test.describe.serial("E2E: Voice Input — OpenAI Realtime IPC Lifecycle", () =>
   test("spoken-command paragraphing strips a trailing 'new paragraph' command", async () => {
     mockState.scenario = {
       onSessionUpdate: (ws) => send(ws, { type: "session.updated" }),
-      onCommit: (ws) =>
-        send(ws, {
-          type: "conversation.item.input_audio_transcription.completed",
-          transcript: "hello new paragraph",
-        }),
+      onCommit: (ws) => sendTranscript(ws, "hello new paragraph"),
     };
 
     await ipcStart(ctx.window);
+    await ipcSendAudio(ctx.window);
     await ipcStop(ctx.window);
 
     // The IPC handler applies applyDictationCommands → "hello\n\n", then
@@ -604,14 +625,11 @@ test.describe.serial("E2E: Voice Input — OpenAI Realtime IPC Lifecycle", () =>
 
     mockState.scenario = {
       onSessionUpdate: (ws) => send(ws, { type: "session.updated" }),
-      onCommit: (ws) =>
-        send(ws, {
-          type: "conversation.item.input_audio_transcription.completed",
-          transcript: "hello new paragraph world",
-        }),
+      onCommit: (ws) => sendTranscript(ws, "hello new paragraph world"),
     };
 
     await ipcStart(ctx.window);
+    await ipcSendAudio(ctx.window);
     await ipcStop(ctx.window);
 
     await expect
@@ -632,15 +650,13 @@ test.describe.serial("E2E: Voice Input — OpenAI Realtime IPC Lifecycle", () =>
         commitArrivedAt = Date.now();
         setTimeout(() => {
           completeSentAt = Date.now();
-          send(ws, {
-            type: "conversation.item.input_audio_transcription.completed",
-            transcript: "drained transcript",
-          });
+          sendTranscript(ws, "drained transcript");
         }, 300);
       },
     };
 
     await ipcStart(ctx.window);
+    await ipcSendAudio(ctx.window);
 
     const stopStartedAt = Date.now();
     await ipcStop(ctx.window);

@@ -27,6 +27,7 @@ import { actionService } from "@/services/ActionService";
 import { GitHubListItem } from "./GitHubListItem";
 import { BulkActionBar } from "./BulkActionBar";
 import { useIssueSelection } from "@/hooks/useIssueSelection";
+import { useIssueSelectionStore } from "@/store/issueSelectionStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
 import {
@@ -260,23 +261,26 @@ export function GitHubResourceList({
     handleManualRefresh();
   }, [handleManualRefresh]);
 
-  const selection = useIssueSelection();
-  const selectionClear = selection.clear;
+  const selection = useIssueSelection(type, projectPath);
   const [issueCache, setIssueCache] = useState<Map<number, GitHubIssue>>(() => new Map());
   const [prCache, setPrCache] = useState<Map<number, GitHubPR>>(() => new Map());
 
   // The toolbar reuses one keepMounted GitHubResourceList per type across
   // every project — switching projects only updates `projectPath`, it doesn't
-  // remount. Reset bulk selection + the issue/PR cache so a selection from
-  // project A can't follow the user into project B's dropdown.
+  // remount. Bulk selection is keyed by `${type}:${projectPath}` in its own
+  // store (so it survives the toolbar's lazy/direct remount), but on a real
+  // project switch we still clear the outgoing project's selection: it would
+  // otherwise outlive the issue/PR cache reset below and leave the bulk bar
+  // showing a count with no backing objects to act on.
   const prevProjectPathRef = useRef(projectPath);
   useEffect(() => {
-    if (prevProjectPathRef.current === projectPath) return;
+    const prevProjectPath = prevProjectPathRef.current;
+    if (prevProjectPath === projectPath) return;
     prevProjectPathRef.current = projectPath;
-    selectionClear();
+    useIssueSelectionStore.getState().clear(`${type}:${prevProjectPath}`);
     setIssueCache(new Map());
     setPrCache(new Map());
-  }, [projectPath, selectionClear]);
+  }, [projectPath, type]);
 
   // Accumulate item objects into the session cache whenever data changes
   useEffect(() => {

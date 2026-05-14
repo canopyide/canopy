@@ -65,7 +65,7 @@ export function QuickStateFilterBar({
                 aria-label={accessibleName}
                 onClick={() => onChange(isActive ? "all" : option.value)}
                 className={cn(
-                  "inline-flex items-center justify-center gap-1.5 min-w-0 px-2 py-1.5 transition-colors",
+                  "inline-flex items-center justify-center gap-1 min-w-0 px-2 py-1.5 transition-colors",
                   "focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-daintree-accent",
                   // "All" is the only labelled segment and always carries the
                   // total — give it the lion's share; the icon-only status
@@ -80,7 +80,7 @@ export function QuickStateFilterBar({
                 {Icon && visual ? (
                   <Icon
                     className={cn(
-                      "w-3.5 h-3.5 shrink-0",
+                      "w-3 h-3 shrink-0",
                       visual.color,
                       isSpinningWorking && "animate-spin-slow motion-reduce:animate-none"
                     )}
@@ -89,7 +89,7 @@ export function QuickStateFilterBar({
                   <span
                     aria-hidden="true"
                     className={cn(
-                      "text-[11px]",
+                      "text-xs",
                       isActive ? "font-medium text-daintree-text" : "text-daintree-text/60"
                     )}
                   >
@@ -100,8 +100,8 @@ export function QuickStateFilterBar({
                   <span
                     aria-hidden="true"
                     className={cn(
-                      "text-[11px] tabular-nums",
-                      isActive ? "font-medium text-daintree-text" : "text-daintree-text/50"
+                      "text-xs tabular-nums",
+                      isActive ? "text-daintree-text/70" : "text-daintree-text/50"
                     )}
                   >
                     {rawCount}
