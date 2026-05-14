@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.10.1] - 2026-05-14
+
+Patch release: a whole-passage AI cleanup pass for voice dictation, plus fixes for terminal split layout, WebGL atlas rendering, and worktree filter bar tooltips.
+
+### Features
+
+- Voice dictation runs a whole-passage AI correction pass when recording stops, cleaning up the full dictated text in one shot; the corrected range shows a pending decoration while the pass runs
+
+### Bug Fixes
+
+- Two-pane terminal split now uses CSS grid fr tracks, fixing layout breakage when the container width is zero on first paint or stale during sidebar transitions
+- WebGL texture atlas resyncs after page merges, clearing the stale GPU texture cache that could leave terminal glyphs corrupted
+- Worktree filter bar tooltips migrated to Radix for consistent cross-browser styling
+- Terminal drag ghost is centered on the preview width so it tracks the cursor correctly
+- Whole-passage voice correction IPC is now validated
+
+### Other Changes
+
+- QuickStateFilterBar compacted to icon + count segments; arm-matching affordance moved into the filter bar's trailing slot
+- Removed an orphaned split-button component, fixing the nightly knip job (#7899)
+
 ## [0.10.0] - 2026-05-14
 
 Major release centered on the new Review Hub for staging, diffing, and pushing worktree changes, alongside the voice-backend migration to OpenAI Realtime and a broad pass of worktree, settings, and UI polish.
