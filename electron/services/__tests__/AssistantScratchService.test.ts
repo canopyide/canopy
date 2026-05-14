@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs/promises";
+import { PathLike } from "fs";
 import os from "os";
 import path from "path";
 
@@ -139,7 +140,7 @@ describe("runAssistantScratchCleanup", () => {
     await fs.mkdir(stale, { recursive: true });
 
     const originalRm = fs.rm;
-    const rmSpy = vi.spyOn(fs, "rm").mockImplementation(async (target: fs.PathLike, options) => {
+    const rmSpy = vi.spyOn(fs, "rm").mockImplementation(async (target: PathLike, options) => {
       if (typeof target === "string" && target === stale) {
         const err = new Error("EBUSY") as NodeJS.ErrnoException;
         err.code = "EBUSY";
