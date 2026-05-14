@@ -4,28 +4,17 @@ import { cn } from "../../lib/utils";
 import { FileDiffModal } from "./FileDiffModal";
 import { Folder } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-
-function isAbsolutePath(filePath: string): boolean {
-  return (
-    filePath.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(filePath) || filePath.startsWith("\\\\")
-  );
-}
+import { isAbsolute, basename, dirname, normalize } from "@shared/utils/path";
 
 function getRelativePath(from: string, to: string): string {
-  const normalizedFrom = from.replace(/\\/g, "/").replace(/\/$/, "");
-  const normalizedTo = to.replace(/\\/g, "/");
+  const normalizedFrom = normalize(from);
+  const normalizedTo = normalize(to);
 
   if (normalizedTo.startsWith(normalizedFrom + "/")) {
     return normalizedTo.slice(normalizedFrom.length + 1);
   }
 
   return normalizedTo;
-}
-
-function getBasename(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, "/").replace(/\/$/, "");
-  const lastSlash = normalized.lastIndexOf("/");
-  return lastSlash === -1 ? normalized : normalized.slice(lastSlash + 1);
 }
 
 const STATUS_CONFIG: Record<GitStatus, { label: string; color: string }> = {
@@ -58,15 +47,9 @@ interface FileChangeListProps {
 }
 
 function splitPath(filePath: string): { dir: string; base: string } {
-  const normalized = filePath.replace(/\\/g, "/");
-  const lastSlash = normalized.lastIndexOf("/");
-  if (lastSlash === -1) {
-    return { dir: "", base: normalized };
-  }
-  return {
-    dir: normalized.slice(0, lastSlash),
-    base: normalized.slice(lastSlash + 1),
-  };
+  const dir = dirname(filePath);
+  const base = basename(filePath);
+  return { dir: dir === "." ? "" : dir, base };
 }
 
 function formatDirForDisplay(dir: string, maxSegments = 2): string {
@@ -107,7 +90,7 @@ export function FileChangeList({
     return [...changes]
       .map((change) => ({
         ...change,
-        relativePath: isAbsolutePath(change.path)
+        relativePath: isAbsolute(change.path)
           ? getRelativePath(rootPath, change.path)
           : change.path,
       }))
@@ -269,7 +252,7 @@ export function FileChangeList({
               ...and {remainingCount} more
               {remainingFiles.length > 0 && (
                 <span className="ml-1 opacity-75">
-                  ({remainingFiles.map((f) => getBasename(f.relativePath)).join(", ")}
+                  ({remainingFiles.map((f) => basename(f.relativePath)).join(", ")}
                   {sortedChanges.length > maxVisible + 2 && ", ..."})
                 </span>
               )}
@@ -298,7 +281,7 @@ export function FileChangeList({
             ...and {remainingCount} more
             {remainingFiles.length > 0 && (
               <span className="ml-1 opacity-75">
-                ({remainingFiles.map((f) => getBasename(f.path)).join(", ")}
+                ({remainingFiles.map((f) => basename(f.path)).join(", ")}
                 {sortedChanges.length > maxVisible + 2 && ", ..."})
               </span>
             )}
