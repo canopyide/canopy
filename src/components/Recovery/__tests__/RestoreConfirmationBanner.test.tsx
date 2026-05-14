@@ -72,7 +72,7 @@ describe("RestoreConfirmationBanner", () => {
 
   it("manual dismiss hides the banner", () => {
     useRestoreConfirmationStore.setState({ visible: true, suspectCount: 0, crashCount: 1 });
-    const { container } = render(<RestoreConfirmationBanner />);
+    render(<RestoreConfirmationBanner />);
     const dismissBtn = screen.getByRole("button", { name: /Dismiss recovery confirmation/i });
     act(() => {
       fireEvent.click(dismissBtn);
