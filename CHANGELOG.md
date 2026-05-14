@@ -1,11 +1,154 @@
 # Changelog
 
-## [Unreleased]
+## [0.10.0] - 2026-05-14
+
+Major release centered on the new Review Hub for staging, diffing, and pushing worktree changes, alongside the voice-backend migration to OpenAI Realtime and a broad pass of worktree, settings, and UI polish.
 
 ### Breaking Changes
 
 - **Voice transcription backend switched from Deepgram to OpenAI Realtime API.** The voice subsystem now connects to `wss://api.openai.com/v1/realtime` and uses the `input_audio_transcription` event family (`delta` / `completed`) for streaming results. Spoken dictation commands ("new paragraph", "period", etc.) are reproduced in post-processing via `applyDictationCommands` since the Realtime API has no native equivalent.
 - **API key settings unified into a single `openaiApiKey`.** The separate `deepgramApiKey` and `correctionApiKey` fields have been removed. Settings are auto-migrated the first time Voice settings are read after upgrade: existing `correctionApiKey` or `apiKey` values beginning with `sk-` move into `openaiApiKey`; `deepgramApiKey` is dropped. Users who only had a Deepgram key configured need to add an OpenAI API key in Settings → Voice for transcription to resume.
+
+### Features
+
+**Review Hub**
+
+- Commit composer dialog gates commit & push so the message is reviewed before it ships (#7880)
+- Multi-select for partial-set staging (#7790); keyboard hunk nav, per-file Viewed marks, persisted view type
+- Inline divergence recovery for non-fast-forward push rejections
+- ConflictPanel rebuilt into operation-chrome, worklist, and Continue regions (#7791)
+- Section header filter / sort / view options; body-line ruler, multi-line overflow, commit history recall
+- File-row chrome — split clicks, churn summary, generated-diff dimming, unresolved review-comment count
+- PR chip split into read-only status pill + external-link button; PR CI status surfaced on worktree cards and Review Hub chip
+- Streaming push progress; target branch shown in Review Hub
+- Inline review strip and zero-change pill on agent panes
+- Consolidated worktree-card commit surfaces into the Review Hub (#7886)
+
+**Worktree**
+
+- QuickStateFilterBar with state icons and spinning indicator
+- WorktreeDeleteDialog body replaced with a static consequence list (#7847)
+- Generated diffs collapse by default in DiffViewer
+- Refractor chunk-load failures surfaced in diff viewer
+- Sessions submenu adds Close All / Terminate All
+- Freshness indicators on PR + Issue badges; focus-driven sub-line on collapsed rows
+
+**Voice**
+
+- Replaced Deepgram client with OpenAI Realtime WS
+- Dictation-command post-processor for the OpenAI realtime path
+
+**Daintree Assistant**
+
+- Cmd+L default keybinding with three-state toggle and terminal-first focus (#7842)
+- Gemini CLI and GitHub Copilot CLI wired into Daintree Assistant MCP
+
+**Notifications**
+
+- Completed-with-changes agents routed to review inbox
+
+**Performance / Resource handling**
+
+- Project switching: hover prefetch + visible swap decoupled from data hydration (#7660)
+- Cached project views evicted under low system memory; frozen under efficiency profile
+- `@parcel/watcher` adopted to eliminate macOS EMFILE in worktree watching
+- PTY throughput-rate gauge added to reliability metrics
+
+**UI / UX**
+
+- ConfirmDialog hardened against destructive-confirmation drift (#7846)
+- EmptyState contract — scale discriminant + container-query density (#7844)
+- In-progress rebase shown as a commit sequence in the conflict UI
+- Inline keyboard shortcut assignment for agents in Settings
+- Split Commit / Commit & Push buttons on the commit composer footer
+- Toolbar tri-state pinned with availability-aware visibility (#7673)
+- RadioTower broadcast indicator on agent panel titles
+- Fleet-picker footer adds visible Select all / Select agents buttons
+
+**Security / Internals**
+
+- secretScrubber: 15 new vendor patterns from the gitleaks catalog
+- Renderer import discipline codified as a lint rule (#7659)
+
+**Marketing**
+
+- 3-OS marketing screenshots pipeline for Microsoft Store
+
+### Bug Fixes
+
+**PTY / Terminal**
+
+- PtyPool crash-loop and FD leak on fast-exit shells; per-key circuit breaker + `destroy()` on pooled PTYs (#7892)
+- Backgrounded terminal grid coherence preserved at wake-time resize (#7741)
+- Suppressed wheel→arrow translation inside agent alt-screen TUIs
+- Guarded against truncated session-ID captures in graceful shutdown
+- Copilot `/exit` shutdown: single-write `quitSubmitMode`; 200ms `submitEnterDelayMs` to fix Ink TUI input drop
+
+**Worktree / Git**
+
+- Push-retry and diff race in commit composer
+- `isPushing` deadlock; target branch re-emitted after auto-retry
+- `git push` lock scoped per-cwd to prevent silent concurrent no-op
+- Sidebar auto-reconciles after external worktree deletion
+- Degraded-state visuals on GitHub badges (#7697)
+- Filter chip counts aligned with visible list and arm payload
+- Search-bar X visibility subscribed to facet-filter state
+
+**Settings / UI**
+
+- Section chrome renders instantly instead of full-area Spinner (#7851)
+- Mutation affordances guarded during loading; load races fixed
+- IssueSelector typeahead spatial anchor preserved (#7852)
+- Getting Started checklist no longer auto-exits on completion (#7850); dismiss vs collapse distinguished (#7849)
+- animate-pulse-immediate flash under 200ms on warm cache gated (#7853)
+- ActionPalette empty / warm-start states polished (#7843)
+- NotificationCenter inbox chrome and Undo toast polish (#7854); per-row reveal on mouse + keyboard (#7855)
+- CopyableCommand contrast boosted; native title replaced with Tooltip (#7848)
+- TwoPaneSplit: container width recovered on drag-end after locked unlock; ResizeObserver gated behind sidebar transition lock
+- File viewer Cmd+L go-to-line preserved while modal open
+
+**Agent / Fleet**
+
+- Fleet directing-state broadcast (#7799); enter directing via `notifyUserInput` before submit
+- `fleetBroadcastConfirmStore`: function removed from Zustand state; full clear on "Deselect all" so drifted IDs don't survive
+- Agent `supports` field added to `UserAgentConfigSchema`; `isEffectivelyRegisteredAgent` hardened
+- Agent launch description shortened to fit 120-char metadata limit
+- `panelKindHasPty` restored for `hasPty` checks
+
+**Boot / Project switching**
+
+- Pre-agent snapshot pruning deferred to deferred task queue (#7656)
+- `previousEntry` undefined → null coalesced; paint gate review-findings addressed
+- Resource profile: low-memory threshold pushed on start so balanced is armed at launch
+
+**Diff / Review Hub**
+
+- Stale-request races, retry loading state, type guard
+- Empty parse results from `parseDiff` guarded
+- Selection anchor reseated when original is evicted
+- Push-failure banner wired to recovery hints with collapsible details
+- Rebase current-step detection corrected (git moves the failed pick to done)
+
+**A11y / Forced-colors**
+
+- `outline-none` replaced with `outline-hidden` for forced-colors compatibility
+
+### Performance
+
+- CodeMirror language-data curated to shrink vendor-editor bundle
+- Radix overlay primitives deferred off first-paint closure
+- Stale `React.memo` wrappers retired (superseded by React Compiler)
+- PortBatcher flush cadence scoped per-terminal (#7652)
+- Settings: redundant `useCallback` wrappers retired
+
+### Other Changes
+
+- CI: release unit-tests now run on macOS, Linux, and Windows (#7895)
+- CI: Windows added to release E2E core, online, and full gates
+- ESLint warning baseline trimmed; renderer-import lint rule landed (#7659)
+- Documentation: README overhaul with new hero, vision doc extraction, daintree.org install links
+
+---
 
 ## [0.9.1] - 2026-05-10
 
