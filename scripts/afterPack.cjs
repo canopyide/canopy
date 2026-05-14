@@ -111,7 +111,16 @@ exports.default = async function afterPack(context) {
             "Cannot recover missing conpty binaries."
         );
       }
-      const versionFolder = fs.readdirSync(thirdPartyDir)[0];
+      // node-pty's third_party/conpty contains zero-padded date-stamped
+      // version folders (e.g. `1.25.260303002`). Sort lexicographically and
+      // pick the latest so a stale folder from a previous node-pty version
+      // can't silently override the current one.
+      const versionFolder = fs.readdirSync(thirdPartyDir).sort().at(-1);
+      if (!versionFolder) {
+        throw new Error(
+          `[afterPack] CRITICAL: third_party/conpty exists but is empty at ${thirdPartyDir}.`
+        );
+      }
       const sourceDir = path.join(thirdPartyDir, versionFolder, conptyArchFolder);
       if (!fs.existsSync(sourceDir)) {
         throw new Error(

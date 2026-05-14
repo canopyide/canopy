@@ -107,7 +107,10 @@ describe("generate-update-metadata", () => {
     await writeArtifact(releaseDir, "Daintree-1.2.3-setup.exe.blockmap", "blockmap");
     await writeArtifact(releaseDir, "Daintree-1.2.3.appx", "appx");
 
-    const metadataPath = path.join(releaseDir, "latest-win.yml");
+    // electron-updater on Windows polls `<channel>.yml` (no platform suffix).
+    // Mirror the production filename so this test catches a regression that
+    // accidentally moves Windows metadata into `latest-win.yml` again.
+    const metadataPath = path.join(releaseDir, "latest.yml");
     const metadata = await generateUpdateMetadata({
       platform: "windows",
       releaseDir,
@@ -138,7 +141,7 @@ describe("generate-update-metadata", () => {
       generateUpdateMetadata({
         platform: "windows",
         releaseDir,
-        metadataPath: path.join(releaseDir, "latest-win.yml"),
+        metadataPath: path.join(releaseDir, "latest.yml"),
         packagePath,
       })
     ).rejects.toThrow("Expected exactly 1 Windows NSIS .exe artifact, found 0");
@@ -156,7 +159,7 @@ describe("generate-update-metadata", () => {
       generateUpdateMetadata({
         platform: "windows",
         releaseDir,
-        metadataPath: path.join(releaseDir, "latest-win.yml"),
+        metadataPath: path.join(releaseDir, "latest.yml"),
         packagePath,
       })
     ).rejects.toThrow("Expected exactly 1 Windows NSIS .exe artifact, found 2");

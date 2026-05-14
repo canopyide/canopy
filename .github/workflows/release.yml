@@ -428,12 +428,17 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: bash
         run: |
-          node scripts/ci/generate-update-metadata.mjs windows "release/${UPDATE_METADATA_PREFIX}-win.yml"
-          if [ ! -f "release/${UPDATE_METADATA_PREFIX}-win.yml" ]; then
-            echo "::error::Missing release/${UPDATE_METADATA_PREFIX}-win.yml - Windows auto-update metadata was not generated"
+          # electron-updater on Windows polls `<channel>.yml` (no platform
+          # suffix) — Provider.js getChannelFilePrefix() returns "" for win32.
+          # This is the canonical filename installed clients fetch, so we
+          # generate (and validate) it here even though electron-builder's
+          # packaging step already wrote a copy.
+          node scripts/ci/generate-update-metadata.mjs windows "release/${UPDATE_METADATA_PREFIX}.yml"
+          if [ ! -f "release/${UPDATE_METADATA_PREFIX}.yml" ]; then
+            echo "::error::Missing release/${UPDATE_METADATA_PREFIX}.yml - Windows auto-update metadata was not generated"
             exit 1
           fi
-          node scripts/ci/validate-update-metadata.mjs "release/${UPDATE_METADATA_PREFIX}-win.yml"
+          node scripts/ci/validate-update-metadata.mjs "release/${UPDATE_METADATA_PREFIX}.yml"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
