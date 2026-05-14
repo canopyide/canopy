@@ -2100,6 +2100,45 @@ describe("shouldEscalateTransientError", () => {
     expect(shouldEscalateTransientError(error2)).toBe(false); // count=2, not yet threshold
   });
 
+  it("groups errors whose messages differ only by volatile suffixes (normalized dedup)", () => {
+    const error1 = {
+      type: "process" as const,
+      message: "listen EADDRINUSE: address already in use :::3000",
+      source: "http",
+      retryability: "auto",
+    };
+    const error2 = {
+      type: "process" as const,
+      message: "listen EADDRINUSE: address already in use :::4000",
+      source: "http",
+      retryability: "auto",
+    };
+
+    // Same normalized key — grouped together
+    shouldEscalateTransientError(error1);
+    shouldEscalateTransientError(error2);
+    expect(shouldEscalateTransientError(error1)).toBe(true);
+  });
+
+  it("groups errors with UUID-only message differences", () => {
+    const error1 = {
+      type: "network" as const,
+      message: "Timeout abc12345-6789-4abc-def0-123456789abc for request",
+      source: "fetcher",
+      retryability: "auto",
+    };
+    const error2 = {
+      type: "network" as const,
+      message: "Timeout deadbeef-1111-4abc-def0-222222222222 for request",
+      source: "fetcher",
+      retryability: "auto",
+    };
+
+    shouldEscalateTransientError(error1);
+    shouldEscalateTransientError(error2);
+    expect(shouldEscalateTransientError(error1)).toBe(true);
+  });
+
   it("caps tracking entries and prunes LRU", () => {
     const realDateNow = Date.now;
     Date.now = () => 1000;

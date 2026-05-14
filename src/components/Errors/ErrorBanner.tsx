@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ErrorRecord, RetryAction } from "@/store/errorStore";
+import { useErrorStore } from "@/store/errorStore";
 import { useDiagnosticsStore } from "@/store/diagnosticsStore";
 import { actionService } from "@/services/ActionService";
 
@@ -26,6 +27,12 @@ import { actionService } from "@/services/ActionService";
 type BannerAction = "retry" | "recovery" | "view-errors";
 
 function bannerActionFor(error: ErrorRecord, hasOnRetry: boolean): BannerAction {
+  // Once an error has been promoted to the diagnostics dock, the dock owns
+  // recovery — flip the banner CTA to "View errors" so the user is routed
+  // to the dock instead of seeing a stale Retry next to the open dock.
+  if (error.promotedToDock) {
+    return "view-errors";
+  }
   if (error.retryability === "auto" && error.retryAction && hasOnRetry) {
     return "retry";
   }
@@ -112,7 +119,8 @@ export function ErrorBanner({
 
   const handleViewErrors = useCallback(() => {
     useDiagnosticsStore.getState().openDock("problems");
-  }, []);
+    useErrorStore.getState().promoteErrors([error.id]);
+  }, [error.id]);
 
   const handleCopyCorrelationId = useCallback(() => {
     if (!error.correlationId) return;

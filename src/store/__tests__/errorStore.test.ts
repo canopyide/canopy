@@ -262,4 +262,168 @@ describe("errorStore", () => {
     expect(after.lastErrorTime).toBe(0);
     expect(after.isPanelOpen).toBe(false);
   });
+
+  describe("normalized dedup", () => {
+    it("deduplicates errors whose messages differ only by a UUID", () => {
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+      useErrorStore.getState().addError({
+        type: "process",
+        message: "Error abc12345-6789-4abc-def0-123456789abc occurred",
+        source: "pty",
+        retryability: "auto",
+      });
+
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.200Z"));
+      useErrorStore.getState().addError({
+        type: "process",
+        message: "Error deadbeef-1111-4abc-def0-222222222222 occurred",
+        source: "pty",
+        retryability: "auto",
+      });
+
+      const state = useErrorStore.getState();
+      expect(state.errors).toHaveLength(1);
+      // First message preserved for display
+      expect(state.errors[0]?.message).toBe("Error abc12345-6789-4abc-def0-123456789abc occurred");
+    });
+
+    it("deduplicates EADDRINUSE errors with different port numbers", () => {
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+      useErrorStore.getState().addError({
+        type: "process",
+        message: "listen EADDRINUSE: address already in use :::3000",
+        source: "http",
+        retryability: "auto",
+      });
+
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.200Z"));
+      useErrorStore.getState().addError({
+        type: "process",
+        message: "listen EADDRINUSE: address already in use :::4000",
+        source: "http",
+        retryability: "auto",
+      });
+
+      expect(useErrorStore.getState().errors).toHaveLength(1);
+    });
+
+    it("does not deduplicate errors with genuinely different messages", () => {
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+      useErrorStore.getState().addError({
+        type: "process",
+        message: "EBUSY: resource busy or locked",
+        source: "pty",
+        retryability: "auto",
+      });
+
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.200Z"));
+      useErrorStore.getState().addError({
+        type: "process",
+        message: "EACCES: permission denied",
+        source: "pty",
+        retryability: "auto",
+      });
+
+      expect(useErrorStore.getState().errors).toHaveLength(2);
+    });
+
+    it("does not deduplicate outside rate limit window even with normalized-identical messages", () => {
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+      useErrorStore.getState().addError({
+        type: "process",
+        message: "Error abc12345-6789-4abc-def0-123456789abc occurred",
+        source: "pty",
+        retryability: "auto",
+      });
+
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.600Z"));
+      useErrorStore.getState().addError({
+        type: "process",
+        message: "Error deadbeef-1111-4abc-def0-222222222222 occurred",
+        source: "pty",
+        retryability: "auto",
+      });
+
+      expect(useErrorStore.getState().errors).toHaveLength(2);
+    });
+  });
+
+  describe("promoteErrors", () => {
+    let errorIds: string[] = [];
+
+    beforeEach(() => {
+      errorIds = [];
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+      for (const msg of ["err-a", "err-b", "err-c"]) {
+        const id = useErrorStore.getState().addError({
+          type: "process",
+          message: msg,
+          source: "test",
+          retryability: "auto",
+        });
+        errorIds.push(id);
+      }
+    });
+
+    it("promotes only specified errors when ids are provided", () => {
+      useErrorStore.getState().promoteErrors([errorIds[0]!]);
+
+      const state = useErrorStore.getState();
+      expect(state.errors.find((e) => e.id === errorIds[0])?.promotedToDock).toBe(true);
+      expect(state.errors.find((e) => e.id === errorIds[1])?.promotedToDock).toBeUndefined();
+      expect(state.errors.find((e) => e.id === errorIds[2])?.promotedToDock).toBeUndefined();
+    });
+
+    it("promotes all non-dismissed errors when no ids are provided", () => {
+      useErrorStore.getState().promoteErrors();
+
+      const state = useErrorStore.getState();
+      for (const id of errorIds) {
+        expect(state.errors.find((e) => e.id === id)?.promotedToDock).toBe(true);
+      }
+    });
+
+    it("does not promote dismissed errors", () => {
+      useErrorStore.getState().dismissError(errorIds[0]!);
+      useErrorStore.getState().promoteErrors();
+
+      const state = useErrorStore.getState();
+      expect(state.errors.find((e) => e.id === errorIds[0])?.promotedToDock).toBeUndefined();
+      expect(state.errors.find((e) => e.id === errorIds[1])?.promotedToDock).toBe(true);
+    });
+
+    it("is idempotent", () => {
+      useErrorStore.getState().promoteErrors([errorIds[0]!]);
+      useErrorStore.getState().promoteErrors([errorIds[0]!]);
+
+      expect(
+        useErrorStore.getState().errors.find((e) => e.id === errorIds[0])?.promotedToDock
+      ).toBe(true);
+    });
+
+    it("preserves promotedToDock when a matching error is deduplicated", () => {
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+      useErrorStore.getState().promoteErrors([errorIds[0]!]);
+
+      // Fire a duplicate that normalizes to the same message
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.200Z"));
+      useErrorStore.getState().addError({
+        type: "process",
+        message: "err-a",
+        source: "test",
+        retryability: "auto",
+      });
+
+      const state = useErrorStore.getState();
+      expect(state.errors).toHaveLength(3);
+      expect(state.errors.find((e) => e.id === errorIds[0])?.promotedToDock).toBe(true);
+    });
+
+    it("is a no-op with empty ids array", () => {
+      const before = useErrorStore.getState().errors;
+      useErrorStore.getState().promoteErrors([]);
+      const after = useErrorStore.getState().errors;
+      expect(after).toEqual(before);
+    });
+  });
 });

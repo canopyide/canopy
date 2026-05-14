@@ -89,6 +89,7 @@ export function DiagnosticsDock({ onRetry, onCancelRetry, className }: Diagnosti
   useEffect(() => {
     if (errorCount > 0 && prevErrorCountRef.current === 0 && !isOpen) {
       openDock("problems");
+      useErrorStore.getState().promoteErrors();
     }
     prevErrorCountRef.current = errorCount;
   }, [errorCount, isOpen, openDock]);

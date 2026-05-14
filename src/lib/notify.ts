@@ -12,6 +12,7 @@ import {
 } from "@/store/slices/notificationHistorySlice";
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
 import { isScheduledQuietNow, nextOccurrenceTimestamp } from "@shared/utils/quietHours";
+import { normalizeForDedup } from "@shared/utils/normalizeErrorMessage";
 import type { ErrorRetryability, ErrorType } from "@/store/errorStore";
 import type { NotificationSettings } from "@shared/types/ipc/api";
 
@@ -228,7 +229,7 @@ function classifyErrorType(type: ErrorType): EscalationProfile {
 }
 
 function buildEscalationKey(error: { type: ErrorType; message: string; source?: string }): string {
-  return `${error.type}|${error.source ?? ""}|${error.message}`;
+  return `${error.type}|${error.source ?? ""}|${normalizeForDedup(error.message)}`;
 }
 
 const _escalationTrackers = new Map<string, EscalationTracker>();

@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ErrorBanner } from "../ErrorBanner";
 import type { ErrorRecord } from "@/store/errorStore";
+import { useErrorStore } from "@/store/errorStore";
 import { useDiagnosticsStore } from "@/store/diagnosticsStore";
 
 vi.mock("@/lib/utils", () => ({
@@ -410,6 +411,90 @@ describe("ErrorBanner", () => {
         vi.advanceTimersByTime(600);
       });
       expect(screen.queryByText("Ref: Copied")).toBeNull();
+    });
+  });
+
+  describe("promotedToDock", () => {
+    beforeEach(() => {
+      useErrorStore.getState().reset();
+      useDiagnosticsStore.getState().reset();
+    });
+
+    it("does not show Retry button in compact when promotedToDock is true", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            retryability: "auto",
+            retryAction: "git",
+            promotedToDock: true,
+          })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+          compact
+        />
+      );
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+      expect(screen.getByRole("button", { name: "View errors" })).toBeTruthy();
+    });
+
+    it("does not show Retry button in full when promotedToDock is true", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            retryability: "auto",
+            retryAction: "git",
+            promotedToDock: true,
+          })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+        />
+      );
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+      expect(screen.getByRole("button", { name: "View errors" })).toBeTruthy();
+    });
+
+    it("full variant with promotedToDock and details does not show View errors", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            retryability: "auto",
+            retryAction: "git",
+            promotedToDock: true,
+            details: "stack trace here",
+          })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+        />
+      );
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "View errors" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Details" })).toBeTruthy();
+    });
+
+    it("handleViewErrors opens dock and promotes error", () => {
+      // Add an error to the store first, then promote via View errors
+      const id = useErrorStore.getState().addError({
+        type: "git",
+        message: "push rejected",
+        source: "git",
+        retryability: "none",
+      });
+
+      render(
+        <ErrorBanner
+          error={makeError({ id, retryability: "none" })}
+          onDismiss={onDismiss}
+          compact
+        />
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "View errors" }));
+      expect(useDiagnosticsStore.getState().isOpen).toBe(true);
+      expect(useDiagnosticsStore.getState().activeTab).toBe("problems");
+
+      const storeErrors = useErrorStore.getState().errors;
+      const promoted = storeErrors.find((e) => e.id === id);
+      expect(promoted?.promotedToDock).toBe(true);
     });
   });
 });
