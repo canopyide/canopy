@@ -45,6 +45,8 @@ function createMockDeps(overrides?: Partial<ResourceGovernorDeps>): ResourceGove
     getTerminalPids: vi.fn().mockReturnValue([]),
     incrementPauseCount: vi.fn(),
     sendEvent: vi.fn(),
+    emitTerminalStatus: vi.fn(),
+    getTerminalActivity: vi.fn().mockReturnValue([]),
     ...overrides,
   };
 }
@@ -162,6 +164,11 @@ describe("ResourceGovernor", () => {
       const deps = createMockDeps({
         getTerminalIds: vi.fn().mockReturnValue(["t1"]),
         getPauseCoordinator: vi.fn().mockReturnValue(coordinator),
+        getTerminalActivity: vi
+          .fn()
+          .mockReturnValue([
+            { id: "t1", lastOutputTime: 100, lastInputTime: 100, agentState: "idle" },
+          ]),
       });
 
       vi.spyOn(process, "memoryUsage").mockReturnValue({
@@ -179,6 +186,13 @@ describe("ResourceGovernor", () => {
       expect(raw.pause).toHaveBeenCalled();
       expect(coordinator.hasToken("resource-governor")).toBe(true);
       expect(deps.incrementPauseCount).toHaveBeenCalledWith(1);
+      expect(deps.emitTerminalStatus).toHaveBeenCalledWith(
+        "t1",
+        "paused-resource-governor",
+        undefined,
+        undefined,
+        expect.stringContaining("Memory pressure")
+      );
       expect(deps.sendEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "host-throttled",
@@ -194,6 +208,9 @@ describe("ResourceGovernor", () => {
       const deps = createMockDeps({
         getTerminalIds: vi.fn().mockReturnValue(["t1"]),
         getPauseCoordinator: vi.fn().mockReturnValue(coordinator),
+        getTerminalActivity: vi
+          .fn()
+          .mockReturnValue([{ id: "t1", lastOutputTime: 100, lastInputTime: 100 }]),
       });
 
       vi.spyOn(process, "memoryUsage").mockReturnValue({
@@ -226,6 +243,14 @@ describe("ResourceGovernor", () => {
       expect(event?.forced).toBe(false);
       expect(event?.reason).toContain("High memory usage");
       expect(event?.duration).toBeGreaterThan(0);
+
+      // Should emit "running" when no other tokens hold
+      expect(deps.emitTerminalStatus).toHaveBeenCalledWith(
+        "t1",
+        "running",
+        undefined,
+        expect.any(Number)
+      );
 
       governor.dispose();
     });
@@ -316,6 +341,9 @@ describe("ResourceGovernor", () => {
       const deps = createMockDeps({
         getTerminalIds: vi.fn().mockReturnValue(["t1"]),
         getPauseCoordinator: vi.fn().mockReturnValue(coordinator),
+        getTerminalActivity: vi
+          .fn()
+          .mockReturnValue([{ id: "t1", lastOutputTime: 100, lastInputTime: 100 }]),
       });
 
       vi.spyOn(process, "memoryUsage").mockReturnValue({
@@ -344,6 +372,7 @@ describe("ResourceGovernor", () => {
       } as ReturnType<typeof process.memoryUsage>);
 
       raw.resume.mockClear();
+      (deps.emitTerminalStatus as ReturnType<typeof vi.fn>).mockClear();
       vi.advanceTimersByTime(2000);
 
       // Governor released its hold, but backpressure still holds — PTY must stay paused
@@ -351,6 +380,12 @@ describe("ResourceGovernor", () => {
       expect(coordinator.hasToken("backpressure")).toBe(true);
       expect(coordinator.isPaused).toBe(true);
       expect(raw.resume).not.toHaveBeenCalled();
+
+      // Should NOT emit "running" because backpressure still holds
+      const terminalStatusCalls = (
+        deps.emitTerminalStatus as ReturnType<typeof vi.fn>
+      ).mock.calls.filter((c: unknown[]) => (c as string[])[1] === "running");
+      expect(terminalStatusCalls).toHaveLength(0);
 
       governor.dispose();
     });
@@ -644,6 +679,254 @@ describe("ResourceGovernor", () => {
       expect((gaugeCalls[1][0] as Record<string, unknown>).payload).toMatchObject({
         pauseCountDelta: 3,
       });
+
+      governor.dispose();
+    });
+  });
+
+  describe("host-memory-warning", () => {
+    it("emits host-memory-warning when crossing warning threshold", () => {
+      const deps = createMockDeps();
+      vi.spyOn(process, "memoryUsage").mockReturnValue({
+        heapUsed: 750 * 1024 * 1024,
+        rss: 1024 * 1024 * 1024,
+        external: 0,
+        arrayBuffers: 0,
+      } as ReturnType<typeof process.memoryUsage>);
+
+      const governor = new ResourceGovernor(deps);
+      governor.start();
+
+      vi.advanceTimersByTime(2000);
+
+      expect(deps.sendEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "host-memory-warning",
+          isWarning: true,
+        })
+      );
+
+      governor.dispose();
+    });
+
+    it("clears warning when memory drops below clear threshold", () => {
+      const deps = createMockDeps();
+      vi.spyOn(process, "memoryUsage").mockReturnValue({
+        heapUsed: 750 * 1024 * 1024,
+        rss: 1024 * 1024 * 1024,
+        external: 0,
+        arrayBuffers: 0,
+      } as ReturnType<typeof process.memoryUsage>);
+
+      const governor = new ResourceGovernor(deps);
+      governor.start();
+      vi.advanceTimersByTime(2000);
+
+      // Drop below clear threshold
+      vi.spyOn(process, "memoryUsage").mockReturnValue({
+        heapUsed: 600 * 1024 * 1024,
+        rss: 1024 * 1024 * 1024,
+        external: 0,
+        arrayBuffers: 0,
+      } as ReturnType<typeof process.memoryUsage>);
+      vi.advanceTimersByTime(2000);
+
+      expect(deps.sendEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "host-memory-warning",
+          isWarning: false,
+        })
+      );
+
+      governor.dispose();
+    });
+
+    it("does not re-emit warning on consecutive ticks above threshold", () => {
+      const deps = createMockDeps();
+      vi.spyOn(process, "memoryUsage").mockReturnValue({
+        heapUsed: 750 * 1024 * 1024,
+        rss: 1024 * 1024 * 1024,
+        external: 0,
+        arrayBuffers: 0,
+      } as ReturnType<typeof process.memoryUsage>);
+
+      const governor = new ResourceGovernor(deps);
+      governor.start();
+
+      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(2000);
+
+      const warningCalls = (deps.sendEvent as ReturnType<typeof vi.fn>).mock.calls.filter(
+        (c: unknown[]) => (c[0] as Record<string, unknown>)?.type === "host-memory-warning"
+      );
+      expect(warningCalls).toHaveLength(1);
+
+      governor.dispose();
+    });
+  });
+
+  describe("triage ordering", () => {
+    it("pauses idle terminals before active-agent terminals", () => {
+      const c1 = createMockCoordinator();
+      const c2 = createMockCoordinator();
+      const c3 = createMockCoordinator();
+      const coordinators: Record<string, ReturnType<typeof createMockCoordinator>> = {
+        t1: c1,
+        t2: c2,
+        t3: c3,
+      };
+
+      const deps = createMockDeps({
+        getTerminalIds: vi.fn().mockReturnValue(["t1", "t2", "t3"]),
+        getPauseCoordinator: vi.fn((id: string) => coordinators[id]?.coordinator),
+        getTerminalActivity: vi.fn().mockReturnValue([
+          { id: "t1", lastOutputTime: 1000, lastInputTime: 1000, agentState: "idle" },
+          { id: "t2", lastOutputTime: 3000, lastInputTime: 2000, agentState: "working" },
+          { id: "t3", lastOutputTime: 2000, lastInputTime: 1000, agentState: "idle" },
+        ]),
+      });
+
+      vi.spyOn(process, "memoryUsage").mockReturnValue({
+        heapUsed: 900 * 1024 * 1024,
+        rss: 1024 * 1024 * 1024,
+        external: 0,
+        arrayBuffers: 0,
+      } as ReturnType<typeof process.memoryUsage>);
+
+      const governor = new ResourceGovernor(deps);
+      governor.start();
+      vi.advanceTimersByTime(2000);
+
+      const emitCalls = (deps.emitTerminalStatus as ReturnType<typeof vi.fn>).mock.calls;
+      const pausedOrder = emitCalls.map((c: unknown[]) => (c as string[])[0]);
+
+      // t2 (working agent) should be paused last
+      expect(pausedOrder[pausedOrder.length - 1]).toBe("t2");
+
+      governor.dispose();
+    });
+  });
+
+  describe("critical pressure", () => {
+    it("pauses all terminals immediately at 95%+ without triage ordering", () => {
+      const c1 = createMockCoordinator();
+      const c2 = createMockCoordinator();
+      const coordinators: Record<string, ReturnType<typeof createMockCoordinator>> = {
+        t1: c1,
+        t2: c2,
+      };
+
+      const deps = createMockDeps({
+        getTerminalIds: vi.fn().mockReturnValue(["t1", "t2"]),
+        getPauseCoordinator: vi.fn((id: string) => coordinators[id]?.coordinator),
+        getTerminalActivity: vi.fn().mockReturnValue([
+          { id: "t1", lastOutputTime: 1000, lastInputTime: 1000, agentState: "working" },
+          { id: "t2", lastOutputTime: 100, lastInputTime: 100, agentState: "idle" },
+        ]),
+      });
+
+      vi.spyOn(process, "memoryUsage").mockReturnValue({
+        heapUsed: 980 * 1024 * 1024,
+        rss: 1024 * 1024 * 1024,
+        external: 0,
+        arrayBuffers: 0,
+      } as ReturnType<typeof process.memoryUsage>);
+
+      const governor = new ResourceGovernor(deps);
+      governor.start();
+      vi.advanceTimersByTime(2000);
+
+      // At critical, both should be paused — order follows getTerminalIds (no sort)
+      const emitCalls = (deps.emitTerminalStatus as ReturnType<typeof vi.fn>).mock.calls;
+      expect(emitCalls).toHaveLength(2);
+
+      governor.dispose();
+    });
+  });
+
+  describe("setResourceProfile", () => {
+    it("lowers throttle threshold on efficiency profile", () => {
+      const { coordinator } = createMockCoordinator();
+      const deps = createMockDeps({
+        getTerminalIds: vi.fn().mockReturnValue(["t1"]),
+        getPauseCoordinator: vi.fn().mockReturnValue(coordinator),
+        getTerminalActivity: vi
+          .fn()
+          .mockReturnValue([{ id: "t1", lastOutputTime: 100, lastInputTime: 100 }]),
+      });
+
+      const governor = new ResourceGovernor(deps);
+      governor.setResourceProfile("efficiency");
+      governor.start();
+
+      // 75% heap — below default 85% but above efficiency 70%
+      vi.spyOn(process, "memoryUsage").mockReturnValue({
+        heapUsed: 768 * 1024 * 1024,
+        rss: 1024 * 1024 * 1024,
+        external: 0,
+        arrayBuffers: 0,
+      } as ReturnType<typeof process.memoryUsage>);
+
+      vi.advanceTimersByTime(2000);
+
+      expect(coordinator.hasToken("resource-governor")).toBe(true);
+
+      governor.dispose();
+    });
+
+    it("restores default thresholds when switching back to balanced", () => {
+      const { coordinator } = createMockCoordinator();
+      const deps = createMockDeps({
+        getTerminalIds: vi.fn().mockReturnValue(["t1"]),
+        getPauseCoordinator: vi.fn().mockReturnValue(coordinator),
+        getTerminalActivity: vi
+          .fn()
+          .mockReturnValue([{ id: "t1", lastOutputTime: 100, lastInputTime: 100 }]),
+      });
+
+      const governor = new ResourceGovernor(deps);
+      governor.setResourceProfile("efficiency");
+      governor.setResourceProfile("balanced");
+      governor.start();
+
+      // 75% heap — above efficiency 70% but below default 85%
+      vi.spyOn(process, "memoryUsage").mockReturnValue({
+        heapUsed: 768 * 1024 * 1024,
+        rss: 1024 * 1024 * 1024,
+        external: 0,
+        arrayBuffers: 0,
+      } as ReturnType<typeof process.memoryUsage>);
+
+      vi.advanceTimersByTime(2000);
+
+      // Should NOT throttle at 75% on balanced profile
+      expect(coordinator.hasToken("resource-governor")).toBe(false);
+
+      governor.dispose();
+    });
+
+    it("lowers warning threshold on efficiency profile", () => {
+      const deps = createMockDeps();
+      const governor = new ResourceGovernor(deps);
+      governor.setResourceProfile("efficiency");
+      governor.start();
+
+      // 60% heap — below default warning 70% but above efficiency warning 55%
+      vi.spyOn(process, "memoryUsage").mockReturnValue({
+        heapUsed: 614 * 1024 * 1024,
+        rss: 1024 * 1024 * 1024,
+        external: 0,
+        arrayBuffers: 0,
+      } as ReturnType<typeof process.memoryUsage>);
+
+      vi.advanceTimersByTime(2000);
+
+      expect(deps.sendEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "host-memory-warning",
+          isWarning: true,
+        })
+      );
 
       governor.dispose();
     });

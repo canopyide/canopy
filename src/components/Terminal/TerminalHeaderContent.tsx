@@ -373,6 +373,28 @@ export function TerminalHeaderContent({
         </Tooltip>
       )}
 
+      {/* Resource governor pause badge */}
+      {flowStatus === "paused-resource-governor" && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              className="flex items-center gap-1 text-xs font-sans bg-status-warning/15 text-status-warning px-1.5 py-0.5 rounded ml-1"
+              role="status"
+              aria-live="polite"
+            >
+              <Pause className="w-3 h-3" aria-hidden="true" />
+              Paused (memory)
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-xs">
+            <div className="flex flex-col gap-0.5">
+              <span className="font-medium">System memory pressure</span>
+              <span>Paused to reduce memory pressure. Recovers automatically.</span>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      )}
+
       {/* Suspended badge */}
       {flowStatus === "suspended" && (
         <Tooltip>

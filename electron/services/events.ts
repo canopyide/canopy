@@ -3,7 +3,10 @@ import type { NotificationPayload, AgentState, TaskState, EventCategory } from "
 import type { EventContext } from "../../shared/types/events.js";
 import type { GitHubPRCIStatus } from "../../shared/types/github.js";
 import type { WorktreeSnapshot as WorktreeState } from "../../shared/types/workspace-host.js";
-import type { TerminalReliabilityMetricPayload } from "../../shared/types/pty-host.js";
+import type {
+  TerminalReliabilityMetricPayload,
+  TerminalFlowStatus,
+} from "../../shared/types/pty-host.js";
 import type { ExitReason } from "./pty/types.js";
 
 export type { EventCategory };
@@ -683,7 +686,7 @@ export type DaintreeEventMap = {
    */
   "terminal:status": {
     id: string;
-    status: "running" | "paused-backpressure" | "paused-user" | "suspended" | "data-loss";
+    status: TerminalFlowStatus;
     bufferUtilization?: number;
     pauseDuration?: number;
     reason?: string;

@@ -152,6 +152,17 @@ export function initPerWindowServices(
     ptyClient.on("host-crash", (code) => {
       console.error(`[MAIN] Pty Host crashed with code ${code} (max restarts exceeded)`);
     });
+    ptyClient.on("host-memory-warning", (payload) => {
+      if (payload.isWarning) {
+        logInfo("pty-host-memory-warning", {
+          utilizationPercent: payload.utilizationPercent,
+        });
+      } else {
+        logInfo("pty-host-memory-warning-cleared", {
+          utilizationPercent: payload.utilizationPercent,
+        });
+      }
+    });
     ptyClient.on("host-throttled", (payload) => {
       if (!payload.isThrottled) {
         logInfo("pty-host-resumed", { duration: payload.duration });

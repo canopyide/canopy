@@ -85,6 +85,7 @@ export enum TerminalRefreshTier {
 export type TerminalFlowStatus =
   | "running"
   | "paused-backpressure"
+  | "paused-resource-governor"
   | "paused-user"
   | "suspended"
   | "data-loss";
