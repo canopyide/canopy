@@ -92,11 +92,13 @@ const baseOptions: PtySpawnOptions = {
 describe("acquirePtyProcess pool handling", () => {
   const originalPlatformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
 
+  // Pin platform to a non-Windows value so the pool path is exercised on every
+  // runner — shouldEnablePtyPool() returns false on win32, which would short-circuit
+  // every pool-targeted test if we inherited the Windows runner's process.platform.
+  // The single "skips the pool on Windows" test below overrides this explicitly.
   beforeEach(() => {
     spawnMock.mockReset();
-    if (originalPlatformDescriptor) {
-      Object.defineProperty(process, "platform", originalPlatformDescriptor);
-    }
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
   });
 
   afterEach(() => {
