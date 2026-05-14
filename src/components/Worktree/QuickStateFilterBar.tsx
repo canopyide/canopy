@@ -1,5 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { QuickStateFilter } from "@/lib/worktreeFilters";
+import { HollowCircle, SpinnerCircle } from "@/components/icons";
+import { STATE_COLORS } from "./terminalStateConfig";
 
 const FILTER_OPTIONS: { value: QuickStateFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -8,22 +10,36 @@ const FILTER_OPTIONS: { value: QuickStateFilter; label: string }[] = [
   { value: "finished", label: "Finished" },
 ];
 
+const FILTER_VISUALS: Record<
+  Exclude<QuickStateFilter, "all">,
+  { Icon: React.ComponentType<{ className?: string }>; color: string }
+> = {
+  working: { Icon: HollowCircle, color: STATE_COLORS.working },
+  waiting: { Icon: HollowCircle, color: STATE_COLORS.waiting },
+  finished: { Icon: HollowCircle, color: STATE_COLORS.completed },
+};
+
 interface QuickStateFilterBarProps {
   value: QuickStateFilter;
   onChange: (value: QuickStateFilter) => void;
-  counts?: Record<"working" | "waiting" | "finished", number>;
+  counts?: Record<QuickStateFilter, number>;
 }
 
 export function QuickStateFilterBar({ value, onChange, counts }: QuickStateFilterBarProps) {
+  const workingActive = counts !== undefined && counts.working > 0;
   return (
     <div
-      className="flex items-center gap-1 px-4 py-1.5 border-b border-border-default"
+      className="flex border-b border-border-default"
       role="toolbar"
       aria-label="Quick state filter"
     >
-      {FILTER_OPTIONS.map((option) => {
+      {FILTER_OPTIONS.map((option, idx) => {
         const isActive = option.value === value;
-        const count = counts && option.value !== "all" ? counts[option.value] : undefined;
+        const rawCount = counts ? counts[option.value] : undefined;
+        const showCount = rawCount !== undefined && rawCount > 0;
+        const visual = option.value === "all" ? null : FILTER_VISUALS[option.value];
+        const isSpinningWorking = option.value === "working" && workingActive;
+        const Icon = isSpinningWorking ? SpinnerCircle : visual?.Icon;
         return (
           <button
             key={option.value}
@@ -31,18 +47,28 @@ export function QuickStateFilterBar({ value, onChange, counts }: QuickStateFilte
             aria-pressed={isActive}
             onClick={() => onChange(isActive ? "all" : option.value)}
             className={cn(
-              "inline-flex items-center px-2 py-0.5 text-[11px] rounded-full transition-colors",
+              "inline-flex items-center justify-center gap-1 min-w-0 px-2 py-1.5 text-[11px] transition-colors",
+              option.value !== "all" && "flex-1",
+              idx > 0 && "border-l border-border-default",
               isActive
-                ? "bg-overlay-strong ring-1 ring-inset ring-border-strong text-daintree-text font-medium"
+                ? "text-daintree-text font-medium shadow-[inset_0_-2px_0_0_var(--color-text-secondary)]"
                 : "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.04]"
             )}
           >
-            {option.label}
-            {/* "All" has no count — quickStateCounts excludes main/integration worktrees, so the sum != the sidebar header's (N) total. */}
-            {count !== undefined && (
+            {Icon && visual && (
+              <Icon
+                className={cn(
+                  "w-3 h-3 shrink-0",
+                  visual.color,
+                  isSpinningWorking && "animate-spin-slow motion-reduce:animate-none"
+                )}
+              />
+            )}
+            <span className="truncate">{option.label}</span>
+            {showCount && (
               <>
-                <span aria-hidden="true">{` (${count})`}</span>
-                <span className="sr-only">{`, ${count} ${count === 1 ? "worktree" : "worktrees"}`}</span>
+                <span aria-hidden="true">{` (${rawCount})`}</span>
+                <span className="sr-only">{`, ${rawCount} ${rawCount === 1 ? "worktree" : "worktrees"}`}</span>
               </>
             )}
           </button>

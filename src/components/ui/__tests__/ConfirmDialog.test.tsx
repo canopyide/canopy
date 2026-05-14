@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ConfirmDialog } from "../ConfirmDialog";
+import { ConfirmDialog, __devWarnedKeys } from "../ConfirmDialog";
+import { TypedNameConfirmInput } from "../TypedNameConfirmInput";
 
 vi.mock("zustand/react/shallow", () => ({
   useShallow: (fn: unknown) => fn,
@@ -39,6 +40,7 @@ describe("ConfirmDialog destructive-label dev guard", () => {
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    __devWarnedKeys.clear();
     errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
   });
@@ -129,10 +131,229 @@ describe("ConfirmDialog destructive-label dev guard", () => {
   });
 });
 
+describe("ConfirmDialog inverse-label dev guard", () => {
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    __devWarnedKeys.clear();
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
+  });
+
+  afterEach(() => {
+    cleanup();
+    errorSpy.mockRestore();
+    vi.unstubAllEnvs();
+  });
+
+  it.each([
+    "OK",
+    "Confirm",
+    "Yes",
+    "Save",
+    "Continue",
+    "Proceed",
+    "Done",
+    "Got it",
+    "Accept",
+    "Apply",
+    "Submit",
+  ])(
+    "warns when variant is destructive and confirmLabel is a generic recovery label: %s",
+    (label) => {
+      render(
+        <ConfirmDialog
+          isOpen={true}
+          onClose={() => {}}
+          title="Delete it?"
+          confirmLabel={label}
+          onConfirm={() => {}}
+          variant="destructive"
+        />
+      );
+
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      const message = String(errorSpy.mock.calls[0]?.[0] ?? "");
+      expect(message).toContain("[ConfirmDialog]");
+      expect(message).toContain(label);
+      expect(message).toContain("verb-noun");
+    }
+  );
+
+  it("matches case-insensitively and tolerates surrounding whitespace", () => {
+    render(
+      <ConfirmDialog
+        isOpen={true}
+        onClose={() => {}}
+        title="Delete it?"
+        confirmLabel="  ok  "
+        onConfirm={() => {}}
+        variant="destructive"
+      />
+    );
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("is silent for verb-noun destructive labels", () => {
+    render(
+      <ConfirmDialog
+        isOpen={true}
+        onClose={() => {}}
+        title="Delete it?"
+        confirmLabel="Delete worktree"
+        onConfirm={() => {}}
+        variant="destructive"
+      />
+    );
+
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it("is silent when a generic word is part of a longer label", () => {
+    render(
+      <ConfirmDialog
+        isOpen={true}
+        onClose={() => {}}
+        title="Confirm?"
+        confirmLabel="Confirm deletion"
+        onConfirm={() => {}}
+        variant="destructive"
+      />
+    );
+
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it("is silent when variant is not destructive", () => {
+    render(
+      <ConfirmDialog
+        isOpen={true}
+        onClose={() => {}}
+        title="Continue?"
+        confirmLabel="Continue"
+        onConfirm={() => {}}
+        variant="default"
+      />
+    );
+
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it("is silent in production builds", () => {
+    vi.stubEnv("DEV", false);
+
+    render(
+      <ConfirmDialog
+        isOpen={true}
+        onClose={() => {}}
+        title="Delete it?"
+        confirmLabel="OK"
+        onConfirm={() => {}}
+        variant="destructive"
+      />
+    );
+
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("ConfirmDialog warning dedup", () => {
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    __devWarnedKeys.clear();
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
+  });
+
+  afterEach(() => {
+    cleanup();
+    errorSpy.mockRestore();
+    vi.unstubAllEnvs();
+  });
+
+  it("logs the forward guard only once across multiple renders of the same label", () => {
+    render(
+      <ConfirmDialog
+        isOpen={true}
+        onClose={() => {}}
+        title="Delete it?"
+        confirmLabel="Delete worktree"
+        onConfirm={() => {}}
+        variant="default"
+      />
+    );
+    render(
+      <ConfirmDialog
+        isOpen={true}
+        onClose={() => {}}
+        title="Delete it?"
+        confirmLabel="Delete worktree"
+        onConfirm={() => {}}
+        variant="default"
+      />
+    );
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs the inverse guard only once across multiple renders of the same label", () => {
+    render(
+      <ConfirmDialog
+        isOpen={true}
+        onClose={() => {}}
+        title="Delete?"
+        confirmLabel="OK"
+        onConfirm={() => {}}
+        variant="destructive"
+      />
+    );
+    render(
+      <ConfirmDialog
+        isOpen={true}
+        onClose={() => {}}
+        title="Delete?"
+        confirmLabel="OK"
+        onConfirm={() => {}}
+        variant="destructive"
+      />
+    );
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not cross-suppress forward and inverse keys", () => {
+    render(
+      <ConfirmDialog
+        isOpen={true}
+        onClose={() => {}}
+        title="A"
+        confirmLabel="Delete worktree"
+        onConfirm={() => {}}
+        variant="default"
+      />
+    );
+    render(
+      <ConfirmDialog
+        isOpen={true}
+        onClose={() => {}}
+        title="B"
+        confirmLabel="OK"
+        onConfirm={() => {}}
+        variant="destructive"
+      />
+    );
+
+    expect(errorSpy).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("ConfirmDialog — typed-name gate", () => {
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    __devWarnedKeys.clear();
     errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
   });
@@ -306,6 +527,7 @@ describe("ConfirmDialog — typed-name gate", () => {
 
   it("warns in dev when typedNameTarget is set with a non-destructive variant", () => {
     render(
+      // @ts-expect-error — intentionally violates the discriminated union to exercise the runtime fallback guard
       <ConfirmDialog
         isOpen={true}
         onClose={() => {}}
@@ -318,9 +540,9 @@ describe("ConfirmDialog — typed-name gate", () => {
     );
 
     expect(errorSpy).toHaveBeenCalled();
-    const firstMessage = String(errorSpy.mock.calls[0]?.[0] ?? "");
-    expect(firstMessage).toContain("typedNameTarget");
-    expect(firstMessage).toContain('variant="default"');
+    const messages = errorSpy.mock.calls.map((call: unknown[]) => String(call[0] ?? ""));
+    expect(messages.some((m: string) => m.includes("typedNameTarget"))).toBe(true);
+    expect(messages.some((m: string) => m.includes('variant="default"'))).toBe(true);
   });
 
   it("is silent for typedNameTarget on a destructive variant", () => {
@@ -343,6 +565,7 @@ describe("ConfirmDialog — typed-name gate", () => {
     vi.stubEnv("DEV", false);
 
     render(
+      // @ts-expect-error — intentionally violates the discriminated union to exercise the runtime fallback guard
       <ConfirmDialog
         isOpen={true}
         onClose={() => {}}
@@ -355,5 +578,63 @@ describe("ConfirmDialog — typed-name gate", () => {
     );
 
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("TypedNameConfirmInput preamble prop", () => {
+  it("renders the preamble before the canonical instruction when no override is provided", () => {
+    render(
+      <TypedNameConfirmInput
+        target="my-thing"
+        value=""
+        onChange={() => {}}
+        preamble="Force-deleting this protected worktree is irreversible."
+      />
+    );
+
+    const preamble = screen.getByText("Force-deleting this protected worktree is irreversible.");
+    const instruction = screen.getByText(/to confirm\.?/);
+    expect(preamble).toBeDefined();
+    expect(instruction).toBeDefined();
+
+    const position = preamble.compareDocumentPosition(instruction);
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("links the preamble id into aria-describedby alongside the instructions id", () => {
+    render(
+      <TypedNameConfirmInput target="my-thing" value="" onChange={() => {}} preamble="Heads up." />
+    );
+
+    const input = screen.getByLabelText(/^Type my-thing to confirm$/i);
+    const tokens = (input.getAttribute("aria-describedby") ?? "").split(" ").filter(Boolean);
+    expect(tokens).toHaveLength(2);
+    const [first, second] = tokens.map((id) => document.getElementById(id));
+    expect(first?.textContent).toBe("Heads up.");
+    expect(second?.textContent).toMatch(/to confirm\.?/);
+  });
+
+  it("renders only the default instruction when preamble is absent", () => {
+    render(<TypedNameConfirmInput target="my-thing" value="" onChange={() => {}} />);
+
+    expect(
+      screen.queryByText("Force-deleting this protected worktree is irreversible.")
+    ).toBeNull();
+    expect(screen.getByText(/to confirm\.?/)).toBeDefined();
+  });
+
+  it("suppresses the preamble when an explicit instructions override is provided", () => {
+    render(
+      <TypedNameConfirmInput
+        target="my-thing"
+        value=""
+        onChange={() => {}}
+        preamble="Preamble text."
+        instructions={<>Custom instructions only.</>}
+      />
+    );
+
+    expect(screen.queryByText("Preamble text.")).toBeNull();
+    expect(screen.getByText("Custom instructions only.")).toBeDefined();
   });
 });

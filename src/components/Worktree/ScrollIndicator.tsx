@@ -6,9 +6,17 @@ interface ScrollIndicatorProps {
   direction: "above" | "below";
   count: number;
   onClick: () => void;
+  tabIndex?: number;
+  ariaHidden?: boolean;
 }
 
-export function ScrollIndicator({ direction, count, onClick }: ScrollIndicatorProps) {
+export function ScrollIndicator({
+  direction,
+  count,
+  onClick,
+  tabIndex,
+  ariaHidden,
+}: ScrollIndicatorProps) {
   const { isVisible, shouldRender } = useAnimatedPresence({ isOpen: count > 0 });
 
   if (!shouldRender) return null;
@@ -17,6 +25,7 @@ export function ScrollIndicator({ direction, count, onClick }: ScrollIndicatorPr
 
   return (
     <div
+      aria-hidden={ariaHidden || undefined}
       className={cn(
         "absolute left-0 right-0 z-20 pointer-events-none flex justify-center",
         direction === "above" ? "top-0 pt-2" : "bottom-0 pb-2"
@@ -26,6 +35,7 @@ export function ScrollIndicator({ direction, count, onClick }: ScrollIndicatorPr
         type="button"
         onClick={onClick}
         onPointerDown={(e) => e.stopPropagation()}
+        tabIndex={tabIndex}
         aria-label={
           direction === "above"
             ? `Scroll up, ${count} more above`
@@ -36,7 +46,7 @@ export function ScrollIndicator({ direction, count, onClick }: ScrollIndicatorPr
           "bg-daintree-bg/90 border border-daintree-border/40 text-daintree-text shadow-[var(--theme-shadow-floating)]",
           "text-xs font-medium cursor-pointer",
           "hover:bg-daintree-bg hover:border-daintree-border/60",
-          "transition duration-150",
+          "transition-[opacity,transform] duration-150",
           "motion-reduce:transition-none motion-reduce:duration-0 motion-reduce:transform-none",
           "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1",
           isVisible

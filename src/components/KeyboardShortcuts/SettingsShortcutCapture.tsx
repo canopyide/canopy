@@ -10,6 +10,7 @@ import {
 import { actionService } from "@/services/ActionService";
 import { notify } from "@/lib/notify";
 import { logError, logWarn } from "@/utils/logger";
+import { cn } from "@/lib/utils";
 
 export interface SettingsShortcutCaptureProps {
   /** Called when user saves the captured key combination */
@@ -24,6 +25,21 @@ export interface SettingsShortcutCaptureProps {
    * Defaults to "global" (the conservative behavior — flags any overlap).
    */
   scope?: KeyScope;
+  /**
+   * Optional validator for the captured combo. Receives the full captured
+   * combo string (e.g. "Cmd+Alt+K") and returns an error message to display
+   * inline, or null when the combo is acceptable. When non-null, the Save
+   * button is disabled. Use to enforce domain rules like "agent shortcuts
+   * must use Cmd+Alt+letter" without baking domain copy into this widget.
+   */
+  validateCombo?: (combo: string) => string | null;
+  /**
+   * Compact rendering for inline contexts like dropdowns. Drops the outer
+   * card chrome, tightens spacing, shrinks action buttons, and auto-starts
+   * recording on mount (since the user has already expressed intent by
+   * opening the capture). The Settings-page default keeps the full card.
+   */
+  compact?: boolean;
 }
 
 export function SettingsShortcutCapture({
@@ -31,21 +47,35 @@ export function SettingsShortcutCapture({
   onCancel,
   excludeActionId,
   scope = "global",
+  validateCombo,
+  compact = false,
 }: SettingsShortcutCaptureProps) {
-  const [recording, setRecording] = useState(false);
+  // Compact (inline) consumers reach this widget by an explicit click, so
+  // there's no reason to require a second "Click to record" press. Defaulting
+  // `recording` to `compact` arms capture on mount without an effect.
+  const [recording, setRecording] = useState(compact);
   const [capturedCombos, setCapturedCombos] = useState<string[]>([]);
   const [chordStep, setChordStep] = useState<"first" | "waiting" | "complete">("first");
   const chordTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chordTokenRef = useRef(0);
-  const [_conflictRefreshKey, setConflictRefreshKey] = useState(0);
+  const [conflictRefreshKey, setConflictRefreshKey] = useState(0);
   const [isUnbinding, setIsUnbinding] = useState(false);
 
   const capturedCombo = capturedCombos.length > 0 ? capturedCombos.join(" ") : null;
 
+  const validationError = useMemo(() => {
+    if (!capturedCombo || !validateCombo) return null;
+    return validateCombo(capturedCombo);
+  }, [capturedCombo, validateCombo]);
+
   const conflicts = useMemo(() => {
+    // conflictRefreshKey forces the memo to re-evaluate after a successful
+    // Unbind so the dismissed conflict row disappears immediately. Without it,
+    // the memoized result persists against the unchanged capturedCombo.
+    void conflictRefreshKey;
     if (!capturedCombo) return [];
     return keybindingService.findConflicts(capturedCombo, excludeActionId, scope);
-  }, [capturedCombo, excludeActionId, scope]);
+  }, [capturedCombo, excludeActionId, scope, conflictRefreshKey]);
 
   const clearChordTimeout = useCallback(() => {
     if (chordTimeoutRef.current) {
@@ -117,12 +147,28 @@ export function SettingsShortcutCapture({
       }
     };
 
+    const handleBlur = () => {
+      // If the window loses focus mid-recording, held modifier state can't be
+      // observed reliably on return — bail out rather than ship a stuck combo.
+      // Invoke onCancel so any parent state coordinating the capture session
+      // (e.g. AgentTrayCapturingContext.capturingId) also clears; otherwise the
+      // tray dropdown can become un-dismissable after a mid-capture alt-tab.
+      clearChordTimeout();
+      chordTokenRef.current += 1;
+      setRecording(false);
+      setCapturedCombos([]);
+      setChordStep("first");
+      onCancel();
+    };
+
     window.addEventListener("keydown", handler, { capture: true });
+    window.addEventListener("blur", handleBlur);
     return () => {
       window.removeEventListener("keydown", handler, { capture: true });
+      window.removeEventListener("blur", handleBlur);
       clearChordTimeout();
     };
-  }, [recording, clearChordTimeout, finishRecording]);
+  }, [recording, clearChordTimeout, finishRecording, onCancel]);
 
   const handleStartRecording = () => {
     setCapturedCombos([]);
@@ -131,7 +177,7 @@ export function SettingsShortcutCapture({
   };
 
   const handleSave = () => {
-    if (capturedCombo) {
+    if (capturedCombo && !validationError) {
       clearChordTimeout();
       setRecording(false);
       onCapture(capturedCombo);
@@ -273,11 +319,23 @@ export function SettingsShortcutCapture({
 
   const isChord = capturedCombos.length > 1;
 
+  const containerClass = compact
+    ? "space-y-2"
+    : "bg-daintree-bg/50 border border-daintree-border rounded-[var(--radius-lg)] p-4 space-y-3";
+  const captureClass = compact
+    ? "flex-1 px-2 py-1 text-sm border rounded text-center transition-colors"
+    : "flex-1 px-4 py-2 border rounded text-center transition-colors";
+
   return (
-    <div className="bg-daintree-bg/50 border border-daintree-border rounded-[var(--radius-lg)] p-4 space-y-3">
+    <div className={containerClass}>
       <div className="flex items-center gap-2" role="status" aria-live="polite" aria-atomic="true">
         {recording ? (
-          <div className="flex-1 px-4 py-2 border border-daintree-accent rounded bg-daintree-accent/10 text-daintree-accent animate-pulse text-center">
+          <div
+            className={cn(
+              captureClass,
+              "border-daintree-accent bg-daintree-accent/10 text-daintree-accent animate-pulse"
+            )}
+          >
             {chordStep === "first" ? (
               "Press key combination..."
             ) : chordStep === "waiting" ? (
@@ -293,21 +351,40 @@ export function SettingsShortcutCapture({
             ) : null}
           </div>
         ) : capturedCombo ? (
-          <div className="flex-1 px-4 py-2 border border-daintree-border rounded bg-daintree-bg text-daintree-text text-center font-mono">
+          <div
+            className={cn(
+              captureClass,
+              "border-daintree-border bg-daintree-bg text-daintree-text font-mono"
+            )}
+          >
             <span>{keybindingService.formatComboForDisplay(capturedCombo)}</span>
             {isChord && <span className="ml-2 text-xs text-daintree-text/50">(chord)</span>}
           </div>
         ) : (
           <button
             onClick={handleStartRecording}
-            className="flex-1 px-4 py-2 border border-daintree-border rounded bg-daintree-bg text-daintree-text/60 hover:text-daintree-text hover:border-daintree-accent transition-colors"
+            className={cn(
+              captureClass,
+              "border-daintree-border bg-daintree-bg text-daintree-text/60 hover:text-daintree-text hover:border-daintree-accent"
+            )}
           >
             Click to record shortcut
           </button>
         )}
       </div>
 
-      {conflicts.length > 0 && (
+      {validationError && (
+        <div
+          className="flex items-start gap-2 text-status-error text-sm"
+          role="alert"
+          data-testid="shortcut-capture-validation-error"
+        >
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>{validationError}</span>
+        </div>
+      )}
+
+      {!validationError && conflicts.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-start gap-2 text-status-warning text-sm">
             <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
@@ -346,23 +423,33 @@ export function SettingsShortcutCapture({
         </div>
       )}
 
-      <div className="flex gap-2 justify-end">
+      <div className={cn("flex justify-end", compact ? "gap-3" : "gap-2")}>
         <button
           onClick={handleCancel}
-          className="px-3 py-1.5 text-sm text-daintree-text/60 hover:text-daintree-text transition-colors"
+          className={cn(
+            "text-daintree-text/60 hover:text-daintree-text transition-colors",
+            compact ? "text-xs" : "px-3 py-1.5 text-sm"
+          )}
         >
           Cancel
         </button>
         <button
           onClick={handleClear}
-          className="px-3 py-1.5 text-sm text-daintree-text/60 hover:text-daintree-text transition-colors"
+          className={cn(
+            "text-daintree-text/60 hover:text-daintree-text transition-colors",
+            compact ? "text-xs" : "px-3 py-1.5 text-sm"
+          )}
         >
           Clear
         </button>
         {capturedCombo && (
           <button
             onClick={handleSave}
-            className="px-3 py-1.5 text-sm bg-daintree-accent text-daintree-bg rounded hover:bg-daintree-accent/90 transition-colors"
+            disabled={Boolean(validationError)}
+            className={cn(
+              "bg-daintree-accent text-daintree-bg rounded hover:bg-daintree-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+              compact ? "px-2 py-0.5 text-xs" : "px-3 py-1.5 text-sm"
+            )}
           >
             Save
           </button>

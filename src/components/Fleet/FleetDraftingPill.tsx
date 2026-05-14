@@ -1,4 +1,4 @@
-import { type ReactElement, memo } from "react";
+import { type ReactElement } from "react";
 import { RadioTower, ChevronDown, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
@@ -35,22 +35,19 @@ export function FleetDraftingPill(): ReactElement | null {
             aria-label={`Drafting for ${fleetSize} agents`}
             data-testid="fleet-drafting-pill-trigger"
             className={cn(
-              "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full",
+              "inline-flex items-center gap-1 px-2 py-0.5 rounded-full",
               "bg-category-amber-subtle border border-category-amber-border text-category-amber-text shadow-[var(--theme-shadow-floating)]",
               "text-xs font-medium transition-colors",
               hasVariables && "cursor-pointer hover:bg-category-amber-subtle/80"
             )}
           >
-            <RadioTower className="h-3.5 w-3.5" aria-hidden="true" />
+            <RadioTower className="h-3 w-3" aria-hidden="true" />
             <span>
               Mirroring to {peerCount} {peerCount === 1 ? "peer" : "peers"}
             </span>
             {hasVariables && (
               <ChevronDown
-                className={cn(
-                  "h-3.5 w-3.5 transition-transform duration-150",
-                  open && "rotate-180"
-                )}
+                className={cn("h-3 w-3 transition-transform duration-150", open && "rotate-180")}
                 aria-hidden="true"
               />
             )}
@@ -85,9 +82,7 @@ interface FleetResolutionRowProps {
   preview: FleetTargetPreview;
 }
 
-const FleetResolutionRow = memo(function FleetResolutionRow({
-  preview,
-}: FleetResolutionRowProps): ReactElement {
+function FleetResolutionRow({ preview }: FleetResolutionRowProps): ReactElement {
   const { title, resolvedPayload, unresolvedVars, excluded, exclusionReason } = preview;
   const draft = useFleetResolutionPreviewStore((s) => s.draft);
   const parts = splitByRecipeVariables(draft);
@@ -153,4 +148,4 @@ const FleetResolutionRow = memo(function FleetResolutionRow({
       )}
     </li>
   );
-});
+}

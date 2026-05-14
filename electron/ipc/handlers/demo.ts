@@ -3,9 +3,10 @@ import { randomBytes } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { CHANNELS } from "../channels.js";
+import { defineIpcNamespace, op } from "../define.js";
+import { DEMO_METHOD_CHANNELS } from "./demo.preload.js";
 import type { HandlerDependencies } from "../types.js";
 import { getAppWebContents } from "../../window/webContentsRegistry.js";
-import { typedHandle } from "../utils.js";
 import type {
   DemoMoveToPayload,
   DemoMoveToSelectorPayload,
@@ -75,87 +76,6 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
     });
   }
 
-  const handleMoveTo = async (payload: DemoMoveToPayload): Promise<void> => {
-    await sendCommandAndAwait(CHANNELS.DEMO_EXEC_MOVE_TO, payload);
-  };
-
-  const handleMoveToSelector = async (payload: DemoMoveToSelectorPayload): Promise<void> => {
-    await sendCommandAndAwait(CHANNELS.DEMO_EXEC_MOVE_TO_SELECTOR, payload);
-  };
-
-  const handleClick = async (): Promise<void> => {
-    await sendCommandAndAwait(CHANNELS.DEMO_EXEC_CLICK);
-  };
-
-  const handleType = async (payload: DemoTypePayload): Promise<void> => {
-    await sendCommandAndAwait(CHANNELS.DEMO_EXEC_TYPE, payload);
-  };
-
-  const handleScreenshot = async (): Promise<DemoScreenshotResult> => {
-    const win = getMainWindow();
-    if (!win || win.isDestroyed()) {
-      throw new Error("No window available for screenshot");
-    }
-    const image = await getAppWebContents(win).capturePage();
-    const pngBuffer = image.toPNG();
-    const size = image.getSize();
-    return {
-      data: new Uint8Array(pngBuffer),
-      width: size.width,
-      height: size.height,
-    };
-  };
-
-  const handleWaitForSelector = async (payload: DemoWaitForSelectorPayload): Promise<void> => {
-    await sendCommandAndAwait(CHANNELS.DEMO_EXEC_WAIT_FOR_SELECTOR, payload);
-  };
-
-  const handlePause = async (): Promise<void> => {
-    await sendCommandAndAwait(CHANNELS.DEMO_EXEC_PAUSE);
-  };
-
-  const handleResume = async (): Promise<void> => {
-    await sendCommandAndAwait(CHANNELS.DEMO_EXEC_RESUME);
-  };
-
-  const handleSleep = async (payload: DemoSleepPayload): Promise<void> => {
-    await sendCommandAndAwait(CHANNELS.DEMO_EXEC_SLEEP, payload);
-  };
-
-  const handleScroll = async (payload: DemoScrollPayload): Promise<void> => {
-    await sendCommandAndAwait(CHANNELS.DEMO_EXEC_SCROLL, payload);
-  };
-
-  const handleDrag = async (payload: DemoDragPayload): Promise<void> => {
-    await sendCommandAndAwait(CHANNELS.DEMO_EXEC_DRAG, payload);
-  };
-
-  const handlePressKey = async (payload: DemoPressKeyPayload): Promise<void> => {
-    await sendCommandAndAwait(CHANNELS.DEMO_EXEC_PRESS_KEY, payload);
-  };
-
-  const handleSpotlight = async (payload: DemoSpotlightPayload): Promise<void> => {
-    await sendCommandAndAwait(CHANNELS.DEMO_EXEC_SPOTLIGHT, payload);
-  };
-
-  const handleDismissSpotlight = async (): Promise<void> => {
-    await sendCommandAndAwait(CHANNELS.DEMO_EXEC_DISMISS_SPOTLIGHT);
-  };
-
-  const handleAnnotate = async (payload: DemoAnnotatePayload): Promise<DemoAnnotateResult> => {
-    const id = payload.id ?? randomBytes(8).toString("hex");
-    await sendCommandAndAwait(CHANNELS.DEMO_EXEC_ANNOTATE, { ...payload, id });
-    return { id };
-  };
-
-  const handleDismissAnnotation = async (payload: DemoDismissAnnotationPayload): Promise<void> => {
-    await sendCommandAndAwait(CHANNELS.DEMO_EXEC_DISMISS_ANNOTATION, payload);
-  };
-
-  const handleWaitForIdle = async (payload: DemoWaitForIdlePayload): Promise<void> => {
-    await sendCommandAndAwait(CHANNELS.DEMO_EXEC_WAIT_FOR_IDLE, payload);
-  };
-
   // --- MediaRecorder-based capture state ---
   interface CaptureSession {
     captureId: string;
@@ -212,120 +132,196 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
   ipcMain.on(CHANNELS.DEMO_CAPTURE_CHUNK, onCaptureChunk);
   ipcMain.on(CHANNELS.DEMO_CAPTURE_STOP, onCaptureStop);
 
-  const handleStartCapture = async (
-    payload: DemoStartCapturePayload
-  ): Promise<DemoStartCaptureResult> => {
-    if (captureSession) {
-      throw new Error("Capture already in progress");
-    }
+  const namespace = defineIpcNamespace({
+    name: "demo",
+    ops: {
+      moveTo: op(DEMO_METHOD_CHANNELS.moveTo, async (payload: DemoMoveToPayload): Promise<void> => {
+        await sendCommandAndAwait(CHANNELS.DEMO_EXEC_MOVE_TO, payload);
+      }),
+      moveToSelector: op(
+        DEMO_METHOD_CHANNELS.moveToSelector,
+        async (payload: DemoMoveToSelectorPayload): Promise<void> => {
+          await sendCommandAndAwait(CHANNELS.DEMO_EXEC_MOVE_TO_SELECTOR, payload);
+        }
+      ),
+      click: op(DEMO_METHOD_CHANNELS.click, async (): Promise<void> => {
+        await sendCommandAndAwait(CHANNELS.DEMO_EXEC_CLICK);
+      }),
+      type: op(DEMO_METHOD_CHANNELS.type, async (payload: DemoTypePayload): Promise<void> => {
+        await sendCommandAndAwait(CHANNELS.DEMO_EXEC_TYPE, payload);
+      }),
+      screenshot: op(DEMO_METHOD_CHANNELS.screenshot, async (): Promise<DemoScreenshotResult> => {
+        const win = getMainWindow();
+        if (!win || win.isDestroyed()) {
+          throw new Error("No window available for screenshot");
+        }
+        const image = await getAppWebContents(win).capturePage();
+        const pngBuffer = image.toPNG();
+        const size = image.getSize();
+        return {
+          data: new Uint8Array(pngBuffer),
+          width: size.width,
+          height: size.height,
+        };
+      }),
+      waitForSelector: op(
+        DEMO_METHOD_CHANNELS.waitForSelector,
+        async (payload: DemoWaitForSelectorPayload): Promise<void> => {
+          await sendCommandAndAwait(CHANNELS.DEMO_EXEC_WAIT_FOR_SELECTOR, payload);
+        }
+      ),
+      pause: op(DEMO_METHOD_CHANNELS.pause, async (): Promise<void> => {
+        await sendCommandAndAwait(CHANNELS.DEMO_EXEC_PAUSE);
+      }),
+      resume: op(DEMO_METHOD_CHANNELS.resume, async (): Promise<void> => {
+        await sendCommandAndAwait(CHANNELS.DEMO_EXEC_RESUME);
+      }),
+      sleep: op(DEMO_METHOD_CHANNELS.sleep, async (payload: DemoSleepPayload): Promise<void> => {
+        await sendCommandAndAwait(CHANNELS.DEMO_EXEC_SLEEP, payload);
+      }),
+      scroll: op(DEMO_METHOD_CHANNELS.scroll, async (payload: DemoScrollPayload): Promise<void> => {
+        await sendCommandAndAwait(CHANNELS.DEMO_EXEC_SCROLL, payload);
+      }),
+      drag: op(DEMO_METHOD_CHANNELS.drag, async (payload: DemoDragPayload): Promise<void> => {
+        await sendCommandAndAwait(CHANNELS.DEMO_EXEC_DRAG, payload);
+      }),
+      pressKey: op(
+        DEMO_METHOD_CHANNELS.pressKey,
+        async (payload: DemoPressKeyPayload): Promise<void> => {
+          await sendCommandAndAwait(CHANNELS.DEMO_EXEC_PRESS_KEY, payload);
+        }
+      ),
+      spotlight: op(
+        DEMO_METHOD_CHANNELS.spotlight,
+        async (payload: DemoSpotlightPayload): Promise<void> => {
+          await sendCommandAndAwait(CHANNELS.DEMO_EXEC_SPOTLIGHT, payload);
+        }
+      ),
+      dismissSpotlight: op(DEMO_METHOD_CHANNELS.dismissSpotlight, async (): Promise<void> => {
+        await sendCommandAndAwait(CHANNELS.DEMO_EXEC_DISMISS_SPOTLIGHT);
+      }),
+      annotate: op(
+        DEMO_METHOD_CHANNELS.annotate,
+        async (payload: DemoAnnotatePayload): Promise<DemoAnnotateResult> => {
+          const id = payload.id ?? randomBytes(8).toString("hex");
+          await sendCommandAndAwait(CHANNELS.DEMO_EXEC_ANNOTATE, { ...payload, id });
+          return { id };
+        }
+      ),
+      dismissAnnotation: op(
+        DEMO_METHOD_CHANNELS.dismissAnnotation,
+        async (payload: DemoDismissAnnotationPayload): Promise<void> => {
+          await sendCommandAndAwait(CHANNELS.DEMO_EXEC_DISMISS_ANNOTATION, payload);
+        }
+      ),
+      waitForIdle: op(
+        DEMO_METHOD_CHANNELS.waitForIdle,
+        async (payload: DemoWaitForIdlePayload): Promise<void> => {
+          await sendCommandAndAwait(CHANNELS.DEMO_EXEC_WAIT_FOR_IDLE, payload);
+        }
+      ),
+      startCapture: op(
+        DEMO_METHOD_CHANNELS.startCapture,
+        async (payload: DemoStartCapturePayload): Promise<DemoStartCaptureResult> => {
+          if (captureSession) {
+            throw new Error("Capture already in progress");
+          }
 
-    const fps = payload.fps ?? 30;
-    const { outputPath } = payload;
+          const fps = payload.fps ?? 30;
+          const { outputPath } = payload;
 
-    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+          fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
-    const captureId = randomBytes(8).toString("hex");
-    const writeStream = fs.createWriteStream(outputPath);
+          const captureId = randomBytes(8).toString("hex");
+          const writeStream = fs.createWriteStream(outputPath);
 
-    let resolveFinalizeWith!: (result: DemoStopCaptureResult) => void;
-    let rejectFinalizeWith!: (err: Error) => void;
-    const finalizePromise = new Promise<DemoStopCaptureResult>((resolve, reject) => {
-      resolveFinalizeWith = resolve;
-      rejectFinalizeWith = reject;
-    });
-    // Suppress unhandled rejection if nothing ever awaits finalize (e.g., handlers
-    // torn down before stopCapture is called). Real awaiters still observe the rejection.
-    finalizePromise.catch(() => {});
+          let resolveFinalizeWith!: (result: DemoStopCaptureResult) => void;
+          let rejectFinalizeWith!: (err: Error) => void;
+          const finalizePromise = new Promise<DemoStopCaptureResult>((resolve, reject) => {
+            resolveFinalizeWith = resolve;
+            rejectFinalizeWith = reject;
+          });
+          // Suppress unhandled rejection if nothing ever awaits finalize (e.g., handlers
+          // torn down before stopCapture is called). Real awaiters still observe the rejection.
+          finalizePromise.catch(() => {});
 
-    const newSession: CaptureSession = {
-      captureId,
-      outputPath,
-      writeStream,
-      frameCount: 0,
-      stopping: false,
-      finalized: false,
-      finalizePromise,
-      resolveFinalizeWith,
-      rejectFinalizeWith,
-    };
+          const newSession: CaptureSession = {
+            captureId,
+            outputPath,
+            writeStream,
+            frameCount: 0,
+            stopping: false,
+            finalized: false,
+            finalizePromise,
+            resolveFinalizeWith,
+            rejectFinalizeWith,
+          };
 
-    writeStream.on("error", (err: Error) => {
-      if (captureSession === newSession && !newSession.finalized) {
-        newSession.finalized = true;
-        captureSession = null;
-        rejectFinalizeWith(new Error(`Capture write failed: ${err.message}`));
-      }
-    });
+          writeStream.on("error", (err: Error) => {
+            if (captureSession === newSession && !newSession.finalized) {
+              newSession.finalized = true;
+              captureSession = null;
+              rejectFinalizeWith(new Error(`Capture write failed: ${err.message}`));
+            }
+          });
 
-    captureSession = newSession;
+          captureSession = newSession;
 
-    try {
-      await sendCommandAndAwait(CHANNELS.DEMO_EXEC_START_CAPTURE, {
-        captureId,
-        fps,
-        mimeType: CAPTURE_MIME_TYPE,
-      });
-    } catch (err) {
-      captureSession = null;
-      writeStream.destroy();
-      throw err;
-    }
+          try {
+            await sendCommandAndAwait(CHANNELS.DEMO_EXEC_START_CAPTURE, {
+              captureId,
+              fps,
+              mimeType: CAPTURE_MIME_TYPE,
+            });
+          } catch (err) {
+            captureSession = null;
+            writeStream.destroy();
+            throw err;
+          }
 
-    return { outputPath };
-  };
+          return { outputPath };
+        }
+      ),
+      stopCapture: op(
+        DEMO_METHOD_CHANNELS.stopCapture,
+        async (): Promise<DemoStopCaptureResult> => {
+          const active = captureSession;
+          if (!active) {
+            throw new Error("No capture in progress");
+          }
+          if (active.stopping) {
+            return active.finalizePromise;
+          }
+          active.stopping = true;
+          try {
+            await sendCommandAndAwait(CHANNELS.DEMO_EXEC_STOP_CAPTURE, {
+              captureId: active.captureId,
+            });
+          } catch (err) {
+            if (captureSession === active && !active.finalized) {
+              active.finalized = true;
+              captureSession = null;
+              active.writeStream.destroy();
+              active.rejectFinalizeWith(err instanceof Error ? err : new Error(String(err)));
+            }
+          }
+          return active.finalizePromise;
+        }
+      ),
+      getCaptureStatus: op(
+        DEMO_METHOD_CHANNELS.getCaptureStatus,
+        async (): Promise<DemoCaptureStatus> => {
+          return {
+            active: captureSession !== null && !captureSession.finalized,
+            frameCount: captureSession?.frameCount ?? 0,
+            outputPath: captureSession?.outputPath ?? null,
+          };
+        }
+      ),
+    },
+  });
 
-  const handleStopCapture = async (): Promise<DemoStopCaptureResult> => {
-    const active = captureSession;
-    if (!active) {
-      throw new Error("No capture in progress");
-    }
-    if (active.stopping) {
-      return active.finalizePromise;
-    }
-    active.stopping = true;
-    try {
-      await sendCommandAndAwait(CHANNELS.DEMO_EXEC_STOP_CAPTURE, { captureId: active.captureId });
-    } catch (err) {
-      if (captureSession === active && !active.finalized) {
-        active.finalized = true;
-        captureSession = null;
-        active.writeStream.destroy();
-        active.rejectFinalizeWith(err instanceof Error ? err : new Error(String(err)));
-      }
-    }
-    return active.finalizePromise;
-  };
-
-  const handleGetCaptureStatus = async (): Promise<DemoCaptureStatus> => {
-    return {
-      active: captureSession !== null && !captureSession.finalized,
-      frameCount: captureSession?.frameCount ?? 0,
-      outputPath: captureSession?.outputPath ?? null,
-    };
-  };
-
-  const cleanups: Array<() => void> = [
-    typedHandle(CHANNELS.DEMO_MOVE_TO, handleMoveTo),
-    typedHandle(CHANNELS.DEMO_MOVE_TO_SELECTOR, handleMoveToSelector),
-    typedHandle(CHANNELS.DEMO_CLICK, handleClick),
-    typedHandle(CHANNELS.DEMO_SCREENSHOT, handleScreenshot),
-    typedHandle(CHANNELS.DEMO_TYPE, handleType),
-    typedHandle(CHANNELS.DEMO_WAIT_FOR_SELECTOR, handleWaitForSelector),
-    typedHandle(CHANNELS.DEMO_PAUSE, handlePause),
-    typedHandle(CHANNELS.DEMO_RESUME, handleResume),
-    typedHandle(CHANNELS.DEMO_SLEEP, handleSleep),
-    typedHandle(CHANNELS.DEMO_SCROLL, handleScroll),
-    typedHandle(CHANNELS.DEMO_DRAG, handleDrag),
-    typedHandle(CHANNELS.DEMO_PRESS_KEY, handlePressKey),
-    typedHandle(CHANNELS.DEMO_SPOTLIGHT, handleSpotlight),
-    typedHandle(CHANNELS.DEMO_DISMISS_SPOTLIGHT, handleDismissSpotlight),
-    typedHandle(CHANNELS.DEMO_ANNOTATE, handleAnnotate),
-    typedHandle(CHANNELS.DEMO_DISMISS_ANNOTATION, handleDismissAnnotation),
-    typedHandle(CHANNELS.DEMO_WAIT_FOR_IDLE, handleWaitForIdle),
-    typedHandle(CHANNELS.DEMO_START_CAPTURE, handleStartCapture),
-    typedHandle(CHANNELS.DEMO_STOP_CAPTURE, handleStopCapture),
-    typedHandle(CHANNELS.DEMO_GET_CAPTURE_STATUS, handleGetCaptureStatus),
-  ];
+  const cleanups: Array<() => void> = [namespace.register()];
 
   return () => {
     if (captureSession && !captureSession.finalized) {
@@ -338,8 +334,6 @@ export function registerDemoHandlers(deps: HandlerDependencies): () => void {
     ipcMain.removeListener(CHANNELS.DEMO_CAPTURE_CHUNK, onCaptureChunk);
     ipcMain.removeListener(CHANNELS.DEMO_CAPTURE_STOP, onCaptureStop);
     displayMediaHandlerSession.setDisplayMediaRequestHandler(null);
-    for (const cleanup of cleanups) {
-      cleanup();
-    }
+    cleanups.forEach((cleanup) => cleanup());
   };
 }

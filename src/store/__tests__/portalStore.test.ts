@@ -218,12 +218,12 @@ describe("portalStore", () => {
 
   describe("toggle with overlay claims", () => {
     beforeEach(() => {
-      useUIStore.setState({ overlayClaims: new Set<string>() });
+      useUIStore.setState({ overlayStack: [] });
       usePortalStore.setState({ isOpen: false });
     });
 
     afterEach(() => {
-      useUIStore.setState({ overlayClaims: new Set<string>() });
+      useUIStore.setState({ overlayStack: [] });
     });
 
     it("opens the portal when there are no active claims", () => {

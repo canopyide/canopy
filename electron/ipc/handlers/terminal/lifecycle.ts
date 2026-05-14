@@ -342,6 +342,41 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
         if (geminiArgs.length > 0) {
           safeCommand = `${safeCommand} ${geminiArgs.map(shellQuote).join(" ")}`.trim();
         }
+        // Merge any per-agent env returned by `getGeminiSpawnEnv` into the
+        // PTY spawn env. Today this is a no-op (Gemini's MCP isolation is
+        // achieved via workspace-level `.gemini/settings.json` precedence
+        // rather than `GEMINI_CLI_HOME` redirection — see
+        // `getGeminiSpawnEnv` in HelpSessionService for the rationale).
+        // The merge stays so future per-agent env additions land here
+        // consistently with the existing pattern.
+        const geminiEnv = helpSessionService.getGeminiSpawnEnv(helpToken);
+        if (geminiEnv && Object.keys(geminiEnv).length > 0) {
+          spawnEnv = { ...(spawnEnv ?? {}), ...geminiEnv };
+        }
+      }
+      // Copilot help sessions get the `--plan` read-only flag appended at
+      // spawn time (same pattern as `--approval-mode=plan` for Gemini). MCP
+      // wiring lives in `<sessionPath>/.mcp.json` via `writeCopilotMcpConfig`
+      // and is auto-discovered from cwd — no flag injection needed for that.
+      //
+      // A `null` return is the agent-mismatch signal (e.g. a Claude help
+      // token reused with `launchAgentId: "copilot"`) — refuse to spawn.
+      // Strip any user-supplied `--plan` first so the appended flag is
+      // unambiguously authoritative.
+      if (launchAgentId === "copilot") {
+        const copilotArgs = helpSessionService.getCopilotLaunchArgs(helpToken);
+        if (copilotArgs === null) {
+          throw new Error(
+            "Daintree Assistant help token does not belong to a Copilot session; refusing to spawn"
+          );
+        }
+        safeCommand = safeCommand
+          .replace(/(^|\s)--plan(?:=\S*)?(?=\s|$)/g, "$1")
+          .replace(/\s{2,}/g, " ")
+          .trim();
+        if (copilotArgs.length > 0) {
+          safeCommand = `${safeCommand} ${copilotArgs.map(shellQuote).join(" ")}`.trim();
+        }
       }
 
       // Bind this terminalId to the help session so HelpSessionService can

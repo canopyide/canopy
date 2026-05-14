@@ -1,3 +1,4 @@
+import { configure } from "safe-stable-stringify";
 import { getErrorDetails } from "./errorTypes.js";
 import {
   appendFileSync,
@@ -479,12 +480,13 @@ function flushLogs(): void {
   }
 }
 
+const loggerStringify = configure({ bigint: false });
+
 function safeStringify(value: unknown): string {
-  const seen = new WeakSet<object>();
   const sensitivePatterns = ["secret", "token", "password", "key"];
 
   try {
-    return JSON.stringify(
+    return loggerStringify(
       value,
       (key, val) => {
         const lowerKey = key.toLowerCase();
@@ -496,15 +498,10 @@ function safeStringify(value: unknown): string {
 
         if (typeof val === "bigint") return val.toString();
 
-        if (val && typeof val === "object") {
-          if (seen.has(val as object)) return "[Circular]";
-          seen.add(val as object);
-        }
-
         return val;
       },
       2
-    );
+    ) as string;
   } catch (error) {
     return `[Unable to stringify: ${String(error)}]`;
   }

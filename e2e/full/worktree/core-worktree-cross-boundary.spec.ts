@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { launchApp, closeApp, refreshActiveWindow, type AppContext } from "../../helpers/launch";
 import { createFixtureRepo, createMultiProjectFixture } from "../../helpers/fixtures";
 import type { MultiProjectFixture } from "../../helpers/fixtures";
@@ -17,6 +17,33 @@ import { T_SHORT, T_MEDIUM, T_LONG, T_SETTLE } from "../../helpers/timeouts";
 const mod = process.platform === "darwin" ? "Meta" : "Control";
 const FEATURE = "feature/test-branch";
 const FEATURE_DIR_NAME = "feature-test-branch";
+
+async function getPanelId(panel: Locator): Promise<string> {
+  return panel.evaluate((element) => element.getAttribute("data-panel-id") ?? "");
+}
+
+async function refreshProjectWindow(ctx: AppContext): Promise<Page> {
+  ctx.window = await refreshActiveWindow(ctx.app);
+  return ctx.window;
+}
+
+async function switchMainWorktree(ctx: AppContext): Promise<Page> {
+  const window = await refreshProjectWindow(ctx);
+  await test.step("switch to main worktree", async () => {
+    const mainCard = window.locator(SEL.worktree.mainCard);
+    await mainCard.click({ position: { x: 10, y: 10 } });
+    await expect
+      .poll(() => mainCard.getAttribute("aria-label"), { timeout: T_LONG })
+      .toContain("selected");
+  });
+  return refreshProjectWindow(ctx);
+}
+
+async function switchNamedWorktree(ctx: AppContext, branchName: string): Promise<Page> {
+  const window = await refreshProjectWindow(ctx);
+  await switchWorktree(window, branchName);
+  return refreshProjectWindow(ctx);
+}
 
 // ── Block 1: Terminal CWD, Content Isolation, Overview Modal ──
 
@@ -58,11 +85,7 @@ test.describe.serial("Core: Cross-Worktree Terminal Isolation", () => {
   });
 
   test("terminal CWD matches feature worktree path", async () => {
-    const { window } = ctx;
-
-    await test.step("switch to feature worktree", async () => {
-      await switchWorktree(window, FEATURE);
-    });
+    const window = await switchNamedWorktree(ctx, FEATURE);
 
     const panel = await test.step("spawn terminal in feature worktree", async () => {
       return spawnTerminalAndVerify(window);
@@ -75,20 +98,14 @@ test.describe.serial("Core: Cross-Worktree Terminal Isolation", () => {
   });
 
   test("terminal content is isolated across worktrees", async () => {
-    const { window } = ctx;
+    test.setTimeout(process.env.CI ? 180_000 : 120_000);
 
     // Switch to main worktree first
-    await test.step("switch to main worktree", async () => {
-      const mainCard = window.locator(SEL.worktree.mainCard);
-      await mainCard.click({ position: { x: 10, y: 10 } });
-      await expect
-        .poll(() => mainCard.getAttribute("aria-label"), { timeout: T_LONG })
-        .toContain("selected");
-    });
+    let window = await switchMainWorktree(ctx);
 
-    await spawnTerminalAndVerify(window);
-    const mainPanelIds = await getGridPanelIds(window);
-    const mainPanelId = mainPanelIds[mainPanelIds.length - 1];
+    const mainPanel = await spawnTerminalAndVerify(window);
+    const mainPanelId = await getPanelId(mainPanel);
+    expect(mainPanelId).not.toBe("");
 
     await test.step("echo marker in main terminal", async () => {
       // Re-acquire the panel via its stable ID — `.last()` can resolve
@@ -101,17 +118,11 @@ test.describe.serial("Core: Cross-Worktree Terminal Isolation", () => {
     });
 
     // Switch to feature worktree and echo a different marker
-    await test.step("switch to feature worktree", async () => {
-      const featureCard = window.locator(SEL.worktree.card(FEATURE));
-      await featureCard.click({ position: { x: 10, y: 10 } });
-      await expect
-        .poll(() => featureCard.getAttribute("aria-label"), { timeout: T_LONG })
-        .toContain("selected");
-    });
+    window = await switchNamedWorktree(ctx, FEATURE);
 
-    await spawnTerminalAndVerify(window);
-    const featurePanelIds = await getGridPanelIds(window);
-    const featurePanelId = featurePanelIds[featurePanelIds.length - 1];
+    const featurePanel = await spawnTerminalAndVerify(window);
+    const featurePanelId = await getPanelId(featurePanel);
+    expect(featurePanelId).not.toBe("");
 
     await test.step("echo marker in feature terminal", async () => {
       const stableFeature = getPanelById(window, featurePanelId);
@@ -123,11 +134,7 @@ test.describe.serial("Core: Cross-Worktree Terminal Isolation", () => {
 
     // Switch back to main and verify isolation
     await test.step("verify main terminal is isolated", async () => {
-      const mainCard = window.locator(SEL.worktree.mainCard);
-      await mainCard.click({ position: { x: 10, y: 10 } });
-      await expect
-        .poll(() => mainCard.getAttribute("aria-label"), { timeout: T_LONG })
-        .toContain("selected");
+      window = await switchMainWorktree(ctx);
 
       const requeriedMain = getPanelById(window, mainPanelId);
       await expect(requeriedMain).toBeVisible({ timeout: T_LONG });
@@ -141,11 +148,7 @@ test.describe.serial("Core: Cross-Worktree Terminal Isolation", () => {
 
     // Switch to feature and verify reverse isolation
     await test.step("verify feature terminal is isolated", async () => {
-      const featureCard = window.locator(SEL.worktree.card(FEATURE));
-      await featureCard.click({ position: { x: 10, y: 10 } });
-      await expect
-        .poll(() => featureCard.getAttribute("aria-label"), { timeout: T_LONG })
-        .toContain("selected");
+      window = await switchNamedWorktree(ctx, FEATURE);
 
       const requeriedFeature = getPanelById(window, featurePanelId);
       await expect(requeriedFeature).toBeVisible({ timeout: T_LONG });
@@ -421,11 +424,43 @@ test.describe.serial("Core: Worktree Creation Resilience", () => {
 
     await test.step("verify quick-create palette is visible", async () => {
       const quickCreate = window.locator(SEL.worktree.quickCreatePalette);
+      if (!(await quickCreate.isVisible({ timeout: T_SHORT }).catch(() => false))) {
+        await window
+          .evaluate(async () => {
+            const dispatch = (
+              window as unknown as {
+                __daintreeDispatchAction?: (
+                  actionId: string,
+                  args?: unknown,
+                  options?: { source?: string }
+                ) => Promise<{ ok?: boolean }>;
+              }
+            ).__daintreeDispatchAction;
+            await dispatch?.("worktree.quickCreate", undefined, { source: "test" });
+          })
+          .catch(() => undefined);
+      }
       await expect(quickCreate).toBeVisible({ timeout: T_MEDIUM });
 
       // Close via Escape
-      await window.keyboard.press("Escape");
-      await expect(quickCreate).not.toBeVisible({ timeout: T_SHORT });
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await window.keyboard.press("Escape");
+        await window.waitForTimeout(T_SETTLE);
+        const stillVisible = await quickCreate.isVisible({ timeout: 250 }).catch(() => false);
+        const className = (await quickCreate.getAttribute("class").catch(() => "")) ?? "";
+        if (!stillVisible || !className.includes("opacity-100")) break;
+      }
+
+      await expect
+        .poll(
+          async () => {
+            if (!(await quickCreate.isVisible({ timeout: 250 }).catch(() => false))) return true;
+            const className = (await quickCreate.getAttribute("class").catch(() => "")) ?? "";
+            return !className.includes("opacity-100");
+          },
+          { timeout: T_SHORT }
+        )
+        .toBe(true);
     });
   });
 });

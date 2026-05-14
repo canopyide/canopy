@@ -15,6 +15,10 @@ export type {
   RepoState,
   ConflictXYCode,
   ConflictedFileEntry,
+  RebaseAction,
+  RebaseEntryState,
+  RebaseEntry,
+  RebaseSequence,
 } from "./git.js";
 
 // Worktree types
@@ -223,6 +227,7 @@ export type {
   ApplyPatchResult,
   // Git types
   GitGetFileDiffPayload,
+  PushProgressEvent,
   // File search types
   FileSearchPayload,
   FileSearchResult,

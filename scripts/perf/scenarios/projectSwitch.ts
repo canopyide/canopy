@@ -88,6 +88,8 @@ export const projectSwitchScenarios: PerfScenario[] = [
       let checksum = 0;
       let serializeTotalMs = 0;
       let totalSwitchWorkMs = 0;
+      let visibleTotalMs = 0;
+      let hydrateTotalMs = 0;
 
       for (const size of sizes) {
         const result = simulateProjectSwitchPhased({
@@ -97,6 +99,8 @@ export const projectSwitchScenarios: PerfScenario[] = [
         checksum += result.checksum;
         serializeTotalMs += result.phases.serializeMs;
         totalSwitchWorkMs += result.phases.totalMs;
+        visibleTotalMs += result.phases.visibleMs;
+        hydrateTotalMs += result.phases.hydrateMs;
       }
 
       await spinEventLoop(1);
@@ -107,6 +111,8 @@ export const projectSwitchScenarios: PerfScenario[] = [
           checksum,
           serializeTotalMs,
           totalSwitchWorkMs,
+          visibleTotalMs,
+          hydrateTotalMs,
         },
       };
     },

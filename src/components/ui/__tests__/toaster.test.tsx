@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { render, screen, act, fireEvent } from "@testing-library/react";
-import { describe, expect, it, beforeEach, vi, afterEach } from "vitest";
+import { describe, expect, it, beforeAll, beforeEach, vi, afterEach } from "vitest";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useNotificationHistoryStore } from "@/store/slices/notificationHistorySlice";
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
@@ -9,7 +9,12 @@ import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
 import { useUIStore } from "@/store/uiStore";
 import { notify } from "@/lib/notify";
 import { dispatchEscape, _resetForTests as resetEscapeStack } from "@/lib/escapeStack";
+import { primeRadix } from "../radix-loader";
 import { Toaster } from "../toaster";
+
+beforeAll(async () => {
+  await primeRadix();
+});
 
 const dispatchMock = vi.hoisted(() => vi.fn().mockResolvedValue({ ok: true }));
 vi.mock("@/services/ActionService", () => ({

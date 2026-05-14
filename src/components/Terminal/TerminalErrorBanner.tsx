@@ -1,4 +1,3 @@
-import React from "react";
 import { AlertTriangle, RotateCcw, FolderEdit, Trash2 } from "lucide-react";
 import { InlineStatusBanner, type BannerAction } from "./InlineStatusBanner";
 import { sanitizeErrorText, boundedErrorText } from "@/utils/errorText";
@@ -14,7 +13,7 @@ export interface TerminalErrorBannerProps {
   className?: string;
 }
 
-function TerminalErrorBannerComponent({
+export function TerminalErrorBanner({
   terminalId,
   error,
   onUpdateCwd,
@@ -77,5 +76,3 @@ function TerminalErrorBannerComponent({
     />
   );
 }
-
-export const TerminalErrorBanner = React.memo(TerminalErrorBannerComponent);

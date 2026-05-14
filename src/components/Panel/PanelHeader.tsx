@@ -14,6 +14,7 @@ import {
   Grid2X2,
   Activity,
   Plus,
+  RadioTower,
   Bell,
   BellOff,
   ChevronDown,
@@ -68,6 +69,7 @@ import { panelKindCanRestart, panelKindHasPty } from "@shared/config/panelKindRe
 import { actionService } from "@/services/ActionService";
 import { fireWatchNotification } from "@/lib/watchNotification";
 import { useFleetFailureStore } from "@/store/fleetFailureStore";
+import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import type { TerminalChromeDescriptor } from "@/utils/terminalChrome";
 
 export interface PanelHeaderProps {
@@ -255,6 +257,7 @@ function PanelHeaderComponent({
   // pane the same way a "Retry failed" button surfaces it in the ribbon.
   const isFleetFailed = useFleetFailureStore((s) => s.failedIds.has(id));
   const dismissFleetFailure = useFleetFailureStore((s) => s.dismissId);
+  const isArmed = useFleetArmingStore((s) => s.armedIds.has(id));
 
   const duplicateShortcut = useKeybindingDisplay("terminal.duplicate");
   const moveToDockShortcut = useKeybindingDisplay("terminal.moveToDock");
@@ -682,6 +685,7 @@ function PanelHeaderComponent({
                     tabIndex={onTitleChange ? 0 : undefined}
                     role={onTitleChange ? "button" : undefined}
                     aria-label={onTitleChange ? getTitleAriaLabel() : undefined}
+                    data-fleet-gesture-passthrough=""
                   >
                     {displayTitle}
                   </span>
@@ -726,6 +730,22 @@ function PanelHeaderComponent({
                 Last fleet broadcast failed here — click to dismiss. Run "Fleet: Retry failed
                 broadcast" from the command palette to resend.
               </TooltipContent>
+            </Tooltip>
+          )}
+
+          {chrome.isAgent && isArmed && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  role="status"
+                  aria-label="Armed for fleet broadcast"
+                  data-testid="panel-armed-broadcast-indicator"
+                  className="shrink-0 text-category-amber-text"
+                >
+                  <RadioTower className="h-3.5 w-3.5" aria-hidden="true" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Armed for fleet broadcast</TooltipContent>
             </Tooltip>
           )}
 

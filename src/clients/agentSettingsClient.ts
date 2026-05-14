@@ -12,4 +12,8 @@ export const agentSettingsClient = {
   reset: (agentType?: string): Promise<AgentSettings> => {
     return window.electron.agentSettings.reset(agentType);
   },
+
+  stampVersion: (version: number): Promise<AgentSettings> => {
+    return window.electron.agentSettings.stampVersion(version);
+  },
 } as const;

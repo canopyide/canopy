@@ -509,18 +509,23 @@ export interface TerminalReliabilityMetricPayload {
     | "suspend"
     | "wake-latency"
     | "pending-byte-cap-hit"
-    | "pending-bytes-gauge";
+    | "pending-bytes-gauge"
+    | "throughput-rate";
   timestamp: number;
   durationMs?: number;
   bufferUtilization?: number;
   shardIndex?: number;
   serializedStateBytes?: number;
   wakeLatencyMs?: number;
-  capType?: "per-terminal" | "total";
-  attemptedBytes?: number;
-  currentPendingBytes?: number;
   totalPendingBytes?: number;
   perTerminal?: Array<{ terminalId: string; pendingBytes: number }>;
+  totalBytesPerSecond?: number;
+  pauseCountDelta?: number;
+  perTerminalThroughput?: Array<{
+    terminalId: string;
+    bytesPerSecond: number;
+    avgPacketSizeBytes: number;
+  }>;
 }
 
 /**

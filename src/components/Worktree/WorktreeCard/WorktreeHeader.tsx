@@ -79,6 +79,8 @@ export interface WorktreeHeaderProps {
     canMoveDown?: boolean;
     onDockAll: () => void;
     onMaximizeAll: () => void;
+    onCloseAll: () => void;
+    onTerminateAll: () => void;
     onResetRenderers: () => void;
     onSelectAllAgents: () => void;
     onSelectWaitingAgents: () => void;
@@ -178,33 +180,6 @@ export function WorktreeHeader({
               aria-hidden="true"
             />
           )}
-          {isPinned && !isMainWorktree && (
-            <Pin
-              className="w-3 h-3 text-daintree-text/40 shrink-0 pointer-events-none"
-              aria-label="Pinned"
-            />
-          )}
-          {isProjectNotificationsMuted && (
-            <BellOff
-              className="w-3.5 h-3.5 text-daintree-text/40 shrink-0 pointer-events-none"
-              aria-label="Notifications muted for this project"
-            />
-          )}
-          {((worktree.worktreeMode && worktree.worktreeMode !== "local") ||
-            resourceStatusLabel ||
-            isLifecycleRunning) && (
-            <EnvironmentPopover
-              worktreeMode={worktree.worktreeMode}
-              environmentIcon={environmentIcon}
-              isLifecycleRunning={isLifecycleRunning}
-              resourceStatusLabel={resourceStatusLabel}
-              resourceStatusColor={resourceStatusColor}
-              resourceLastOutput={resourceLastOutput}
-              resourceEndpoint={resourceEndpoint}
-              resourceLastCheckedAt={resourceLastCheckedAt}
-              onCheckResourceStatus={onCheckResourceStatus}
-            />
-          )}
           {hasIssueTitle ? (
             <IssueBadge
               issueNumber={worktree.issueNumber!}
@@ -245,6 +220,43 @@ export function WorktreeHeader({
             </span>
           )}
         </div>
+
+        {((isPinned && !isMainWorktree) ||
+          isProjectNotificationsMuted ||
+          (worktree.worktreeMode && worktree.worktreeMode !== "local") ||
+          resourceStatusLabel ||
+          isLifecycleRunning) && (
+          <div className="flex items-center gap-2 shrink-0">
+            {isPinned && !isMainWorktree && (
+              <Pin
+                className="w-3.5 h-3.5 text-daintree-text/40 shrink-0 pointer-events-none"
+                aria-label="Pinned"
+              />
+            )}
+            {isProjectNotificationsMuted && (
+              <BellOff
+                className="w-3.5 h-3.5 text-daintree-text/40 shrink-0 pointer-events-none"
+                aria-label="Notifications muted for this project"
+              />
+            )}
+            {((worktree.worktreeMode && worktree.worktreeMode !== "local") ||
+              resourceStatusLabel ||
+              isLifecycleRunning) && (
+              <EnvironmentPopover
+                worktreeMode={worktree.worktreeMode}
+                environmentIcon={environmentIcon}
+                isLifecycleRunning={isLifecycleRunning}
+                resourceStatusLabel={resourceStatusLabel}
+                resourceStatusColor={resourceStatusColor}
+                resourceLastOutput={resourceLastOutput}
+                resourceEndpoint={resourceEndpoint}
+                resourceLastCheckedAt={resourceLastCheckedAt}
+                onCheckResourceStatus={onCheckResourceStatus}
+                className="w-3.5 h-3.5 text-daintree-text/40"
+              />
+            )}
+          </div>
+        )}
 
         {isCollapsed && visibleStates.length > 0 && (
           <CollapsedSessionIndicators

@@ -8,6 +8,8 @@ const KNOWN_ERROR_KEYS = new Set([
   "userMessage",
   "gitReason",
   "reason",
+  "leaseSha",
+  "branchName",
   "errno",
   "syscall",
   "path",
@@ -45,6 +47,8 @@ export function serializeError(error: unknown, seen = new WeakSet<object>()): Se
   } else if (typeof err.reason === "string") {
     serialized.gitReason = err.reason as SerializedError["gitReason"];
   }
+  if (typeof err.leaseSha === "string") serialized.leaseSha = err.leaseSha;
+  if (typeof err.branchName === "string") serialized.branchName = err.branchName;
   if (typeof err.errno === "number") serialized.errno = err.errno;
   if (typeof err.syscall === "string") serialized.syscall = err.syscall;
   if (typeof err.path === "string") serialized.path = err.path;
@@ -82,6 +86,12 @@ export function deserializeError(serialized: SerializedError): Error {
   }
   if (serialized.gitReason !== undefined) {
     (error as unknown as Record<string, unknown>).gitReason = serialized.gitReason;
+  }
+  if (serialized.leaseSha !== undefined) {
+    (error as unknown as Record<string, unknown>).leaseSha = serialized.leaseSha;
+  }
+  if (serialized.branchName !== undefined) {
+    (error as unknown as Record<string, unknown>).branchName = serialized.branchName;
   }
   if (serialized.correlationId !== undefined) {
     (error as unknown as Record<string, unknown>).correlationId = serialized.correlationId;

@@ -1,14 +1,9 @@
-import React from "react";
-
 interface TerminalResourceSparklineProps {
   history: number[];
   className?: string;
 }
 
-function TerminalResourceSparklineComponent({
-  history,
-  className,
-}: TerminalResourceSparklineProps) {
+export function TerminalResourceSparkline({ history, className }: TerminalResourceSparklineProps) {
   if (history.length < 2) return null;
 
   const width = 48;
@@ -41,5 +36,3 @@ function TerminalResourceSparklineComponent({
     </svg>
   );
 }
-
-export const TerminalResourceSparkline = React.memo(TerminalResourceSparklineComponent);

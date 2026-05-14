@@ -53,7 +53,7 @@ describe("ThemeBrowser", () => {
       previewSchemeId: null,
     });
     useThemeBrowserStore.setState({ isOpen: true });
-    useUIStore.setState({ overlayClaims: new Set<string>() });
+    useUIStore.setState({ overlayStack: [] });
     usePortalStore.setState({ isOpen: false });
   });
 
@@ -62,7 +62,7 @@ describe("ThemeBrowser", () => {
     _resetForTests();
     useAppThemeStore.setState({ previewSchemeId: null });
     useThemeBrowserStore.setState({ isOpen: false });
-    useUIStore.setState({ overlayClaims: new Set<string>() });
+    useUIStore.setState({ overlayStack: [] });
   });
 
   it("clicking a theme row sets previewSchemeId instantly (no debounce)", () => {
@@ -202,16 +202,16 @@ describe("ThemeBrowser", () => {
 
   it("registers a 'theme-browser' overlay claim while mounted", () => {
     render(<Harness />);
-    expect(useUIStore.getState().overlayClaims.has("theme-browser")).toBe(true);
+    expect(useUIStore.getState().overlayStack.includes("theme-browser")).toBe(true);
   });
 
   it("releases the 'theme-browser' overlay claim on unmount", () => {
     const { unmount } = render(<Harness />);
-    expect(useUIStore.getState().overlayClaims.has("theme-browser")).toBe(true);
+    expect(useUIStore.getState().overlayStack.includes("theme-browser")).toBe(true);
 
     unmount();
 
-    expect(useUIStore.getState().overlayClaims.has("theme-browser")).toBe(false);
+    expect(useUIStore.getState().overlayStack.includes("theme-browser")).toBe(false);
   });
 
   it("renders with aria-modal='true' for native focus management", () => {

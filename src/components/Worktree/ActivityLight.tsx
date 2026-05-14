@@ -29,6 +29,8 @@ export function ActivityLight({ lastActivityTimestamp, className }: ActivityLigh
     setActive(isActivelyWorking(lastActivityTimestamp));
   }, [lastActivityTimestamp, globalTick]);
 
+  if (lastActivityTimestamp == null) return null;
+
   return (
     <div
       aria-hidden="true"

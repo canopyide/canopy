@@ -70,6 +70,8 @@
   --color-overlay-active: var(--theme-overlay-active);
   --color-overlay-selected: var(--theme-overlay-selected);
   --color-overlay-elevated: var(--theme-overlay-elevated);
+  --color-filter-selected-bg-soft: var(--theme-filter-selected-bg-soft);
+  --color-filter-selected-bg-strong: var(--theme-filter-selected-bg-strong);
   --color-wash-subtle: var(--theme-wash-subtle);
   --color-wash-medium: var(--theme-wash-medium);
   --color-wash-strong: var(--theme-wash-strong);
@@ -2274,9 +2276,14 @@ body[data-performance-mode="true"] .github-status-error {
   cursor: default; /* Forces arrow cursor instead of text beam */
 }
 
-/* Non-draggable interactive elements (Buttons, Inputs) */
-.app-no-drag {
+/* Non-draggable interactive elements (Buttons, Inputs).
+   Descendants opt out too — nested wrappers inside an interactive control
+   would otherwise inherit `drag` from the toolbar parent and re-introduce
+   dead-click zones over the children. */
+.app-no-drag,
+.app-no-drag * {
   -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 /* Safety strip for resizing on Windows frameless windows.
@@ -2371,6 +2378,12 @@ body[data-performance-mode="true"] .github-status-error {
   font-size: 11px;
   border-top: 1px solid var(--color-daintree-border);
   border-bottom: 1px solid var(--color-daintree-border);
+}
+
+/* Keyboard hunk nav target: keep the hunk header clear of the sticky dialog
+   header when scrollIntoView lands a hunk at block: "start". */
+.diff-viewer tbody.diff-hunk {
+  scroll-margin-top: 56px;
 }
 
 .diff-viewer .diff-hunk-header-gutter {

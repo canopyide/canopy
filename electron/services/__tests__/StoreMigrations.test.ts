@@ -1520,7 +1520,7 @@ describe("MigrationRunner", () => {
           apiKey: "",
           language: "en",
           customDictionary: [],
-          transcriptionModel: "nova-3",
+          transcriptionModel: "gpt-realtime-whisper",
           correctionEnabled: false,
           correctionModel: "gpt-5-nano",
           correctionCustomInstructions: "",

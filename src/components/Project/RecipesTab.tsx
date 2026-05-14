@@ -191,7 +191,12 @@ export function RecipesTab({
             </div>
           ) : recipes.length === 0 ? (
             <div className="border border-dashed border-daintree-border rounded-[var(--radius-md)]">
-              <EmptyState variant="zero-data" icon={<Workflow />} title="No recipes" />
+              <EmptyState
+                variant="zero-data"
+                scale="sidebar"
+                icon={<Workflow />}
+                title="No recipes"
+              />
             </div>
           ) : (
             <div className="border border-daintree-border rounded-[var(--radius-md)] divide-y divide-daintree-border">

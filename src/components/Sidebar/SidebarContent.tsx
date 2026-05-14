@@ -73,6 +73,15 @@ function formatButtonTitle(label: string, shortcut?: string | null): string {
   return shortcut ? `${label} (${shortcut})` : label;
 }
 
+const NO_MATCH_QUERY_MAX = 40;
+
+function truncateSearchQuery(trimmedQuery: string) {
+  const codepoints = Array.from(trimmedQuery);
+  return codepoints.length > NO_MATCH_QUERY_MAX
+    ? `${codepoints.slice(0, NO_MATCH_QUERY_MAX).join("")}…`
+    : trimmedQuery;
+}
+
 interface SidebarContentProps {
   onOpenOverview: () => void;
 }
@@ -158,6 +167,8 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   );
   const clearAllFilters = useWorktreeFilterStore((state) => state.clearAll);
   const hasActiveFilters = useWorktreeFilterStore((state) => state.hasActiveFilters);
+  const hasFacetFilters = useWorktreeFilterStore((state) => state.hasFacetFilters);
+  const hasFacetFiltersActive = hasFacetFilters();
   const collapsedWorktrees = useWorktreeFilterStore((state) => state.collapsedWorktrees);
   const pruneStaleWorktreeIds = useWorktreeFilterStore((state) => state.pruneStaleWorktreeIds);
   const setQuickStateFilter = useWorktreeFilterStore((state) => state.setQuickStateFilter);
@@ -348,9 +359,10 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   );
 
   const quickStateCounts = useMemo(() => {
-    const counts = { working: 0, waiting: 0, finished: 0 };
+    const counts = { all: 0, working: 0, waiting: 0, finished: 0 };
     for (const w of deferredWorktrees) {
       if (w.id === mainWorktree?.id || w.id === integrationWorktree?.id) continue;
+      counts.all++;
       const meta = derivedMetaMap.get(w.id);
       if (!meta) continue;
       if (matchesQuickStateFilter("working", meta)) counts.working++;
@@ -419,16 +431,27 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       // to "all". Short-circuit once we find any match — only the boolean
       // matters for the empty-state branch.
       if (!withoutQuickStateMatch && quickStateFilter !== "all") {
-        if (alwaysShowActive && isActive && !hasActiveQuery) {
+        if (alwaysShowActive && isActive && !hasActiveQuery && !hasFacetFiltersActive) {
           withoutQuickStateMatch = true;
-        } else if (alwaysShowWaiting && derived.hasWaitingAgent && !hasActiveQuery) {
+        } else if (
+          alwaysShowWaiting &&
+          derived.hasWaitingAgent &&
+          !hasActiveQuery &&
+          !hasFacetFiltersActive
+        ) {
           withoutQuickStateMatch = true;
         } else if (matchesFilters(worktree, filters, derived, isActive)) {
           withoutQuickStateMatch = true;
         }
       }
 
-      if (alwaysShowActive && isActive && !hasActiveQuery && quickStateFilter === "all") {
+      if (
+        alwaysShowActive &&
+        isActive &&
+        !hasActiveQuery &&
+        quickStateFilter === "all" &&
+        !hasFacetFiltersActive
+      ) {
         return true;
       }
 
@@ -436,7 +459,8 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         alwaysShowWaiting &&
         derived.hasWaitingAgent &&
         !hasActiveQuery &&
-        quickStateFilter === "all"
+        quickStateFilter === "all" &&
+        !hasFacetFiltersActive
       ) {
         return true;
       }
@@ -488,6 +512,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     derivedMetaMap,
     activeWorktreeId,
     quickStateFilter,
+    hasFacetFiltersActive,
   ]);
 
   const { hiddenAbove, hiddenBelow, scrollToTop, scrollToBottom } = useScrollIndicator({
@@ -588,15 +613,16 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 
           <EmptyState
             variant="zero-data"
+            scale="sidebar"
             icon={<FolderOpen />}
             title="Open a Git repository to get started"
-            description={
-              <>
+            action={
+              <span className="text-xs text-daintree-text/50">
                 Use{" "}
                 <kbd className="px-1.5 py-0.5 bg-tint/[0.06] rounded text-xs">
                   File → Open Directory
                 </kbd>
-              </>
+              </span>
             }
             className="flex-1"
           />
@@ -621,18 +647,62 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     }
     return scoreWorktree(w, query) > 0;
   };
+
+  const pinnedFilters: FilterState = {
+    query,
+    statusFilters,
+    typeFilters,
+    githubFilters,
+    sessionFilters,
+    activityFilters,
+  };
+
   const mainMatchesQuery = mainWorktree && worktreeMatchesQuery(mainWorktree);
+  const mainMatchesFacets =
+    !hasFacetFiltersActive ||
+    (mainWorktree &&
+      matchesFilters(
+        mainWorktree,
+        pinnedFilters,
+        derivedMetaMap.get(mainWorktree.id) ?? {
+          terminalCount: 0,
+          hasWorkingAgent: false,
+          hasWaitingAgent: false,
+          hasCompletedAgent: false,
+          hasExitedAgent: false,
+          hasMergeConflict: false,
+          chipState: null,
+        },
+        mainWorktree.id === activeWorktreeId
+      ));
+  const mainVisible = mainMatchesQuery && mainMatchesFacets;
+
   const integrationMatchesQuery = integrationWorktree && worktreeMatchesQuery(integrationWorktree);
-  const visibleCount = hasFilters
-    ? filteredWorktrees.length + (mainMatchesQuery ? 1 : 0) + (integrationMatchesQuery ? 1 : 0)
-    : deferredWorktrees.length;
+  const integrationMatchesFacets =
+    !hasFacetFiltersActive ||
+    (integrationWorktree &&
+      matchesFilters(
+        integrationWorktree,
+        pinnedFilters,
+        derivedMetaMap.get(integrationWorktree.id) ?? {
+          terminalCount: 0,
+          hasWorkingAgent: false,
+          hasWaitingAgent: false,
+          hasCompletedAgent: false,
+          hasExitedAgent: false,
+          hasMergeConflict: false,
+          chipState: null,
+        },
+        integrationWorktree.id === activeWorktreeId
+      ));
+  const integrationVisible = integrationMatchesQuery && integrationMatchesFacets;
 
   const hasQuery = query.trim().length > 0;
   const isSortDisabled = isGroupedByType || hasQuery;
 
   // 1-based aria-rowindex slots for the pinned rows.
-  const mainRowIndex = mainMatchesQuery ? 1 : 0;
-  const integrationRowIndex = integrationMatchesQuery ? mainRowIndex + 1 : mainRowIndex;
+  const mainRowIndex = mainVisible ? 1 : 0;
+  const integrationRowIndex = integrationVisible ? mainRowIndex + 1 : mainRowIndex;
   // First slot available to the scrollable section (1-based).
   const firstScrollableRowIndex = integrationRowIndex + 1;
 
@@ -666,11 +736,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       <div className="group/header flex items-center justify-between px-4 py-2 border-b border-divider bg-transparent shrink-0">
         <div className="flex items-baseline gap-1.5">
           <h2 className="text-daintree-text font-semibold text-sm tracking-wide">Worktrees</h2>
-          <span className="text-daintree-text/50 text-xs">
-            {hasFilters && visibleCount !== deferredWorktrees.length
-              ? `(${visibleCount} of ${deferredWorktrees.length})`
-              : `(${deferredWorktrees.length})`}
-          </span>
           {isReconnecting && (
             <span
               role="status"
@@ -780,8 +845,8 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         onFocusCapture={handleGridFocusCapture}
         className="flex flex-col flex-1 min-h-0"
       >
-        {/* Main worktree — visible unless excluded by text search */}
-        {mainMatchesQuery && (
+        {/* Main worktree — visible unless excluded by text search or facet filters */}
+        {mainVisible && (
           <div
             className="shrink-0"
             style={{ contentVisibility: "auto", containIntrinsicSize: "auto 180px" }}
@@ -803,8 +868,8 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
           </div>
         )}
 
-        {/* Integration branch (develop/trunk/next) — pinned below main, subject to text search */}
-        {integrationMatchesQuery && (
+        {/* Integration branch (develop/trunk/next) — pinned below main, subject to text search and facet filters */}
+        {integrationVisible && (
           <div
             className="shrink-0"
             style={{ contentVisibility: "auto", containIntrinsicSize: "auto 180px" }}
@@ -830,6 +895,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
               {showQuickStateEmptyState ? (
                 <EmptyState
                   variant="filtered-empty"
+                  scale="sidebar"
                   title={`No ${quickStateFilter} worktrees`}
                   action={
                     <button
@@ -840,10 +906,18 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                     </button>
                   }
                 />
-              ) : filteredWorktrees.length === 0 && hasFilters && hasNonMainWorktrees ? (
+              ) : filteredWorktrees.length === 0 &&
+                hasFilters &&
+                hasNonMainWorktrees &&
+                !(mainVisible || integrationVisible) ? (
                 <EmptyState
                   variant="filtered-empty"
-                  title="No matching worktrees"
+                  scale="sidebar"
+                  title={
+                    hasQuery
+                      ? `No matches for "${truncateSearchQuery(query.trim())}"`
+                      : "No matching worktrees"
+                  }
                   action={
                     <button
                       onClick={clearAllFilters}
@@ -913,8 +987,20 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
               )}
             </div>
           </div>
-          <ScrollIndicator direction="above" count={hiddenAbove} onClick={scrollToTop} />
-          <ScrollIndicator direction="below" count={hiddenBelow} onClick={scrollToBottom} />
+          <ScrollIndicator
+            direction="above"
+            count={hiddenAbove}
+            onClick={scrollToTop}
+            ariaHidden
+            tabIndex={-1}
+          />
+          <ScrollIndicator
+            direction="below"
+            count={hiddenBelow}
+            onClick={scrollToBottom}
+            ariaHidden
+            tabIndex={-1}
+          />
         </div>
       </div>
 

@@ -97,6 +97,41 @@ vi.mock("../../../services/github/index.js", () => ({
     resetState: vi.fn(),
     refresh: vi.fn().mockResolvedValue(undefined),
   },
+  fetchRateLimitDetails: vi.fn().mockResolvedValue(null),
+  setTokenAndSync: vi
+    .fn()
+    .mockResolvedValue({ valid: true, scopes: [], username: "user", avatarUrl: null }),
+  clearTokenAndSync: vi.fn().mockResolvedValue(undefined),
+  getRepoUrl: gitHubServiceMock.getRepoUrl,
+  buildGitHubSearchQuery: vi.fn().mockReturnValue("is:open bug"),
+  listIssues: gitHubServiceMock.listIssues,
+  listPullRequests: gitHubServiceMock.listPullRequests,
+  validateGitHubToken: gitHubServiceMock.validateGitHubToken,
+  assignIssue: gitHubServiceMock.assignIssue,
+  getIssueUrl: gitHubServiceMock.getIssueUrl,
+  getIssueTooltip: gitHubServiceMock.getIssueTooltip,
+  getPRTooltip: gitHubServiceMock.getPRTooltip,
+  getIssueByNumber: gitHubServiceMock.getIssueByNumber,
+  getPRByNumber: gitHubServiceMock.getPRByNumber,
+  hasGitHubToken: gitHubServiceMock.hasGitHubToken,
+  getGitHubConfigAsync: gitHubServiceMock.getGitHubConfigAsync,
+  getProjectHealth: gitHubServiceMock.getProjectHealth,
+  buildEmptyProjectHealthData: vi.fn().mockReturnValue({
+    ciStatus: "none",
+    issueCount: 0,
+    prCount: 0,
+    latestRelease: null,
+    securityAlerts: { visible: false, count: 0 },
+    mergeVelocity: { mergedCounts: { 60: 0, 120: 0, 180: 0 } },
+    repoUrl: "",
+    hasRemote: false,
+    loading: false,
+  }),
+  getFirstPageCache: vi.fn().mockResolvedValue(null),
+  getRepoStatsComplete: vi.fn().mockResolvedValue({
+    stats: { commitCount: 0, issueCount: null, prCount: null, loading: false },
+  }),
+  listGitHubRemotes: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("../../../services/GitService.js", () => ({
@@ -235,6 +270,7 @@ describe("github handlers — rate limiting", () => {
     type HandlerSpec = {
       channel: string;
       maxCalls: number;
+      windowMs?: number;
       invoke: (handler: (...args: unknown[]) => Promise<unknown>) => Promise<unknown>;
     };
 
@@ -297,18 +333,31 @@ describe("github handlers — rate limiting", () => {
         maxCalls: 5,
         invoke: (h) => h({}, { cwd, issueNumber: 1, username: "octocat" }),
       },
+      // rate-limit details: 30/60s (quota-free endpoint, but we still gate the IPC)
+      {
+        channel: CHANNELS.GITHUB_GET_RATE_LIMIT_DETAILS,
+        maxCalls: 30,
+        windowMs: 60_000,
+        invoke: (h) => h({}),
+      },
+      // first-page cache: 10/10s
+      {
+        channel: CHANNELS.GITHUB_GET_FIRST_PAGE_CACHE,
+        maxCalls: 10,
+        invoke: (h) => h({}, cwd),
+      },
     ];
 
-    it("registers all 21 github channels", () => {
-      expect(specs).toHaveLength(21);
+    it("registers all 23 github channels", () => {
+      expect(specs).toHaveLength(23);
     });
 
     it.each(specs)(
-      "$channel calls checkRateLimit($channel, $maxCalls, 10_000)",
-      async ({ channel, maxCalls, invoke }) => {
+      "$channel calls checkRateLimit($channel, $maxCalls, $windowMs)",
+      async ({ channel, maxCalls, windowMs, invoke }) => {
         const handler = getInvokeHandler(channel);
         await invoke(handler);
-        expect(checkRateLimitMock).toHaveBeenCalledWith(channel, maxCalls, 10_000);
+        expect(checkRateLimitMock).toHaveBeenCalledWith(channel, maxCalls, windowMs ?? 10_000);
       }
     );
   });

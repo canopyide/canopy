@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Pause, Lock } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Pause, Lock, CheckCircle2 } from "lucide-react";
 import type {
   AgentState,
   PanelKind,
@@ -51,6 +51,12 @@ export interface TerminalHeaderContentProps {
   exitCode?: number | null;
   queueCount?: number;
   flowStatus?: PersistableFlowStatus;
+  /**
+   * True when the agent transitioned to `completed` and the pre-agent snapshot
+   * confirms no file changes were made. Drives the "Finished, no changes" pill
+   * so users get a quiet confirmation instead of the chip silently disappearing.
+   */
+  completedWithNoChanges?: boolean;
 }
 
 function formatMemory(kb: number): string {
@@ -71,7 +77,7 @@ function getResourceSeverity(cpuPercent: number, memoryKb: number): ResourceSeve
 // prevents flicker at threshold boundaries (CPU 50/80, mem 1G/2G).
 const SEVERITY_HYSTERESIS_POLLS = 3;
 
-function TerminalHeaderContentComponent({
+export function TerminalHeaderContent({
   id,
   kind,
   agentState,
@@ -82,6 +88,7 @@ function TerminalHeaderContentComponent({
   exitCode = null,
   queueCount = 0,
   flowStatus,
+  completedWithNoChanges = false,
 }: TerminalHeaderContentProps) {
   const resourceEnabled = useResourceMonitoringStore((s) => s.enabled);
   const resourceState = useResourceMonitoringStore((s) => s.metrics.get(id));
@@ -175,6 +182,27 @@ function TerminalHeaderContentComponent({
   const renderAgentStateChip = () => {
     if (!agentState || agentState === "idle") {
       return null;
+    }
+
+    // Zero-change confirmation: agent finished without touching the working
+    // tree. Show a quiet pill instead of letting the chip disappear, so the
+    // user has a clear signal that the run ended cleanly.
+    if (agentState === "completed" && sessionCost == null && completedWithNoChanges) {
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              className="inline-flex items-center gap-1 shrink-0 px-2 py-0.5 rounded-full text-[11px] bg-overlay-soft border border-divider text-daintree-text/60"
+              role="status"
+              aria-label="Agent finished with no file changes"
+            >
+              <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
+              Finished, no changes
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">No file changes since the agent started.</TooltipContent>
+        </Tooltip>
+      );
     }
 
     // Show completed/exited chip only when there's a cost to display
@@ -439,5 +467,3 @@ function TerminalHeaderContentComponent({
     </>
   );
 }
-
-export const TerminalHeaderContent = React.memo(TerminalHeaderContentComponent);

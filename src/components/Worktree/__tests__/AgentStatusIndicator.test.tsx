@@ -8,7 +8,7 @@ import {
   agentStateDotColor,
   getDominantAgentState,
 } from "../AgentStatusIndicator";
-import { STATE_PRIORITY } from "../terminalStateConfig";
+import { STATE_LABELS, STATE_PRIORITY } from "../terminalStateConfig";
 import type { AgentState } from "@/types";
 
 vi.mock("@/components/ui/tooltip", () => ({
@@ -32,7 +32,7 @@ describe("AgentStatusIndicator", () => {
     const { container } = render(<AgentStatusIndicator state={state} />);
     const el = container.querySelector('[role="img"]');
     expect(el).not.toBeNull();
-    expect(el?.getAttribute("aria-label")).toBe(`Agent status: ${state}`);
+    expect(el?.getAttribute("aria-label")).toBe(`Agent status: ${STATE_LABELS[state]}`);
     expect(el?.textContent).toBe(glyph);
   });
 
@@ -154,7 +154,19 @@ describe("getDominantAgentState", () => {
 // the only thing standing between the source of truth and the UI.
 describe("STATE_PRIORITY contract", () => {
   it("includes every AgentState exactly once", () => {
-    const all: AgentState[] = ["working", "directing", "waiting", "completed", "exited", "idle"];
+    // The `satisfies Record<AgentState, 1>` clause turns this into a
+    // compile-time exhaustiveness check — if a new AgentState value is added
+    // to the union, this object literal fails typecheck unless the new key
+    // is also added here, which keeps the runtime comparison honest.
+    const allStates = {
+      working: 1,
+      directing: 1,
+      waiting: 1,
+      completed: 1,
+      exited: 1,
+      idle: 1,
+    } satisfies Record<AgentState, 1>;
+    const all = Object.keys(allStates) as AgentState[];
     expect([...STATE_PRIORITY].sort()).toEqual([...all].sort());
     expect(STATE_PRIORITY.length).toBe(new Set(STATE_PRIORITY).size);
   });

@@ -821,4 +821,106 @@ describe("PullRequestService", () => {
 
     pullRequestService.destroy();
   });
+
+  it("re-emits sys:pr:detected when only prCiStatus changes during revalidation", async () => {
+    let pollCount = 0;
+    const batchCheckLinkedPRs = vi.fn(async (_cwd: string, candidates: PRCheckCandidate[]) => {
+      pollCount++;
+      const ciStatus = pollCount === 1 ? "PENDING" : "SUCCESS";
+      return {
+        results: new Map([
+          [
+            candidates[0].worktreeId,
+            {
+              issueNumber: candidates[0].issueNumber,
+              branchName: candidates[0].branchName,
+              pr: {
+                number: 11,
+                title: "CI changes",
+                url: "https://github.com/o/r/pull/11",
+                state: "open" as const,
+                isDraft: false,
+                ciStatus: ciStatus as "PENDING" | "SUCCESS",
+              },
+            },
+          ],
+        ]),
+      };
+    });
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    const detected: DaintreeEventMap["sys:pr:detected"][] = [];
+    const unsubscribe = events.on("sys:pr:detected", (payload) => detected.push(payload));
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-rev", branch: "feature/rev" })
+    );
+
+    // start() schedules the 90s revalidation timer (refresh() alone doesn't).
+    await pullRequestService.start();
+    expect(detected.at(-1)?.prCiStatus).toBe("PENDING");
+
+    // Force revalidation by advancing past the 90s interval.
+    // After CI flips to SUCCESS, the change-detection should re-emit.
+    await vi.advanceTimersByTimeAsync(90 * 1000);
+
+    expect(detected.length).toBeGreaterThanOrEqual(2);
+    expect(detected.at(-1)?.prCiStatus).toBe("SUCCESS");
+
+    unsubscribe();
+    pullRequestService.destroy();
+  });
+
+  it("forwards prCiStatus from batchCheckLinkedPRs to the sys:pr:detected event", async () => {
+    const batchCheckLinkedPRs = vi.fn(async (_cwd: string, candidates: PRCheckCandidate[]) => ({
+      results: new Map([
+        [
+          candidates[0].worktreeId,
+          {
+            issueNumber: candidates[0].issueNumber,
+            branchName: candidates[0].branchName,
+            pr: {
+              number: 99,
+              title: "CI status threading",
+              url: "https://github.com/o/r/pull/99",
+              state: "open" as const,
+              isDraft: false,
+              ciStatus: "FAILURE" as const,
+            },
+          },
+        ],
+      ]),
+    }));
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    const detected: DaintreeEventMap["sys:pr:detected"][] = [];
+    const unsubscribe = events.on("sys:pr:detected", (payload) => detected.push(payload));
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-ci", branch: "feature/ci-failing" })
+    );
+    await pullRequestService.refresh();
+
+    expect(detected).toHaveLength(1);
+    expect(detected[0]).toMatchObject({
+      worktreeId: "wt-ci",
+      prNumber: 99,
+      prCiStatus: "FAILURE",
+    });
+
+    unsubscribe();
+    pullRequestService.destroy();
+  });
 });

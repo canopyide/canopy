@@ -306,6 +306,10 @@ export default defineConfig(({ command, mode }) => {
             // the logger + budget script are the regression signal instead.
             panicThreshold: command === "build" ? "none" : "critical_errors",
             logger: compilerLogger,
+            // target: "19" emits imports from `react/compiler-runtime` (shipped
+            // with React 19) instead of the `react-compiler-runtime` polyfill,
+            // dropping the polyfill out of the bundle.
+            target: "19",
           }),
         ],
       }),
@@ -353,8 +357,11 @@ export default defineConfig(({ command, mode }) => {
               },
               { name: "vendor-xterm", test: /node_modules[\\/]@xterm[\\/]/, priority: 70 },
               {
+                // Excludes @codemirror/lang-* and @codemirror/legacy-modes so
+                // those per-language parsers split into their own async chunks
+                // instead of being forced into the eager vendor-editor closure.
                 name: "vendor-editor",
-                test: /node_modules[\\/](@codemirror[\\/]|@uiw[\\/]|refractor[\\/](?!lang[\\/]))/,
+                test: /node_modules[\\/](@codemirror[\\/](?!lang-|legacy-modes)|@uiw[\\/]|refractor[\\/](?!lang[\\/]))/,
                 priority: 60,
               },
               {
@@ -383,13 +390,41 @@ export default defineConfig(({ command, mode }) => {
                 priority: 15,
               },
               {
+                // Shared Radix utility deps used by both the eager primitives
+                // (slot/checkbox/switch) and the deferred overlay primitives.
+                // Splitting these out of `vendor-radix-overlay` prevents the
+                // eager `vendor-radix` chunk from pulling in the overlay chunk.
+                name: "vendor-radix-utils",
+                test: /node_modules[\\/]@radix-ui[\\/](primitive|react-compose-refs|react-context|react-presence|react-primitive|react-use-controllable-state|react-use-previous|react-use-size|react-use-callback-ref|react-use-layout-effect|react-use-escape-keydown|react-use-effect-event|react-use-rect|react-id|react-slot)[\\/]/,
+                priority: 14,
+              },
+              {
+                // Overlay primitives deferred via gesture-primed dynamic import
+                // (see `src/components/ui/radix-deferred.ts`). Matches the 5
+                // wrapper primitives plus their unique transitive deps. Shared
+                // utility deps live in `vendor-radix-utils` so the eager
+                // slot/checkbox/switch path doesn't have to wait for the
+                // deferred chunk.
+                name: "vendor-radix-overlay",
+                test: /node_modules[\\/]@radix-ui[\\/](react-tooltip|react-popover|react-dropdown-menu|react-select|react-context-menu|react-menu|react-popper|react-arrow|react-collection|react-roving-focus|react-focus-scope|react-focus-guards|react-dismissable-layer|react-portal|react-visually-hidden|react-direction)[\\/]/,
+                priority: 13,
+              },
+              {
                 name: "vendor-radix",
                 test: /node_modules[\\/]@radix-ui[\\/]/,
                 priority: 12,
               },
               {
+                // Exclude `refractor/lang/*`, `@codemirror/lang-*`,
+                // `@codemirror/legacy-modes`, and the per-grammar `@lezer/*`
+                // parser packages so each per-language parser (and its
+                // grammar dependency) stays in its own async chunk instead
+                // of being swept into this catch-all (which is part of the
+                // eager closure). `@lezer/common`, `@lezer/lr`, and
+                // `@lezer/highlight` stay in this `vendor` group because
+                // `@codemirror/language` depends on them eagerly.
                 name: "vendor",
-                test: /node_modules[\\/](?!refractor[\\/]lang[\\/])/,
+                test: /node_modules[\\/](?!(refractor[\\/]lang[\\/]|@codemirror[\\/](lang-|legacy-modes)|@lezer[\\/](?!(common|lr|highlight)[\\/])))/,
                 priority: 10,
               },
             ],

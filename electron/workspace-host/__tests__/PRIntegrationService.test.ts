@@ -2,6 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PRIntegrationService, type PRIntegrationCallbacks } from "../PRIntegrationService.js";
 import type { TypedEventBus } from "../../services/events.js";
 
+vi.mock("../../services/github/GitHubAuth.js", () => ({
+  GitHubAuth: {
+    setMemoryToken: vi.fn(),
+  },
+}));
+
+const { GitHubAuth } = await import("../../services/github/GitHubAuth.js");
+
 function makeEventBus(): TypedEventBus {
   type Handler = (...args: unknown[]) => void;
   const listeners = new Map<string, Set<Handler>>();
@@ -34,8 +42,9 @@ describe("PRIntegrationService", () => {
   interface PullRequestServiceLike {
     initialize(rootPath: string): void;
     start(): Promise<void>;
+    stop(): void;
     reset(): void;
-    refresh(): void;
+    refresh(): Promise<void>;
     getStatus(): {
       isPolling: boolean;
       candidateCount: number;
@@ -52,8 +61,9 @@ describe("PRIntegrationService", () => {
     prServiceMock = {
       initialize: vi.fn(),
       start: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+      stop: vi.fn(),
       reset: vi.fn(),
-      refresh: vi.fn(),
+      refresh: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
       getStatus: vi.fn(() => ({
         isPolling: false,
         candidateCount: 0,
@@ -97,5 +107,128 @@ describe("PRIntegrationService", () => {
     expect(updateCalls).toHaveLength(2);
     expect(updateCalls[0][1]).toMatchObject({ worktreeId: "wt-root", isMainWorktree: true });
     expect(updateCalls[1][1]).toMatchObject({ worktreeId: "wt-linked", isMainWorktree: false });
+  });
+
+  describe("getStatus", () => {
+    it("maps PullRequestService status to PRServiceStatus shape", () => {
+      prServiceMock.getStatus = vi.fn(() => ({
+        isPolling: true,
+        candidateCount: 7,
+        resolvedCount: 3,
+        isEnabled: true,
+      }));
+      const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
+
+      const status = service.getStatus();
+
+      expect(status).toEqual({
+        isRunning: true,
+        candidateCount: 7,
+        resolvedPRCount: 3,
+        lastCheckTime: undefined,
+        circuitBreakerTripped: false,
+      });
+    });
+
+    it("reports circuitBreakerTripped when service is disabled", () => {
+      prServiceMock.getStatus = vi.fn(() => ({
+        isPolling: false,
+        candidateCount: 0,
+        resolvedCount: 0,
+        isEnabled: false,
+      }));
+      const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
+
+      const status = service.getStatus();
+
+      expect(status.circuitBreakerTripped).toBe(true);
+      expect(status.isRunning).toBe(false);
+    });
+  });
+
+  describe("resetPRState", () => {
+    it("calls reset, then initialize, then start when projectRootPath is provided", () => {
+      const callOrder: string[] = [];
+      prServiceMock.reset = vi.fn(() => callOrder.push("reset"));
+      prServiceMock.initialize = vi.fn(() => callOrder.push("initialize"));
+      prServiceMock.start = vi.fn<() => Promise<void>>().mockImplementation(async () => {
+        callOrder.push("start");
+      });
+      const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
+
+      service.resetPRState("/repo");
+
+      expect(callOrder.slice(0, 2)).toEqual(["reset", "initialize"]);
+      expect(prServiceMock.initialize).toHaveBeenCalledWith("/repo");
+      expect(prServiceMock.start).toHaveBeenCalled();
+    });
+
+    it("only calls reset when projectRootPath is null", () => {
+      const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
+
+      service.resetPRState(null);
+
+      expect(prServiceMock.reset).toHaveBeenCalled();
+      expect(prServiceMock.initialize).not.toHaveBeenCalled();
+      expect(prServiceMock.start).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("pause / resume", () => {
+    it("pause() stops the underlying service", () => {
+      const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
+      service.pause();
+      expect(prServiceMock.stop).toHaveBeenCalledTimes(1);
+    });
+
+    it("resume() starts the underlying service", () => {
+      const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
+      service.resume();
+      expect(prServiceMock.start).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("updateToken", () => {
+    beforeEach(() => {
+      vi.mocked(GitHubAuth.setMemoryToken).mockClear();
+    });
+
+    it("sets memory token and refreshes when token is truthy", () => {
+      const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
+
+      service.updateToken("ghp_abc123", "/repo");
+
+      expect(GitHubAuth.setMemoryToken).toHaveBeenCalledWith("ghp_abc123");
+      expect(prServiceMock.refresh).toHaveBeenCalledTimes(1);
+      expect(prServiceMock.reset).not.toHaveBeenCalled();
+    });
+
+    it("resets and reinitializes when token is null and path is provided", () => {
+      const callOrder: string[] = [];
+      prServiceMock.reset = vi.fn(() => callOrder.push("reset"));
+      prServiceMock.initialize = vi.fn(() => callOrder.push("initialize"));
+      prServiceMock.start = vi.fn<() => Promise<void>>().mockImplementation(async () => {
+        callOrder.push("start");
+      });
+      const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
+
+      service.updateToken(null, "/repo");
+
+      expect(GitHubAuth.setMemoryToken).toHaveBeenCalledWith(null);
+      expect(prServiceMock.refresh).not.toHaveBeenCalled();
+      expect(callOrder.slice(0, 2)).toEqual(["reset", "initialize"]);
+      expect(prServiceMock.initialize).toHaveBeenCalledWith("/repo");
+    });
+
+    it("only clears the memory token and resets when token and path are null", () => {
+      const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
+
+      service.updateToken(null, null);
+
+      expect(GitHubAuth.setMemoryToken).toHaveBeenCalledWith(null);
+      expect(prServiceMock.reset).toHaveBeenCalledTimes(1);
+      expect(prServiceMock.initialize).not.toHaveBeenCalled();
+      expect(prServiceMock.start).not.toHaveBeenCalled();
+    });
   });
 });

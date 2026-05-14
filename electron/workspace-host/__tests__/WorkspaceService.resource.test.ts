@@ -997,6 +997,8 @@ describe("WorkspaceService.runResourceAction", () => {
   // --- Idempotent provision logic ---
 
   describe("provision idempotency", () => {
+    const q = process.platform === "win32" ? '"' : "'";
+
     it("provision is a no-op when resource status is `ready`", async () => {
       const monitor = createAndRegisterMonitor();
       await setupConfig({
@@ -1015,6 +1017,55 @@ describe("WorkspaceService.runResourceAction", () => {
         })
       );
       expect(runCommandsSpy).toHaveBeenCalledTimes(0);
+    });
+
+    it("no-op provision broadcasts updated resourceConnectCommand to renderer", async () => {
+      const monitor = createAndRegisterMonitor({ branch: "feature/remote" });
+      await setupConfig({
+        resource: {
+          provision: ["terraform apply"],
+          connect: "ssh root@{{branch}}.dev.example.com",
+        },
+      });
+      monitor.setResourceStatus({ lastStatus: "ready", lastCheckedAt: Date.now() });
+
+      await service.runResourceAction("req-prov-noop-emit", "/test/worktree", "provision");
+
+      expect(monitor.resourceConnectCommand).toBe(
+        `ssh root@${q}feature/remote${q}.dev.example.com`
+      );
+      expect(mockSendEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "worktree-update",
+          worktree: expect.objectContaining({
+            resourceConnectCommand: `ssh root@${q}feature/remote${q}.dev.example.com`,
+          }),
+        })
+      );
+    });
+
+    it("no-op provision skips worktree-update when monitor removed during config load", async () => {
+      const monitor = createAndRegisterMonitor();
+      monitor.setResourceStatus({ lastStatus: "ready", lastCheckedAt: Date.now() });
+
+      // Mock loadConfig to remove the monitor mid-await, simulating a concurrent
+      // worktree removal (e.g. user deletes the worktree while provision is in flight).
+      const lifecycleService = service["lifecycleService"];
+      vi.spyOn(lifecycleService, "loadConfig").mockImplementation(async () => {
+        service["monitors"].delete(monitor.id);
+        return { resource: { provision: ["terraform apply"] } } as never;
+      });
+
+      await service.runResourceAction("req-prov-removed", "/test/worktree", "provision");
+
+      // resource-action-result still sent (it carries no monitor data — no resurrection risk),
+      // but worktree-update must NOT fire for a removed monitor.
+      expect(mockSendEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "resource-action-result", success: true })
+      );
+      expect(mockSendEvent).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: "worktree-update" })
+      );
     });
 
     it("provision routes to resume when status is `paused`", async () => {
@@ -1311,6 +1362,42 @@ describe("WorkspaceService.runLifecycleSetup — resource config caching", () =>
     expect(monitor.hasResourceConfig).toBe(true);
     expect(monitor.resourceConnectCommand).toBe("ssh user@host");
   });
+
+  it("invokes runResourceAction with the auto-provision request when lifecycle setup reports shouldProvision=true", async () => {
+    createAndRegisterMonitor();
+
+    const lifecycleSetupSpy = vi
+      .spyOn(service["lifecycleService"], "runLifecycleSetup")
+      .mockResolvedValue({ shouldProvision: true });
+    const runResourceActionSpy = vi
+      .spyOn(service, "runResourceAction")
+      .mockResolvedValue({ success: true });
+
+    await service["runLifecycleSetup"]("/test/worktree", "/test/worktree", "/test/root", true);
+
+    expect(lifecycleSetupSpy).toHaveBeenCalledTimes(1);
+    expect(runResourceActionSpy).toHaveBeenCalledTimes(1);
+    expect(runResourceActionSpy).toHaveBeenCalledWith(
+      "auto-provision-/test/worktree",
+      "/test/worktree",
+      "provision"
+    );
+  });
+
+  it("does not invoke runResourceAction when lifecycle setup reports shouldProvision=false", async () => {
+    createAndRegisterMonitor();
+
+    vi.spyOn(service["lifecycleService"], "runLifecycleSetup").mockResolvedValue({
+      shouldProvision: false,
+    });
+    const runResourceActionSpy = vi
+      .spyOn(service, "runResourceAction")
+      .mockResolvedValue({ success: true });
+
+    await service["runLifecycleSetup"]("/test/worktree", "/test/worktree", "/test/root", true);
+
+    expect(runResourceActionSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe("WorkspaceService.runResourceAction — concurrency", () => {
@@ -1529,14 +1616,18 @@ describe("WorkspaceService.runResourceAction — concurrency", () => {
     await new Promise((r) => setTimeout(r, 20));
 
     // Simulate worktree removal — triggers cleanupResourceActionState
-    service["cleanupResourceActionState"]("/test/worktree");
+    service.resourceActionExecutor["cleanupResourceActionState"]("/test/worktree");
 
     deferred.resolveChild();
     await actionPromise;
 
     // Queue and controller should be cleaned up
-    expect(service["resourceActionQueues"].has("/test/worktree")).toBe(false);
-    expect(service["resourceActionAbortControllers"].has("/test/worktree")).toBe(false);
+    expect(service.resourceActionExecutor["resourceActionQueues"].has("/test/worktree")).toBe(
+      false
+    );
+    expect(
+      service.resourceActionExecutor["resourceActionAbortControllers"].has("/test/worktree")
+    ).toBe(false);
   });
 });
 

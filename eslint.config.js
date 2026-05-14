@@ -205,6 +205,87 @@ export default tseslint.config(
     },
   },
 
+  // Panel-kind literal-compare guardrail — ratchets on shared/ and electron/
+  // at warn level. src/ coverage lives in the renderer hygiene block below
+  // (also warn, to keep the ratchet consistent across the tree).
+  //
+  // This block also replicates the 4 global no-restricted-syntax selectors
+  // (instanceof Error ternary, void window.electron, raw error.message in
+  // notify, dangerouslySetInnerHTML) because flat config is last-write-wins
+  // per rule — without them the global error-level selectors are silently
+  // dropped for shared/ and electron/ files.
+  // See #7672.
+  {
+    files: ["shared/**/*.{ts,tsx}", "electron/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-syntax": [
+        "warn",
+        {
+          selector:
+            "ConditionalExpression[test.type='BinaryExpression'][test.operator='instanceof'][test.right.name='Error'][consequent.type='MemberExpression'][consequent.property.name='message']",
+          message:
+            "Use formatErrorMessage(err, 'operation-specific fallback') from @shared/utils/errorMessage instead of the inline `instanceof Error ? .message : ...` ternary.",
+        },
+        {
+          // why: real IPC calls are `void window.electron.namespace.method()`
+          // at any depth. Constraining to `> MemberExpression :has(...)`
+          // restricts the descendant search to the callee chain so this
+          // doesn't false-positive on `void (async () => { await
+          // window.electron.X() })()` IIFE patterns where window.electron
+          // appears in the function body, not the callee.
+          selector:
+            "UnaryExpression[operator='void'] > CallExpression > MemberExpression:has(MemberExpression[object.name='window'][property.name='electron'])",
+          message:
+            "Don't use `void window.electron.X()` for fire-and-forget IPC — wrap the promise in safeFireAndForget(promise, { context }) from @/utils/safeFireAndForget so rejections reach reportRendererGlobalError with call-site context.",
+        },
+        {
+          // Block raw `error.message` / `err.message` / `e.message` /
+          // `result.error.message` inside notify({...}) /
+          // addNotification({...}) message properties. These calls go to
+          // user-facing toasts; raw library messages leak jargon (paths,
+          // errno strings, internal source IDs). Use humanizeAppError()
+          // from @shared/utils/errorMessage instead.
+          //
+          // The selector must match both bare-identifier calls
+          // (`notify({...})`) and member-call patterns
+          // (`useNotificationStore.getState().addNotification({...})`),
+          // hence the `:matches()` over `callee.name` and
+          // `callee.property.name`. The inner MemberExpression matches both
+          // single-hop (`error.message`) and tail-of-chain (`x.error.message`).
+          // See issue #6050.
+          selector:
+            "CallExpression:matches([callee.name=/^(notify|addNotification)$/], [callee.property.name=/^(notify|addNotification)$/]) ObjectExpression > Property[key.name='message'] MemberExpression[property.name='message']:matches([object.name=/^(error|err|e)$/], [object.property.name=/^(error|err|e)$/])",
+          message:
+            "Don't pipe raw error.message into user-facing notifications. Use humanizeAppError(error) from @shared/utils/errorMessage to produce a friendly title and body, and stash the raw message in a 'Copy details' action. See #6050.",
+        },
+        {
+          // why: Trusted Types CSP (`require-trusted-types-for 'script'`)
+          // means `dangerouslySetInnerHTML.__html` must be a `TrustedHTML`
+          // produced by the `daintree-svg` policy, not a raw string. The
+          // selector requires SOME CallExpression in the value (lint-level
+          // ratchet — the runtime CSP is the actual security boundary, and
+          // a stricter `callee.name='createTrustedHTML'` check breaks under
+          // re-exports / aliasing). See #6392.
+          selector:
+            "JSXAttribute[name.name='dangerouslySetInnerHTML'] > JSXExpressionContainer > ObjectExpression > Property[key.name='__html']:not(:has(CallExpression))",
+          message:
+            "Pass __html through createTrustedHTML(value) from @/lib/trustedTypesPolicy instead of a raw string. See #6392.",
+        },
+        {
+          // why: direct literal compares (kind === "browser") bypass the
+          // panel-kind registry and silently diverge when capability flags
+          // change. Use registry helpers (panelKindHasPty, etc.) or the
+          // sanctioned type guards (isPtyPanel, isBrowserPanel,
+          // isDevPreviewPanel) from @shared/types/panel. See #7672.
+          selector:
+            "BinaryExpression[operator=/^(!==|===)$/]:matches([left.name='kind'], [left.property.name='kind'])[right.type='Literal'][right.value=/^(terminal|browser|dev-preview)$/]",
+          message:
+            "Don't compare panel.kind against string literals. Use registry helpers (panelKindHasPty, panelKindCanRestart) or sanctioned type guards (isPtyPanel, isBrowserPanel, isDevPreviewPanel) from @shared/types/panel. See #7672.",
+        },
+      ],
+    },
+  },
+
   // Catch un-awaited promises in renderer code. `safeFireAndForget` is the
   // sanctioned escape hatch for fire-and-forget IPC — see issue #6029.
   {
@@ -318,6 +399,17 @@ export default tseslint.config(
           message:
             "Avoid magic numeric delays. Hoist the value into a named constant (e.g. `const FLUSH_INTERVAL_MS = 200`) so the intent is documented at the call site.",
         },
+        {
+          // why: direct literal compares (kind === "browser") bypass the
+          // panel-kind registry and silently diverge when capability flags
+          // change. Use registry helpers (panelKindHasPty, etc.) or the
+          // sanctioned type guards (isPtyPanel, isBrowserPanel,
+          // isDevPreviewPanel) from @shared/types/panel. See #7672.
+          selector:
+            "BinaryExpression[operator=/^(!==|===)$/]:matches([left.name='kind'], [left.property.name='kind'])[right.type='Literal'][right.value=/^(terminal|browser|dev-preview)$/]",
+          message:
+            "Don't compare panel.kind against string literals. Use registry helpers (panelKindHasPty, panelKindCanRestart) or sanctioned type guards (isPtyPanel, isBrowserPanel, isDevPreviewPanel) from @shared/types/panel. See #7672.",
+        },
       ],
     },
   },
@@ -331,22 +423,176 @@ export default tseslint.config(
     },
   },
 
-  // Prevent UI components from importing main-process types
+  // Renderer import discipline — bans heavy bundle-cost packages from being
+  // statically imported into the eager graph, plus the long-standing
+  // electron-module ban (previously scoped to src/components/**, broadened
+  // here to src/** since flat config is last-write-wins per rule and merging
+  // the two restrictions avoids silently clobbering the electron guard). The
+  // per-file override blocks below allowlist the small set of files where the
+  // static import is genuinely required today; those overrides disable the
+  // rule entirely for the scoped files, which is the only flat-config
+  // mechanism since arrays don't merge.
+  //
+  // Pair with the renderer-import budget gate (scripts/check-renderer-import-budget.mjs)
+  // which catches new chunks slipping into the eager closure even when the
+  // lint rule is silenced by an allowlist entry. See issue #7659.
   {
-    files: ["src/components/**/*.{ts,tsx}"],
+    files: ["src/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-imports": [
         "warn",
         {
+          paths: [
+            {
+              name: "@uiw/react-codemirror",
+              message:
+                "Heavy package — lazy-load via React.lazy() or dynamic import to keep the renderer eager graph trim. If a static import is genuinely required, add this file to the per-file override allowlist in eslint.config.js. See #7659.",
+            },
+            {
+              name: "framer-motion",
+              message:
+                "Heavy package — lazy-load via React.lazy() or dynamic import. Animation features are already split via loadMotionFeatures(); prefer that pattern. See #7659.",
+            },
+            {
+              name: "react-diff-view",
+              message: "Heavy package — lazy-load via React.lazy() or dynamic import. See #7659.",
+            },
+          ],
           patterns: [
             {
+              group: ["@radix-ui/*"],
+              message:
+                "Heavy package — wrap radix primitives in lazy-loaded components or compose them inside an already lazy boundary. See #7659.",
+            },
+            {
+              group: ["@codemirror/*"],
+              message:
+                "Heavy package — codemirror modules should sit behind a lazy boundary (terminal input editor and file viewer are the canonical eager call sites; add new files to the allowlist if a static import is genuinely required). See #7659.",
+            },
+            {
               group: ["electron/**", "**/electron/**"],
-              message: "UI components should not import from electron main process modules.",
+              message: "Renderer code should not import from electron main process modules.",
             },
           ],
         },
       ],
     },
+  },
+
+  // Allowlist — framer-motion animation infrastructure and root App bootstrap.
+  // App.tsx mounts LazyMotion + MotionConfig; motionFeatures.ts is the lazy
+  // feature loader; animationUtils.ts exports the shared timing constants.
+  {
+    files: ["src/App.tsx", "src/lib/motionFeatures.ts", "src/lib/animationUtils.ts"],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — framer-motion drag-and-drop chrome (eager grid layout).
+  {
+    files: ["src/components/DragDrop/**/*.{ts,tsx}"],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — framer-motion panel tab list animations.
+  {
+    files: [
+      "src/components/Panel/PanelTabList.tsx",
+      "src/components/Panel/SortableTabButton.tsx",
+      "src/components/Panel/TabButton.tsx",
+    ],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — framer-motion content grid animations (terminal layout).
+  {
+    files: [
+      "src/components/Terminal/ContentGridDefault.tsx",
+      "src/components/Terminal/ContentGridFleetScope.tsx",
+      "src/components/Terminal/useContentGridContext.tsx",
+    ],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — framer-motion GitHub, Fleet, Layout chrome.
+  {
+    files: [
+      "src/components/GitHub/BulkActionBar.tsx",
+      "src/components/GitHub/CommitList.tsx",
+      "src/components/GitHub/GitHubResourceList.tsx",
+      "src/components/Fleet/FleetArmingRibbon.tsx",
+      "src/components/Layout/DockedTabGroup.tsx",
+    ],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — framer-motion onboarding/setup surfaces.
+  {
+    files: [
+      "src/components/Onboarding/**/*.{ts,tsx}",
+      "src/components/Setup/AgentSetupWizard.tsx",
+      "src/components/Setup/SystemRequirementsSection.tsx",
+      "src/components/Worktree/WorktreeCard/WorktreeDetailsSection.tsx",
+      "src/hooks/app/useGettingStartedChecklist.ts",
+    ],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — codemirror terminal input editor and its hook tree.
+  {
+    files: [
+      "src/components/Terminal/HybridInputBar.tsx",
+      "src/components/Terminal/hooks/**/*.{ts,tsx}",
+      "src/components/Terminal/inputEditorExtensions/**/*.{ts,tsx}",
+      "src/store/terminalInputStore.ts",
+    ],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — codemirror file viewer and demo cursor.
+  {
+    files: [
+      "src/components/FileViewer/CodeViewer.tsx",
+      "src/components/FileViewer/codeMirrorLanguages.ts",
+      "src/components/FileViewer/editorSearchTheme.ts",
+      "src/components/Demo/DemoCursor.tsx",
+    ],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — react-diff-view file viewer and worktree diff.
+  {
+    files: [
+      "src/components/FileViewer/FileViewerModal.tsx",
+      "src/components/Worktree/DiffViewer.tsx",
+    ],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — radix-ui UI primitives (button, popover, tooltip, etc.) and
+  // their direct consumers.
+  {
+    files: [
+      "src/components/ui/button.tsx",
+      "src/components/ui/context-menu.tsx",
+      "src/components/ui/dropdown-menu.tsx",
+      "src/components/ui/popover.tsx",
+      "src/components/ui/select.tsx",
+      "src/components/ui/tooltip.tsx",
+      "src/components/Fleet/FleetPickerContent.tsx",
+      "src/components/Settings/DiagnosticsReviewDialog.tsx",
+      "src/components/Settings/SettingsCheckbox.tsx",
+      "src/components/Settings/SettingsSwitch.tsx",
+    ],
+    rules: { "no-restricted-imports": "off" },
+  },
+
+  // Allowlist — test files exercising heavy-package components. Tests
+  // legitimately import the package directly to assert behavior; the
+  // production lazy-boundary discipline is enforced on the component, not the
+  // test.
+  {
+    files: ["src/**/__tests__/**/*.{ts,tsx}", "src/**/*.test.{ts,tsx}"],
+    rules: { "no-restricted-imports": "off" },
   },
 
   // Prettier must be last to override conflicting rules

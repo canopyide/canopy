@@ -14,12 +14,18 @@ const baseOptions: PtySpawnOptions = {
 describe("buildTerminalEnv NODE_COMPILE_CACHE injection", () => {
   let originalUserData: string | undefined;
   let originalApiKey: string | undefined;
+  let originalCompileCache: string | undefined;
 
   beforeEach(() => {
     originalUserData = process.env.DAINTREE_USER_DATA;
     // Avoid leaking real credentials from the host shell into spawn under test.
     originalApiKey = process.env.ANTHROPIC_API_KEY;
     delete process.env.ANTHROPIC_API_KEY;
+    // buildTerminalEnv inherits from process.env, so a NODE_COMPILE_CACHE
+    // set by the host shell (e.g. when running tests from inside Daintree)
+    // would shadow the injection logic and fail assertions.
+    originalCompileCache = process.env.NODE_COMPILE_CACHE;
+    delete process.env.NODE_COMPILE_CACHE;
   });
 
   afterEach(() => {
@@ -32,6 +38,11 @@ describe("buildTerminalEnv NODE_COMPILE_CACHE injection", () => {
       delete process.env.ANTHROPIC_API_KEY;
     } else {
       process.env.ANTHROPIC_API_KEY = originalApiKey;
+    }
+    if (originalCompileCache === undefined) {
+      delete process.env.NODE_COMPILE_CACHE;
+    } else {
+      process.env.NODE_COMPILE_CACHE = originalCompileCache;
     }
   });
 

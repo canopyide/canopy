@@ -45,6 +45,18 @@ describe("worktreeFilterStore", () => {
     expect(useWorktreeFilterStore.getState().hasActiveFilters()).toBe(true);
   });
 
+  it("hasActiveFilters returns true when only a facet filter is active (no query)", () => {
+    useWorktreeFilterStore.getState().toggleStatusFilter("active");
+
+    expect(useWorktreeFilterStore.getState().hasActiveFilters()).toBe(true);
+    expect(useWorktreeFilterStore.getState().getActiveFilterCount()).toBe(1);
+
+    useWorktreeFilterStore.getState().clearAll();
+
+    expect(useWorktreeFilterStore.getState().hasActiveFilters()).toBe(false);
+    expect(useWorktreeFilterStore.getState().getActiveFilterCount()).toBe(0);
+  });
+
   it("treats whitespace-only query as inactive", () => {
     useWorktreeFilterStore.getState().setQuery("   ");
 
@@ -152,6 +164,68 @@ describe("worktreeFilterStore", () => {
 
     expect(useWorktreeFilterStore.getState().hasActiveFilters()).toBe(true);
     expect(useWorktreeFilterStore.getState().getActiveFilterCount()).toBe(1);
+  });
+
+  describe("hasFacetFilters", () => {
+    it("returns false when no filters are active", () => {
+      expect(useWorktreeFilterStore.getState().hasFacetFilters()).toBe(false);
+    });
+
+    it("returns true when a statusFilter is active", () => {
+      useWorktreeFilterStore.getState().toggleStatusFilter("dirty");
+      expect(useWorktreeFilterStore.getState().hasFacetFilters()).toBe(true);
+    });
+
+    it("returns true when a typeFilter is active", () => {
+      useWorktreeFilterStore.getState().clearAll();
+      useWorktreeFilterStore.getState().toggleTypeFilter("feature");
+      expect(useWorktreeFilterStore.getState().hasFacetFilters()).toBe(true);
+    });
+
+    it("returns true when a githubFilter is active", () => {
+      useWorktreeFilterStore.getState().clearAll();
+      useWorktreeFilterStore.getState().toggleGitHubFilter("hasPR");
+      expect(useWorktreeFilterStore.getState().hasFacetFilters()).toBe(true);
+    });
+
+    it("returns true when a sessionFilter is active", () => {
+      useWorktreeFilterStore.getState().clearAll();
+      useWorktreeFilterStore.getState().toggleSessionFilter("working");
+      expect(useWorktreeFilterStore.getState().hasFacetFilters()).toBe(true);
+    });
+
+    it("returns true when an activityFilter is active", () => {
+      useWorktreeFilterStore.getState().clearAll();
+      useWorktreeFilterStore.getState().toggleActivityFilter("last1h");
+      expect(useWorktreeFilterStore.getState().hasFacetFilters()).toBe(true);
+    });
+
+    it("returns false when only query is active", () => {
+      useWorktreeFilterStore.getState().clearAll();
+      useWorktreeFilterStore.getState().setQuery("search term");
+      expect(useWorktreeFilterStore.getState().hasFacetFilters()).toBe(false);
+    });
+
+    it("returns false when only quickStateFilter is active", () => {
+      useWorktreeFilterStore.getState().clearAll();
+      useWorktreeFilterStore.getState().setQuickStateFilter("working");
+      expect(useWorktreeFilterStore.getState().hasFacetFilters()).toBe(false);
+    });
+
+    it("returns true when query and facet filters are both active", () => {
+      useWorktreeFilterStore.getState().clearAll();
+      useWorktreeFilterStore.getState().setQuery("search");
+      useWorktreeFilterStore.getState().toggleStatusFilter("active");
+      expect(useWorktreeFilterStore.getState().hasFacetFilters()).toBe(true);
+    });
+
+    it("returns false after clearAll when facets were active", () => {
+      useWorktreeFilterStore.getState().clearAll();
+      useWorktreeFilterStore.getState().toggleStatusFilter("dirty");
+      useWorktreeFilterStore.getState().toggleTypeFilter("feature");
+      useWorktreeFilterStore.getState().clearAll();
+      expect(useWorktreeFilterStore.getState().hasFacetFilters()).toBe(false);
+    });
   });
 
   it('resets quickStateFilter to "all" on clearAll', () => {

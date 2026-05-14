@@ -26,6 +26,7 @@ export {
   getPRTooltip,
   getIssueByNumber,
   getPRByNumber,
+  getPRReviewThreads,
 } from "./github/index.js";
 
 export type {

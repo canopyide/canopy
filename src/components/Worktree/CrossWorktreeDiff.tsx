@@ -283,6 +283,9 @@ export function CrossWorktreeDiff({ isOpen, onClose, initialWorktreeId }: CrossW
             </div>
           )}
           {selectedFile && !fileDiffLoading && !fileDiffError && fileDiff !== null && (
+            // Split view is required here — the inline cross-worktree split-pane
+            // layout depends on it, so this is not driven by the persisted
+            // diffViewType preference.
             <DiffViewer diff={fileDiff} filePath={selectedFile.path} viewType="split" />
           )}
         </div>

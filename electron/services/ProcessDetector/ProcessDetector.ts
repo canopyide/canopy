@@ -59,14 +59,12 @@ export class ProcessDetector {
   private shellCommandStickyUntil: number = 0;
   private shellCommandExpiresAt: number = 0;
 
-  // When false, the "agent-requires-explicit-exit" demote-hold at the gating
-  // path is bypassed for runtime-promoted plain terminals: the user typed the
-  // CLI into a plain shell, so no durable launch anchor exists. After the user
-  // Ctrl+Cs and the process tree empties, the chrome must demote even when
-  // IdentityWatcher's prompt-return signal is delayed or suppressed (e.g.
-  // when foreground PG snapshot reads briefly fail in CI). Toolbar/cold-
-  // launched agents (`isLaunchAnchored=true`) preserve the existing hold so
-  // transient process-tree blindness doesn't drop their branded chrome.
+  // When false, the no-shell-evidence "agent-requires-explicit-exit" demote
+  // hold at the gating path is bypassed for runtime-promoted plain terminals:
+  // the user typed the CLI into a plain shell, so no durable launch anchor
+  // exists. Shell-command agent evidence remains authoritative until an
+  // explicit lifecycle signal clears it; idle CLIs can have empty process-tree
+  // scans while still owning the terminal.
   private isLaunchAnchored: boolean;
 
   constructor(
@@ -407,9 +405,7 @@ export class ProcessDetector {
           // TUI elements while still running. Prompt-return clears via
           // clearShellCommandEvidence("prompt-return"). Runtime-promoted
           // agents (no launchAgentId) fall through to the offStreak path
-          // below so process-tree absence eventually demotes them — without
-          // this, a delayed or suppressed prompt-return signal would strand
-          // the chrome on the dead agent's icon.
+          // below only when shell-command evidence is absent.
           if (this.offStreak === 0) {
             logIdentityDebug(
               `[IdentityDebug] demote-hold term=${this.terminalId.slice(-8)} ` +
@@ -662,32 +658,11 @@ export class ProcessDetector {
     }
 
     // Case B — no tree agent match, but shell is valid with an agent. The
-    // title-rewriting CLI and blind-`ps` cases both land here.
+    // title-rewriting CLI, blind-`ps`, and idle-prompt cases all land here.
+    // Process-tree absence is not an exit signal for agent CLIs once the
+    // shell has vouched for the command; prompt-return/PTy exit/kill are the
+    // explicit lifecycle signals that clear this evidence.
     if (shellEvidenceValid && shellIdentity?.agentType) {
-      // Runtime-promoted demote escape hatch. The "shell evidence wins on
-      // empty tree" rule exists for title-rewriting CLIs where the agent is
-      // alive but invisible to `ps`. For runtime-promoted plain terminals
-      // (no launch anchor) AFTER an agent has already been committed, that
-      // anchor becomes too sticky: the user Ctrl+C'd the CLI in a plain
-      // shell and tree absence is now the authoritative lifecycle signal.
-      // Stop overriding tree-empty with stale shell evidence in that case;
-      // let off-streak hysteresis demote. Bootstrap promotion (no commit
-      // yet, `lastDetected === null`) still goes through normally so a
-      // typed `claude` in an empty tree can still commit before the agent
-      // process appears in `ps`.
-      const cacheHealthy = this.cache.getLastError() === null;
-      if (
-        !this.isLaunchAnchored &&
-        this.lastDetected !== null &&
-        !ctx.isBusy &&
-        treeMatch === null &&
-        cacheHealthy
-      ) {
-        return makeNoAgentResult({
-          isBusy: ctx.isBusy,
-          currentCommand: ctx.currentCommand,
-        });
-      }
       return makeAgentResult({
         agentType: shellIdentity.agentType,
         processIconId: shellIdentity.processIconId ?? treeMatch?.processIconId,

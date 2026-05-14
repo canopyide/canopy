@@ -9,6 +9,7 @@ import type {
   WorktreeMood,
   WorktreeLifecycleStatus,
 } from "../../shared/types/worktree.js";
+import type { GitHubPRCIStatus } from "../../shared/types/github.js";
 import type { WorktreeSnapshot } from "../../shared/types/workspace-host.js";
 import { invalidateGitStatusCache, getWorktreeChangesWithStats } from "../utils/git.js";
 import { getGitDir } from "../utils/gitUtils.js";
@@ -102,8 +103,11 @@ export class WorktreeMonitor {
   private prNumber: number | undefined;
   private prUrl: string | undefined;
   private prState: "open" | "closed" | "merged" | undefined;
+  private prCiStatus: GitHubPRCIStatus | undefined;
   private prTitle: string | undefined;
   private issueTitle: string | undefined;
+  private prLastUpdatedAt: number | undefined;
+  private issueLastUpdatedAt: number | undefined;
 
   // Polling state
   private pollingTimer: NodeJS.Timeout | null = null;
@@ -500,6 +504,10 @@ export class WorktreeMonitor {
     this.issueTitle = title;
   }
 
+  setIssueLastUpdatedAt(ms: number | undefined): void {
+    this.issueLastUpdatedAt = ms;
+  }
+
   setPRTitle(title: string | undefined): void {
     this.prTitle = title;
   }
@@ -508,20 +516,30 @@ export class WorktreeMonitor {
     prNumber?: number;
     prUrl?: string;
     prState?: "open" | "closed" | "merged";
+    prCiStatus?: GitHubPRCIStatus;
     prTitle?: string;
     issueTitle?: string;
+    prLastUpdatedAt?: number;
+    issueLastUpdatedAt?: number;
   }): void {
     this.prNumber = info.prNumber;
     this.prUrl = info.prUrl;
     this.prState = info.prState;
+    // Full-replace semantics for prCiStatus: each PR detection carries the
+    // current rollup state (or undefined when checks are absent), so we must
+    // overwrite stale values rather than only updating when defined.
+    this.prCiStatus = info.prCiStatus;
     if (info.prTitle !== undefined) this.prTitle = info.prTitle;
     if (info.issueTitle !== undefined) this.issueTitle = info.issueTitle;
+    if (info.prLastUpdatedAt !== undefined) this.prLastUpdatedAt = info.prLastUpdatedAt;
+    if (info.issueLastUpdatedAt !== undefined) this.issueLastUpdatedAt = info.issueLastUpdatedAt;
   }
 
   clearPRInfo(): void {
     this.prNumber = undefined;
     this.prUrl = undefined;
     this.prState = undefined;
+    this.prCiStatus = undefined;
     this.prTitle = undefined;
   }
 
@@ -824,8 +842,11 @@ export class WorktreeMonitor {
       prNumber: this.prNumber,
       prUrl: this.prUrl,
       prState: this.prState,
+      prCiStatus: this.prCiStatus,
       prTitle: this.prTitle,
       issueTitle: this.issueTitle,
+      prLastUpdatedAt: this.prLastUpdatedAt,
+      issueLastUpdatedAt: this.issueLastUpdatedAt,
       worktreeChanges: this.worktreeChanges,
       worktreeId: this.id,
       timestamp: Date.now(),

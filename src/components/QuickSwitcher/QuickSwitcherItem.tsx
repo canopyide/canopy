@@ -1,4 +1,3 @@
-import React from "react";
 import { cn } from "@/lib/utils";
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { FolderGit2 } from "@/components/icons";
@@ -13,7 +12,7 @@ export interface QuickSwitcherItemProps {
   ariaDescribedBy?: string;
 }
 
-export const QuickSwitcherItem = React.memo(function QuickSwitcherItem({
+export function QuickSwitcherItem({
   item,
   isSelected,
   onSelect,
@@ -76,4 +75,4 @@ export const QuickSwitcherItem = React.memo(function QuickSwitcherItem({
       </div>
     </button>
   );
-});
+}

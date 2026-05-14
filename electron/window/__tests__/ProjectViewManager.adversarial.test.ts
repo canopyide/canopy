@@ -131,6 +131,11 @@ vi.mock("../skeletonCss.js", () => ({
   injectSkeletonCss: vi.fn(),
 }));
 
+vi.mock("../../utils/webContentsLifecycle.js", () => ({
+  freezeWebContents: vi.fn().mockResolvedValue(undefined),
+  unfreezeWebContents: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { ProjectViewManager } from "../ProjectViewManager.js";
 
 function createMockWindow() {
@@ -164,6 +169,7 @@ describe("ProjectViewManager adversarial", () => {
     const win = createMockWindow();
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
     });
 
@@ -195,6 +201,7 @@ describe("ProjectViewManager adversarial", () => {
     const win = createMockWindow();
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -227,6 +234,7 @@ describe("ProjectViewManager adversarial", () => {
     const win = createMockWindow();
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
     });
 

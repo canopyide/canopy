@@ -7,8 +7,8 @@ export {
   type BackpressureStats,
   type PendingVisualSegment,
   MAX_PACKET_PAYLOAD,
-  MAX_PENDING_BYTES_PER_TERMINAL,
-  MAX_TOTAL_PENDING_BYTES,
+  FUTURE_SAB_MAX_PENDING_BYTES_PER_TERMINAL,
+  FUTURE_SAB_MAX_TOTAL_PENDING_BYTES,
   BACKPRESSURE_SAFETY_TIMEOUT_MS,
 } from "./backpressure.js";
 export { IpcQueueManager, type IpcQueueDeps } from "./ipcQueue.js";

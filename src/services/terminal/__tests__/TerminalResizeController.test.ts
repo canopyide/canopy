@@ -122,10 +122,13 @@ describe("TerminalResizeController", () => {
     await new Promise<void>((resolve) => queueMicrotask(resolve));
   };
 
-  it("skips resize in background tier when terminal is unfocused", () => {
+  it("background-tier resize captures dims and notifies PTY without calling fitAddon.fit()", () => {
     const managed = createManagedTerminal();
     managed.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
     managed.isFocused = false;
+    Object.assign(managed.terminal, {
+      _core: { _renderService: { dimensions: { css: { cell: { width: 10, height: 20 } } } } },
+    });
 
     const controller = new TerminalResizeController({
       getInstance: vi.fn(() => managed),
@@ -135,9 +138,96 @@ describe("TerminalResizeController", () => {
       } as any,
     });
 
-    const result = controller.resize("term-1", 1200, 900);
+    const result = controller.resize("term-1", 1600, 800);
+    expect(result).toEqual({ cols: 160, rows: 40 });
+    expect(managed.fitAddon.fit).not.toHaveBeenCalled();
+    // Buffer reflow is deferred to wake — xterm.resize() must NOT fire while paint is paused.
+    expect(managed.terminal.resize).not.toHaveBeenCalled();
+    expect(resizeMock).toHaveBeenCalledWith("term-1", 160, 40);
+    expect(managed.latestCols).toBe(160);
+    expect(managed.latestRows).toBe(40);
+    expect(managed.lastWidth).toBe(1600);
+    expect(managed.lastHeight).toBe(800);
+  });
+
+  it("background-tier resize returns null when cell dims are unavailable", () => {
+    const managed = createManagedTerminal();
+    managed.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
+    managed.isFocused = false;
+    // No _core attached — cellDims will be null.
+
+    const controller = new TerminalResizeController({
+      getInstance: vi.fn(() => managed),
+      dataBuffer: {
+        flushForTerminal: vi.fn(),
+        resetForTerminal: vi.fn(),
+      } as any,
+    });
+
+    const result = controller.resize("term-1", 1600, 800);
     expect(result).toBeNull();
+    expect(managed.fitAddon.fit).not.toHaveBeenCalled();
     expect(resizeMock).not.toHaveBeenCalled();
+    // Dedup cache must not be touched on a no-op early return.
+    expect(managed.lastWidth).toBe(800);
+    expect(managed.lastHeight).toBe(600);
+  });
+
+  it("background-tier resize dedups identical follow-up call without re-notifying PTY", () => {
+    const managed = createManagedTerminal();
+    managed.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
+    managed.isFocused = false;
+    Object.assign(managed.terminal, {
+      _core: { _renderService: { dimensions: { css: { cell: { width: 10, height: 20 } } } } },
+    });
+
+    const controller = new TerminalResizeController({
+      getInstance: vi.fn(() => managed),
+      dataBuffer: {
+        flushForTerminal: vi.fn(),
+        resetForTerminal: vi.fn(),
+      } as any,
+    });
+
+    controller.resize("term-1", 1600, 800);
+    expect(resizeMock).toHaveBeenCalledTimes(1);
+
+    // Same pixel dims → dedup guard returns null before any side effects.
+    const second = controller.resize("term-1", 1600, 800);
+    expect(second).toBeNull();
+    expect(resizeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("background-tier settled agents batch the deferred PTY resize", () => {
+    const managed = createManagedTerminal();
+    managed.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
+    managed.isFocused = false;
+    managed.launchAgentId = "codex";
+    managed.runtimeAgentId = "codex";
+    Object.assign(managed.terminal, {
+      _core: { _renderService: { dimensions: { css: { cell: { width: 10, height: 20 } } } } },
+    });
+
+    getEffectiveAgentConfigMock.mockReturnValue({
+      capabilities: { resizeStrategy: "settled" },
+    });
+
+    const controller = new TerminalResizeController({
+      getInstance: vi.fn(() => managed),
+      dataBuffer: {
+        flushForTerminal: vi.fn(),
+        resetForTerminal: vi.fn(),
+      } as any,
+    });
+
+    controller.resize("term-1", 1600, 800);
+    controller.resize("term-1", 1700, 800);
+    // PTY should not fire synchronously — settled 500ms guard owns the resize.
+    expect(resizeMock).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(500);
+    expect(resizeMock).toHaveBeenCalledTimes(1);
+    expect(resizeMock).toHaveBeenCalledWith("term-1", 170, 40);
   });
 
   it("flushes and resets ingest buffers before applying resize", () => {
@@ -215,6 +305,105 @@ describe("TerminalResizeController", () => {
 
     expect(managed.terminal.resize).not.toHaveBeenCalled();
     expect(resizeMock).not.toHaveBeenCalled();
+  });
+
+  it("applyDeferredResize is a no-op when xterm dims already match latest", () => {
+    const managed = createManagedTerminal();
+    managed.terminal.cols = 120;
+    managed.terminal.rows = 40;
+    managed.latestCols = 120;
+    managed.latestRows = 40;
+
+    const controller = new TerminalResizeController({
+      getInstance: vi.fn(() => managed),
+      dataBuffer: {
+        flushForTerminal: vi.fn(),
+        resetForTerminal: vi.fn(),
+      } as any,
+    });
+
+    controller.applyDeferredResize("term-1");
+
+    expect(managed.terminal.resize).not.toHaveBeenCalled();
+    expect(resizeMock).not.toHaveBeenCalled();
+  });
+
+  it("applyDeferredResize syncs xterm and PTY atomically for settled-strategy agents", () => {
+    const managed = createManagedTerminal();
+    managed.terminal.cols = 80;
+    managed.terminal.rows = 24;
+    managed.latestCols = 160;
+    managed.latestRows = 40;
+    managed.launchAgentId = "codex";
+    managed.runtimeAgentId = "codex";
+
+    getEffectiveAgentConfigMock.mockReturnValue({
+      capabilities: { resizeStrategy: "settled" },
+    });
+
+    const controller = new TerminalResizeController({
+      getInstance: vi.fn(() => managed),
+      dataBuffer: {
+        flushForTerminal: vi.fn(),
+        resetForTerminal: vi.fn(),
+      } as any,
+    });
+
+    controller.applyDeferredResize("term-1");
+
+    // Wake-path resync must NOT split xterm and PTY across the 500ms settled
+    // window — both must fire synchronously so refresh paints a coherent grid.
+    expect(managed.terminal.resize).toHaveBeenCalledTimes(1);
+    expect(managed.terminal.resize).toHaveBeenCalledWith(160, 40);
+    expect(resizeMock).toHaveBeenCalledTimes(1);
+    expect(resizeMock).toHaveBeenCalledWith("term-1", 160, 40);
+
+    // Advancing past the settled delay must not produce a spurious second resize.
+    vi.advanceTimersByTime(500);
+    expect(managed.terminal.resize).toHaveBeenCalledTimes(1);
+    expect(resizeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("applyDeferredResize cancels a pending settled timer before atomic resync", () => {
+    const managed = createManagedTerminal();
+    managed.terminal.cols = 80;
+    managed.terminal.rows = 24;
+    managed.launchAgentId = "codex";
+    managed.runtimeAgentId = "codex";
+    Object.assign(managed.terminal, {
+      _core: { _renderService: { dimensions: { css: { cell: { width: 10, height: 20 } } } } },
+    });
+
+    getEffectiveAgentConfigMock.mockReturnValue({
+      capabilities: { resizeStrategy: "settled" },
+    });
+
+    const controller = new TerminalResizeController({
+      getInstance: vi.fn(() => managed),
+      dataBuffer: {
+        flushForTerminal: vi.fn(),
+        resetForTerminal: vi.fn(),
+      } as any,
+    });
+
+    // Background resize arms the settled timer with dims 120x35.
+    managed.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
+    managed.isFocused = false;
+    controller.resize("term-1", 1200, 700);
+    expect(resizeMock).not.toHaveBeenCalled();
+
+    // Wake fires applyDeferredResize before the timer would have run.
+    managed.lastAppliedTier = TerminalRefreshTier.FOCUSED;
+    managed.isFocused = true;
+    controller.applyDeferredResize("term-1");
+
+    expect(managed.terminal.resize).toHaveBeenCalledTimes(1);
+    expect(resizeMock).toHaveBeenCalledTimes(1);
+
+    // Pending settled timer must have been cancelled — no second fire.
+    vi.advanceTimersByTime(500);
+    expect(managed.terminal.resize).toHaveBeenCalledTimes(1);
+    expect(resizeMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not run fit while resize lock is active", () => {

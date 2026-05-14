@@ -86,6 +86,8 @@ interface MockHibernationService {
 }
 interface MockProjectViewManager {
   setCachedViewLimit: Mock;
+  setLowMemoryFreeThresholdMb: Mock;
+  setEfficiencyFreeze: Mock;
 }
 interface MockProjectStatsService {
   updatePollInterval: Mock;
@@ -104,6 +106,8 @@ function createDeps(overrides?: Partial<ResourceProfileDeps>): ResourceProfileDe
   };
   const mockProjectViewManager: MockProjectViewManager = {
     setCachedViewLimit: vi.fn(),
+    setLowMemoryFreeThresholdMb: vi.fn(),
+    setEfficiencyFreeze: vi.fn(),
   };
   const mockProjectStatsService: MockProjectStatsService = {
     updatePollInterval: vi.fn(),
@@ -328,6 +332,86 @@ describe("ResourceProfileService", () => {
     const pvm = deps.getProjectViewManager() as unknown as MockProjectViewManager;
     expect(pvm.setCachedViewLimit).toHaveBeenCalledWith(1);
     expect(pvm.setCachedViewLimit).toHaveBeenCalledTimes(1);
+    expect(pvm.setEfficiencyFreeze).toHaveBeenCalledWith(true);
+
+    service.stop();
+  });
+
+  it("enables and disables setEfficiencyFreeze across an efficiency → balanced cycle", () => {
+    const deps = createDeps({ getUserCachedViewLimit: () => 2 });
+    const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
+    service.start();
+
+    const onAcHandler = mockPowerMonitorOn.mock.calls.find(
+      (call: string[]) => call[0] === "on-ac"
+    )?.[1] as (() => void) | undefined;
+
+    // Drive into efficiency.
+    mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 1300)]);
+    vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
+    expect(service.getProfile()).toBe("efficiency");
+
+    const pvm = deps.getProjectViewManager() as unknown as MockProjectViewManager;
+    expect(pvm.setEfficiencyFreeze).toHaveBeenLastCalledWith(true);
+
+    // Relieve to balanced.
+    mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 700)]);
+    onAcHandler!();
+    vi.advanceTimersByTime(30_000 * 4);
+
+    expect(service.getProfile()).toBe("balanced");
+    expect(pvm.setEfficiencyFreeze).toHaveBeenLastCalledWith(false);
+    expect(pvm.setEfficiencyFreeze).toHaveBeenCalledTimes(2);
+
+    service.stop();
+  });
+
+  it("still unfreezes when setCachedViewLimit throws on the exit path", () => {
+    const deps = createDeps({ getUserCachedViewLimit: () => 2 });
+    const pvm = deps.getProjectViewManager() as unknown as MockProjectViewManager;
+    const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
+    service.start();
+
+    const onAcHandler = mockPowerMonitorOn.mock.calls.find(
+      (call: string[]) => call[0] === "on-ac"
+    )?.[1] as (() => void) | undefined;
+
+    // Drive into efficiency.
+    mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 1300)]);
+    vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
+    expect(service.getProfile()).toBe("efficiency");
+    expect(pvm.setEfficiencyFreeze).toHaveBeenLastCalledWith(true);
+
+    // Make the restore call fail — setEfficiencyFreeze(false) must still run.
+    pvm.setCachedViewLimit.mockImplementationOnce(() => {
+      throw new Error("simulated eviction failure");
+    });
+
+    mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 200)]);
+    onAcHandler!();
+    vi.advanceTimersByTime(30_000 * 4);
+
+    expect(service.getProfile()).not.toBe("efficiency");
+    expect(pvm.setEfficiencyFreeze).toHaveBeenLastCalledWith(false);
+
+    service.stop();
+  });
+
+  it("does not call setEfficiencyFreeze on a balanced → performance transition", () => {
+    const deps = createDeps();
+    const service = new ResourceProfileService(deps);
+    service.start();
+
+    mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 200)]);
+    mockIsOnBatteryPower.mockReturnValue(false);
+
+    vi.advanceTimersByTime(60_000 + 30_000 + 30_000 + 30_000 + 30_000);
+    expect(service.getProfile()).toBe("performance");
+
+    const pvm = deps.getProjectViewManager() as unknown as MockProjectViewManager;
+    expect(pvm.setEfficiencyFreeze).not.toHaveBeenCalled();
 
     service.stop();
   });
@@ -434,6 +518,108 @@ describe("ResourceProfileService", () => {
     service.stop();
   });
 
+  it("pushes the balanced profile's threshold on start() even without a transition", () => {
+    const deps = createDeps();
+    const service = new ResourceProfileService(deps);
+    const pvm = deps.getProjectViewManager() as unknown as MockProjectViewManager;
+
+    service.start();
+
+    expect(pvm.setLowMemoryFreeThresholdMb).toHaveBeenCalledWith(
+      RESOURCE_PROFILE_CONFIGS.balanced.lowMemoryFreeThresholdMb
+    );
+    expect(pvm.setLowMemoryFreeThresholdMb).toHaveBeenCalledTimes(1);
+
+    service.stop();
+  });
+
+  it("pushes the efficiency profile's lowMemoryFreeThresholdMb on transition", () => {
+    const deps = createDeps();
+    const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
+    service.start();
+
+    mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 1300)]);
+    vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
+    expect(service.getProfile()).toBe("efficiency");
+
+    const pvm = deps.getProjectViewManager() as unknown as MockProjectViewManager;
+    expect(pvm.setLowMemoryFreeThresholdMb).toHaveBeenLastCalledWith(
+      RESOURCE_PROFILE_CONFIGS.efficiency.lowMemoryFreeThresholdMb
+    );
+
+    service.stop();
+  });
+
+  it("pushes the balanced profile's threshold on upgrade from efficiency", () => {
+    const deps = createDeps({ getUserCachedViewLimit: () => 3 });
+    const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
+    service.start();
+
+    const onAcHandler = mockPowerMonitorOn.mock.calls.find(
+      (call: string[]) => call[0] === "on-ac"
+    )?.[1] as (() => void) | undefined;
+
+    // Drive into efficiency
+    mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 1300)]);
+    vi.advanceTimersByTime(60_000 + 30_000 + 30_000);
+    expect(service.getProfile()).toBe("efficiency");
+
+    const pvm = deps.getProjectViewManager() as unknown as MockProjectViewManager;
+    expect(pvm.setLowMemoryFreeThresholdMb).toHaveBeenLastCalledWith(
+      RESOURCE_PROFILE_CONFIGS.efficiency.lowMemoryFreeThresholdMb
+    );
+
+    // Relieve to balanced
+    mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 700)]);
+    onAcHandler!();
+    vi.advanceTimersByTime(30_000);
+    vi.advanceTimersByTime(30_000);
+    vi.advanceTimersByTime(30_000);
+    vi.advanceTimersByTime(30_000);
+
+    expect(service.getProfile()).toBe("balanced");
+    expect(pvm.setLowMemoryFreeThresholdMb).toHaveBeenLastCalledWith(
+      RESOURCE_PROFILE_CONFIGS.balanced.lowMemoryFreeThresholdMb
+    );
+
+    service.stop();
+  });
+
+  it("pushes null threshold on performance transition", () => {
+    const deps = createDeps();
+    const service = new ResourceProfileService(deps);
+    service.start();
+
+    // Low pressure from the start — balanced → performance.
+    mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 200)]);
+    mockIsOnBatteryPower.mockReturnValue(false);
+
+    vi.advanceTimersByTime(60_000 + 30_000 + 30_000 + 30_000 + 30_000);
+    expect(service.getProfile()).toBe("performance");
+
+    const pvm = deps.getProjectViewManager() as unknown as MockProjectViewManager;
+    expect(pvm.setLowMemoryFreeThresholdMb).toHaveBeenLastCalledWith(null);
+
+    service.stop();
+  });
+
+  it("handles null pvm gracefully when pushing threshold", () => {
+    const deps = createDeps({ getProjectViewManager: () => null });
+    const service = new ResourceProfileService(deps);
+    mockIsOnBatteryPower.mockReturnValue(true);
+    service.start();
+
+    mockGetAppMetrics.mockReturnValue([makeMetric("Browser", 1300)]);
+
+    // Should not throw despite null pvm
+    expect(() => vi.advanceTimersByTime(60_000 + 30_000 + 30_000)).not.toThrow();
+    expect(service.getProfile()).toBe("efficiency");
+
+    service.stop();
+  });
+
   it("balanced config matches hardcoded defaults", () => {
     const balanced = RESOURCE_PROFILE_CONFIGS.balanced;
     expect(balanced.pollIntervalActive).toBe(2000);
@@ -442,6 +628,7 @@ describe("ResourceProfileService", () => {
     expect(balanced.projectStatsPollInterval).toBe(5000);
     expect(balanced.maxWebGLContexts).toBe(12);
     expect(balanced.memoryPressureInactiveMs).toBe(30 * 60 * 1000);
+    expect(balanced.lowMemoryFreeThresholdMb).toBe(768);
   });
 
   it("battery on its own contributes to pressure score", () => {

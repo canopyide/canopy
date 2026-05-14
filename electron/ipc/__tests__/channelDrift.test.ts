@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 const MAPS_TS = path.join(REPO_ROOT, "shared", "types", "ipc", "maps.ts");
+const GENERATED_TS = path.join(REPO_ROOT, "shared", "types", "ipc", "generated.ts");
 const PRELOAD_CTS = path.join(REPO_ROOT, "electron", "preload.cts");
 
 /**
@@ -26,15 +27,18 @@ const INVOKE_MAP_CHANNEL_ALLOWLIST = new Set<string>([]);
 const INVOKE_MAP_STRING_IGNORE = new Set<string>([]);
 
 /**
- * Extract the `IpcInvokeMap` block from `maps.ts` and return the channel-string
- * literals used as property keys. Greps lines that look like `  "foo:bar": {`.
+ * Extract channel-string property keys from a TypeScript interface block.
+ * Greps lines that look like `  "foo:bar": {` within the named interface.
  */
-async function extractInvokeMapKeys(): Promise<string[]> {
-  const source = await readFile(MAPS_TS, "utf8");
-  const start = source.indexOf("export interface IpcInvokeMap {");
-  if (start === -1) throw new Error("Could not locate IpcInvokeMap in maps.ts");
+function extractKeysFromBlock(source: string, interfaceMarker: string): Set<string> {
+  const start = source.indexOf(interfaceMarker);
+  if (start === -1) {
+    throw new Error(`Could not locate "${interfaceMarker}"`);
+  }
   const end = source.indexOf("\n}", start);
-  if (end === -1) throw new Error("Could not locate IpcInvokeMap closing brace");
+  if (end === -1) {
+    throw new Error(`Could not locate closing brace for "${interfaceMarker}"`);
+  }
   const block = source.slice(start, end);
 
   const keys = new Set<string>();
@@ -45,7 +49,21 @@ async function extractInvokeMapKeys(): Promise<string[]> {
     if (INVOKE_MAP_STRING_IGNORE.has(key)) continue;
     keys.add(key);
   }
-  return [...keys];
+  return keys;
+}
+
+/**
+ * Extract `IpcInvokeMap` channel keys, taking the union of hand-maintained
+ * entries in `maps.ts` and codegen-emitted entries in `generated.ts`. The
+ * `IpcInvokeMap` interface extends `GeneratedIpcInvokeMap`, so both
+ * contribute keys and either source can drift from `CHANNELS`.
+ */
+async function extractInvokeMapKeys(): Promise<string[]> {
+  const mapsSrc = await readFile(MAPS_TS, "utf8");
+  const generatedSrc = await readFile(GENERATED_TS, "utf8");
+  const handMaintained = extractKeysFromBlock(mapsSrc, "export interface IpcInvokeMap");
+  const generated = extractKeysFromBlock(generatedSrc, "export interface GeneratedIpcInvokeMap");
+  return [...handMaintained, ...generated];
 }
 
 describe("IPC channel drift guardrails", () => {

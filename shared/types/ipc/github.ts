@@ -147,6 +147,11 @@ export interface PRDetectedPayload {
   prNumber: number;
   prUrl: string;
   prState: "open" | "merged" | "closed";
+  /**
+   * Roll-up CI check status for the PR's head commit. Absent when the PR has
+   * no checks configured.
+   */
+  prCiStatus?: import("../github.js").GitHubPRCIStatus;
   prTitle?: string;
   issueNumber?: number;
   issueTitle?: string;

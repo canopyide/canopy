@@ -2,7 +2,10 @@ import { create } from "zustand";
 import { useNotificationHistoryStore } from "@/store/slices/notificationHistorySlice";
 
 interface UIState {
-  overlayClaims: Set<string>;
+  // Ordered LIFO stack of overlay claims — the last entry is the topmost
+  // overlay. Idempotent registration: re-adding an id is a no-op and the
+  // array reference is preserved so Zustand skips re-renders.
+  overlayStack: string[];
   addOverlayClaim: (id: string) => void;
   removeOverlayClaim: (id: string) => void;
   hasOpenOverlays: () => boolean;
@@ -16,31 +19,40 @@ interface UIState {
   // at 0 (no divider until the first close).
   lastNotificationCenterClosedAt: number;
   resetNotificationCenterLastClosedAt: () => void;
+  // Cross-component signal to open the Review Hub on a specific worktree
+  // card. WorktreeCard for the matching worktree subscribes and opens its
+  // local ReviewHub once, then clears the value. Used by
+  // `worktree.openReviewHub` and the completed-with-changes inbox button.
+  pendingReviewHubWorktreeId: string | null;
+  setPendingReviewHubWorktreeId: (id: string) => void;
+  clearPendingReviewHubWorktreeId: () => void;
+  // Per-worktree disclosure state for the Review Hub file list. Default
+  // (unset) is collapsed so the commit textarea is the focal point on open.
+  // Session-scoped (in-memory only — resets on app restart, no persist
+  // middleware).
+  reviewHubFileListExpanded: Record<string, boolean>;
+  setReviewHubFileListExpanded: (worktreePath: string, expanded: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
-  overlayClaims: new Set<string>(),
+  overlayStack: [],
 
   // Idempotent — return the same state reference when the claim is already
-  // present so Zustand skips re-renders. Never mutate the existing Set; a new
-  // instance is required so reference-equality subscribers update.
+  // present so Zustand skips re-renders. Never mutate the existing array; a
+  // new instance is required so reference-equality subscribers update.
   addOverlayClaim: (id) =>
     set((state) => {
-      if (state.overlayClaims.has(id)) return state;
-      const next = new Set(state.overlayClaims);
-      next.add(id);
-      return { overlayClaims: next };
+      if (state.overlayStack.includes(id)) return state;
+      return { overlayStack: [...state.overlayStack, id] };
     }),
 
   removeOverlayClaim: (id) =>
     set((state) => {
-      if (!state.overlayClaims.has(id)) return state;
-      const next = new Set(state.overlayClaims);
-      next.delete(id);
-      return { overlayClaims: next };
+      if (!state.overlayStack.includes(id)) return state;
+      return { overlayStack: state.overlayStack.filter((x) => x !== id) };
     }),
 
-  hasOpenOverlays: () => get().overlayClaims.size > 0,
+  hasOpenOverlays: () => get().overlayStack.length > 0,
 
   notificationCenterOpen: false,
   lastNotificationCenterClosedAt: 0,
@@ -65,4 +77,24 @@ export const useUIStore = create<UIState>((set, get) => ({
       return { notificationCenterOpen: next, lastNotificationCenterClosedAt: Date.now() };
     }),
   resetNotificationCenterLastClosedAt: () => set({ lastNotificationCenterClosedAt: 0 }),
+
+  pendingReviewHubWorktreeId: null,
+  setPendingReviewHubWorktreeId: (id) => set({ pendingReviewHubWorktreeId: id }),
+  clearPendingReviewHubWorktreeId: () =>
+    set((state) => {
+      if (state.pendingReviewHubWorktreeId === null) return state;
+      return { pendingReviewHubWorktreeId: null };
+    }),
+
+  reviewHubFileListExpanded: {},
+  setReviewHubFileListExpanded: (worktreePath, expanded) =>
+    set((state) => {
+      if (state.reviewHubFileListExpanded[worktreePath] === expanded) return state;
+      return {
+        reviewHubFileListExpanded: {
+          ...state.reviewHubFileListExpanded,
+          [worktreePath]: expanded,
+        },
+      };
+    }),
 }));

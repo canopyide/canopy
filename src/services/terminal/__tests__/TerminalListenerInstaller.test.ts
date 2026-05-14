@@ -53,6 +53,7 @@ interface CapturedCallbacks {
   onWriteParsed?: () => void;
   onSelectionChange?: () => void;
   onScroll?: () => void;
+  wheelHandler?: (event: WheelEvent) => boolean;
 }
 
 function makeMockTerminal(captured: CapturedCallbacks) {
@@ -60,7 +61,7 @@ function makeMockTerminal(captured: CapturedCallbacks) {
     options: { scrollback: 5000 },
     rows: 24,
     cols: 80,
-    modes: { bracketedPasteMode: false },
+    modes: { bracketedPasteMode: false, mouseTrackingMode: "none" as const },
     buffer: {
       active: { length: 0, type: "normal", baseY: 0, viewportY: 0 },
       onBufferChange: vi.fn(() => ({ dispose: vi.fn() })),
@@ -68,6 +69,9 @@ function makeMockTerminal(captured: CapturedCallbacks) {
     parser: {
       registerOscHandler: vi.fn(() => ({ dispose: vi.fn() })),
     },
+    attachCustomWheelEventHandler: vi.fn((handler: (event: WheelEvent) => boolean) => {
+      captured.wheelHandler = handler;
+    }),
     dispose: vi.fn(),
     onData: vi.fn((cb: (data: string) => void) => {
       captured.onData = cb;
@@ -519,6 +523,85 @@ describe("installTerminalBoundListeners", () => {
     expect(deps.notifyXtermFocused).not.toHaveBeenCalled();
 
     document.body.removeChild(managed.hostElement);
+  });
+
+  it("suppresses wheel→arrow translation when an agent terminal is in the alt-screen buffer (issue #6621)", () => {
+    const captured: CapturedCallbacks = { onTitleChangeHandlers: [] };
+    const terminal = makeMockTerminal(captured);
+    const managed = makeMockManaged({ runtimeAgentId: "copilot" });
+    const deps = makeDeps();
+
+    managed.terminal = terminal as unknown as ManagedTerminal["terminal"];
+    installTerminalBoundListeners(
+      terminal as unknown as Parameters<typeof installTerminalBoundListeners>[0],
+      managed,
+      "t1",
+      deps
+    );
+    // The handler reads `managed.isAltBuffer` live, so mutating it after
+    // install mirrors how the real `onBufferChange` listener flips it on
+    // CSI ?1049h.
+    managed.isAltBuffer = true;
+
+    expect(captured.wheelHandler).toBeDefined();
+    expect(captured.wheelHandler!({} as WheelEvent)).toBe(false);
+  });
+
+  it("passes wheel events through for plain (non-agent) terminals even when in alt-screen", () => {
+    const captured: CapturedCallbacks = { onTitleChangeHandlers: [] };
+    const terminal = makeMockTerminal(captured);
+    const managed = makeMockManaged();
+    const deps = makeDeps();
+
+    managed.terminal = terminal as unknown as ManagedTerminal["terminal"];
+    installTerminalBoundListeners(
+      terminal as unknown as Parameters<typeof installTerminalBoundListeners>[0],
+      managed,
+      "t1",
+      deps
+    );
+    managed.isAltBuffer = true;
+
+    expect(captured.wheelHandler!({} as WheelEvent)).toBe(true);
+  });
+
+  it("passes wheel events through for agent terminals in the normal buffer", () => {
+    const captured: CapturedCallbacks = { onTitleChangeHandlers: [] };
+    const terminal = makeMockTerminal(captured);
+    const managed = makeMockManaged({ runtimeAgentId: "copilot" });
+    const deps = makeDeps();
+
+    managed.terminal = terminal as unknown as ManagedTerminal["terminal"];
+    installTerminalBoundListeners(
+      terminal as unknown as Parameters<typeof installTerminalBoundListeners>[0],
+      managed,
+      "t1",
+      deps
+    );
+    // isAltBuffer defaults to false from terminal.buffer.active.type === "normal"
+
+    expect(captured.wheelHandler!({} as WheelEvent)).toBe(true);
+  });
+
+  it("passes wheel events through when the TUI has mouse tracking enabled", () => {
+    const captured: CapturedCallbacks = { onTitleChangeHandlers: [] };
+    const terminal = makeMockTerminal(captured);
+    const managed = makeMockManaged({ runtimeAgentId: "crush" });
+    const deps = makeDeps();
+
+    managed.terminal = terminal as unknown as ManagedTerminal["terminal"];
+    installTerminalBoundListeners(
+      terminal as unknown as Parameters<typeof installTerminalBoundListeners>[0],
+      managed,
+      "t1",
+      deps
+    );
+    managed.isAltBuffer = true;
+    // Mutate the captured mode so the live read inside the handler reflects
+    // mouse-reporting TUIs that toggle this on after install.
+    (terminal.modes as { mouseTrackingMode: string }).mouseTrackingMode = "any";
+
+    expect(captured.wheelHandler!({} as WheelEvent)).toBe(true);
   });
 
   it("registers the same listener count on every call (idempotent shape)", () => {

@@ -4,7 +4,7 @@ import path from "path";
 import { mockOpenDialog, refreshActiveWindow, waitForActiveProject } from "./launch";
 import { dismissTelemetryConsent } from "./project";
 import { waitForTerminalReady, waitForTerminalText } from "./terminal";
-import { getGridPanelCount, openTerminal } from "./panels";
+import { getGridPanelIds, getPanelById, openTerminal } from "./panels";
 import { SEL } from "./selectors";
 import { T_SHORT, T_MEDIUM, T_LONG } from "./timeouts";
 
@@ -54,9 +54,26 @@ export async function addAndSwitchToProject(
 
       await openProjectSwitcherPalette(window);
 
-      const addBtn = window.locator(SEL.projectSwitcher.addButton);
-      await expect(addBtn).toBeVisible({ timeout: T_SHORT });
-      await addBtn.click({ force: true });
+      const palette = window.locator(SEL.projectSwitcher.palette);
+      let clicked = false;
+      for (let attempt = 0; attempt < 3 && !clicked; attempt += 1) {
+        const addBtn = window.locator(SEL.projectSwitcher.addButton);
+        await expect(addBtn).toBeVisible({ timeout: T_SHORT });
+        try {
+          await addBtn.click({ force: true, noWaitAfter: true, timeout: T_SHORT });
+          clicked = true;
+        } catch {
+          if (!(await palette.isVisible().catch(() => false))) {
+            clicked = true;
+            break;
+          }
+          await window.waitForTimeout(250);
+        }
+      }
+      if (!clicked) {
+        const addBtn = window.locator(SEL.projectSwitcher.addButton);
+        await addBtn.click({ force: true, noWaitAfter: true, timeout: T_MEDIUM });
+      }
     },
     { box: true }
   );
@@ -171,12 +188,35 @@ export async function spawnTerminalAndVerify(
   return await test.step(
     "Spawn terminal and verify",
     async () => {
-      const countBefore = await getGridPanelCount(window);
+      const idsBefore = await getGridPanelIds(window);
+      const idsBeforeSet = new Set(idsBefore);
+      let selectedPanelId: string | null = null;
 
       await openTerminal(window);
-      await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(countBefore + 1);
+      await expect
+        .poll(
+          async () => {
+            const ids = await getGridPanelIds(window);
+            const newIds = ids.filter((id) => !idsBeforeSet.has(id));
+            if (newIds.length > 0) {
+              selectedPanelId = newIds[newIds.length - 1] ?? null;
+              return true;
+            }
 
-      const panel = window.locator(SEL.panel.gridPanel).last();
+            if (ids.length > idsBefore.length) {
+              selectedPanelId = ids[ids.length - 1] ?? null;
+              return selectedPanelId !== null;
+            }
+
+            return false;
+          },
+          { timeout: T_LONG }
+        )
+        .toBe(true);
+
+      const panel = selectedPanelId
+        ? getPanelById(window, selectedPanelId)
+        : window.locator(SEL.panel.gridPanel).last();
       await expect(panel).toBeVisible({ timeout: T_MEDIUM });
       await waitForTerminalReady(window, panel, T_LONG);
 

@@ -1,6 +1,8 @@
 import * as React from "react";
-import * as PopoverPrimitive from "@radix-ui/react-popover";
+import type * as PopoverPrimitiveType from "@radix-ui/react-popover";
+import { Slot } from "@radix-ui/react-slot";
 import { cn } from "@/lib/utils";
+import { primeOnEvent, useRadixPrimitives } from "./radix-loader";
 
 let portalBoundary: HTMLDivElement | null = null;
 
@@ -25,25 +27,168 @@ function getPortalBoundary() {
   return boundary;
 }
 
-const Popover = PopoverPrimitive.Root;
+const PopoverIntentContext = React.createContext<((next: boolean) => void) | null>(null);
 
-const PopoverTrigger = PopoverPrimitive.Trigger;
+type PopoverRootProps = React.ComponentProps<typeof PopoverPrimitiveType.Root>;
 
-const PopoverAnchor = PopoverPrimitive.Anchor;
+const Popover = ({ children, open, defaultOpen, onOpenChange, ...rest }: PopoverRootProps) => {
+  const radix = useRadixPrimitives();
+  const [pendingOpen, setPendingOpen] = React.useState<boolean | undefined>(undefined);
+  const isControlled = open !== undefined;
+
+  const requestOpen = React.useCallback(
+    (next: boolean) => {
+      primeOnEvent();
+      if (isControlled) {
+        onOpenChange?.(next);
+        return;
+      }
+      setPendingOpen(next);
+      onOpenChange?.(next);
+    },
+    [isControlled, onOpenChange]
+  );
+
+  if (!radix) {
+    return (
+      <PopoverIntentContext.Provider value={requestOpen}>{children}</PopoverIntentContext.Provider>
+    );
+  }
+
+  const Root = radix.PopoverPrimitive.Root;
+  const effectiveDefaultOpen = isControlled ? defaultOpen : (pendingOpen ?? defaultOpen);
+  return (
+    <Root
+      open={open}
+      defaultOpen={effectiveDefaultOpen}
+      onOpenChange={(next) => {
+        if (!isControlled) setPendingOpen(undefined);
+        onOpenChange?.(next);
+      }}
+      {...rest}
+    >
+      {children}
+    </Root>
+  );
+};
+Popover.displayName = "Popover";
+
+type PopoverTriggerProps = React.ComponentPropsWithoutRef<typeof PopoverPrimitiveType.Trigger>;
+
+const PopoverTrigger = React.forwardRef<
+  React.ElementRef<typeof PopoverPrimitiveType.Trigger>,
+  PopoverTriggerProps
+>(
+  (
+    { asChild, children, onPointerEnter, onPointerDown, onFocusCapture, onClick, ...props },
+    ref
+  ) => {
+    const radix = useRadixPrimitives();
+    const requestOpen = React.useContext(PopoverIntentContext);
+
+    const handlePointerEnter: React.PointerEventHandler<HTMLButtonElement> = (event) => {
+      primeOnEvent();
+      onPointerEnter?.(event);
+    };
+    const handlePointerDown: React.PointerEventHandler<HTMLButtonElement> = (event) => {
+      primeOnEvent();
+      onPointerDown?.(event);
+    };
+    const handleFocusCapture: React.FocusEventHandler<HTMLButtonElement> = (event) => {
+      primeOnEvent();
+      onFocusCapture?.(event);
+    };
+
+    if (!radix) {
+      const intentClick: React.MouseEventHandler<HTMLButtonElement> = (event) => {
+        primeOnEvent();
+        requestOpen?.(true);
+        onClick?.(event);
+      };
+      if (asChild) {
+        return (
+          <Slot
+            ref={ref}
+            onPointerEnter={handlePointerEnter}
+            onPointerDown={handlePointerDown}
+            onFocusCapture={handleFocusCapture}
+            onClick={intentClick}
+            {...props}
+          >
+            {children}
+          </Slot>
+        );
+      }
+      return (
+        <button
+          type="button"
+          ref={ref as React.Ref<HTMLButtonElement>}
+          onPointerEnter={handlePointerEnter}
+          onPointerDown={handlePointerDown}
+          onFocusCapture={handleFocusCapture}
+          onClick={intentClick}
+          {...(props as React.ButtonHTMLAttributes<HTMLButtonElement>)}
+        >
+          {children}
+        </button>
+      );
+    }
+
+    const Trigger = radix.PopoverPrimitive.Trigger;
+    return (
+      <Trigger
+        ref={ref}
+        asChild={asChild}
+        onPointerEnter={handlePointerEnter}
+        onPointerDown={handlePointerDown}
+        onFocusCapture={handleFocusCapture}
+        onClick={onClick}
+        {...props}
+      >
+        {children}
+      </Trigger>
+    );
+  }
+);
+PopoverTrigger.displayName = "PopoverTrigger";
+
+type PopoverAnchorProps = React.ComponentPropsWithoutRef<typeof PopoverPrimitiveType.Anchor>;
+
+const PopoverAnchor = React.forwardRef<
+  React.ElementRef<typeof PopoverPrimitiveType.Anchor>,
+  PopoverAnchorProps
+>((props, ref) => {
+  const radix = useRadixPrimitives();
+  if (!radix) {
+    if (props.asChild && React.isValidElement(props.children)) {
+      return props.children as React.ReactElement;
+    }
+    return null;
+  }
+  const Anchor = radix.PopoverPrimitive.Anchor;
+  return <Anchor ref={ref} {...props} />;
+});
+PopoverAnchor.displayName = "PopoverAnchor";
+
+type PopoverContentProps = React.ComponentPropsWithoutRef<typeof PopoverPrimitiveType.Content>;
 
 const PopoverContent = React.forwardRef<
-  React.ElementRef<typeof PopoverPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
+  React.ElementRef<typeof PopoverPrimitiveType.Content>,
+  PopoverContentProps
 >(({ className, align = "center", sideOffset = 4, collisionBoundary, style, ...props }, ref) => {
+  const radix = useRadixPrimitives();
   const [boundary, setBoundary] = React.useState<HTMLElement | null>(null);
 
   React.useEffect(() => {
     setBoundary(getPortalBoundary());
   }, []);
 
+  if (!radix) return null;
+  const Portal = radix.PopoverPrimitive.Portal;
+  const Content = radix.PopoverPrimitive.Content;
   return (
-    <PopoverPrimitive.Portal>
-      <PopoverPrimitive.Content
+    <Portal>
+      <Content
         ref={ref}
         align={align}
         sideOffset={sideOffset}
@@ -56,9 +201,9 @@ const PopoverContent = React.forwardRef<
         )}
         {...props}
       />
-    </PopoverPrimitive.Portal>
+    </Portal>
   );
 });
-PopoverContent.displayName = PopoverPrimitive.Content.displayName;
+PopoverContent.displayName = "PopoverContent";
 
 export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor };

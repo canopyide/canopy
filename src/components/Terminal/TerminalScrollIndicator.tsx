@@ -26,11 +26,11 @@ export function TerminalScrollIndicator({ terminalId }: TerminalScrollIndicatorP
   };
 
   return (
-    <div className="absolute inset-0 z-30 pointer-events-none flex items-end justify-end pb-4 pr-[14px]">
+    <div className="absolute inset-0 z-30 pointer-events-none flex items-end justify-end pb-1.5 pr-[14px]">
       <button
         type="button"
         className={cn(
-          "pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full",
+          "pointer-events-auto flex items-center gap-1 px-2 py-0.5 rounded-full",
           "bg-daintree-bg/90 border border-daintree-border/40 text-daintree-text shadow-[var(--theme-shadow-floating)]",
           "text-xs font-medium cursor-pointer",
           "hover:bg-daintree-bg hover:border-daintree-border/60",
@@ -42,7 +42,7 @@ export function TerminalScrollIndicator({ terminalId }: TerminalScrollIndicatorP
         onPointerDown={(e) => e.stopPropagation()}
         aria-label="Scroll to latest output"
       >
-        <ChevronDown className="h-3.5 w-3.5" />
+        <ChevronDown className="h-3 w-3" />
         New output below
       </button>
     </div>

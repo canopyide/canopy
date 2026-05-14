@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   FileText,
@@ -31,7 +31,7 @@ function SystemHealthSection() {
   const [isChecking, setIsChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
 
-  const runCheck = useCallback(async () => {
+  const runCheck = async () => {
     setIsChecking(true);
     setCheckError(null);
     try {
@@ -42,7 +42,7 @@ function SystemHealthSection() {
     } finally {
       setIsChecking(false);
     }
-  }, []);
+  };
 
   return (
     <SettingsSection
@@ -99,7 +99,7 @@ function DownloadDiagnosticsSection() {
   const [reviewPayload, setReviewPayload] = useState<DiagnosticsReviewPayload | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
-  const handleOpenReview = useCallback(async () => {
+  const handleOpenReview = async () => {
     setIsCollecting(true);
     setDownloadError(null);
     try {
@@ -111,29 +111,29 @@ function DownloadDiagnosticsSection() {
     } finally {
       setIsCollecting(false);
     }
-  }, []);
+  };
 
-  const handleSave = useCallback(
-    async (enabledSections: Record<string, boolean>, replacements: ReplacementRule[]) => {
-      setIsSaving(true);
-      try {
-        const payload = reviewPayload?.payload ?? {};
-        const saved = await systemClient.saveDiagnosticsBundle({
-          payload,
-          enabledSections,
-          replacements,
-        });
-        if (saved) {
-          setReviewOpen(false);
-        }
-      } catch (err) {
-        setDownloadError(formatErrorMessage(err, "Failed to save diagnostics bundle"));
-      } finally {
-        setIsSaving(false);
+  const handleSave = async (
+    enabledSections: Record<string, boolean>,
+    replacements: ReplacementRule[]
+  ) => {
+    setIsSaving(true);
+    try {
+      const payload = reviewPayload?.payload ?? {};
+      const saved = await systemClient.saveDiagnosticsBundle({
+        payload,
+        enabledSections,
+        replacements,
+      });
+      if (saved) {
+        setReviewOpen(false);
       }
-    },
-    [reviewPayload]
-  );
+    } catch (err) {
+      setDownloadError(formatErrorMessage(err, "Failed to save diagnostics bundle"));
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <SettingsSection
@@ -172,13 +172,13 @@ function HardwareAccelerationSection() {
     });
   }, []);
 
-  const handleToggle = useCallback(() => {
+  const handleToggle = () => {
     if (disabled === null) return;
     const newEnabled = disabled; // if currently disabled, we're enabling
     safeFireAndForget(window.electron.gpu.setHardwareAcceleration(newEnabled), {
       context: "Setting hardware acceleration preference",
     });
-  }, [disabled]);
+  };
 
   if (disabled === null) return null;
 
@@ -232,21 +232,21 @@ export function TroubleshootingTab() {
     };
   }, [logOverridesRefreshKey, verboseLogging]);
 
-  const handleOpenLogLevelPalette = useCallback(() => {
+  const handleOpenLogLevelPalette = () => {
     window.dispatchEvent(new CustomEvent("daintree:open-log-level-palette"));
     // Refresh on a short delay after the palette closes; simplest approach is
     // to re-fetch whenever the user clicks the button again.
     setLogOverridesRefreshKey((k) => k + 1);
-  }, []);
+  };
 
-  const handleClearLogOverrides = useCallback(async () => {
+  const handleClearLogOverrides = async () => {
     try {
       await logsClient.clearLevelOverrides();
       setLogOverrides({});
     } catch (error) {
       logError("Failed to clear log level overrides", error);
     }
-  }, []);
+  };
 
   useEffect(() => {
     appClient.getState().then((appState) => {
@@ -269,29 +269,26 @@ export function TroubleshootingTab() {
       });
   }, []);
 
-  const saveDeveloperModeSettings = useCallback(
-    async (settings: NonNullable<AppState["developerMode"]>) => {
-      try {
-        const result = await actionService.dispatch(
-          "app.developerMode.set",
-          {
-            enabled: settings.enabled,
-            autoOpenDiagnostics: settings.autoOpenDiagnostics,
-            focusEventsTab: settings.focusEventsTab,
-          },
-          { source: "user" }
-        );
-        if (!result.ok) {
-          throw new Error(result.error.message);
-        }
-      } catch (error) {
-        logError("Failed to save developer mode settings", error);
+  const saveDeveloperModeSettings = async (settings: NonNullable<AppState["developerMode"]>) => {
+    try {
+      const result = await actionService.dispatch(
+        "app.developerMode.set",
+        {
+          enabled: settings.enabled,
+          autoOpenDiagnostics: settings.autoOpenDiagnostics,
+          focusEventsTab: settings.focusEventsTab,
+        },
+        { source: "user" }
+      );
+      if (!result.ok) {
+        throw new Error(result.error.message);
       }
-    },
-    []
-  );
+    } catch (error) {
+      logError("Failed to save developer mode settings", error);
+    }
+  };
 
-  const handleToggleDeveloperMode = useCallback(() => {
+  const handleToggleDeveloperMode = () => {
     const newEnabled = !developerMode;
     setDeveloperMode(newEnabled);
 
@@ -317,9 +314,9 @@ export function TroubleshootingTab() {
         focusEventsTab,
       });
     }
-  }, [developerMode, autoOpenDiagnostics, focusEventsTab, saveDeveloperModeSettings]);
+  };
 
-  const handleToggleAutoOpenDiagnostics = useCallback(() => {
+  const handleToggleAutoOpenDiagnostics = () => {
     const newValue = !autoOpenDiagnostics;
     setAutoOpenDiagnostics(newValue);
     if (!newValue) {
@@ -338,9 +335,9 @@ export function TroubleshootingTab() {
         focusEventsTab,
       });
     }
-  }, [developerMode, autoOpenDiagnostics, focusEventsTab, saveDeveloperModeSettings]);
+  };
 
-  const handleToggleFocusEventsTab = useCallback(() => {
+  const handleToggleFocusEventsTab = () => {
     const newValue = !focusEventsTab;
     setFocusEventsTab(newValue);
     saveDeveloperModeSettings({
@@ -349,9 +346,9 @@ export function TroubleshootingTab() {
       autoOpenDiagnostics,
       focusEventsTab: newValue,
     });
-  }, [developerMode, autoOpenDiagnostics, focusEventsTab, saveDeveloperModeSettings]);
+  };
 
-  const handleToggleVerboseLogging = useCallback(async () => {
+  const handleToggleVerboseLogging = async () => {
     if (verboseLoggingPending) return;
 
     const newState = !verboseLogging;
@@ -374,7 +371,7 @@ export function TroubleshootingTab() {
     } finally {
       setVerboseLoggingPending(false);
     }
-  }, [verboseLogging, verboseLoggingPending]);
+  };
 
   const handleClearLogs = async () => {
     try {

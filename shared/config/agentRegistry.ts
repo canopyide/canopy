@@ -534,13 +534,16 @@ import { config as kiroConfig } from "./agents/kiro.js";
 // Built-in agent registry. Per-agent configs live in `./agents/<id>.ts`
 // (mirroring `src/services/actions/definitions/`). When adding a new agent,
 // create the per-agent file, import it here, add the entry below, and add
-// the ID to `BUILT_IN_AGENT_IDS` in `agentIds.ts` — the runtime check after
-// this declaration throws if any built-in is missing.
+// the ID to `BUILT_IN_AGENT_IDS` in `agentIds.ts` — the `Record<BuiltInAgentId,
+// AgentConfig>` type enforces exact-key match at compile time.
 //
 // Key order matches `BUILT_IN_AGENT_IDS` (most popular -> least popular).
 // Iteration order does not affect runtime — UI sites iterate
 // `BUILT_IN_AGENT_IDS` directly — but we mirror the order for readability.
-export const AGENT_REGISTRY: Record<string, AgentConfig> = {
+import { BUILT_IN_AGENT_IDS, isBuiltInAgentId } from "./agentIds.js";
+import type { BuiltInAgentId } from "./agentIds.js";
+
+export const AGENT_REGISTRY: Record<BuiltInAgentId, AgentConfig> = {
   claude: claudeConfig,
   opencode: opencodeConfig,
   aider: aiderConfig,
@@ -558,27 +561,12 @@ export const AGENT_REGISTRY: Record<string, AgentConfig> = {
   kiro: kiroConfig,
 };
 
-import { BUILT_IN_AGENT_IDS } from "./agentIds.js";
-
-// Runtime check: every BuiltInAgentId must have an entry in the registry.
-for (const id of BUILT_IN_AGENT_IDS) {
-  if (!(id in AGENT_REGISTRY)) {
-    throw new Error(
-      `AGENT_REGISTRY is missing entry for built-in agent "${id}". Update AGENT_REGISTRY or BUILT_IN_AGENT_IDS.`
-    );
-  }
-}
-
 export function getAgentIds(): string[] {
   return Object.keys(AGENT_REGISTRY);
 }
 
 export function getAgentConfig(agentId: string): AgentConfig | undefined {
-  return AGENT_REGISTRY[agentId];
-}
-
-export function isRegisteredAgent(agentId: string): boolean {
-  return agentId in AGENT_REGISTRY;
+  return isBuiltInAgentId(agentId) ? AGENT_REGISTRY[agentId] : undefined;
 }
 
 let userRegistry: Record<string, AgentConfig> = {};
@@ -604,15 +592,11 @@ export function getEffectiveAgentConfig(agentId: string): AgentConfig | undefine
 }
 
 export function isEffectivelyRegisteredAgent(agentId: string): boolean {
-  return agentId in getEffectiveRegistry();
+  return Object.prototype.hasOwnProperty.call(getEffectiveRegistry(), agentId);
 }
 
 export function isBuiltInAgent(agentId: string): boolean {
   return agentId in AGENT_REGISTRY;
-}
-
-export function isUserDefinedAgent(agentId: string): boolean {
-  return agentId in userRegistry && !(agentId in AGENT_REGISTRY);
 }
 
 export function getAgentModelConfig(
@@ -624,37 +608,70 @@ export function getAgentModelConfig(
 }
 
 /**
- * IDs of built-in agents whose assistant wiring is at the `"stable"` tier.
- * Used by the HelpPanel agent picker to filter the visible options and by
- * the `helpPanelStore` rehydration guard to drop stale persisted preferences
- * for agents that aren't (yet) wired for the assistant overlay.
+ * IDs of agents (built-in and user-defined) whose assistant wiring is at the
+ * `"stable"` tier. Used by the HelpPanel agent picker to filter the visible
+ * options and by the `helpPanelStore` rehydration guard to drop stale
+ * persisted preferences for agents that aren't wired for the assistant overlay.
+ *
+ * Built-in agents appear first (in `BUILT_IN_AGENT_IDS` popularity order),
+ * followed by user-defined agents in registration order. Built-in entries
+ * shadow user-defined entries with the same ID (enforced by `getEffectiveRegistry`).
  *
  * Excludes agents marked `supports: false` (structurally ineligible),
  * `supports: undefined` (not yet wired), and `tier: "experimental"`.
  */
 export function getAssistantSupportedAgentIds(): string[] {
-  return BUILT_IN_AGENT_IDS.filter((id) => {
-    const supports = AGENT_REGISTRY[id]?.supports;
-    return supports !== false && supports?.tier === "stable";
-  });
+  const effective = getEffectiveRegistry();
+  const supported = new Set<string>();
+  // Built-in first (preserves existing order and tests)
+  for (const id of BUILT_IN_AGENT_IDS) {
+    const supports = effective[id]?.supports;
+    if (supports !== false && supports?.tier === "stable") {
+      supported.add(id);
+    }
+  }
+  // Then user-defined agents not already covered
+  for (const id of Object.keys(effective)) {
+    if (supported.has(id)) continue;
+    const supports = effective[id]?.supports;
+    if (supports !== false && supports?.tier === "stable") {
+      supported.add(id);
+    }
+  }
+  return [...supported];
 }
 
 /**
- * IDs of built-in agents whose assistant wiring is structurally complete at
- * any tier (`"stable"` or `"experimental"`). Used by `HelpSessionService`'s
- * provision validator and `lifecycle.ts`'s help-launch detector — both must
- * accept experimental agents so a help session can spawn under them, even
- * though the picker (driven by `getAssistantSupportedAgentIds`) keeps them
- * hidden until promoted.
+ * IDs of agents (built-in and user-defined) whose assistant wiring is
+ * structurally complete at any tier (`"stable"` or `"experimental"`). Used
+ * by `HelpSessionService`'s provision validator and `lifecycle.ts`'s
+ * help-launch detector — both must accept experimental agents so a help
+ * session can spawn under them, even though the picker (driven by
+ * `getAssistantSupportedAgentIds`) keeps them hidden until promoted.
+ *
+ * Built-in agents appear first (in `BUILT_IN_AGENT_IDS` popularity order),
+ * followed by user-defined agents in registration order.
  *
  * Excludes only `supports: false` (structurally ineligible) and
  * `supports: undefined` (not yet wired).
  */
 export function getAssistantWiredAgentIds(): string[] {
-  return BUILT_IN_AGENT_IDS.filter((id) => {
-    const supports = AGENT_REGISTRY[id]?.supports;
-    return supports !== false && supports !== undefined;
-  });
+  const effective = getEffectiveRegistry();
+  const wired = new Set<string>();
+  for (const id of BUILT_IN_AGENT_IDS) {
+    const supports = effective[id]?.supports;
+    if (supports !== false && supports !== undefined) {
+      wired.add(id);
+    }
+  }
+  for (const id of Object.keys(effective)) {
+    if (wired.has(id)) continue;
+    const supports = effective[id]?.supports;
+    if (supports !== false && supports !== undefined) {
+      wired.add(id);
+    }
+  }
+  return [...wired];
 }
 
 export function getAgentDisplayTitle(agentId: string, modelId?: string): string {
@@ -677,6 +694,7 @@ export function getAgentPreset(agentId: string, presetId?: string): AgentPreset 
 }
 
 export function setAgentPresets(agentId: string, presets: AgentPreset[]): void {
+  if (!isBuiltInAgentId(agentId)) return;
   const config = AGENT_REGISTRY[agentId];
   if (config) {
     (config as { presets?: AgentPreset[] }).presets = presets;

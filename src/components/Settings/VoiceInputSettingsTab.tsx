@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Mic,
   Eye,
@@ -31,7 +31,6 @@ import { CORE_CORRECTION_PROMPT } from "@shared/config/voiceCorrection";
 import type {
   VoiceInputSettings,
   MicPermissionStatus,
-  VoiceTranscriptionModel,
   VoiceCorrectionModel,
   VoiceParagraphingStrategy,
 } from "@shared/types";
@@ -66,30 +65,12 @@ const CORRECTION_MODELS: {
   },
 ];
 
-const TRANSCRIPTION_MODELS: {
-  value: VoiceTranscriptionModel;
-  label: string;
-  description: string;
-}[] = [
-  {
-    value: "nova-3",
-    label: "Nova-3",
-    description: "Latest · best accuracy · $0.0077/min",
-  },
-  {
-    value: "nova-2",
-    label: "Nova-2",
-    description: "Stable fallback · $0.0043/min",
-  },
-];
-
 const DEFAULT_SETTINGS: VoiceInputSettings = {
   enabled: false,
-  deepgramApiKey: "",
-  correctionApiKey: "",
+  openaiApiKey: "",
   language: "en",
   customDictionary: [],
-  transcriptionModel: "nova-3",
+  transcriptionModel: "gpt-realtime-whisper",
   correctionEnabled: false,
   correctionModel: "gpt-5-mini",
   correctionCustomInstructions: "",
@@ -154,7 +135,7 @@ export function VoiceInputSettingsTab() {
     });
   };
 
-  const handleRequestMicPermission = useCallback(async () => {
+  const handleRequestMicPermission = async () => {
     setIsRequestingMic(true);
     try {
       await window.electron?.voiceInput?.requestMicPermission();
@@ -165,16 +146,16 @@ export function VoiceInputSettingsTab() {
     } finally {
       setIsRequestingMic(false);
     }
-  }, []);
+  };
 
-  const handleOpenMicSettings = useCallback(() => {
+  const handleOpenMicSettings = () => {
     window.electron?.voiceInput?.openMicSettings();
-  }, []);
+  };
 
-  const handleRefreshMicPermission = useCallback(async () => {
+  const handleRefreshMicPermission = async () => {
     const status = await window.electron?.voiceInput?.checkMicPermission();
     if (status) setMicPermission(status);
-  }, []);
+  };
 
   const addDictionaryWord = () => {
     const word = newDictionaryWord.trim();
@@ -214,7 +195,7 @@ export function VoiceInputSettingsTab() {
       <SettingsSection
         icon={Mic}
         title="Speech-to-Text"
-        description="Real-time transcription via Deepgram Nova. Requires a Deepgram API key and microphone access."
+        description="Real-time transcription. Requires an OpenAI API key and microphone access."
         id="voice-speech-to-text"
       >
         <SettingsSwitchCard
@@ -237,12 +218,12 @@ export function VoiceInputSettingsTab() {
             />
 
             <ApiKeyRow
-              label="Deepgram API Key"
-              value={settings.deepgramApiKey}
-              placeholder="dg_..."
-              onSave={(key) => update({ deepgramApiKey: key })}
+              label="OpenAI API Key"
+              value={settings.openaiApiKey}
+              placeholder="sk-..."
+              onSave={(key) => update({ openaiApiKey: key })}
               onValidate={(key) => window.electron?.voiceInput?.validateApiKey(key)}
-              helpUrl="https://console.deepgram.com/project/api-keys"
+              helpUrl="https://platform.openai.com/api-keys"
               helpLabel="Get API key"
             />
 
@@ -251,17 +232,6 @@ export function VoiceInputSettingsTab() {
               value={settings.language}
               onValueChange={(v) => update({ language: v })}
               options={LANGUAGES.map(({ code, label }) => ({ value: code, label }))}
-            />
-
-            <SettingsSelect
-              label="Transcription Model"
-              value={settings.transcriptionModel}
-              onValueChange={(v) => update({ transcriptionModel: v as VoiceTranscriptionModel })}
-              options={TRANSCRIPTION_MODELS.map(({ value, label, description }) => ({
-                value,
-                label,
-                description,
-              }))}
             />
 
             <ParagraphingStrategyRow
@@ -301,16 +271,6 @@ export function VoiceInputSettingsTab() {
 
           {settings.correctionEnabled && (
             <div className="space-y-4">
-              <ApiKeyRow
-                label="OpenAI API Key"
-                value={settings.correctionApiKey}
-                placeholder="sk-..."
-                onSave={(key) => update({ correctionApiKey: key })}
-                onValidate={(key) => window.electron?.voiceInput?.validateCorrectionApiKey(key)}
-                helpUrl="https://platform.openai.com/api-keys"
-                helpLabel="Get API key"
-              />
-
               <SettingsSelect
                 label="Correction Model"
                 value={settings.correctionModel}
@@ -322,7 +282,7 @@ export function VoiceInputSettingsTab() {
                 }))}
               />
 
-              {settings.correctionApiKey && (
+              {settings.openaiApiKey && (
                 <>
                   <SettingsSwitchCard
                     icon={FileSearch}
@@ -391,7 +351,7 @@ function ApiKeyRow({
     return () => clearTimeout(timer);
   }, [validation]);
 
-  const handleSave = useCallback(async () => {
+  const handleSave = async () => {
     const key = keyInput.trim();
     if (!key) return;
     setValidation("testing");
@@ -410,14 +370,14 @@ function ApiKeyRow({
       setValidation("invalid");
       setValidationError("Failed to validate API key");
     }
-  }, [keyInput, onSave, onValidate]);
+  };
 
-  const handleClear = useCallback(() => {
+  const handleClear = () => {
     onSave("");
     setKeyInput("");
     setValidation("idle");
     setValidationError(null);
-  }, [onSave]);
+  };
 
   return (
     <div className="space-y-2">
@@ -750,7 +710,7 @@ function DictionarySection({
         </div>
       ) : (
         <p className="text-xs text-daintree-text/40 select-text">
-          Domain-specific terms sent to Deepgram to boost recognition accuracy.
+          Domain-specific terms sent to the transcription service to boost recognition accuracy.
         </p>
       )}
     </div>

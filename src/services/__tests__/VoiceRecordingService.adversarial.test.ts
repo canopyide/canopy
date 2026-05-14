@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PendingCorrection, VoiceRecordingTarget } from "@/store/voiceRecordingStore";
+import type { VoiceRecordingTarget } from "@/store/voiceRecordingStore";
 
 type VoiceStatusCallback = (status: string) => void;
 type VoiceErrorCallback = (error: string) => void;
-type CorrectionReplaceCallback = (payload: { correctionId: string; correctedText: string }) => void;
 type VoidCleanup = () => void;
 
 interface MockTrack {
@@ -22,8 +21,6 @@ interface MockPanelBuffer {
   projectId?: string;
   sessionDraftStart: number;
   draftLengthAtSegmentStart: number;
-  pendingCorrections: PendingCorrection[];
-  aiCorrectionSpans: Array<{ id: string; segmentStart: number; text: string }>;
   activeParagraphStart: number;
   transcriptPhase: string;
 }
@@ -50,8 +47,6 @@ function createPanelBuffer(overrides: Partial<MockPanelBuffer> = {}): MockPanelB
     completedSegments: [],
     sessionDraftStart: -1,
     draftLengthAtSegmentStart: -1,
-    pendingCorrections: [],
-    aiCorrectionSpans: [],
     activeParagraphStart: -1,
     transcriptPhase: "idle",
     ...overrides,
@@ -107,15 +102,6 @@ const runtime = vi.hoisted(() => ({
     setElapsedSeconds: vi.fn<(seconds: number) => void>(),
     appendDelta: vi.fn<(delta: string) => void>(),
     completeSegment: vi.fn<(text: string) => void>(),
-    resolvePendingCorrection: vi.fn<(panelId: string, correctionId: string) => void>(),
-    addPendingCorrection:
-      vi.fn<
-        (panelId: string, correctionId: string, segmentStart: number, rawText: string) => void
-      >(),
-    updateAICorrectionSpan: vi.fn(),
-    rebasePendingCorrections: vi.fn(),
-    rebaseAICorrectionSpans: vi.fn(),
-    clearAICorrectionSpans: vi.fn(),
     setDraftLengthAtSegmentStart: vi.fn<(panelId: string, length: number) => void>(),
     setSessionDraftStart: vi.fn<(panelId: string, length: number) => void>(),
     setActiveParagraphStart: vi.fn<(panelId: string, length: number) => void>(),
@@ -128,7 +114,6 @@ const runtime = vi.hoisted(() => ({
     appendVoiceText: vi.fn<(panelId: string, value: string, projectId?: string) => void>(),
     bumpVoiceDraftRevision: vi.fn<() => void>(),
   },
-  correctionReplaceListeners: new Set<CorrectionReplaceCallback>(),
   statusListeners: new Set<VoiceStatusCallback>(),
   errorListeners: new Set<VoiceErrorCallback>(),
   rafCallbacks: new Map<number, FrameRequestCallback>(),
@@ -154,8 +139,7 @@ const runtime = vi.hoisted(() => ({
     getSettings: vi.fn<
       () => Promise<{
         enabled: boolean;
-        deepgramApiKey: string;
-        correctionApiKey: string;
+        openaiApiKey: string;
         correctionEnabled: boolean;
       }>
     >(),
@@ -189,7 +173,6 @@ function resetRuntime(): void {
   runtime.voiceState.isConfigured = false;
   Object.values(runtime.voiceFns).forEach((fn) => fn.mockReset());
   Object.values(runtime.terminalInputFns).forEach((fn) => fn.mockReset());
-  runtime.correctionReplaceListeners.clear();
   runtime.statusListeners.clear();
   runtime.errorListeners.clear();
   runtime.rafCallbacks.clear();
@@ -231,12 +214,6 @@ function resetRuntime(): void {
   runtime.voiceFns.setElapsedSeconds.mockImplementation(() => undefined);
   runtime.voiceFns.appendDelta.mockImplementation(() => undefined);
   runtime.voiceFns.completeSegment.mockImplementation(() => undefined);
-  runtime.voiceFns.resolvePendingCorrection.mockImplementation(() => undefined);
-  runtime.voiceFns.addPendingCorrection.mockImplementation(() => undefined);
-  runtime.voiceFns.updateAICorrectionSpan.mockImplementation(() => undefined);
-  runtime.voiceFns.rebasePendingCorrections.mockImplementation(() => undefined);
-  runtime.voiceFns.rebaseAICorrectionSpans.mockImplementation(() => undefined);
-  runtime.voiceFns.clearAICorrectionSpans.mockImplementation(() => undefined);
   runtime.voiceFns.setDraftLengthAtSegmentStart.mockImplementation((panelId, length) => {
     runtime.voiceState.panelBuffers[panelId] = createPanelBuffer(
       runtime.voiceState.panelBuffers[panelId]
@@ -278,8 +255,7 @@ function resetRuntime(): void {
 
   runtime.voiceInput.getSettings.mockResolvedValue({
     enabled: true,
-    deepgramApiKey: "dg-key",
-    correctionApiKey: "corr-key",
+    openaiApiKey: "sk-key",
     correctionEnabled: true,
   });
   runtime.voiceInput.checkMicPermission.mockImplementation(async () => {
@@ -372,10 +348,6 @@ function setupGlobals(): void {
       voiceInput: {
         onTranscriptionDelta: vi.fn(() => () => {}),
         onTranscriptionComplete: vi.fn(() => () => {}),
-        onCorrectionQueued: vi.fn(() => () => {}),
-        onCorrectionReplace: vi.fn((callback: CorrectionReplaceCallback) =>
-          addListener(runtime.correctionReplaceListeners, callback)
-        ),
         onParagraphBoundary: vi.fn(() => () => {}),
         onFileTokenResolved: vi.fn(() => () => {}),
         onError: vi.fn((callback: VoiceErrorCallback) =>
@@ -491,12 +463,6 @@ function emitError(error: string): void {
   }
 }
 
-function emitCorrectionReplace(payload: { correctionId: string; correctedText: string }): void {
-  for (const listener of runtime.correctionReplaceListeners) {
-    listener(payload);
-  }
-}
-
 describe("VoiceRecordingService adversarial", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -608,29 +574,6 @@ describe("VoiceRecordingService adversarial", () => {
     expect(Number.isFinite(level)).toBe(true);
     expect(level).toBeLessThanOrEqual(1);
     expect(runtime.voiceInput.sendAudioChunk).toHaveBeenCalledTimes(2);
-  });
-
-  it("DESTROY_THEN_LATE_CORRECTION_IGNORED", async () => {
-    runtime.voiceState.activeTarget = {
-      panelId: "panel-1",
-      panelTitle: "Panel One",
-      projectId: "project-1",
-    };
-    runtime.voiceState.panelBuffers["panel-1"] = createPanelBuffer({
-      projectId: "project-1",
-      pendingCorrections: [{ id: "corr-1", segmentStart: 0, rawText: "hello" }],
-      activeParagraphStart: 0,
-    });
-    runtime.drafts["panel-1"] = "hello";
-
-    const { voiceRecordingService } = await import("../VoiceRecordingService");
-    voiceRecordingService.initialize();
-    voiceRecordingService.destroy();
-
-    emitCorrectionReplace({ correctionId: "corr-1", correctedText: "HELLO" });
-
-    expect(runtime.terminalInputFns.setDraftInput).not.toHaveBeenCalled();
-    expect(runtime.voiceFns.resolvePendingCorrection).not.toHaveBeenCalled();
   });
 
   it("STOP_DURING_CONNECTING_IGNORES_RACE", async () => {

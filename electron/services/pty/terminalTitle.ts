@@ -1,4 +1,4 @@
-import { AGENT_REGISTRY } from "../../../shared/config/agentRegistry.js";
+import { getEffectiveAgentConfig } from "../../../shared/config/agentRegistry.js";
 import type { TerminalInfo } from "./types.js";
 
 /**
@@ -29,6 +29,6 @@ export function computeDefaultTitle(terminal: TerminalInfo): string {
     terminal.detectedAgentId ??
     (terminal.agentState === "exited" || terminal.isExited ? undefined : terminal.launchAgentId);
   if (!chromeId) return "Terminal";
-  const config = AGENT_REGISTRY[chromeId];
+  const config = getEffectiveAgentConfig(chromeId);
   return config?.name ?? String(chromeId);
 }

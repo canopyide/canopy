@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 let nextWebContentsId = 100;
 let nextOsProcessId = 1000;
@@ -119,8 +119,14 @@ vi.mock("../rendererConsoleCapture.js", () => ({
   detachRendererConsoleCapture: vi.fn(),
 }));
 
+vi.mock("../../utils/webContentsLifecycle.js", () => ({
+  freezeWebContents: vi.fn().mockResolvedValue(undefined),
+  unfreezeWebContents: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../../utils/logger.js", () => ({
   logInfo: vi.fn(),
+  logWarn: vi.fn(),
   createLogger: vi.fn(() => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -170,6 +176,7 @@ describe("ProjectViewManager — eviction safety", () => {
     win = createMockWindow();
     manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
     });
   });
@@ -213,6 +220,7 @@ describe("ProjectViewManager — eviction safety", () => {
     // Create a manager with cachedProjectViews: 2
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -245,6 +253,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("skips LRU candidate when its project has an active agent", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -277,6 +286,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("falls back to evicting an active-agent view when all candidates are protected", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -309,6 +319,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("evicts LRU-ordered active-agent views when all candidates are protected", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
     });
 
@@ -348,6 +359,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("evicts the largest-privateBytes cached view first, not the LRU one", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -379,6 +391,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("falls back to LRU when no candidate has measured memory", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -403,6 +416,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("missing-metric views sort below measured ones (LRU as the deeper fallback)", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -430,6 +444,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("active-agent views are still evicted last regardless of memory rank", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -465,6 +480,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("logs memoryKb in projectview.eviction when measured", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -489,6 +505,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("falls back to LRU when app.getAppMetrics() throws", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -514,6 +531,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("evicts in descending privateBytes order when limit shrinks past multiple views", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 4,
     });
 
@@ -550,6 +568,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("calls forgetBlinkSample with the evicted webContents id", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -566,6 +585,7 @@ describe("ProjectViewManager — eviction safety", () => {
   it("calls forgetEluSample with the evicted webContents id", async () => {
     const managerWithLimit = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -597,6 +617,7 @@ describe("ProjectViewManager — telemetry", () => {
   it("emits projectview.eviction with reason=lru when switch overflows the cache", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -628,6 +649,7 @@ describe("ProjectViewManager — telemetry", () => {
   it("emits projectview.eviction with reason=limit-change when setCachedViewLimit shrinks the cache", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
     });
 
@@ -669,6 +691,7 @@ describe("ProjectViewManager — telemetry", () => {
     //   6. switchTo a   → cache hit on a; evictionTimestamps has {a: t1} → revival fires
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -701,6 +724,7 @@ describe("ProjectViewManager — telemetry", () => {
   it("does not emit projectview.revival a second time for the same project without a new eviction (timestamp is consumed on read)", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -734,6 +758,7 @@ describe("ProjectViewManager — telemetry", () => {
   it("emits projectview.coldstart on successful view creation", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -759,6 +784,7 @@ describe("ProjectViewManager — telemetry", () => {
   it("dispose tears down cleanly after an eviction recorded a timestamp", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -790,6 +816,7 @@ describe("ProjectViewManager — onViewCached (freeze risk mitigation)", () => {
     const onViewCached = vi.fn();
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
       onViewCached,
     });
@@ -814,6 +841,7 @@ describe("ProjectViewManager — onViewCached (freeze risk mitigation)", () => {
     const onViewCached = vi.fn();
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
       onViewCached,
     });
@@ -836,6 +864,7 @@ describe("ProjectViewManager — onViewCached (freeze risk mitigation)", () => {
     const onViewCached = vi.fn();
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
       onViewCached,
     });
@@ -861,6 +890,7 @@ describe("ProjectViewManager — onViewCached (freeze risk mitigation)", () => {
     const onViewCached = vi.fn();
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
       onViewCached,
     });
@@ -877,6 +907,7 @@ describe("ProjectViewManager — onViewCached (freeze risk mitigation)", () => {
     const onViewCached = vi.fn();
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
       onViewCached,
     });
@@ -894,6 +925,7 @@ describe("ProjectViewManager — onViewCached (freeze risk mitigation)", () => {
     const onViewCached = vi.fn();
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
       onViewCached,
     });
@@ -918,6 +950,7 @@ describe("ProjectViewManager — onViewCached (freeze risk mitigation)", () => {
     });
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
       onViewCached,
     });
@@ -937,6 +970,7 @@ describe("ProjectViewManager — onViewCached (freeze risk mitigation)", () => {
   it("manager works without onViewCached configured (option is optional)", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
     });
 
@@ -975,6 +1009,7 @@ describe("ProjectViewManager — listener cleanup", () => {
   it("cleanupEntry removes all 6 persistent webContents listeners and detaches console capture before close()", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -1028,6 +1063,7 @@ describe("ProjectViewManager — listener cleanup", () => {
   it("cleanupHandlers is idempotent — disposing twice does not throw or double-remove", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -1062,6 +1098,7 @@ describe("ProjectViewManager — listener cleanup", () => {
     const onViewReady = vi.fn();
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
       onViewReady,
     });
@@ -1098,6 +1135,7 @@ describe("ProjectViewManager — listener cleanup", () => {
   it("detachRendererConsoleCapture runs before webContents.close()", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 2,
     });
 
@@ -1121,6 +1159,7 @@ describe("ProjectViewManager — listener cleanup", () => {
   it("dispose() removes listeners from every registered view", async () => {
     const manager = new ProjectViewManager(win as never, {
       dirname: "/test",
+      paintGateTimeoutMs: 0,
       cachedProjectViews: 3,
     });
 
@@ -1145,5 +1184,351 @@ describe("ProjectViewManager — listener cleanup", () => {
     }
     expect(detachRendererConsoleCapture).toHaveBeenCalledWith(wcB);
     expect(detachRendererConsoleCapture).toHaveBeenCalledWith(wcC);
+  });
+});
+
+describe("ProjectViewManager — low-memory eviction", () => {
+  let manager: ProjectViewManager;
+  let win: ReturnType<typeof createMockWindow>;
+
+  // Helper for mocking process.getSystemMemoryInfo. Chromium-extended API not in
+  // the default Node typings, so spy via a cast and restore in afterEach.
+  type MemInfo = { free: number; purgeable?: number; total: number };
+  function stubSystemMemoryInfo(info: MemInfo | (() => MemInfo) | "throw" | "missing") {
+    const proc = process as unknown as { getSystemMemoryInfo?: () => MemInfo };
+    if (info === "missing") {
+      Object.defineProperty(proc, "getSystemMemoryInfo", {
+        configurable: true,
+        value: undefined,
+      });
+      return;
+    }
+    const fn =
+      info === "throw"
+        ? () => {
+            throw new Error("boom");
+          }
+        : typeof info === "function"
+          ? info
+          : () => info;
+    Object.defineProperty(proc, "getSystemMemoryInfo", {
+      configurable: true,
+      value: fn,
+    });
+  }
+
+  const originalSystemMemoryInfo = (process as unknown as { getSystemMemoryInfo?: () => MemInfo })
+    .getSystemMemoryInfo;
+
+  beforeEach(() => {
+    nextWebContentsId = 100;
+    nextOsProcessId = 1000;
+    vi.clearAllMocks();
+    mockGetAll.mockReset();
+    mockGetAll.mockReturnValue([]);
+    mockGetAppMetrics.mockReset();
+    mockGetAppMetrics.mockReturnValue([]);
+    win = createMockWindow();
+    manager = new ProjectViewManager(win as never, {
+      dirname: "/test",
+      paintGateTimeoutMs: 0,
+      cachedProjectViews: 3,
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, "getSystemMemoryInfo", {
+      configurable: true,
+      value: originalSystemMemoryInfo,
+    });
+  });
+
+  it("ignores low-memory check when threshold is null (default)", async () => {
+    // Available memory well below any plausible threshold — but with threshold
+    // null, eviction follows normal LRU rules only.
+    stubSystemMemoryInfo({ free: 50 * 1024, purgeable: 0, total: 8 * 1024 * 1024 });
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+
+    // cachedProjectViews=3, so 3 views fit — no eviction.
+    expect(manager.getAllViews().length).toBe(3);
+    expect(wcA.close).not.toHaveBeenCalled();
+  });
+
+  it("does not override when available memory is above threshold", async () => {
+    // 2 GB free is comfortably above the 768 MB threshold.
+    stubSystemMemoryInfo({ free: 2 * 1024 * 1024, purgeable: 0, total: 8 * 1024 * 1024 });
+    manager.setLowMemoryFreeThresholdMb(768);
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+
+    expect(manager.getAllViews().length).toBe(3);
+    expect(wcA.close).not.toHaveBeenCalled();
+  });
+
+  it("clamps effective cap to 1 when available memory drops below threshold", async () => {
+    // 128 MB available, threshold 768 MB → override active.
+    stubSystemMemoryInfo({ free: 128 * 1024, purgeable: 0, total: 8 * 1024 * 1024 });
+    manager.setLowMemoryFreeThresholdMb(768);
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+
+    // Override clamped effectiveMax to 1 — only the active proj-c remains.
+    const remaining = manager.getAllViews().map((v) => v.projectId);
+    expect(remaining).toEqual(["proj-c"]);
+    expect(wcA.close).toHaveBeenCalled();
+  });
+
+  it("uses free + purgeable on macOS so healthy systems do not trigger override", async () => {
+    // Mimics a healthy mac: only ~50 MB literal "free" but 2 GB held as purgeable.
+    // Without the purgeable adjustment, this would falsely trip every project switch.
+    stubSystemMemoryInfo({
+      free: 50 * 1024,
+      purgeable: 2 * 1024 * 1024,
+      total: 8 * 1024 * 1024,
+    });
+    manager.setLowMemoryFreeThresholdMb(768);
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+
+    // 50 + 2*1024*1024 KB ≈ 2050 MB > 768 → no override.
+    expect(manager.getAllViews().length).toBe(3);
+    expect(wcA.close).not.toHaveBeenCalled();
+  });
+
+  it("does not mutate maxCachedViews — user limit returns when pressure subsides", async () => {
+    stubSystemMemoryInfo({ free: 128 * 1024, purgeable: 0, total: 8 * 1024 * 1024 });
+    manager.setLowMemoryFreeThresholdMb(768);
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+    expect(manager.getAllViews().length).toBe(1);
+
+    // Pressure subsides
+    stubSystemMemoryInfo({ free: 4 * 1024 * 1024, purgeable: 0, total: 8 * 1024 * 1024 });
+
+    // Subsequent switches should now respect the original cap of 3
+    await manager.switchTo("proj-d", "/path/d");
+    await manager.switchTo("proj-e", "/path/e");
+    await manager.switchTo("proj-f", "/path/f");
+    expect(manager.getAllViews().length).toBe(3);
+  });
+
+  it("logs reason 'pressure' with memoryAvailableMb when override is active", async () => {
+    stubSystemMemoryInfo({ free: 256 * 1024, purgeable: 0, total: 8 * 1024 * 1024 });
+    manager.setLowMemoryFreeThresholdMb(768);
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+
+    expect(vi.mocked(logInfo)).toHaveBeenCalledWith(
+      "projectview.pressure-override",
+      expect.objectContaining({
+        availableMb: 256,
+        thresholdMb: 768,
+        configuredMax: 3,
+        effectiveMax: 1,
+      })
+    );
+    expect(vi.mocked(logInfo)).toHaveBeenCalledWith(
+      "projectview.eviction",
+      expect.objectContaining({
+        projectId: "proj-a",
+        reason: "pressure",
+        memoryAvailableMb: 256,
+      })
+    );
+  });
+
+  it("falls back to normal LRU behavior when getSystemMemoryInfo is missing", async () => {
+    stubSystemMemoryInfo("missing");
+    manager.setLowMemoryFreeThresholdMb(768);
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+
+    // Threshold set but API missing → no override, normal LRU keeps 3 views.
+    expect(manager.getAllViews().length).toBe(3);
+    expect(wcA.close).not.toHaveBeenCalled();
+  });
+
+  it("performs normal LRU eviction when API is missing but cache is over the user cap", async () => {
+    stubSystemMemoryInfo("missing");
+    const managerWithLimit = new ProjectViewManager(win as never, {
+      dirname: "/test",
+      cachedProjectViews: 2,
+    });
+    managerWithLimit.setLowMemoryFreeThresholdMb(768);
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    managerWithLimit.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await managerWithLimit.switchTo("proj-b", "/path/b");
+    await managerWithLimit.switchTo("proj-c", "/path/c");
+
+    // 3 views, cap 2, API missing → normal LRU evicts proj-a with reason "lru".
+    expect(managerWithLimit.getAllViews().length).toBe(2);
+    expect(wcA.close).toHaveBeenCalled();
+    expect(vi.mocked(logInfo)).toHaveBeenCalledWith(
+      "projectview.eviction",
+      expect.objectContaining({ projectId: "proj-a", reason: "lru" })
+    );
+  });
+
+  it("falls back to normal LRU behavior when getSystemMemoryInfo throws", async () => {
+    stubSystemMemoryInfo("throw");
+    manager.setLowMemoryFreeThresholdMb(768);
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+
+    expect(manager.getAllViews().length).toBe(3);
+    expect(wcA.close).not.toHaveBeenCalled();
+  });
+
+  it("treats availableMb === threshold as NOT under pressure (strict <)", async () => {
+    // Exactly 768 MB available, threshold 768 → no override.
+    stubSystemMemoryInfo({ free: 768 * 1024, purgeable: 0, total: 8 * 1024 * 1024 });
+    manager.setLowMemoryFreeThresholdMb(768);
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+
+    expect(manager.getAllViews().length).toBe(3);
+    expect(wcA.close).not.toHaveBeenCalled();
+  });
+
+  it("treats availableMb just below threshold as under pressure", async () => {
+    // 767.x MB available — barely below the 768 threshold → override active.
+    // 786431 KB / 1024 = 767.999 MB, which is < 768.
+    stubSystemMemoryInfo({ free: 786_431, purgeable: 0, total: 8 * 1024 * 1024 });
+    manager.setLowMemoryFreeThresholdMb(768);
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+
+    expect(manager.getAllViews().length).toBe(1);
+    expect(wcA.close).toHaveBeenCalled();
+  });
+
+  it("never evicts the active view under pressure", async () => {
+    stubSystemMemoryInfo({ free: 64 * 1024, purgeable: 0, total: 8 * 1024 * 1024 });
+    manager.setLowMemoryFreeThresholdMb(768);
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+
+    // Active view (proj-c) survives even under severe pressure.
+    const remaining = manager.getAllViews().map((v) => v.projectId);
+    expect(remaining).toEqual(["proj-c"]);
+    expect(manager.getActiveProjectId()).toBe("proj-c");
+  });
+
+  it("invokes onViewEvicted for every view evicted under pressure", async () => {
+    const onViewEvicted = vi.fn<(id: number) => void>();
+    const pressureManager = new ProjectViewManager(win as never, {
+      dirname: "/test",
+      cachedProjectViews: 4,
+      onViewEvicted,
+    });
+    stubSystemMemoryInfo({ free: 64 * 1024, purgeable: 0, total: 8 * 1024 * 1024 });
+    pressureManager.setLowMemoryFreeThresholdMb(768);
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    pressureManager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await pressureManager.switchTo("proj-b", "/path/b");
+    await pressureManager.switchTo("proj-c", "/path/c");
+    await pressureManager.switchTo("proj-d", "/path/d");
+
+    // 4 views, override clamps to 1 → 3 evictions, callback fires for each.
+    expect(pressureManager.getAllViews().length).toBe(1);
+    expect(onViewEvicted).toHaveBeenCalledTimes(3);
+  });
+
+  it("setLowMemoryFreeThresholdMb(null) clears a previously set threshold", async () => {
+    stubSystemMemoryInfo({ free: 128 * 1024, purgeable: 0, total: 8 * 1024 * 1024 });
+    manager.setLowMemoryFreeThresholdMb(768);
+    manager.setLowMemoryFreeThresholdMb(null);
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+
+    // Threshold cleared — normal LRU applies, all 3 views fit.
+    expect(manager.getAllViews().length).toBe(3);
+    expect(wcA.close).not.toHaveBeenCalled();
+  });
+
+  it("setLowMemoryFreeThresholdMb ignores non-finite and non-positive values", async () => {
+    stubSystemMemoryInfo({ free: 128 * 1024, purgeable: 0, total: 8 * 1024 * 1024 });
+    manager.setLowMemoryFreeThresholdMb(768);
+    manager.setLowMemoryFreeThresholdMb(NaN);
+    manager.setLowMemoryFreeThresholdMb(-10);
+    manager.setLowMemoryFreeThresholdMb(0);
+
+    const wcA = createMockWebContents();
+    const viewA = { webContents: wcA, setBounds: vi.fn() };
+    manager.registerInitialView(viewA as never, "proj-a", "/path/a");
+
+    await manager.switchTo("proj-b", "/path/b");
+    await manager.switchTo("proj-c", "/path/c");
+
+    // All bad values normalize to null, so override is disabled.
+    expect(manager.getAllViews().length).toBe(3);
+    expect(wcA.close).not.toHaveBeenCalled();
   });
 });

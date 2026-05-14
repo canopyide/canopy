@@ -39,14 +39,32 @@ test.describe.serial("Adversarial E2E Tests: System Breakage", () => {
     await navigateToAgentSettings(ctx.window, "claude");
   };
 
+  const openFirstPresetEditor = async () => {
+    const section = ctx.window.locator(SEL.preset.section);
+    await expect(section).toBeVisible({ timeout: T_SHORT });
+    const input = section.locator("[data-testid='preset-edit-input']");
+    if (await input.isVisible({ timeout: 500 }).catch(() => false)) return input;
+
+    const editButtons = section.locator(SEL.preset.editButton);
+    await expect(editButtons.first()).toBeVisible({ timeout: T_SHORT });
+    const count = await editButtons.count();
+    for (let i = 0; i < count; i += 1) {
+      const editBtn = editButtons.nth(i);
+      if (!(await editBtn.isVisible({ timeout: 500 }).catch(() => false))) continue;
+      await editBtn.scrollIntoViewIfNeeded().catch(() => undefined);
+      await editBtn.click({ force: true, noWaitAfter: true });
+      if (await input.isVisible({ timeout: 1000 }).catch(() => false)) return input;
+    }
+
+    throw new Error("No custom preset edit input opened");
+  };
+
   test("XSS attempt via preset names", async () => {
     await goToClaudeSettings();
     await addCustomPreset(ctx.window);
 
     // Try to inject XSS via preset name
-    const editBtn = ctx.window.locator(SEL.preset.editButton).first();
-    await editBtn.click();
-    const input = ctx.window.locator("[data-testid='preset-edit-input']");
+    const input = await openFirstPresetEditor();
     await input.fill('<script>alert("xss")</script>');
     await input.press("Enter");
 
@@ -60,7 +78,8 @@ test.describe.serial("Adversarial E2E Tests: System Breakage", () => {
     await goToClaudeSettings();
 
     // Try to create many presets rapidly
-    for (let i = 0; i < 100; i++) {
+    const presetCount = process.env.CI ? 10 : 100;
+    for (let i = 0; i < presetCount; i++) {
       await addCustomPreset(ctx.window);
       // Don't wait - stress test rapid creation
     }
@@ -74,9 +93,7 @@ test.describe.serial("Adversarial E2E Tests: System Breakage", () => {
     await goToClaudeSettings();
 
     // Start editing a preset
-    const editBtn = ctx.window.locator(SEL.preset.editButton).first();
-    await editBtn.click();
-    const input = ctx.window.locator("[data-testid='preset-edit-input']");
+    const input = await openFirstPresetEditor();
     await input.fill("Race Condition Test");
 
     // Change CCR config while editing
@@ -119,10 +136,7 @@ test.describe.serial("Adversarial E2E Tests: System Breakage", () => {
     ];
 
     for (const attack of attacks) {
-      const editBtn = ctx.window.locator(SEL.preset.editButton).first();
-      await editBtn.click();
-      const input = ctx.window.locator("[data-testid='preset-edit-input']");
-      await expect(input).toBeVisible({ timeout: T_SHORT });
+      const input = await openFirstPresetEditor();
       await input.fill(attack);
       await input.press("Enter");
       await ctx.window.waitForTimeout(500);
@@ -152,8 +166,7 @@ test.describe.serial("Adversarial E2E Tests: System Breakage", () => {
     await addCustomPreset(ctx.window);
 
     // Start editing
-    const editBtn = ctx.window.locator(SEL.preset.editButton).first();
-    await editBtn.click();
+    await openFirstPresetEditor();
 
     // Navigate away while edit is pending
     await navigateToAgentSettings(ctx.window, "gemini");

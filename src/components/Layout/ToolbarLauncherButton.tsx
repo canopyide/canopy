@@ -1,4 +1,4 @@
-import { memo, useCallback } from "react";
+import { useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { SquareTerminal, Globe } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -39,7 +39,7 @@ interface ToolbarLauncherButtonProps {
   "data-toolbar-item"?: string;
 }
 
-export const ToolbarLauncherButton = memo(function ToolbarLauncherButton({
+export function ToolbarLauncherButton({
   type,
   onLaunchAgent,
   "data-toolbar-item": dataToolbarItem,
@@ -77,4 +77,4 @@ export const ToolbarLauncherButton = memo(function ToolbarLauncherButton({
       </TooltipContent>
     </Tooltip>
   );
-});
+}

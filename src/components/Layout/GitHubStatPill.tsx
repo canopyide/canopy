@@ -63,7 +63,7 @@ export function GitHubStatPill({
             onPointerLeave={onPointerLeave}
             onClick={onClick}
             className={cn(
-              "h-full gap-2 rounded-none px-3 text-daintree-text transition-opacity hover:bg-[var(--toolbar-stats-hover-bg,var(--theme-overlay-hover))] hover:text-text-primary",
+              "h-full flex-1 justify-center gap-2 rounded-none px-2 text-daintree-text transition-opacity hover:bg-[var(--toolbar-stats-hover-bg,var(--theme-overlay-hover))] hover:text-text-primary",
               activityChip != null && "relative",
               className,
               open &&
@@ -78,7 +78,7 @@ export function GitHubStatPill({
             <span
               key={animKey}
               className={cn(
-                "text-xs font-medium tabular-nums",
+                "min-w-[2ch] text-center text-xs font-medium tabular-nums",
                 animKey > 0 && "animate-badge-bump"
               )}
             >

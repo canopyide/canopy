@@ -82,7 +82,12 @@ export function registerAiHandlers(deps: HandlerDependencies): () => void {
       ...(currentSettings.agents?.[safeAgentType] ?? {}),
       ...settings,
     };
-    // Strip retired legacy keys — never persist them back
+    // Strip retired legacy keys — never persist them back. Object spread of
+    // `{ pinned: undefined }` keeps the key on `merged`, but electron-store
+    // serializes via JSON.stringify which drops `undefined` values, so the
+    // field is removed from the persisted record. This is the mechanism the
+    // renderer migration relies on to clear eagerly-seeded pin values
+    // (see #7673 + migrateAgentSettings in src/store/agentSettingsStore.ts).
     const { selected: _s, enabled: _e, ...safeEntry } = merged as Record<string, unknown>;
     const updatedAgents = {
       ...currentSettings.agents,
@@ -99,6 +104,28 @@ export function registerAiHandlers(deps: HandlerDependencies): () => void {
     };
   };
   handlers.push(typedHandle(CHANNELS.AGENT_SETTINGS_SET, handleAgentSettingsSet));
+
+  // Stamps `settingsVersion` on the persisted store. The renderer migration
+  // (see migrateAgentSettings in agentSettingsStore.ts, #7673) calls this only
+  // after every per-agent pin clear has succeeded — stamping inside the
+  // generic AGENT_SETTINGS_SET handler would race with concurrent user pin
+  // toggles, prematurely marking the store migrated while stale pins remained.
+  const handleAgentSettingsStampVersion = async (version: unknown) => {
+    if (typeof version !== "number" || !Number.isInteger(version) || version < 1) {
+      throw new Error("Invalid settingsVersion");
+    }
+    const currentRaw = store.get("agentSettings", DEFAULT_AGENT_SETTINGS);
+    const current = (isPlainRecord(currentRaw) ? currentRaw : {}) as Record<string, unknown>;
+    const currentVersion = current.settingsVersion;
+    if (typeof currentVersion === "number" && currentVersion >= version) {
+      return current;
+    }
+    store.set("agentSettings.settingsVersion", version);
+    return { ...current, settingsVersion: version };
+  };
+  handlers.push(
+    typedHandle(CHANNELS.AGENT_SETTINGS_STAMP_VERSION, handleAgentSettingsStampVersion)
+  );
 
   const handleAgentSettingsReset = async (agentType?: unknown) => {
     if (agentType !== undefined) {

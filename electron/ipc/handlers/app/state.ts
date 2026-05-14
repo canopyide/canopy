@@ -18,8 +18,11 @@ import { typedHandle, typedHandleWithContext } from "../../utils.js";
 import { signalFirstInteractive } from "../../../window/deferredInitQueue.js";
 import { markPerformance } from "../../../utils/performance.js";
 import { PERF_MARKS } from "../../../../shared/perf/marks.js";
+import { consumePrefetchedHydrateResult } from "../../../services/prefetchHydrateCache.js";
+import { getWindowForWebContents } from "../../../window/webContentsRegistry.js";
+import type { HandlerDependencies } from "../../types.js";
 
-export function registerAppStateHandlers(): () => void {
+export function registerAppStateHandlers(deps?: HandlerDependencies): () => void {
   const handlers: Array<() => void> = [];
 
   const handleAppHydrate = async () => {
@@ -31,6 +34,26 @@ export function registerAppStateHandlers(): () => void {
       panelFilter !== null &&
       Array.isArray(globalAppState.terminals) &&
       globalAppState.terminals.length > 0;
+
+    // Hover-prefetch fast path: when a project switcher hover (or any other
+    // pre-populated path) has primed the cache for this project, short-circuit
+    // the disk read. Only safe when there's no in-flight crash recovery filter
+    // and we aren't booting in safe mode — those scenarios layer constraints
+    // (`panelFilter`, dropped terminals) that the prefetch built without.
+    const cacheGuard = getCrashLoopGuard();
+    const cacheInSafeMode = cacheGuard.isSafeMode();
+    if (projectId && panelFilter === null && !cacheInSafeMode) {
+      const cached = consumePrefetchedHydrateResult(projectId);
+      if (cached) {
+        return {
+          ...cached,
+          skippedPanelCount: 0,
+          crashCount: cacheGuard.getCrashCount(),
+          lastCrashAt: cacheGuard.getLastCrashTimestamp(),
+          settingsRecovery: consumePendingSettingsRecovery(),
+        };
+      }
+    }
 
     // First, try to get terminals from per-project state (new model)
     // Fall back to global appState.terminals for migration
@@ -536,6 +559,21 @@ export function registerAppStateHandlers(): () => void {
         webContentsId: ctx.webContentsId,
       });
       signalFirstInteractive(ctx.webContentsId);
+    })
+  );
+
+  handlers.push(
+    typedHandleWithContext(CHANNELS.APP_VIEW_PAINTED, async (ctx) => {
+      // Route to the ProjectViewManager that owns the sending view so its
+      // pending paint gate can release. Mirrors the multi-window resolution
+      // pattern used by `project:switch`: prefer the per-window registry
+      // entry, fall back to the global PVM ref for single-window setups.
+      const senderWindow = getWindowForWebContents(ctx.event.sender);
+      const pvm =
+        (senderWindow &&
+          deps?.windowRegistry?.getByWindowId(senderWindow.id)?.services?.projectViewManager) ??
+        deps?.projectViewManager;
+      pvm?.signalViewPainted(ctx.webContentsId);
     })
   );
 

@@ -9,9 +9,9 @@
  * The phase of the voice recording session as reported over IPC.
  *
  * - idle: No active session.
- * - connecting: WebSocket to Deepgram is being established.
+ * - connecting: WebSocket to OpenAI Realtime is being established.
  * - recording: Connected and receiving audio; live transcription in progress.
- * - finishing: Session stop requested; draining final transcription from Deepgram.
+ * - finishing: Session stop requested; draining final transcription from OpenAI.
  * - error: Session terminated due to a connection or transcription error.
  */
 export type VoiceInputStatus = "idle" | "connecting" | "recording" | "finishing" | "error";
@@ -23,16 +23,10 @@ export type VoiceInputStatus = "idle" | "connecting" | "recording" | "finishing"
  *
  * - idle: No active transcription in this panel buffer.
  * - interim: A live segment is in flight; liveText is non-empty.
- * - utterance_final: Deepgram finalized the utterance; liveText cleared, no pending corrections.
- * - paragraph_pending_ai: The paragraph was flushed and is awaiting AI correction.
- * - stable: All corrections resolved; ready for the next utterance.
+ * - utterance_final: A final transcript segment was accepted; liveText cleared.
+ * - stable: Ready for the next utterance.
  */
-export type VoiceTranscriptPhase =
-  | "idle"
-  | "interim"
-  | "utterance_final"
-  | "paragraph_pending_ai"
-  | "stable";
+export type VoiceTranscriptPhase = "idle" | "interim" | "utterance_final" | "stable";
 
 /**
  * Returns true when the voice session is in an active phase (i.e. not idle or error).

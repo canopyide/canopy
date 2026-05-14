@@ -53,9 +53,19 @@ jobs:
         run: npm run check
 
   unit-tests:
-    name: Unit Tests
-    runs-on: ubuntu-22.04
+    name: Unit Tests (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            name: Linux
+          - os: macos-14
+            name: macOS
+          - os: windows-latest
+            name: Windows
     steps:
       - uses: actions/checkout@v6
 
@@ -65,11 +75,19 @@ jobs:
           cache: npm
 
       - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y libarchive-tools
 
+      - name: Install dependencies (Windows)
+        if: matrix.os == 'windows-latest'
+        run: npm ci
+        env:
+          npm_config_msvs_version: "2022"
+
       - name: Install dependencies
+        if: matrix.os != 'windows-latest'
         run: npm ci
 
       - name: Test
@@ -80,11 +98,15 @@ jobs:
     uses: ./.github/workflows/e2e.yml
     with:
       suite: core
-      platform: non-windows
+      platform: all
 
   # Fan out the six full-* domain buckets as a matrix of reusable-workflow
   # calls. GitHub Actions waits on every matrix entry before unblocking
   # `build-daintree`, so a single `needs: [..., e2e-full-gate]` is enough.
+  #
+  # Releases gate on all three OSes here so Windows-only regressions can't
+  # ship. The nightly job validates the same surface daily (see nightly.yml)
+  # so this isn't a cold path — Windows full has been green in nightly.
   e2e-full-gate:
     needs: [checks, unit-tests]
     strategy:
@@ -100,14 +122,14 @@ jobs:
     uses: ./.github/workflows/e2e.yml
     with:
       suite: ${{ matrix.suite }}
-      platform: non-windows
+      platform: all
 
   e2e-online-gate:
     needs: [checks, unit-tests]
     uses: ./.github/workflows/e2e.yml
     with:
       suite: online
-      platform: non-windows
+      platform: all
     secrets: inherit
 
   build-daintree:
@@ -218,7 +240,7 @@ jobs:
           npx electron-builder --config electron-builder.config.cjs --publish "$PUBLISH_FLAG" -c.buildDependenciesFromSource=true $EXTRA_ARGS
 
       - name: Verify macOS notarization staple
-        if: startsWith(matrix.os, 'macos') && inputs.skip_notarization != 'true'
+        if: startsWith(matrix.os, 'macos') && inputs.skip_notarization != true
         shell: bash
         run: |
           set -euo pipefail

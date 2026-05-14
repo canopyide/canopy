@@ -10,16 +10,17 @@ import { ActivityLight } from "../ActivityLight";
 import { LiveTimeAgo } from "../LiveTimeAgo";
 import { WorktreeDetails } from "../WorktreeDetails";
 import {
+  Activity,
+  AlertTriangle,
   ChevronRight,
   GitCommitHorizontal,
+  Plug,
   Play,
   Square,
-  Plug,
-  Activity,
   Trash2,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
-import type { ComputedSubtitle } from "./hooks/useWorktreeStatus";
+import type { ComputedSubtitle, WorktreeReviewState } from "./hooks/useWorktreeStatus";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   ContextMenu,
@@ -35,6 +36,7 @@ export interface WorktreeDetailsSectionProps {
   isExpanded: boolean;
   hasChanges: boolean;
   computedSubtitle: ComputedSubtitle;
+  reviewState?: WorktreeReviewState;
   effectiveNote?: string;
   effectiveSummary?: string | null;
   worktreeErrors: ErrorRecord[];
@@ -73,6 +75,7 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
     onDismissError,
     onRetryError,
     onOpenReviewHub,
+    reviewState,
     isLifecycleRunning,
     lifecycleLabel,
 
@@ -117,6 +120,10 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
       { duration: DURATION_200 / 1000, ease: [0.4, 0, 0.2, 1] }
     );
   }, [changedFileCount, prefersReducedMotion, animate, countScope]);
+
+  const isConflicted = reviewState === "conflicted";
+  const showReviewHubButton = !!onOpenReviewHub && hasChanges;
+  const rightButtonGroupShown = showReviewHubButton;
 
   const rsLower = resourceStatus?.toLowerCase();
   const showResourceResume =
@@ -176,9 +183,7 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
             onClick={onToggleExpand}
             className={cn(
               "worktree-section-button relative flex min-w-0 flex-1 items-center justify-between px-3 py-2.5 text-left transition-colors",
-              onOpenReviewHub && hasChanges
-                ? "rounded-l-[var(--radius-lg)]"
-                : "rounded-[var(--radius-lg)]"
+              rightButtonGroupShown ? "rounded-l-[var(--radius-lg)]" : "rounded-[var(--radius-lg)]"
             )}
           >
             <button
@@ -189,7 +194,7 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
               aria-label="Show details"
               className={cn(
                 "absolute inset-0",
-                onOpenReviewHub && hasChanges
+                rightButtonGroupShown
                   ? "rounded-l-[var(--radius-lg)]"
                   : "rounded-[var(--radius-lg)]",
                 "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-[-2px]"
@@ -205,6 +210,11 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
                 !isLifecycleRunning &&
                 worktree.lifecycleStatus?.state !== "success" ? (
                 <span className="text-status-error">{lifecycleLabel}</span>
+              ) : isConflicted ? (
+                <span className="flex items-center gap-1.5 text-status-error">
+                  <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
+                  <span className="truncate">Conflicts need review</span>
+                </span>
               ) : hasChanges && worktree.worktreeChanges ? (
                 <span className="flex items-center gap-1.5 text-text-secondary">
                   <span ref={countScope} className="inline-block">
@@ -349,22 +359,28 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="relative z-10 ml-3 flex shrink-0 items-center gap-1.5 text-xs text-text-muted">
-                  <ActivityLight
-                    lastActivityTimestamp={worktree.lastActivityTimestamp}
-                    className="w-1.5 h-1.5"
-                  />
-                  <LiveTimeAgo timestamp={worktree.lastActivityTimestamp} />
+                  {worktree.lastActivityTimestamp != null ? (
+                    <>
+                      <ActivityLight
+                        lastActivityTimestamp={worktree.lastActivityTimestamp}
+                        className="w-1.5 h-1.5"
+                      />
+                      <LiveTimeAgo timestamp={worktree.lastActivityTimestamp} />
+                    </>
+                  ) : (
+                    <span>No activity</span>
+                  )}
                 </div>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                {worktree.lastActivityTimestamp
+                {worktree.lastActivityTimestamp != null
                   ? `Last activity: ${new Date(worktree.lastActivityTimestamp).toLocaleString()}`
                   : "No recent activity recorded"}
               </TooltipContent>
             </Tooltip>
           </div>
 
-          {onOpenReviewHub && hasChanges && (
+          {showReviewHubButton && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button

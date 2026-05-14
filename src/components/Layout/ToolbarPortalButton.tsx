@@ -1,4 +1,3 @@
-import { memo } from "react";
 import { Button } from "@/components/ui/button";
 import { MessageSquareMore } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -9,7 +8,7 @@ import { usePortalStore } from "@/store";
 
 const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text relative";
 
-export const ToolbarPortalButton = memo(function ToolbarPortalButton({
+export function ToolbarPortalButton({
   "data-toolbar-item": dataToolbarItem,
 }: {
   "data-toolbar-item"?: string;
@@ -46,4 +45,4 @@ export const ToolbarPortalButton = memo(function ToolbarPortalButton({
       </TooltipContent>
     </Tooltip>
   );
-});
+}

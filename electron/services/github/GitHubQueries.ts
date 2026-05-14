@@ -392,6 +392,31 @@ export const GET_ISSUE_QUERY = `
   }
 `;
 
+export const GET_PR_REVIEW_THREADS_QUERY = `
+  query GetPRReviewThreads($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        reviewThreads(first: 100, after: $cursor) {
+          nodes {
+            path
+            isResolved
+            isOutdated
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }
+    }
+    rateLimit {
+      cost
+      remaining
+      resetAt
+    }
+  }
+`;
+
 export const GET_PR_QUERY = `
   query GetPR($owner: String!, $repo: String!, $number: Int!) {
     repository(owner: $owner, name: $repo) {
@@ -444,6 +469,41 @@ export const GET_PR_QUERY = `
   }
 `;
 
+export function buildGitHubSearchQuery(
+  searchText: string | undefined,
+  state: string | undefined,
+  resourceType: "issue" | "pr"
+): string {
+  const parts: string[] = [];
+
+  const defaultState = "open";
+  const effectiveState = state || defaultState;
+
+  if (effectiveState !== "open") {
+    if (resourceType === "pr" && effectiveState === "merged") {
+      parts.push("is:merged");
+    } else if (effectiveState === "closed") {
+      parts.push("is:closed");
+    } else if (effectiveState === "all") {
+      // No state qualifier for "all"
+    }
+  }
+
+  if (searchText?.trim()) {
+    parts.push(searchText.trim());
+  }
+
+  if (effectiveState === "open" && !searchText?.trim()) {
+    return "";
+  }
+
+  if (effectiveState === "open" && searchText?.trim()) {
+    parts.unshift("is:open");
+  }
+
+  return parts.join(" ");
+}
+
 function escapeGraphQLString(value: string): string {
   return JSON.stringify(value).slice(1, -1);
 }
@@ -495,6 +555,7 @@ export function buildBatchPRQuery(
                       author { login avatarUrl }
                       assignees(first: 10) { nodes { login avatarUrl } }
                       labels(first: 10) { nodes { name color } }
+                      commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
                     }
                   }
                 }
@@ -512,6 +573,7 @@ export function buildBatchPRQuery(
                       author { login avatarUrl }
                       assignees(first: 10) { nodes { login avatarUrl } }
                       labels(first: 10) { nodes { name color } }
+                      commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
                     }
                   }
                 }
@@ -541,6 +603,7 @@ export function buildBatchPRQuery(
               author { login avatarUrl }
               assignees(first: 10) { nodes { login avatarUrl } }
               labels(first: 10) { nodes { name color } }
+              commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
             }
           }
         }

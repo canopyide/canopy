@@ -1,7 +1,6 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Copy, RefreshCw } from "lucide-react";
-import { Spinner } from "@/components/ui/Spinner";
 import { agentHelpClient } from "@/clients";
 
 import type { AgentHelpResult } from "@shared/types/ipc/agent";
@@ -35,9 +34,11 @@ export function AgentHelpOutput({
   const loadGenRef = useRef(0);
 
   useEffect(() => {
+    loadGenRef.current += 1;
     setHelpResult(null);
     setError(null);
     setIsCopied(false);
+    setIsLoading(false);
   }, [agentId, availability]);
 
   useEffect(() => {
@@ -50,32 +51,29 @@ export function AgentHelpOutput({
     };
   }, []);
 
-  const loadHelp = useCallback(
-    async (refresh = false) => {
-      const gen = ++loadGenRef.current;
-      setIsLoading(true);
-      setError(null);
+  const loadHelp = async (refresh = false) => {
+    const gen = ++loadGenRef.current;
+    setIsLoading(true);
+    setError(null);
 
-      if (!isAgentInstalled(availability)) {
-        setIsLoading(false);
-        return;
-      }
+    if (!isAgentInstalled(availability)) {
+      setIsLoading(false);
+      return;
+    }
 
-      try {
-        const result = await agentHelpClient.get({ agentId, refresh });
-        if (loadGenRef.current !== gen) return;
-        setHelpResult(result);
-      } catch (err) {
-        if (loadGenRef.current !== gen) return;
-        setError(formatErrorMessage(err, "Failed to load help output"));
-      } finally {
-        if (loadGenRef.current === gen) setIsLoading(false);
-      }
-    },
-    [agentId, availability]
-  );
+    try {
+      const result = await agentHelpClient.get({ agentId, refresh });
+      if (loadGenRef.current !== gen) return;
+      setHelpResult(result);
+    } catch (err) {
+      if (loadGenRef.current !== gen) return;
+      setError(formatErrorMessage(err, "Failed to load help output"));
+    } finally {
+      if (loadGenRef.current === gen) setIsLoading(false);
+    }
+  };
 
-  const handleCopy = useCallback(async () => {
+  const handleCopy = async () => {
     if (!helpResult) return;
 
     const textToCopy = sanitizeErrorText(
@@ -102,7 +100,7 @@ export function AgentHelpOutput({
     } catch (err) {
       logError("Failed to copy to clipboard", err);
     }
-  }, [helpResult]);
+  };
 
   const renderOutput = () => {
     if (!helpResult) return null;
@@ -185,8 +183,14 @@ export function AgentHelpOutput({
       </div>
 
       {isLoading && (
-        <div className="flex items-center justify-center py-8">
-          <Spinner size="lg" className="text-daintree-text/40" />
+        <div className="rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg p-3 animate-pulse-delayed">
+          <div className="space-y-2">
+            <div className="h-3 bg-daintree-border/50 rounded w-3/4" />
+            <div className="h-3 bg-daintree-border/50 rounded w-1/2" />
+            <div className="h-3 bg-daintree-border/50 rounded w-5/6" />
+            <div className="h-3 bg-daintree-border/50 rounded w-2/3" />
+            <div className="h-3 bg-daintree-border/50 rounded w-1/3" />
+          </div>
         </div>
       )}
 

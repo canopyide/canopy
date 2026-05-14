@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } fr
 import { EditorView } from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
 import type { Compartment } from "@codemirror/state";
-import { useVoiceRecordingStore } from "@/store";
 import type { AutocompleteItem } from "../AutocompleteMenu";
 import type { AtFileContext, SlashCommandContext, AtDiffContext } from "../hybridInputParsing";
 
@@ -20,13 +19,6 @@ interface LatestRefShape {
   onSendKey?: (key: string) => void;
   isVoiceActiveForPanel: boolean;
   isExpanded: boolean;
-}
-
-function hasVoiceWorkPending(panelId: string, isVoiceActiveForPanel: boolean): boolean {
-  if (isVoiceActiveForPanel) return true;
-  const buffer = useVoiceRecordingStore.getState().panelBuffers[panelId];
-  if (!buffer) return false;
-  return buffer.pendingCorrections.length > 0 || buffer.transcriptPhase === "paragraph_pending_ai";
 }
 
 interface UseEditorKeymapParams {
@@ -115,7 +107,7 @@ export function useEditorKeymap({
 
       if (latest.disabled) return true;
 
-      if (hasVoiceWorkPending(latest.terminalId, latest.isVoiceActiveForPanel)) {
+      if (latest.isVoiceActiveForPanel) {
         handledEnterRef.current = true;
         setTimeout(() => {
           handledEnterRef.current = false;

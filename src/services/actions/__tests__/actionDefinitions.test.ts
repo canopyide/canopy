@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { BUILT_IN_ACTION_IDS } from "@shared/config/actionIds";
 
 async function createRegistry() {
   (globalThis as any).self = globalThis;
@@ -67,27 +68,12 @@ describe("createActionDefinitions", () => {
     expect(actions.has("github.listIssues")).toBe(true);
   });
 
-  it("registers all ActionId string literals", async () => {
+  it("registers all BUILT_IN_ACTION_IDS entries", async () => {
     const actions = await createRegistry();
-    const fs = await import("node:fs/promises");
 
-    const actionsFileUrl = new URL("../../../../shared/types/actions.ts", import.meta.url);
-    const contents = await fs.readFile(actionsFileUrl, "utf8");
-
-    const start = contents.indexOf("export type BuiltInActionId");
-    expect(start).toBeGreaterThan(-1);
-    const end = contents.indexOf("export type ActionId = BuiltInActionId", start);
-    expect(end).toBeGreaterThan(start);
-    const section = contents.slice(start, end);
-
-    const ids = new Set<string>();
-    const regex = /\|\s*"([^"]+)"/g;
-    for (const match of section.matchAll(regex)) {
-      ids.add(match[1]!);
-    }
-
-    const missing = Array.from(ids)
+    const missing = (BUILT_IN_ACTION_IDS as readonly string[])
       .filter((id) => !actions.has(id as any))
+      .slice()
       .sort();
     expect(missing).toEqual([]);
   });

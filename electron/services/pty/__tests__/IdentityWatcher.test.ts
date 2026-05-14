@@ -557,6 +557,106 @@ describe("IdentityWatcher", () => {
       expect(state.detectionCalls).toHaveLength(0);
     });
 
+    it("clears shell evidence when a real shell prompt returns after stale agent UI text", async () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const { delegate, state } = createFakeDelegate({
+        processDetector: fakeDetector,
+        visibleLines: ["claude", "FAKE_CLAUDE_READY"],
+        cursorLine: "FAKE_CLAUDE_READY",
+        ptyDescendantCount: 1,
+        foreground: { shellPgid: 123, foregroundPgid: 456 },
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("claude");
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(watcher.isFallbackCommitted).toBe(true);
+
+      state.visibleLines = [
+        "Quick safety check: Is this a project you created or one you trust?",
+        "Enter to confirm · Esc to cancel",
+        "FAKE_CLAUDE_EXIT",
+        "user@host daintree % ",
+      ];
+      state.cursorLine = "user@host daintree % ";
+      state.ptyDescendantCount = 0;
+      state.foreground = { shellPgid: 123, foregroundPgid: 123 };
+      await vi.advanceTimersByTimeAsync(600);
+
+      expect(clear).toHaveBeenCalledWith("prompt-return");
+      expect(state.detectionCalls).toHaveLength(0);
+    });
+
+    it("clears shell evidence when POSIX foreground ownership returns to the shell", async () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const { delegate, state } = createFakeDelegate({
+        processDetector: fakeDetector,
+        visibleLines: ["claude", "FAKE_CLAUDE_READY"],
+        cursorLine: "FAKE_CLAUDE_READY",
+        ptyDescendantCount: 1,
+        foreground: { shellPgid: 123, foregroundPgid: 456 },
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("claude");
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(watcher.isFallbackCommitted).toBe(true);
+
+      state.visibleLines = [
+        "Quick safety check: Is this a project you created or one you trust?",
+        " ❯ 1. Yes, I trust this folder",
+        "Enter to confirm · Esc to cancel",
+        "FAKE_CLAUDE_EXIT",
+      ];
+      state.cursorLine = "";
+      state.ptyDescendantCount = 0;
+      state.foreground = { shellPgid: 123, foregroundPgid: 123 };
+      await vi.advanceTimersByTimeAsync(600);
+
+      expect(clear).toHaveBeenCalledWith("prompt-return");
+      expect(state.detectionCalls).toHaveLength(0);
+    });
+
+    it("clears shell evidence on POSIX foreground return even when no prompt text is visible", async () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const { delegate, state } = createFakeDelegate({
+        processDetector: fakeDetector,
+        visibleLines: ["claude", "FAKE_CLAUDE_READY"],
+        cursorLine: "FAKE_CLAUDE_READY",
+        ptyDescendantCount: 1,
+        foreground: { shellPgid: 123, foregroundPgid: 456 },
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("claude");
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(watcher.isFallbackCommitted).toBe(true);
+
+      state.visibleLines = ["FAKE_CLAUDE_EXIT", ""];
+      state.cursorLine = "";
+      state.ptyDescendantCount = 0;
+      state.foreground = { shellPgid: 123, foregroundPgid: 123 };
+      await vi.advanceTimersByTimeAsync(600);
+
+      expect(clear).toHaveBeenCalledWith("prompt-return");
+      expect(state.detectionCalls).toHaveLength(0);
+    });
+
     it("holds agent demotion when a Windows-style prompt is visible but a child process remains active", async () => {
       const inject = vi.fn();
       const clear = vi.fn();
@@ -580,6 +680,35 @@ describe("IdentityWatcher", () => {
       state.visibleLines = ["FAKE_CLAUDE_READY", "> "];
       state.cursorLine = "> ";
       state.ptyDescendantCount = 1;
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(clear).not.toHaveBeenCalledWith("prompt-return");
+      expect(state.detectionCalls).toHaveLength(0);
+    });
+
+    it("holds agent demotion for a bare agent prompt when Windows descendants are missed", async () => {
+      const inject = vi.fn();
+      const clear = vi.fn();
+      const fakeDetector = {
+        injectShellCommandEvidence: inject,
+        clearShellCommandEvidence: clear,
+      } as unknown as ProcessDetector;
+      const { delegate, state } = createFakeDelegate({
+        processDetector: fakeDetector,
+        visibleLines: ["& 'C:\\npm\\prefix\\claude.cmd' --manual", "FAKE_CLAUDE_READY"],
+        cursorLine: "FAKE_CLAUDE_READY",
+        ptyDescendantCount: 0,
+        foreground: null,
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      watcher.onShellSubmit("& 'C:\\npm\\prefix\\claude.cmd' --manual");
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(watcher.isFallbackCommitted).toBe(true);
+
+      state.visibleLines = ["FAKE_CLAUDE_READY pid=8024", "FAKE_CLAUDE_MANUAL=1", "> "];
+      state.cursorLine = "> ";
+      state.ptyDescendantCount = 0;
       await vi.advanceTimersByTimeAsync(1_000);
 
       expect(clear).not.toHaveBeenCalledWith("prompt-return");
@@ -903,6 +1032,36 @@ describe("IdentityWatcher", () => {
       expect(watcher.hasAgentUiPromptFalsePositive()).toBe(false);
     });
 
+    it("returns false when stale agent prompt text precedes a real shell prompt", () => {
+      const { delegate } = createFakeDelegate({
+        visibleLines: [
+          "Quick safety check: Is this a project you created or one you trust?",
+          "Enter to confirm · Esc to cancel",
+          "FAKE_CLAUDE_EXIT",
+          "user@host daintree % ",
+        ],
+        cursorLine: "user@host daintree % ",
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      expect(watcher.hasAgentUiPromptFalsePositive()).toBe(false);
+    });
+
+    it("returns false when stale agent prompt text precedes a single-char shell prompt", () => {
+      const { delegate } = createFakeDelegate({
+        visibleLines: [
+          "Quick safety check: Is this a project you created or one you trust?",
+          "Enter to confirm · Esc to cancel",
+          "FAKE_CLAUDE_EXIT",
+          "$ ",
+        ],
+        cursorLine: "$ ",
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      expect(watcher.hasAgentUiPromptFalsePositive()).toBe(false);
+    });
+
     it("returns true for Claude Code's idle input prompt", () => {
       const { delegate } = createFakeDelegate({
         visibleLines: [
@@ -911,6 +1070,16 @@ describe("IdentityWatcher", () => {
           "────────────────────────────────────────────────────────────────────────",
           "? for shortcuts",
         ],
+        cursorLine: "> ",
+      });
+      const watcher = new IdentityWatcher(delegate);
+
+      expect(watcher.hasAgentUiPromptFalsePositive()).toBe(true);
+    });
+
+    it("returns true for a bare agent input prompt without descendant evidence", () => {
+      const { delegate } = createFakeDelegate({
+        visibleLines: ["FAKE_CLAUDE_MANUAL=1", "> "],
         cursorLine: "> ",
       });
       const watcher = new IdentityWatcher(delegate);

@@ -33,7 +33,7 @@ nodeV8.setHeapSnapshotNearHeapLimit(2);
 import { MessagePort } from "node:worker_threads";
 import os from "node:os";
 import { PtyManager } from "./services/PtyManager.js";
-import { PtyPool, getPtyPool } from "./services/PtyPool.js";
+import { PtyPool, getPtyPool, shouldEnablePtyPool } from "./services/PtyPool.js";
 import { ProcessTreeCache } from "./services/ProcessTreeCache.js";
 import { TerminalResourceMonitor } from "./services/pty/TerminalResourceMonitor.js";
 import { events } from "./services/events.js";
@@ -123,6 +123,11 @@ let visualSignalView: Int32Array | null = null;
 let analysisBuffer: SharedRingBuffer | null = null;
 const packetFramer = new PacketFramer();
 const textDecoder = new TextDecoder();
+
+// Throughput-rate gauge: accumulates per-terminal raw PTY byte/packet counts
+// between ResourceGovernor ticks. Double-buffer swap at tick boundary avoids
+// iterator invalidation during Map iteration.
+let throughputAccumulator = new Map<string, { totalBytes: number; packetCount: number }>();
 
 // Terminals that need IPC data mirroring (e.g., dev-preview sessions that
 // need main-process URL detection even when SharedArrayBuffer is active)
@@ -265,6 +270,33 @@ const resourceGovernor = new ResourceGovernor({
     }
     return { totalPendingBytes, perTerminal };
   },
+  getThroughputSnapshot: () => {
+    // Clear the accumulator on every tick so stale entries from toggled-off
+    // intervals aren't replayed with misleading elapsed times later.
+    const acc = throughputAccumulator;
+    throughputAccumulator = new Map();
+    if (!metricsEnabled()) return null;
+    let totalBytes = 0;
+    let totalPackets = 0;
+    if (acc.size === 0) return null;
+    const perTerminal: Array<{ terminalId: string; byteCount: number; packetCount: number }> = [];
+    for (const [terminalId, entry] of acc) {
+      totalBytes += entry.totalBytes;
+      totalPackets += entry.packetCount;
+      perTerminal.push({
+        terminalId,
+        byteCount: entry.totalBytes,
+        packetCount: entry.packetCount,
+      });
+    }
+    return {
+      timestamp: Date.now(),
+      totalBytes,
+      totalPackets,
+      perTerminal,
+      pauseCount: backpressureManager.stats.pauseCount,
+    };
+  },
 });
 
 // Helper to convert data to string for IPC fallback (IPC events expect string)
@@ -274,6 +306,21 @@ function toStringForIpc(data: string | Uint8Array): string {
 
 // Wire up PtyManager events
 ptyManager.on("data", (id: string, data: string | Uint8Array) => {
+  // Throughput-rate gauge accumulation — raw PTY byte/packet counts before
+  // any path routing, suspension gating, or chunk wrapping. Gated so the hot
+  // path is untouched when metrics are disabled (the default).
+  if (metricsEnabled()) {
+    const rawByteCount =
+      typeof data === "string" ? Buffer.byteLength(data, "utf8") : data.byteLength;
+    let acc = throughputAccumulator.get(id);
+    if (!acc) {
+      acc = { totalBytes: 0, packetCount: 0 };
+      throughputAccumulator.set(id, acc);
+    }
+    acc.totalBytes += rawByteCount;
+    acc.packetCount += 1;
+  }
+
   // Terminal output always updates headless state; visual streaming can be suspended under backpressure.
   const isSuspended = backpressureManager.isSuspended(id);
   const terminalInfo = ptyManager.getTerminal(id);
@@ -322,11 +369,19 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
   }
 
   // PRIORITY 2: SHARED ARRAY BUFFER (Zero-Copy Fallback)
-  // Used when no MessagePort renderer connections are available (e.g., during startup before
-  // port handshake completes). SAB is single-consumer — safe only when one view is reading.
-  // SAB has one shared read pointer, so it is only safe before the app enters
-  // project-view routing. Once a window has an active project context, an
-  // unavailable MessagePort must fall through to IPC rather than the SAB.
+  // FUTURE_SAB: This entire branch is unreachable in production. SharedArrayBuffer
+  // is not supported in Electron UtilityProcess (PtyClient.getSharedBuffers()
+  // returns empty arrays, isSharedBufferEnabled() returns false). The init-buffers
+  // message that populates visualBuffers is only sent from adversarial tests.
+  // Production always routes through the MessagePort path (Priority 1).
+  //
+  // The skeleton is preserved for a potential Worker-thread migration that could
+  // revive the SAB zero-copy data path with per-consumer isolation.
+  //
+  // Original design intent: Used when no MessagePort renderer connections are
+  // available (e.g., during startup before port handshake completes). SAB is
+  // single-consumer — safe only when one view is reading. SAB has one shared
+  // read pointer, so it is only safe before the app enters project-view routing.
   const sabFallbackSafe = windowProjectMap.size === 0;
   if (
     !visualWritten &&
@@ -900,20 +955,24 @@ async function initialize(): Promise<void> {
     sendEvent({ type: "ready" });
     console.log("[PtyHost] Initialized and ready (accepting IPC)");
 
-    ptyPool = getPtyPool({ poolSize: 2, maxEntries: 8 });
-    const homedir = os.homedir();
+    if (shouldEnablePtyPool()) {
+      ptyPool = getPtyPool({ poolSize: 2, maxEntries: 8 });
+      const homedir = os.homedir();
 
-    // Warm pool in background
-    ptyPool
-      .warmPool(homedir)
-      .then(() => {
-        console.log("[PtyHost] PTY pool warmed in background");
-      })
-      .catch((err) => {
-        console.error("[PtyHost] Failed to warm pool:", err);
-      });
+      // Warm pool in background
+      ptyPool
+        .warmPool(homedir)
+        .then(() => {
+          console.log("[PtyHost] PTY pool warmed in background");
+        })
+        .catch((err) => {
+          console.error("[PtyHost] Failed to warm pool:", err);
+        });
 
-    ptyManager.setPtyPool(ptyPool);
+      ptyManager.setPtyPool(ptyPool);
+    } else {
+      console.log("[PtyHost] PTY pool disabled on Windows; terminals will spawn directly");
+    }
   } catch (error) {
     console.error("[PtyHost] Initialization failed:", error);
     emergencyLogFatal("INIT_ERROR", error);

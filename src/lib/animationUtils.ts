@@ -50,6 +50,12 @@ export const UI_PALETTE_EXIT_DURATION = DURATION_100;
  *  Keep in sync with .palette-results-stale transition-delay in src/index.css. */
 export const UI_DOHERTY_THRESHOLD = 400;
 
+/** UX anti-flicker gate for skeleton components using the `immediate` prop.
+ *  Sub-200ms work should show no pulse — warm-cache Suspense falls through this.
+ *  Keep in sync with the `useDeferredLoading` default delay (200ms).
+ *  Not an animation token — a perceptual floor, same family as Doherty. */
+export const UI_SKELETON_GATE_MS = 200;
+
 /** How long an action success-label swap dwells visible before the toast
  *  auto-dismisses. Covers saccade (~200ms), lexical recognition (~300ms), and
  *  a comprehension buffer so sighted and screen-reader users can process the

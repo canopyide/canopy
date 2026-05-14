@@ -2,7 +2,11 @@
 import { describe, it, expect } from "vitest";
 import { renderHook } from "@testing-library/react";
 import type { WorktreeState, WorktreeChanges } from "@/types";
-import { useWorktreeStatus, type WorktreeLifecycleStage } from "../useWorktreeStatus";
+import {
+  useWorktreeStatus,
+  type WorktreeLifecycleStage,
+  type WorktreeReviewState,
+} from "../useWorktreeStatus";
 
 function makeChanges(overrides: Partial<WorktreeChanges> = {}): WorktreeChanges {
   return {
@@ -545,6 +549,111 @@ describe("useWorktreeStatus — computedSubtitle", () => {
     expect(getSubtitle({ worktreeChanges: makeChanges({ lastCommitMessage: undefined }) })).toEqual(
       { text: "No recent activity", tone: "muted" }
     );
+  });
+});
+
+describe("useWorktreeStatus — reviewState", () => {
+  function getReviewState(overrides: Partial<WorktreeState> = {}): WorktreeReviewState {
+    const { result } = renderHook(() => useWorktreeStatus({ worktree: makeWorktree(overrides) }));
+    return result.current.reviewState;
+  }
+
+  it("returns null when worktreeChanges is null", () => {
+    expect(getReviewState({ worktreeChanges: null })).toBeNull();
+  });
+
+  it("returns null when no changes, no ahead, no conflicts", () => {
+    expect(
+      getReviewState({
+        worktreeChanges: makeChanges({ changedFileCount: 0, ahead: 0 }),
+      })
+    ).toBeNull();
+  });
+
+  it('returns "conflicted" when any change has status "conflicted"', () => {
+    expect(
+      getReviewState({
+        worktreeChanges: makeChanges({
+          changedFileCount: 2,
+          changes: [
+            { path: "a.ts", status: "conflicted", insertions: null, deletions: null },
+            { path: "b.ts", status: "modified", insertions: 1, deletions: 0 },
+          ],
+        }),
+      })
+    ).toBe("conflicted");
+  });
+
+  it('"conflicted" wins over ahead and changes', () => {
+    expect(
+      getReviewState({
+        worktreeChanges: makeChanges({
+          changedFileCount: 5,
+          ahead: 3,
+          changes: [{ path: "a.ts", status: "conflicted", insertions: null, deletions: null }],
+        }),
+      })
+    ).toBe("conflicted");
+  });
+
+  it('returns "has-changes" when changedFileCount > 0 and no conflicts', () => {
+    expect(
+      getReviewState({
+        worktreeChanges: makeChanges({
+          changedFileCount: 3,
+          changes: [{ path: "a.ts", status: "modified", insertions: 2, deletions: 1 }],
+        }),
+      })
+    ).toBe("has-changes");
+  });
+
+  it('"has-changes" wins over "unpushed-clean" when both apply', () => {
+    expect(
+      getReviewState({
+        worktreeChanges: makeChanges({
+          changedFileCount: 1,
+          ahead: 2,
+        }),
+      })
+    ).toBe("has-changes");
+  });
+
+  it('returns "unpushed-clean" when ahead > 0 and no changes', () => {
+    expect(
+      getReviewState({
+        worktreeChanges: makeChanges({
+          changedFileCount: 0,
+          ahead: 2,
+        }),
+      })
+    ).toBe("unpushed-clean");
+  });
+
+  it("treats undefined ahead and empty changes as null", () => {
+    expect(
+      getReviewState({
+        worktreeChanges: makeChanges({
+          changedFileCount: 0,
+          ahead: undefined,
+          changes: [],
+        }),
+      })
+    ).toBeNull();
+  });
+
+  it("treats missing changes array as no conflicts", () => {
+    const { result } = renderHook(() =>
+      useWorktreeStatus({
+        worktree: makeWorktree({
+          worktreeChanges: {
+            worktreeId: "/test/worktree",
+            rootPath: "/test/worktree",
+            changedFileCount: 2,
+          } as unknown as WorktreeChanges,
+        }),
+      })
+    );
+    expect(result.current.reviewState).toBe("has-changes");
   });
 });
 

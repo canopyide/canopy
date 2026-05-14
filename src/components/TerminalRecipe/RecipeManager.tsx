@@ -307,6 +307,7 @@ export function RecipeManager({
               <div className="border border-dashed border-daintree-border rounded-[var(--radius-md)]">
                 <EmptyState
                   variant="zero-data"
+                  scale="canvas"
                   icon={<Workflow />}
                   title="No global recipes"
                   description="Save a terminal layout once and launch it in any project."
@@ -365,6 +366,7 @@ export function RecipeManager({
               <div className="border border-dashed border-daintree-border rounded-[var(--radius-md)]">
                 <EmptyState
                   variant="zero-data"
+                  scale="canvas"
                   icon={<Workflow />}
                   title="No project recipes"
                   description="Project recipes stay private to this machine until you save them to the repo."

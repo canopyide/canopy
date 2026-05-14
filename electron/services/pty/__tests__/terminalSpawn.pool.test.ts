@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const spawnMock = vi.fn();
 vi.mock("node-pty", () => ({
@@ -6,13 +6,14 @@ vi.mock("node-pty", () => ({
 }));
 
 import { acquirePtyProcess } from "../terminalSpawn.js";
-import type { PtyPool } from "../../PtyPool.js";
+import { shouldEnablePtyPool, type PtyPool } from "../../PtyPool.js";
 import type { PtySpawnOptions } from "../types.js";
 
 interface FakePooledPty {
   write: ReturnType<typeof vi.fn>;
   resize: ReturnType<typeof vi.fn>;
   kill: ReturnType<typeof vi.fn>;
+  destroy: ReturnType<typeof vi.fn>;
 }
 
 interface FakeDataHandoff {
@@ -31,6 +32,7 @@ function createFakePooledPty(): FakePooledPty {
     write: vi.fn(),
     resize: vi.fn(),
     kill: vi.fn(),
+    destroy: vi.fn(),
   };
 }
 
@@ -88,8 +90,21 @@ const baseOptions: PtySpawnOptions = {
 };
 
 describe("acquirePtyProcess pool handling", () => {
+  const originalPlatformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
+
+  // Pin platform to a non-Windows value so the pool path is exercised on every
+  // runner — shouldEnablePtyPool() returns false on win32, which would short-circuit
+  // every pool-targeted test if we inherited the Windows runner's process.platform.
+  // The single "skips the pool on Windows" test below overrides this explicitly.
   beforeEach(() => {
     spawnMock.mockReset();
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+  });
+
+  afterEach(() => {
+    if (originalPlatformDescriptor) {
+      Object.defineProperty(process, "platform", originalPlatformDescriptor);
+    }
   });
 
   it("acquires a pooled PTY when an env-keyed slot is available for the request cwd", () => {
@@ -170,6 +185,10 @@ describe("acquirePtyProcess pool handling", () => {
     const result = acquirePtyProcess("t1", baseOptions, {}, "/bin/bash", [], pool, () => {});
 
     expect(dataHandoff.dispose).toHaveBeenCalledTimes(1);
+    // destroyPty() closes the master FD (destroy) and signals the process
+    // (kill); without destroy the /dev/ptmx FD leaks on every resize-failure
+    // fallback. See #7892.
+    expect(pooled.destroy).toHaveBeenCalledTimes(1);
     expect(pooled.kill).toHaveBeenCalledTimes(1);
     expect(spawnMock).toHaveBeenCalledTimes(1);
     expect(result.ptyProcess).toBe(spawnedPty);
@@ -332,6 +351,38 @@ describe("acquirePtyProcess pool handling", () => {
 
     expect(acquireByKey).not.toHaveBeenCalled();
     expect(spawnMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips the pool on Windows and directly spawns a PTY", () => {
+    Object.defineProperty(process, "platform", {
+      value: "win32",
+      configurable: true,
+    });
+    const acquireByKey = vi.fn();
+    const warmForKey = vi.fn();
+    const pool = createFakePool({
+      defaultCwd: "C:\\repo",
+      acquireByKey,
+      warmForKey,
+    });
+    const spawnedPty = createFakeSpawnedPty();
+    spawnMock.mockReturnValue(spawnedPty);
+
+    const result = acquirePtyProcess(
+      "win1",
+      { cwd: "C:\\repo", cols: 80, rows: 24 },
+      { PATH: "C:\\Windows\\System32" },
+      "powershell.exe",
+      [],
+      pool,
+      () => {}
+    );
+
+    expect(shouldEnablePtyPool()).toBe(false);
+    expect(acquireByKey).not.toHaveBeenCalled();
+    expect(warmForKey).not.toHaveBeenCalled();
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    expect(result.ptyProcess).toBe(spawnedPty);
   });
 
   it("skips the pool when caller provides a custom shell or args", () => {

@@ -73,6 +73,10 @@ export const APP_THEME_TOKEN_KEYS = [
   "overlay-selected",
   "overlay-elevated",
 
+  // Selected-state pill backgrounds (tint-derived; neutral across hued themes)
+  "filter-selected-bg-soft",
+  "filter-selected-bg-strong",
+
   // Atmospheric wash
   "wash-subtle",
   "wash-medium",

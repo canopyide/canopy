@@ -263,6 +263,20 @@ export async function getTerminalBufferLength(panelLocator: Locator): Promise<nu
   }, panelId);
 }
 
+export async function getTerminalDimensions(
+  panelLocator: Locator
+): Promise<{ cols: number; rows: number } | null> {
+  const page = panelLocator.page();
+  const panelId = await getPanelId(panelLocator);
+  if (!panelId) return null;
+
+  return page.evaluate((id) => {
+    const fn = (window as unknown as Record<string, unknown>).__daintreeGetTerminalDimensions;
+    if (typeof fn === "function") return fn(id) as { cols: number; rows: number } | null;
+    return null;
+  }, panelId);
+}
+
 export async function selectAllTerminalText(panelLocator: Locator): Promise<void> {
   const page = panelLocator.page();
   const panelId = await getPanelId(panelLocator);
@@ -320,7 +334,14 @@ async function dispatchXtermContextMenu(xterm: Locator): Promise<boolean> {
   });
 }
 
-export async function openTerminalContextMenu(panelLocator: Locator): Promise<void> {
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export async function openTerminalContextMenu(
+  panelLocator: Locator,
+  { preserveSelection = false }: { preserveSelection?: boolean } = {}
+): Promise<void> {
   const page = panelLocator.page();
   const menu = page.locator(SEL.contextMenu.content);
   const xterm = panelLocator.locator(SEL.terminal.xtermRows);
@@ -328,7 +349,12 @@ export async function openTerminalContextMenu(panelLocator: Locator): Promise<vo
 
   for (let attempt = 0; attempt < 3; attempt++) {
     await dismissBlockingPalette(page);
-    await page.keyboard.press("Escape").catch(() => undefined);
+    // Skip Escape when preserveSelection is true: xterm.js calls clearSelection()
+    // synchronously in _keyDown for non-browser-handled keys (including Escape),
+    // so sending Escape while xterm has focus destroys any prior selectAll() call.
+    if (!preserveSelection) {
+      await page.keyboard.press("Escape").catch(() => undefined);
+    }
 
     if (attempt === 0) {
       await xterm.click({ button: "right", timeout: 5_000 }).catch(() => undefined);
@@ -359,6 +385,7 @@ export async function clickTerminalContextMenuItem(
 ): Promise<void> {
   const page = panelLocator.page();
   const menu = page.locator(SEL.contextMenu.content);
+  const itemName = new RegExp(`^${escapeRegExp(name)}\\b`);
   let lastError: unknown;
 
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -366,18 +393,46 @@ export async function clickTerminalContextMenuItem(
       await openTerminalContextMenu(panelLocator);
     }
 
-    const item = page.getByRole("menuitem", { name });
-    await expect(item).toBeVisible({ timeout: T_SHORT });
+    const item = page.getByRole("menuitem", { name: itemName }).first();
 
     try {
-      await item.click({ force: true, timeout: 3_000 });
-      return;
+      await expect(item).toBeVisible({ timeout: T_SHORT });
     } catch (error) {
       lastError = error;
       await page.keyboard.press("Escape").catch(() => undefined);
       await expect(menu)
         .not.toBeVisible({ timeout: T_SHORT })
         .catch(() => undefined);
+      continue;
+    }
+
+    try {
+      await item.click({ timeout: 3_000 });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!(await isContextMenuVisible(page, 500))) return;
+
+      try {
+        await item.click({ force: true, timeout: 3_000 });
+        return;
+      } catch (forceError) {
+        lastError = forceError;
+        if (!(await isContextMenuVisible(page, 500))) return;
+
+        try {
+          await item.focus({ timeout: 1_000 });
+          await page.keyboard.press("Enter");
+          if (!(await isContextMenuVisible(page, 1_000))) return;
+        } catch (keyboardError) {
+          lastError = keyboardError;
+        }
+
+        await page.keyboard.press("Escape").catch(() => undefined);
+        await expect(menu)
+          .not.toBeVisible({ timeout: T_SHORT })
+          .catch(() => undefined);
+      }
     }
   }
 

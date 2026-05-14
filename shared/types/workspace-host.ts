@@ -23,6 +23,7 @@ import type {
   WorktreeLifecycleStatus,
   WorktreeResourceStatus,
 } from "./worktree.js";
+import type { GitHubPRCIStatus } from "./github.js";
 import type {
   CopyTreeOptions,
   CopyTreeProgress,
@@ -76,8 +77,16 @@ export interface WorktreeSnapshot {
   prNumber?: number;
   prUrl?: string;
   prState?: "open" | "merged" | "closed";
+  /**
+   * Roll-up CI check status for the PR's head commit, sourced from GitHub's
+   * `statusCheckRollup.state` (uppercase enum). Absent when the PR has no
+   * checks configured or before the first PR detection lands.
+   */
+  prCiStatus?: GitHubPRCIStatus;
   prTitle?: string;
   issueTitle?: string;
+  prLastUpdatedAt?: number;
+  issueLastUpdatedAt?: number;
   worktreeChanges?: WorktreeChanges | null;
   worktreeId: string;
   timestamp?: number;
@@ -395,9 +404,12 @@ export type WorkspaceHostEvent =
       prNumber: number;
       prUrl: string;
       prState: "open" | "merged" | "closed";
+      prCiStatus?: GitHubPRCIStatus;
       prTitle?: string;
       issueNumber?: number;
       issueTitle?: string;
+      prLastUpdatedAt?: number;
+      issueLastUpdatedAt?: number;
     }
   | { type: "pr-cleared"; worktreeId: string }
   // Issue events
@@ -406,6 +418,7 @@ export type WorkspaceHostEvent =
       worktreeId: string;
       issueNumber: number;
       issueTitle: string;
+      issueLastUpdatedAt?: number;
     }
   | {
       type: "issue-not-found";

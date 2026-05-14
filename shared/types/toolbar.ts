@@ -29,14 +29,34 @@ export type ToolbarButtonId =
   | "assistant-toggle"
   | "portal-toggle";
 
+/**
+ * Sparse pin-state map for toolbar buttons. Mirrors the tri-state semantics
+ * used by `agentSettingsStore.agents[id].pinned`:
+ *
+ *   - `false`      → user explicitly hid this button
+ *   - `true`       → user explicitly pinned this button (currently unused for
+ *                    non-agent buttons since defaults are visible, reserved
+ *                    for future "pin-as-universal" extensions)
+ *   - `undefined`  → follow default visibility (visible)
+ *
+ * Agent-button IDs (entries in `BUILT_IN_AGENT_IDS`) live in
+ * `agentSettingsStore`, not here. Only `agent-tray`, the non-agent built-ins,
+ * and plugin buttons are governed by this map.
+ */
+export type ToolbarPinnedState = Partial<Record<AnyToolbarButtonId, boolean>>;
+
 /** Configuration for which toolbar buttons are visible and their order */
 export interface ToolbarLayout {
   /** Ordered list of button IDs to show on the left side (excluding sidebar-toggle which is always first) */
   leftButtons: AnyToolbarButtonId[];
   /** Ordered list of button IDs to show on the right side (excluding assistant-toggle and portal-toggle which are always last) */
   rightButtons: AnyToolbarButtonId[];
-  /** Button IDs that are hidden from the toolbar. Ordering is preserved in leftButtons/rightButtons. */
-  hiddenButtons: AnyToolbarButtonId[];
+  /**
+   * Per-button visibility overrides. `false` hides the button; missing
+   * entries fall through to the default. Ordering stays in
+   * `leftButtons`/`rightButtons`.
+   */
+  pinnedButtons: ToolbarPinnedState;
 }
 
 /** Launcher palette default behaviors */

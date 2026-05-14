@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { forwardRef, useEffect, useMemo, useState } from "react";
 import { parseDiff, Diff, Hunk, tokenize, markEdits, DiffType, ViewType } from "react-diff-view";
 import type { HunkData, HunkTokens, TokenizeOptions } from "react-diff-view";
 import { refractor } from "refractor/core";
@@ -12,11 +12,13 @@ import markdown from "refractor/markdown";
 import tsx from "refractor/tsx";
 import typescript from "refractor/typescript";
 import "react-diff-view/style/index.css";
-import { ExternalLink } from "lucide-react";
+import { AlertCircle, ChevronRight, ExternalLink } from "lucide-react";
 import path from "path-browserify";
 import { getLanguageForFile } from "@/components/FileViewer/languageUtils";
 import { actionService } from "@/services/ActionService";
 import { TruncatedTooltip } from "@/components/ui/TruncatedTooltip";
+import { getFilePath, shouldCollapseByDefault, estimateFileDiffBytes } from "./diffCollapseUtils";
+import { formatBytes } from "@/lib/formatBytes";
 
 for (const lang of [bash, css, javascript, jsx, json, markdown, tsx, typescript]) {
   refractor.register(lang);
@@ -47,6 +49,12 @@ const LANG_LOADERS: Record<string, () => Promise<{ default: Syntax }>> = {
 };
 
 const langLoadPromises = new Map<string, Promise<void>>();
+const FAILED_LANGS = new Set<string>();
+
+export function _resetLangStateForTests(): void {
+  FAILED_LANGS.clear();
+  langLoadPromises.clear();
+}
 
 function ensureLanguage(language: string): Promise<void> {
   if (refractor.registered(language)) return Promise.resolve();
@@ -58,9 +66,10 @@ function ensureLanguage(language: string): Promise<void> {
       .then((mod) => {
         refractor.register(mod.default);
       })
-      // Intentional: no retry. A failed chunk load caches as a resolved
-      // no-op so the language renders as plain text and renders don't loop.
-      .catch(() => {});
+      .catch((err: unknown) => {
+        console.warn(`Failed to load refractor grammar for "${language}"`, err);
+        FAILED_LANGS.add(language);
+      });
     langLoadPromises.set(language, pending);
   }
   return pending;
@@ -72,27 +81,39 @@ export interface DiffViewerProps {
   viewType?: ViewType;
   /** Absolute path to the worktree root, used to resolve per-file open-in-editor paths */
   rootPath?: string;
+  onRetry?: () => void;
 }
 
-function useTokens(hunks: HunkData[], language: string): HunkTokens | null {
+function useTokens(
+  hunks: HunkData[],
+  language: string
+): {
+  tokens: HunkTokens | null;
+  langLoadFailed: boolean;
+} {
   const [langReady, setLangReady] = useState(() => refractor.registered(language));
+  const [langLoadFailed, setLangLoadFailed] = useState(() => FAILED_LANGS.has(language));
 
   useEffect(() => {
     if (refractor.registered(language)) {
       setLangReady(true);
+      setLangLoadFailed(false);
       return;
     }
     setLangReady(false);
     let cancelled = false;
     void ensureLanguage(language).then(() => {
-      if (!cancelled) setLangReady(refractor.registered(language));
+      if (!cancelled) {
+        setLangReady(refractor.registered(language));
+        setLangLoadFailed(FAILED_LANGS.has(language));
+      }
     });
     return () => {
       cancelled = true;
     };
   }, [language]);
 
-  return useMemo(() => {
+  const tokens = useMemo(() => {
     if (!hunks.length || !langReady) return null;
 
     const options: TokenizeOptions = {
@@ -108,12 +129,23 @@ function useTokens(hunks: HunkData[], language: string): HunkTokens | null {
       return null;
     }
   }, [hunks, language, langReady]);
+
+  return { tokens, langLoadFailed };
 }
 
-export function DiffViewer({ diff, filePath, viewType = "split", rootPath }: DiffViewerProps) {
+export const DiffViewer = forwardRef<HTMLDivElement, DiffViewerProps>(function DiffViewer(
+  { diff, viewType = "split", rootPath, onRetry },
+  ref
+) {
   const files = useMemo(() => {
     try {
-      return parseDiff(diff);
+      const parsed = parseDiff(diff);
+      // parseDiff is forgiving — nonsense input yields a synthetic file with
+      // empty paths and no hunks. Treat that shape as a parse failure.
+      const allEmpty = parsed.every(
+        (file) => !file.oldPath && !file.newPath && file.hunks.length === 0
+      );
+      return allEmpty ? [] : parsed;
     } catch {
       return [];
     }
@@ -143,6 +175,26 @@ export function DiffViewer({ diff, filePath, viewType = "split", rootPath }: Dif
     );
   }
 
+  if (diff === "ERROR") {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 p-8">
+        <div className="flex items-center gap-2 text-status-error text-sm">
+          <AlertCircle className="w-4 h-4" />
+          Failed to load diff
+        </div>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="px-3 py-1.5 text-xs font-medium rounded bg-daintree-border hover:bg-daintree-border/80 text-daintree-text transition-colors"
+          >
+            Retry
+          </button>
+        )}
+      </div>
+    );
+  }
+
   if (files.length === 0) {
     return (
       <div className="flex items-center justify-center p-8 text-text-muted">
@@ -151,33 +203,47 @@ export function DiffViewer({ diff, filePath, viewType = "split", rootPath }: Dif
     );
   }
 
-  const language = getLanguageForFile(filePath);
-
   return (
-    <div className="diff-viewer overflow-auto">
+    <div ref={ref} className="diff-viewer overflow-auto">
       {files.map((file, index) => (
         <FileDiff
           key={file.newRevision || file.oldRevision || index}
           file={file}
           viewType={viewType}
-          language={language}
           rootPath={rootPath}
         />
       ))}
     </div>
   );
-}
+});
 
 interface FileDiffProps {
   file: ReturnType<typeof parseDiff>[0];
   viewType: ViewType;
-  language: string;
   rootPath?: string;
 }
 
-function FileDiff({ file, viewType, language, rootPath }: FileDiffProps) {
-  const tokens = useTokens(file.hunks ?? [], language);
+function FileDiff({ file, viewType, rootPath }: FileDiffProps) {
+  const relPath = getFilePath(file);
+  const language = useMemo(() => {
+    const derived = getLanguageForFile(relPath);
+    return FAILED_LANGS.has(derived) ? "plaintext" : derived;
+  }, [relPath]);
+  const { tokens, langLoadFailed } = useTokens(file.hunks ?? [], language);
   const diffType: DiffType = file.type as DiffType;
+
+  const collapseDecision = useMemo(() => shouldCollapseByDefault(file), [file]);
+  const [isCollapsed, setIsCollapsed] = useState(collapseDecision.collapse);
+
+  useEffect(() => {
+    setIsCollapsed(collapseDecision.collapse);
+  }, [collapseDecision.collapse]);
+
+  const diffRegionId = useMemo(
+    () =>
+      `diff-region-${file.oldPath || "dst"}-${file.newPath || "src"}-${file.newRevision || file.oldRevision || "unknown"}`,
+    [file.newPath, file.oldPath, file.newRevision, file.oldRevision]
+  );
 
   const { additions, deletions } = useMemo(() => {
     let adds = 0;
@@ -191,19 +257,6 @@ function FileDiff({ file, viewType, language, rootPath }: FileDiffProps) {
     return { additions: adds, deletions: dels };
   }, [file.hunks]);
 
-  const fileTyped = file as ReturnType<typeof parseDiff>[0] & {
-    newPath?: string;
-    oldPath?: string;
-  };
-  // Prefer newPath (the post-change path); fall back to oldPath for deletions.
-  // Filter out /dev/null which git uses as a sentinel for added/deleted files.
-  const rawPath =
-    fileTyped.newPath && fileTyped.newPath !== "/dev/null"
-      ? fileTyped.newPath
-      : fileTyped.oldPath && fileTyped.oldPath !== "/dev/null"
-        ? fileTyped.oldPath
-        : undefined;
-  const relPath = rawPath;
   const absolutePath =
     rootPath && relPath && !relPath.startsWith("/")
       ? path.join(rootPath, relPath)
@@ -220,6 +273,8 @@ function FileDiff({ file, viewType, language, rootPath }: FileDiffProps) {
     );
   };
 
+  const handleToggleCollapse = () => setIsCollapsed((prev) => !prev);
+
   return (
     <div className="mb-2">
       {relPath && (
@@ -227,6 +282,15 @@ function FileDiff({ file, viewType, language, rootPath }: FileDiffProps) {
           <TruncatedTooltip content={relPath}>
             <span className="truncate">{relPath}</span>
           </TruncatedTooltip>
+          {langLoadFailed && (
+            <span
+              className="text-xs text-text-muted"
+              role="status"
+              data-testid="diff-plain-text-badge"
+            >
+              Plain text
+            </span>
+          )}
           <div className="flex items-center gap-2 shrink-0">
             {(additions > 0 || deletions > 0) && (
               <span className="flex items-center gap-1">
@@ -247,18 +311,40 @@ function FileDiff({ file, viewType, language, rootPath }: FileDiffProps) {
           </div>
         </div>
       )}
-      <div className="diff-file-scroll">
-        <Diff
-          viewType={viewType}
-          diffType={diffType}
-          hunks={file.hunks ?? []}
-          tokens={tokens ?? undefined}
+      {collapseDecision.collapse && (
+        <button
+          onClick={handleToggleCollapse}
+          aria-expanded={!isCollapsed}
+          {...(!isCollapsed ? { "aria-controls": diffRegionId } : {})}
+          className="flex w-full items-center gap-2 px-3 py-2 text-xs text-text-muted hover:bg-tint/5 transition-colors"
         >
-          {(hunks: HunkData[]) =>
-            hunks.map((hunk) => <Hunk key={`${hunk.oldStart}-${hunk.newStart}`} hunk={hunk} />)
-          }
-        </Diff>
-      </div>
+          <ChevronRight
+            className={`h-3 w-3 shrink-0 transition-transform duration-150 ${isCollapsed ? "" : "rotate-90"}`}
+          />
+          <span className="text-left">
+            {collapseDecision.reason === "generated"
+              ? "Generated file collapsed"
+              : `Large diff (${formatBytes(estimateFileDiffBytes(file))})`}
+          </span>
+          <span className="ml-auto text-daintree-text/50 font-mono text-xs">
+            {isCollapsed ? "Show diff" : "Hide diff"}
+          </span>
+        </button>
+      )}
+      {!isCollapsed && (
+        <div id={diffRegionId} className="diff-file-scroll">
+          <Diff
+            viewType={viewType}
+            diffType={diffType}
+            hunks={file.hunks ?? []}
+            tokens={tokens ?? undefined}
+          >
+            {(hunks: HunkData[]) =>
+              hunks.map((hunk) => <Hunk key={`${hunk.oldStart}-${hunk.newStart}`} hunk={hunk} />)
+            }
+          </Diff>
+        </div>
+      )}
     </div>
   );
 }

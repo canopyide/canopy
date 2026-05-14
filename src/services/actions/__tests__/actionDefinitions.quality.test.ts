@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { KEY_ACTION_VALUES } from "@shared/types/keymap";
+import { BUILT_IN_ACTION_IDS } from "@shared/config/actionIds";
 import type { ActionId } from "@shared/types/actions";
 import type { ActionRegistry, ActionCallbacks } from "../actionTypes";
 import { validateDefinitionInvariants } from "../../ActionService";
@@ -11,7 +12,6 @@ import { validateDefinitionInvariants } from "../../ActionService";
  * that the OS/terminal handles directly.
  */
 const KEY_ONLY_ACTIONS = new Set([
-  // Pure navigation — handled by terminal/focus infrastructure, not ActionService
   "nav.up",
   "nav.down",
   "nav.left",
@@ -23,24 +23,17 @@ const KEY_ONLY_ACTIONS = new Set([
   "nav.expand",
   "nav.collapse",
   "nav.primary",
-  // Modal/keybinding-only escape hatch
   "ui.escape",
-  // Tab navigation handled by tab infrastructure
   "tab.next",
   "tab.previous",
-  // Keybinding-only terminal actions with no ActionService dispatch
   "terminal.scrollToLastActivity",
   "terminal.armDefault",
   "terminal.disarmAll",
-  // Fleet dispatch handled through separate arming infrastructure
   "fleet.armFocused",
-  // Keybinding-only: opens via palette infrastructure, not ActionService
   "action.palette",
-  // Keybinding-only file operations — dispatched through file IPC, not ActionService
   "file.open",
   "file.copyPath",
   "file.copyTree",
-  // Keybinding-only: toggled through git infrastructure, not ActionService
   "git.toggle",
 ]);
 
@@ -88,9 +81,6 @@ function createCallbacks(): ActionCallbacks {
   };
 }
 
-/**
- * Create a registry with a shim Map that records duplicate `set()` calls.
- */
 async function createRegistryWithAudit(): Promise<{
   registry: ActionRegistry;
   duplicates: Array<{ key: string; count: number }>;
@@ -120,69 +110,45 @@ async function createRegistryWithAudit(): Promise<{
 }
 
 describe("registry-vs-union drift", () => {
-  it("every registry ID appears in BuiltInActionId union (registry->union)", async () => {
+  it("every runtime registry key appears in BUILT_IN_ACTION_IDS", async () => {
     const { registry } = await createRegistryWithAudit();
 
-    const fs = await import("node:fs/promises");
-    const actionsFileUrl = new URL("../../../../shared/types/actions.ts", import.meta.url);
-    const contents = await fs.readFile(actionsFileUrl, "utf8");
-
-    const start = contents.indexOf("export type BuiltInActionId");
-    const end = contents.indexOf("export type ActionId = BuiltInActionId", start);
-    const section = contents.slice(start, end);
-
-    const builtInIds = new Set<string>();
-    const regex = /\|\s*"([^"]+)"/g;
-    for (const match of section.matchAll(regex)) {
-      builtInIds.add(match[1]!);
-    }
-
-    // Guard against regex silently producing zero matches (e.g. if the union
-    // format changes). Check BEFORE merging KEY_ACTION_VALUES so a regex
-    // failure isn't masked by the runtime set.
-    if (builtInIds.size < 200) {
-      throw new Error(
-        `Parsed only ${builtInIds.size} IDs from BuiltInActionId union (expected 200+). ` +
-          `The union format may have changed — update the regex or the test.`
-      );
-    }
-
-    // Merge with KEY_ACTION_VALUES for BuiltInKeyAction coverage
+    const builtInIds = new Set<string>(BUILT_IN_ACTION_IDS);
     for (const id of KEY_ACTION_VALUES) {
       builtInIds.add(id);
     }
 
-    const missingFromUnion: string[] = [];
+    const missingFromIds: string[] = [];
     for (const key of registry.keys()) {
       if (!builtInIds.has(key)) {
-        missingFromUnion.push(key);
+        missingFromIds.push(key);
       }
     }
 
-    expect(missingFromUnion.sort()).toEqual([]);
+    expect(missingFromIds.sort()).toEqual([]);
   });
 
-  it("every BuiltInActionId string literal has a registry entry (union->registry)", async () => {
+  it("every BUILT_IN_ACTION_IDS entry has a runtime registry entry", async () => {
     const { registry } = await createRegistryWithAudit();
 
-    const fs = await import("node:fs/promises");
-    const actionsFileUrl = new URL("../../../../shared/types/actions.ts", import.meta.url);
-    const contents = await fs.readFile(actionsFileUrl, "utf8");
-
-    const start = contents.indexOf("export type BuiltInActionId");
-    const end = contents.indexOf("export type ActionId = BuiltInActionId", start);
-    const section = contents.slice(start, end);
-
-    const ids = new Set<string>();
-    const regex = /\|\s*"([^"]+)"/g;
-    for (const match of section.matchAll(regex)) {
-      ids.add(match[1]!);
-    }
-
-    const missingFromRegistry = Array.from(ids)
+    const missingFromRegistry = (BUILT_IN_ACTION_IDS as readonly string[])
       .filter((id) => !registry.has(id as ActionId) && !KEY_ONLY_ACTIONS.has(id))
+      .slice()
       .sort();
     expect(missingFromRegistry).toEqual([]);
+  });
+
+  it("BUILT_IN_ACTION_IDS has no duplicate entries", () => {
+    const seen = new Set<string>();
+    const dupes: string[] = [];
+    for (const id of BUILT_IN_ACTION_IDS) {
+      if (seen.has(id)) {
+        dupes.push(id);
+      } else {
+        seen.add(id);
+      }
+    }
+    expect(dupes.sort()).toEqual([]);
   });
 
   it("every BuiltInKeyAction in KEY_ACTION_VALUES has a registry entry (or is allowlisted)", async () => {
@@ -223,9 +189,6 @@ describe("definition invariants", () => {
       }
     }
 
-    // Warn-only: report missing but don't fail CI yet.
-    // 49 existing query actions need resultSchema — too many to add in one
-    // pass. This report flags new query actions at PR time.
     if (missing.length > 0) {
       console.warn(
         `[quality-gate] ${missing.length} query action(s) missing resultSchema:\n` +
@@ -248,8 +211,88 @@ describe("duplicate registrations", () => {
     }
 
     // TODO(#6305): Promote to hard assert once duplicates are audited.
-    // Some overwrites are intentional (minimal keybinding def vs full
-    // command-palette def). The DUPLICATE_ALLOWLIST above gates per-ID.
     expect(true).toBe(true);
+  });
+});
+
+/**
+ * Destructive actions whose definitions must carry `danger: "confirm"`. The set
+ * is the regression guard for #7881 — see docs/architecture/destructive-action-safeguards.md.
+ * Demoting any of these to `"safe"` re-enables them for `action.repeatLast` and
+ * the action-palette MRU rail, which is wrong for destructive operations.
+ *
+ * This is a **minimum-floor** guard, not an exhaustive list. The audit doc is
+ * the source of truth for which actions belong in this set; when a new
+ * destructive action is added to the registry or an existing action is
+ * reclassified, update both the audit table and this list. The list does NOT
+ * prove every destructive action carries `danger:"confirm"` — only that the
+ * named ones still do.
+ */
+const EXPECTED_CONFIRM_DANGER: ReadonlyArray<ActionId> = [
+  "git.push",
+  "git.snapshotRevert",
+  "git.snapshotDelete",
+  "worktree.delete",
+  "worktree.sessions.endAll",
+  "worktree.sessions.trashAll",
+  "fleet.kill",
+  "fleet.trash",
+  "fleet.restart",
+];
+
+describe("destructive-action danger metadata", () => {
+  it('every action in EXPECTED_CONFIRM_DANGER is registered with danger:"confirm"', async () => {
+    const { registry } = await createRegistryWithAudit();
+
+    const mismatches: string[] = [];
+    for (const id of EXPECTED_CONFIRM_DANGER) {
+      const factory = registry.get(id);
+      if (!factory) {
+        mismatches.push(`${id} (not registered)`);
+        continue;
+      }
+      const def = factory();
+      if (def.danger !== "confirm") {
+        mismatches.push(`${id} (danger="${def.danger}", expected "confirm")`);
+      }
+    }
+
+    expect(mismatches).toEqual([]);
+  });
+
+  it("every action in EXPECTED_CONFIRM_DANGER blocks agent dispatch without confirmed:true", async () => {
+    // This proves the ActionService.ts:283 agent-source gate fires for every
+    // listed action — the only runtime safety the `danger` field provides for
+    // built-in dispatch (user/keybinding sources are gated by call-site dialogs
+    // tracked separately in the audit). If this regresses, MCP agents could
+    // invoke destructive ops without confirmation.
+    const { ActionService } = await import("../../ActionService");
+    const { registry } = await createRegistryWithAudit();
+    const service = new ActionService();
+    for (const id of EXPECTED_CONFIRM_DANGER) {
+      const factory = registry.get(id);
+      if (factory) service.register(factory());
+    }
+
+    // Many destructive actions require a `worktreeId` arg; arg validation runs
+    // before the confirm gate, so undefined args would short-circuit with
+    // VALIDATION_ERROR. Provide a placeholder so the danger gate is what fires.
+    const placeholderArgs = { worktreeId: "wt-placeholder" };
+
+    const failures: string[] = [];
+    for (const id of EXPECTED_CONFIRM_DANGER) {
+      const result = await service.dispatch(id, placeholderArgs, { source: "agent" });
+      if (result.ok) {
+        failures.push(`${id} (agent dispatch succeeded without confirmed:true)`);
+        continue;
+      }
+      if (result.error.code !== "CONFIRMATION_REQUIRED") {
+        failures.push(
+          `${id} (got error code "${result.error.code}", expected CONFIRMATION_REQUIRED)`
+        );
+      }
+    }
+
+    expect(failures).toEqual([]);
   });
 });

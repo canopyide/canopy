@@ -35,24 +35,66 @@ test.describe.serial("Presets: Custom Edit (25–34)", () => {
     await navigateToAgentSettings(ctx.window, "claude");
   };
 
+  const openFirstPresetEditor = async () => {
+    for (let round = 0; round < 3; round += 1) {
+      const section = ctx.window.locator(SEL.preset.section);
+      await expect(section).toBeVisible({ timeout: T_MEDIUM });
+      const input = section.locator("[data-testid='preset-edit-input']");
+      if (await input.isVisible({ timeout: 500 }).catch(() => false)) {
+        return input;
+      }
+
+      const editButtons = section.locator(SEL.preset.editButton);
+      if (
+        !(await editButtons
+          .first()
+          .isVisible({ timeout: T_SHORT })
+          .catch(() => false))
+      ) {
+        await addCustomPreset(ctx.window);
+        await goToClaudeSettings();
+        await ctx.window.waitForTimeout(T_SETTLE);
+        continue;
+      }
+
+      const count = await editButtons.count();
+      for (let i = 0; i < count; i++) {
+        const editBtn = editButtons.nth(i);
+        if (!(await editBtn.isVisible({ timeout: 500 }).catch(() => false))) {
+          continue;
+        }
+        await editBtn.scrollIntoViewIfNeeded().catch(() => undefined);
+        await editBtn.hover({ force: true }).catch(() => undefined);
+
+        const attempts = [
+          () => editBtn.click({ force: true, noWaitAfter: true }),
+          () => editBtn.click({ noWaitAfter: true }),
+          () => editBtn.dispatchEvent("click"),
+        ];
+        for (const clickEdit of attempts) {
+          await clickEdit().catch(() => undefined);
+          if (await input.isVisible({ timeout: 1000 }).catch(() => false)) {
+            return input;
+          }
+        }
+      }
+
+      await goToClaudeSettings();
+      await ctx.window.waitForTimeout(T_SETTLE);
+    }
+
+    throw new Error("No custom preset edit input opened");
+  };
+
   test("25. Pencil icon shows inline edit input", async () => {
     await goToClaudeSettings();
-    const editBtn = ctx.window.locator(SEL.preset.section).locator(SEL.preset.editButton).first();
-    await expect(editBtn).toBeVisible({ timeout: T_SHORT });
-    await editBtn.click();
-    const input = ctx.window
-      .locator(SEL.preset.section)
-      .locator("[data-testid='preset-edit-input']");
+    const input = await openFirstPresetEditor();
     await expect(input).toBeVisible({ timeout: T_SHORT });
   });
 
   test("26. Renaming updates name in preset list", async () => {
     await goToClaudeSettings();
-    const editBtn = ctx.window.locator(SEL.preset.section).locator(SEL.preset.editButton).first();
-    await editBtn.click();
-    const input = ctx.window
-      .locator(SEL.preset.section)
-      .locator("[data-testid='preset-edit-input']");
+    const input = await openFirstPresetEditor();
     await expect(input).toBeVisible({ timeout: T_SHORT });
     await input.fill("Renamed Preset");
     await input.press("Enter");
@@ -91,11 +133,7 @@ test.describe.serial("Presets: Custom Edit (25–34)", () => {
   test("28. Canceling rename leaves name unchanged", async () => {
     await goToClaudeSettings();
     const section = ctx.window.locator(SEL.preset.section);
-    await expect(section).toBeVisible({ timeout: T_MEDIUM });
-    const editBtn = section.locator(SEL.preset.editButton).first();
-    await expect(editBtn).toBeVisible({ timeout: T_SHORT });
-    await editBtn.click();
-    const input = section.locator("[data-testid='preset-edit-input']");
+    const input = await openFirstPresetEditor();
     await expect(input).toBeVisible({ timeout: T_SHORT });
     await input.fill("Should Not Save");
     await input.press("Escape");
@@ -106,11 +144,7 @@ test.describe.serial("Presets: Custom Edit (25–34)", () => {
 
   test("29. Empty rename rejected", async () => {
     await goToClaudeSettings();
-    const editBtn = ctx.window.locator(SEL.preset.section).locator(SEL.preset.editButton).first();
-    await editBtn.click();
-    const input = ctx.window
-      .locator(SEL.preset.section)
-      .locator("[data-testid='preset-edit-input']");
+    const input = await openFirstPresetEditor();
     await expect(input).toBeVisible({ timeout: T_SHORT });
     await input.fill("");
     await input.press("Enter");
@@ -121,11 +155,7 @@ test.describe.serial("Presets: Custom Edit (25–34)", () => {
 
   test("30. Very long name (200+ chars) works without crash", async () => {
     await goToClaudeSettings();
-    const editBtn = ctx.window.locator(SEL.preset.section).locator(SEL.preset.editButton).first();
-    await editBtn.click();
-    const input = ctx.window
-      .locator(SEL.preset.section)
-      .locator("[data-testid='preset-edit-input']");
+    const input = await openFirstPresetEditor();
     await expect(input).toBeVisible({ timeout: T_SHORT });
     const longName = "A".repeat(250);
     await input.fill(longName);
@@ -149,11 +179,7 @@ test.describe.serial("Presets: Custom Edit (25–34)", () => {
 
   test("32. Name with special characters works", async () => {
     await goToClaudeSettings();
-    const editBtn = ctx.window.locator(SEL.preset.section).locator(SEL.preset.editButton).first();
-    await editBtn.click();
-    const input = ctx.window
-      .locator(SEL.preset.section)
-      .locator("[data-testid='preset-edit-input']");
+    const input = await openFirstPresetEditor();
     await expect(input).toBeVisible({ timeout: T_SHORT });
     await input.fill("Test & Special");
     await input.press("Enter");
@@ -163,11 +189,7 @@ test.describe.serial("Presets: Custom Edit (25–34)", () => {
 
   test("33. Name with emoji works", async () => {
     await goToClaudeSettings();
-    const editBtn = ctx.window.locator(SEL.preset.section).locator(SEL.preset.editButton).first();
-    await editBtn.click();
-    const input = ctx.window
-      .locator(SEL.preset.section)
-      .locator("[data-testid='preset-edit-input']");
+    const input = await openFirstPresetEditor();
     await expect(input).toBeVisible({ timeout: T_SHORT });
     await input.fill("Rocket Preset");
     await input.press("Enter");
@@ -177,11 +199,7 @@ test.describe.serial("Presets: Custom Edit (25–34)", () => {
 
   test("34. Edit persists across Settings close/reopen", async () => {
     await goToClaudeSettings();
-    const editBtn = ctx.window.locator(SEL.preset.section).locator(SEL.preset.editButton).first();
-    await editBtn.click();
-    const input = ctx.window
-      .locator(SEL.preset.section)
-      .locator("[data-testid='preset-edit-input']");
+    const input = await openFirstPresetEditor();
     await expect(input).toBeVisible({ timeout: T_SHORT });
     await input.fill("Persistent Name");
     await input.press("Enter");

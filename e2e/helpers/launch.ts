@@ -24,6 +24,19 @@ export interface LaunchOptions {
   userDataDir?: string;
   waitForSelector?: string;
   extraArgs?: string[];
+  /**
+   * When set to a digit 1-9, launches Electron with --force-device-scale-factor=N
+   * so the renderer paints at NxCSS pixels. Used by the marketing-screenshot
+   * pipeline to capture 4K-grade PNGs from a 1280x720 logical window on a
+   * 1920x1080-capped CI display. Defaults to process.env.DAINTREE_SCREENSHOT_SCALE.
+   */
+  screenshotScale?: string;
+  /**
+   * Logical window size override. When unset, launchApp picks based on the
+   * screen workArea (typically 1920x1080+). The screenshot pipeline uses
+   * 1280x720 so scale=3 yields a 3840x2160 framebuffer.
+   */
+  windowSize?: { width: number; height: number };
 }
 
 function cleanupWindowsElectronProcesses(): void {
@@ -139,6 +152,20 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
       args.unshift(...options.extraArgs);
     }
 
+    // Marketing screenshot pipeline: when DAINTREE_SCREENSHOT_SCALE is set,
+    // render the framebuffer at NxCSS pixels so page.screenshot captures
+    // device-pixel output. windows-latest GitHub runners cap the OS display
+    // at 1920x1080, so render-side scaling is the only path to 4K-grade PNGs.
+    const screenshotScale = options.screenshotScale ?? process.env.DAINTREE_SCREENSHOT_SCALE;
+    if (screenshotScale && /^[1-9]$/.test(screenshotScale)) {
+      const scaleIdx = args.findIndex((a) => a.startsWith("--force-device-scale-factor"));
+      if (scaleIdx >= 0) {
+        args[scaleIdx] = `--force-device-scale-factor=${screenshotScale}`;
+      } else {
+        args.unshift(`--force-device-scale-factor=${screenshotScale}`);
+      }
+    }
+
     let app: ElectronApplication | null = null;
     try {
       const launchEnv = {
@@ -203,21 +230,24 @@ export async function launchApp(options: LaunchOptions = {}): Promise<AppContext
       // Set a minimum window size so toolbar overflow doesn't hide buttons.
       // Skip for restart tests to preserve persisted window state.
       if (!options.userDataDir) {
-        await app.evaluate(({ BrowserWindow, screen }) => {
+        const explicitSize = options.windowSize;
+        await app.evaluate(({ BrowserWindow, screen }, payload) => {
           const win = BrowserWindow.getAllWindows()[0];
           if (!win) return;
+          if (payload) {
+            win.setSize(payload.width, payload.height);
+            win.center();
+            return;
+          }
           const { width, height } = screen.getPrimaryDisplay().workAreaSize;
           const targetW = Math.max(width, 1920);
           const targetH = Math.max(height, 1080);
           win.setSize(targetW, targetH);
           win.center();
-          // Only maximize when the display is large enough — on macOS,
-          // maximize (zoom) shrinks the window to the work area, which
-          // can be narrower than the 1920px we need for toolbar tests.
           if (width >= targetW && height >= targetH) {
             win.maximize();
           }
-        });
+        }, explicitSize ?? null);
       }
 
       await window.waitForLoadState("domcontentloaded");
@@ -600,7 +630,11 @@ export async function closeApp(app: ElectronApplication): Promise<void> {
   // These may have been reparented to PID 1 after the main process exited.
   for (const childPid of descendantPids) {
     try {
-      process.kill(childPid, "SIGKILL");
+      if (process.platform === "win32") {
+        execSync(`taskkill /F /PID ${childPid} /T 2>nul`, { stdio: "ignore" });
+      } else {
+        process.kill(childPid, "SIGKILL");
+      }
     } catch {
       // Already dead
     }

@@ -517,3 +517,5 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     flush,
   };
 }
+
+export type ProjectSettingsFormContext = ReturnType<typeof useProjectSettingsForm>;

@@ -135,10 +135,12 @@ vi.mock("@/config/agents", () => ({
   },
   getAgentConfig: () => ({ name: "Claude", icon: () => null, models: [] }),
   getAssistantSupportedAgentIds: () => mockGetAssistantSupportedAgentIds(),
+  getAgentIds: () => ["claude"],
 }));
 
 vi.mock("@shared/types/agentSettings", () => ({
   buildResumeCommand: (...args: unknown[]) => mockBuildResumeCommand(...args),
+  AgentRoutingConfigSchema: { optional: () => undefined },
 }));
 
 vi.mock("@/services/ActionService", () => ({

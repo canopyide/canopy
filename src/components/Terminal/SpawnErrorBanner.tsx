@@ -1,4 +1,3 @@
-import React from "react";
 import { AlertTriangle, RotateCcw, FolderEdit, Trash2, Settings2 } from "lucide-react";
 import { InlineStatusBanner, type BannerAction } from "./InlineStatusBanner";
 import { sanitizeErrorText, boundedErrorText } from "@/utils/errorText";
@@ -82,7 +81,7 @@ function getErrorDescription(error: SpawnError, cwd?: string): string {
   }
 }
 
-function SpawnErrorBannerComponent({
+export function SpawnErrorBanner({
   terminalId,
   error,
   cwd,
@@ -160,5 +159,3 @@ function SpawnErrorBannerComponent({
     />
   );
 }
-
-export const SpawnErrorBanner = React.memo(SpawnErrorBannerComponent);

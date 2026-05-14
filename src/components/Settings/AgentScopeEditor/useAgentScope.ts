@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import { getAgentConfig, getMergedPresets, type AgentPreset } from "@/config/agents";
 import { logError } from "@/utils/logger";
 import { notify } from "@/lib/notify";
@@ -91,86 +91,74 @@ export function useAgentScope({
 
   // ── handlers ────────────────────────────────────────────────────────────
 
-  const handleUpdatePreset = useCallback(
-    (presetId: string, patch: Partial<AgentPreset>) => {
-      const updated = (activeEntry.customPresets ?? []).map((f) =>
-        f.id === presetId ? { ...f, ...patch } : f
-      );
-      void (async () => {
-        try {
-          await updateAgent(agentId, { customPresets: updated } as Partial<AgentSettingsEntry>);
-          onSettingsChange?.();
-        } catch (error) {
-          logError("Failed to update preset", error);
-          notify({
-            type: "error",
-            title: "Preset update failed",
-            message: "Couldn't save the preset changes. Try again.",
-          });
-        }
-      })();
-    },
-    [activeEntry.customPresets, agentId, updateAgent, onSettingsChange]
-  );
+  const handleUpdatePreset = (presetId: string, patch: Partial<AgentPreset>) => {
+    const updated = (activeEntry.customPresets ?? []).map((f) =>
+      f.id === presetId ? { ...f, ...patch } : f
+    );
+    void (async () => {
+      try {
+        await updateAgent(agentId, { customPresets: updated } as Partial<AgentSettingsEntry>);
+        onSettingsChange?.();
+      } catch (error) {
+        logError("Failed to update preset", error);
+        notify({
+          type: "error",
+          title: "Preset update failed",
+          message: "Couldn't save the preset changes. Try again.",
+        });
+      }
+    })();
+  };
 
-  const openAddDialog = useCallback(() => {
+  const openAddDialog = () => {
     setAddDialogAgentId(agentId);
     setIsAddDialogOpen(true);
-  }, [agentId, setAddDialogAgentId, setIsAddDialogOpen]);
+  };
 
-  const handleDuplicatePreset = useCallback(
-    (preset: AgentPreset) => {
-      const id = `user-${crypto.randomUUID()}`;
-      const updated = [
-        ...(activeEntry.customPresets ?? []),
-        { ...preset, id, name: `${preset.name} (copy)` },
-      ];
-      void (async () => {
+  const handleDuplicatePreset = (preset: AgentPreset) => {
+    const id = `user-${crypto.randomUUID()}`;
+    const updated = [
+      ...(activeEntry.customPresets ?? []),
+      { ...preset, id, name: `${preset.name} (copy)` },
+    ];
+    void (async () => {
+      await updateAgent(agentId, {
+        customPresets: updated,
+        presetId: id,
+      } as Partial<AgentSettingsEntry>);
+      onSettingsChange?.();
+    })();
+  };
+
+  const handleDeletePreset = (presetId: string) => {
+    const updated = (activeEntry.customPresets ?? []).filter((f) => f.id !== presetId);
+    void (async () => {
+      if (activeEntry.presetId === presetId) {
         await updateAgent(agentId, {
           customPresets: updated,
-          presetId: id,
+          presetId: undefined,
         } as Partial<AgentSettingsEntry>);
-        onSettingsChange?.();
-      })();
-    },
-    [activeEntry.customPresets, agentId, updateAgent, onSettingsChange]
-  );
-
-  const handleDeletePreset = useCallback(
-    (presetId: string) => {
-      const updated = (activeEntry.customPresets ?? []).filter((f) => f.id !== presetId);
-      void (async () => {
-        if (activeEntry.presetId === presetId) {
-          await updateAgent(agentId, {
-            customPresets: updated,
-            presetId: undefined,
-          } as Partial<AgentSettingsEntry>);
-        } else {
-          await updateAgent(agentId, { customPresets: updated } as Partial<AgentSettingsEntry>);
-        }
-        onSettingsChange?.();
-      })();
-    },
-    [activeEntry.customPresets, activeEntry.presetId, agentId, updateAgent, onSettingsChange]
-  );
-
-  const handleStartEdit = useCallback(
-    (preset: AgentPreset) => {
-      if (!preset.name || preset.name.length > 200) {
-        console.warn("Invalid preset name length");
-        return;
+      } else {
+        await updateAgent(agentId, { customPresets: updated } as Partial<AgentSettingsEntry>);
       }
-      if (/[<>'"&]/.test(preset.name)) {
-        console.warn("Preset name contains dangerous characters");
-        return;
-      }
-      setEditingPresetId(preset.id);
-      setEditName(preset.name);
-    },
-    [setEditingPresetId, setEditName]
-  );
+      onSettingsChange?.();
+    })();
+  };
 
-  const handleCommitEdit = useCallback(() => {
+  const handleStartEdit = (preset: AgentPreset) => {
+    if (!preset.name || preset.name.length > 200) {
+      console.warn("Invalid preset name length");
+      return;
+    }
+    if (/[<>'"&]/.test(preset.name)) {
+      console.warn("Preset name contains dangerous characters");
+      return;
+    }
+    setEditingPresetId(preset.id);
+    setEditName(preset.name);
+  };
+
+  const handleCommitEdit = () => {
     const trimmed = editName.trim();
     if (editingPresetId && trimmed && trimmed.length <= 200 && !/[<>'"&]/.test(trimmed)) {
       // Stamp lastEditTimeRef so external rate-limit consumers can detect
@@ -181,21 +169,14 @@ export function useAgentScope({
     }
     setEditingPresetId(null);
     setEditName("");
-  }, [
-    editName,
-    editingPresetId,
-    lastEditTimeRef,
-    handleUpdatePreset,
-    setEditingPresetId,
-    setEditName,
-  ]);
+  };
 
-  const handleCancelEdit = useCallback(() => {
+  const handleCancelEdit = () => {
     setEditingPresetId(null);
     setEditName("");
-  }, [setEditingPresetId, setEditName]);
+  };
 
-  const handleSkipPermsChange = useCallback(() => {
+  const handleSkipPermsChange = () => {
     if (scopeKind === "default") {
       void (async () => {
         await updateAgent(agentId, {
@@ -206,18 +187,9 @@ export function useAgentScope({
     } else if (scopeKind === "custom" && selectedPreset) {
       handleUpdatePreset(selectedPreset.id, { dangerousEnabled: !effectiveSkipPerms });
     }
-  }, [
-    scopeKind,
-    agentId,
-    agentDefaultDangerous,
-    selectedPreset,
-    effectiveSkipPerms,
-    updateAgent,
-    onSettingsChange,
-    handleUpdatePreset,
-  ]);
+  };
 
-  const handleInlineModeChange = useCallback(() => {
+  const handleInlineModeChange = () => {
     if (scopeKind === "default") {
       void (async () => {
         await updateAgent(agentId, {
@@ -228,45 +200,33 @@ export function useAgentScope({
     } else if (scopeKind === "custom" && selectedPreset) {
       handleUpdatePreset(selectedPreset.id, { inlineMode: !effectiveInlineMode });
     }
-  }, [
-    scopeKind,
-    agentId,
-    agentDefaultInline,
-    selectedPreset,
-    effectiveInlineMode,
-    updateAgent,
-    onSettingsChange,
-    handleUpdatePreset,
-  ]);
+  };
 
-  const handleCustomFlagsChange = useCallback(
-    (value: string) => {
-      if (scopeKind === "default") {
-        void updateAgent(agentId, { customFlags: value } as Partial<AgentSettingsEntry>);
-      } else if (scopeKind === "custom" && selectedPreset) {
-        handleUpdatePreset(selectedPreset.id, { customFlags: value });
-      }
-    },
-    [scopeKind, agentId, selectedPreset, updateAgent, handleUpdatePreset]
-  );
+  const handleCustomFlagsChange = (value: string) => {
+    if (scopeKind === "default") {
+      void updateAgent(agentId, { customFlags: value } as Partial<AgentSettingsEntry>);
+    } else if (scopeKind === "custom" && selectedPreset) {
+      handleUpdatePreset(selectedPreset.id, { customFlags: value });
+    }
+  };
 
-  const handleDangerousOverrideReset = useCallback(() => {
+  const handleDangerousOverrideReset = () => {
     if (scopeKind === "custom" && selectedPreset) {
       handleUpdatePreset(selectedPreset.id, { dangerousEnabled: undefined });
     }
-  }, [scopeKind, selectedPreset, handleUpdatePreset]);
+  };
 
-  const handleInlineOverrideReset = useCallback(() => {
+  const handleInlineOverrideReset = () => {
     if (scopeKind === "custom" && selectedPreset) {
       handleUpdatePreset(selectedPreset.id, { inlineMode: undefined });
     }
-  }, [scopeKind, selectedPreset, handleUpdatePreset]);
+  };
 
-  const handleCustomFlagsOverrideReset = useCallback(() => {
+  const handleCustomFlagsOverrideReset = () => {
     if (scopeKind === "custom" && selectedPreset) {
       handleUpdatePreset(selectedPreset.id, { customFlags: undefined });
     }
-  }, [scopeKind, selectedPreset, handleUpdatePreset]);
+  };
 
   return {
     // derived

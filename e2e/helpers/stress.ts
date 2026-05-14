@@ -173,8 +173,73 @@ export async function waitForProcessDeath(pid: number, timeoutMs = 15_000): Prom
   throw new Error(`Process ${pid} still alive after ${timeoutMs}ms`);
 }
 
+interface WindowsProcessRow {
+  ProcessId?: number;
+  ParentProcessId?: number;
+  Name?: string;
+}
+
+function getWindowsProcessEntries(): ProcessEntry[] {
+  try {
+    const output = execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name | ConvertTo-Json -Compress",
+      ],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 5_000,
+      }
+    ).trim();
+    if (!output) return [];
+
+    const parsed = JSON.parse(output) as WindowsProcessRow | WindowsProcessRow[];
+    const rows = Array.isArray(parsed) ? parsed : [parsed];
+    return rows
+      .map((row) => ({
+        pid: Number(row.ProcessId),
+        ppid: Number(row.ParentProcessId),
+        comm: String(row.Name ?? ""),
+      }))
+      .filter((entry) => Number.isInteger(entry.pid) && Number.isInteger(entry.ppid));
+  } catch {
+    return [];
+  }
+}
+
+function collectDescendantsFromEntries(pid: number, entries: ProcessEntry[]): number[] {
+  const childrenByParent = new Map<number, number[]>();
+  for (const entry of entries) {
+    const children = childrenByParent.get(entry.ppid);
+    if (children) {
+      children.push(entry.pid);
+    } else {
+      childrenByParent.set(entry.ppid, [entry.pid]);
+    }
+  }
+
+  const descendants: number[] = [];
+  const queue = [...(childrenByParent.get(pid) ?? [])];
+  const seen = new Set<number>();
+  while (queue.length > 0) {
+    const child = queue.shift();
+    if (child === undefined || seen.has(child)) continue;
+    seen.add(child);
+    descendants.push(child);
+    queue.push(...(childrenByParent.get(child) ?? []));
+  }
+  return descendants;
+}
+
 export function getDescendantPids(pid: number): number[] {
-  if (process.platform === "win32") return [];
+  if (process.platform === "win32") {
+    return collectDescendantsFromEntries(pid, getWindowsProcessEntries());
+  }
   try {
     const result = execSync(`pgrep -P ${pid}`, {
       encoding: "utf8",

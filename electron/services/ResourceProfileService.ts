@@ -176,6 +176,20 @@ export class ResourceProfileService {
       this.evaluate();
     }, EVAL_INTERVAL_MS);
 
+    // Push the initial profile's low-memory floor so the feature is armed on
+    // launch even when the service stays on its default profile (`balanced`)
+    // and applyProfile() never runs.
+    const pvm = this.deps.getProjectViewManager();
+    if (pvm) {
+      try {
+        pvm.setLowMemoryFreeThresholdMb(
+          RESOURCE_PROFILE_CONFIGS[this.currentProfile].lowMemoryFreeThresholdMb
+        );
+      } catch {
+        // non-critical
+      }
+    }
+
     this.startLagMonitor();
   }
 
@@ -492,12 +506,43 @@ export class ResourceProfileService {
     // flow used in project-switch-initiated eviction (see issue #5009).
     const pvm = this.deps.getProjectViewManager();
     if (pvm) {
-      try {
-        if (profile === "efficiency") {
+      // Split try/catch per call: a throw from setCachedViewLimit (e.g. an
+      // onViewEvicted callback failing inside evictStaleViews) must NOT block
+      // setEfficiencyFreeze(false) on the exit path — leaving renderers
+      // frozen after we've left efficiency has no recovery trigger.
+      if (profile === "efficiency") {
+        try {
           pvm.setCachedViewLimit(1);
-        } else if (previous === "efficiency") {
-          pvm.setCachedViewLimit(this.deps.getUserCachedViewLimit());
+        } catch {
+          // non-critical
         }
+        try {
+          // Freeze cached project views' renderers via CDP under efficiency to
+          // suppress timer wake-ups on top of background throttling. PVM
+          // debounces the actual freeze pass internally.
+          pvm.setEfficiencyFreeze(true);
+        } catch {
+          // non-critical
+        }
+      } else if (previous === "efficiency") {
+        try {
+          pvm.setCachedViewLimit(this.deps.getUserCachedViewLimit());
+        } catch {
+          // non-critical
+        }
+        try {
+          pvm.setEfficiencyFreeze(false);
+        } catch {
+          // non-critical
+        }
+      }
+      // Push the profile's low-memory floor unconditionally on every transition
+      // so an upgrade out of efficiency doesn't leave the stricter threshold
+      // stuck in place. PVM checks this floor inside `evictStaleViews` and
+      // clamps `effectiveMax` to 1 for the pass when available RAM drops below
+      // it, without mutating the user-configured `maxCachedViews`.
+      try {
+        pvm.setLowMemoryFreeThresholdMb(config.lowMemoryFreeThresholdMb);
       } catch {
         // non-critical
       }

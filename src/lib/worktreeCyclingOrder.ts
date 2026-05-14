@@ -178,6 +178,8 @@ export function getVisibleWorktreesForCycling(
     activityFilters,
   };
 
+  const hasFacetFiltersActive = filterState.hasFacetFilters();
+
   const nonMain = rawWorktrees.filter(
     (w) => w.id !== mainWorktree?.id && w.id !== integrationWorktree?.id
   );
@@ -188,14 +190,21 @@ export function getVisibleWorktreesForCycling(
     const isActive = worktree.id === activeWorktreeId;
     const hasActiveQuery = query.trim().length > 0;
 
-    if (alwaysShowActive && isActive && !hasActiveQuery && quickStateFilter === "all") {
+    if (
+      alwaysShowActive &&
+      isActive &&
+      !hasActiveQuery &&
+      quickStateFilter === "all" &&
+      !hasFacetFiltersActive
+    ) {
       return true;
     }
     if (
       alwaysShowWaiting &&
       derived.hasWaitingAgent &&
       !hasActiveQuery &&
-      quickStateFilter === "all"
+      quickStateFilter === "all" &&
+      !hasFacetFiltersActive
     ) {
       return true;
     }
@@ -222,10 +231,43 @@ export function getVisibleWorktreesForCycling(
 
   const topPinned: WorktreeState[] = [];
   if (mainWorktree && worktreeMatchesQuery(mainWorktree, query)) {
-    topPinned.push(mainWorktree);
+    const mainDerived = derivedMetaMap.get(mainWorktree.id) ?? {
+      terminalCount: 0,
+      hasWorkingAgent: false,
+      hasWaitingAgent: false,
+      hasCompletedAgent: false,
+      hasExitedAgent: false,
+      hasMergeConflict: false,
+      chipState: null,
+    };
+    if (
+      !hasFacetFiltersActive ||
+      matchesFilters(mainWorktree, filters, mainDerived, mainWorktree.id === activeWorktreeId)
+    ) {
+      topPinned.push(mainWorktree);
+    }
   }
   if (integrationWorktree && worktreeMatchesQuery(integrationWorktree, query)) {
-    topPinned.push(integrationWorktree);
+    const intDerived = derivedMetaMap.get(integrationWorktree.id) ?? {
+      terminalCount: 0,
+      hasWorkingAgent: false,
+      hasWaitingAgent: false,
+      hasCompletedAgent: false,
+      hasExitedAgent: false,
+      hasMergeConflict: false,
+      chipState: null,
+    };
+    if (
+      !hasFacetFiltersActive ||
+      matchesFilters(
+        integrationWorktree,
+        filters,
+        intDerived,
+        integrationWorktree.id === activeWorktreeId
+      )
+    ) {
+      topPinned.push(integrationWorktree);
+    }
   }
 
   return [...topPinned, ...scrollableList];

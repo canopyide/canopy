@@ -63,6 +63,195 @@ describe("KeybindingService", () => {
     expect(normalizeKeyForBinding(event)).toBe("/");
   });
 
+  describe("AltGr and non-US layout key handling", () => {
+    function altGraphModifierState(): (key: string) => boolean {
+      return (key: string) => key === "AltGraph";
+    }
+
+    // ── normalizeKeyForBinding (utility layer) ──────────────────
+
+    it("returns the produced character on Windows AltGr+E, not the physical key", () => {
+      setPlatform("Win32");
+
+      const event = createKeyboardEvent({
+        key: "€",
+        code: "KeyE",
+        ctrlKey: true,
+        altKey: true,
+        getModifierState: altGraphModifierState(),
+      });
+
+      expect(normalizeKeyForBinding(event)).toBe("€");
+    });
+
+    it("returns the produced character on Windows AltGr+digit, not the physical key", () => {
+      setPlatform("Win32");
+
+      const event = createKeyboardEvent({
+        key: "{",
+        code: "Digit8",
+        ctrlKey: true,
+        altKey: true,
+        getModifierState: altGraphModifierState(),
+      });
+
+      expect(normalizeKeyForBinding(event)).toBe("{");
+    });
+
+    it("returns the physical key on macOS Option-letter (contrast with Windows AltGr)", () => {
+      setPlatform("MacIntel");
+
+      const event = createKeyboardEvent({
+        key: "π",
+        code: "KeyP",
+        altKey: true,
+      });
+
+      expect(normalizeKeyForBinding(event)).toBe("P");
+    });
+
+    // ── matchesEvent (matcher layer) ────────────────────────────
+
+    it("rejects Ctrl+Alt+E when AltGr produces € on Windows", () => {
+      setPlatform("Win32");
+
+      const service = new KeybindingService();
+      const event = createKeyboardEvent({
+        key: "€",
+        code: "KeyE",
+        ctrlKey: true,
+        altKey: true,
+        getModifierState: altGraphModifierState(),
+      });
+
+      expect(service.matchesEvent(event, "Ctrl+Alt+E")).toBe(false);
+    });
+
+    it("rejects Ctrl+Alt+Q when AltGr produces @ on Windows", () => {
+      setPlatform("Win32");
+
+      const service = new KeybindingService();
+      const event = createKeyboardEvent({
+        key: "@",
+        code: "KeyQ",
+        ctrlKey: true,
+        altKey: true,
+        getModifierState: altGraphModifierState(),
+      });
+
+      expect(service.matchesEvent(event, "Ctrl+Alt+Q")).toBe(false);
+    });
+
+    it("rejects Ctrl+Alt+E on Linux AltGr (neither modifier flag is set)", () => {
+      setPlatform("Linux x86_64");
+
+      const service = new KeybindingService();
+      const event = createKeyboardEvent({
+        key: "€",
+        code: "KeyE",
+        getModifierState: altGraphModifierState(),
+      });
+
+      expect(service.matchesEvent(event, "Ctrl+Alt+E")).toBe(false);
+    });
+
+    it("matches legitimate Ctrl+Alt+E on US-layout Windows (positive control)", () => {
+      setPlatform("Win32");
+
+      const service = new KeybindingService();
+      const event = createKeyboardEvent({
+        key: "E",
+        code: "KeyE",
+        ctrlKey: true,
+        altKey: true,
+      });
+
+      expect(service.matchesEvent(event, "Ctrl+Alt+E")).toBe(true);
+    });
+
+    it("rejects bare-key { when AltGr modifiers are present on Windows", () => {
+      setPlatform("Win32");
+
+      const service = new KeybindingService();
+      const event = createKeyboardEvent({
+        key: "{",
+        code: "Digit8",
+        ctrlKey: true,
+        altKey: true,
+        getModifierState: altGraphModifierState(),
+      });
+
+      expect(service.matchesEvent(event, "{")).toBe(false);
+    });
+
+    // ── findMatchingAction (pipeline layer) ─────────────────────
+
+    it("does not resolve a Ctrl+Alt+E action from AltGr+E on Windows", () => {
+      setPlatform("Win32");
+
+      const service = new KeybindingService();
+      service.registerBinding({
+        actionId: "test.ctrlAltE",
+        combo: "Ctrl+Alt+E",
+        scope: "global",
+        priority: 99,
+      });
+
+      const event = createKeyboardEvent({
+        key: "€",
+        code: "KeyE",
+        ctrlKey: true,
+        altKey: true,
+        getModifierState: altGraphModifierState(),
+      });
+
+      expect(service.findMatchingAction(event)).toBeUndefined();
+    });
+
+    it("resolves a Ctrl+Alt+E action from legitimate Ctrl+Alt+E on US-layout Windows", () => {
+      setPlatform("Win32");
+
+      const service = new KeybindingService();
+      service.registerBinding({
+        actionId: "test.ctrlAltE",
+        combo: "Ctrl+Alt+E",
+        scope: "global",
+        priority: 99,
+      });
+
+      const event = createKeyboardEvent({
+        key: "E",
+        code: "KeyE",
+        ctrlKey: true,
+        altKey: true,
+      });
+
+      expect(service.findMatchingAction(event)?.actionId).toBe("test.ctrlAltE");
+    });
+
+    it("does not resolve a Cmd+Alt+Q agent-launch binding from AltGr+Q on Windows — #1678 guard", () => {
+      setPlatform("Win32");
+
+      const service = new KeybindingService();
+      service.registerBinding({
+        actionId: "test.agentLaunch",
+        combo: "Cmd+Alt+Q",
+        scope: "global",
+        priority: 99,
+      });
+
+      const event = createKeyboardEvent({
+        key: "@",
+        code: "KeyQ",
+        ctrlKey: true,
+        altKey: true,
+        getModifierState: altGraphModifierState(),
+      });
+
+      expect(service.findMatchingAction(event)).toBeUndefined();
+    });
+  });
+
   it("matches Cmd bindings on non-mac when Ctrl is pressed", () => {
     setPlatform("Win32");
 

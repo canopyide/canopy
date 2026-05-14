@@ -159,7 +159,7 @@ A separate workflow for fine-grained ad-hoc runs of a single test file with conf
 
 ### Release Gating
 
-`release.yml` runs checks, unit tests, and the e2e gates (`core` + the six `full-*` buckets fanned out as a matrix + `online`) before platform packaging starts. Release e2e gates run on non-Windows runners; Windows release confidence comes from the platform build/package smoke plus full Windows nightly coverage. Nightly runs every E2E project — core, all six `full-*` buckets, online, and the memory-leak `nightly` project — across all three operating systems.
+`release.yml` runs checks, unit tests, and the e2e gates (`core` + the six `full-*` buckets fanned out as a matrix + `online`) before platform packaging starts. `core` and `online` gate releases on all three OSes (macOS, Linux, Windows); the `full-*` buckets gate on non-Windows runners only — a full Windows run takes ~5–6 hours, so it isn't gated anywhere (it was dropped from nightly for the same reason). Nightly runs `core` and `online` across all three OSes; the `full-*` buckets and the memory-leak `nightly` project run on macOS and Linux only.
 
 ### Cross-Platform Matrix
 

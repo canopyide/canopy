@@ -126,8 +126,14 @@ vi.mock("../skeletonCss.js", () => ({
   injectSkeletonCss: vi.fn(),
 }));
 
+vi.mock("../../utils/webContentsLifecycle.js", () => ({
+  freezeWebContents: vi.fn().mockResolvedValue(undefined),
+  unfreezeWebContents: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../../utils/logger.js", () => ({
   logInfo: vi.fn(),
+  logWarn: vi.fn(),
   createLogger: vi.fn(() => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -179,7 +185,11 @@ describe("ProjectViewManager — switch failure rollback", () => {
     vi.mocked(logInfo).mockClear();
 
     win = createMockWindow();
-    manager = new ProjectViewManager(win as never, { dirname: "/test", cachedProjectViews: 3 });
+    manager = new ProjectViewManager(win as never, {
+      dirname: "/test",
+      cachedProjectViews: 3,
+      paintGateTimeoutMs: 0,
+    });
 
     initialWc = createMockWebContents();
     const initialView = { webContents: initialWc, setBounds: vi.fn() };
@@ -204,7 +214,9 @@ describe("ProjectViewManager — switch failure rollback", () => {
     const err = await errPromise;
     expect(err.message).toBe("Cannot find module");
     expect(manager.getActiveProjectId()).toBe("proj-a");
-    expect(win.contentView.addChildView).toHaveBeenLastCalledWith(
+    // With the deferred-deactivation cold-start path the outgoing view was
+    // never detached, so the rollback path doesn't need to re-add it.
+    expect(win.contentView.removeChildView).not.toHaveBeenCalledWith(
       expect.objectContaining({ webContents: initialWc })
     );
     expect(failWc.close).toHaveBeenCalled();
@@ -272,7 +284,10 @@ describe("ProjectViewManager — switch failure rollback", () => {
   });
 
   it("sets activeProjectId to null when no previous view exists", async () => {
-    const freshManager = new ProjectViewManager(win as never, { dirname: "/test" });
+    const freshManager = new ProjectViewManager(win as never, {
+      dirname: "/test",
+      paintGateTimeoutMs: 0,
+    });
 
     const failWc = createMockWebContents({ autoFinishLoad: false });
     wcQueue.push(failWc);
@@ -300,7 +315,8 @@ describe("ProjectViewManager — switch failure rollback", () => {
     await firstErr;
 
     const second = manager.switchTo("proj-c", "/path/c");
-    await vi.advanceTimersByTimeAsync(0);
+    // Flush did-finish-load and the paint gate (timeout: 0).
+    await vi.advanceTimersByTimeAsync(1);
 
     const result = await second;
     expect(result.isNew).toBe(true);
@@ -320,6 +336,8 @@ describe("ProjectViewManager — switch failure rollback", () => {
     // Then fire preload-error (should be ignored by settle guard)
     wc._fireOnce("preload-error", {}, "/test/preload.cjs", new Error("Should be ignored"));
 
+    // Release the paint gate (timeout: 0) so the switch can resolve.
+    await vi.advanceTimersByTimeAsync(1);
     const result = await p;
     expect(result.isNew).toBe(true);
   });

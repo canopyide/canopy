@@ -187,6 +187,7 @@ test.describe.serial("Presets: Default Preset Selection (53–62)", () => {
     await goToClaudeSettings();
     await addCustomPreset(ctx.window);
     await ctx.window.waitForTimeout(T_SETTLE);
+    await goToClaudeSettings();
 
     const trigger = ctx.window.locator(SEL.preset.selectorTrigger);
     await expect(trigger).toBeVisible({ timeout: T_MEDIUM });
@@ -240,6 +241,7 @@ test.describe.serial("Presets: Default Preset Selection (53–62)", () => {
     await goToClaudeSettings();
     await addCustomPreset(ctx.window);
     await ctx.window.waitForTimeout(T_SETTLE);
+    await goToClaudeSettings();
 
     const trigger = ctx.window.locator(SEL.preset.selectorTrigger);
     await expect(trigger).toBeVisible({ timeout: T_SHORT });

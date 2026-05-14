@@ -14,6 +14,13 @@ export interface ResourceGovernorDeps {
     totalPendingBytes: number;
     perTerminal: Array<{ terminalId: string; pendingBytes: number }>;
   };
+  getThroughputSnapshot?: () => {
+    timestamp: number;
+    totalBytes: number;
+    totalPackets: number;
+    perTerminal: Array<{ terminalId: string; byteCount: number; packetCount: number }>;
+    pauseCount: number;
+  } | null;
 }
 
 export class ResourceGovernor {
@@ -27,6 +34,8 @@ export class ResourceGovernor {
   private readonly fdMonitor: FdMonitor;
   private readonly killedPids = new Map<number, number>();
   private readonly ORPHAN_GRACE_MS = 4000;
+  private prevThroughputTimestamp = 0;
+  private prevPauseCount = 0;
 
   constructor(private readonly deps: ResourceGovernorDeps) {
     this.fdMonitor = new FdMonitor();
@@ -65,6 +74,7 @@ export class ResourceGovernor {
 
     this.checkFdUsage();
     this.emitPendingBytesGauge();
+    this.emitThroughputRateGauge();
   }
 
   private checkFdUsage(): void {
@@ -136,6 +146,54 @@ export class ResourceGovernor {
         perTerminal: snapshot.perTerminal,
       },
     });
+  }
+
+  private emitThroughputRateGauge(): void {
+    if (!metricsEnabled()) return;
+    if (!this.deps.getThroughputSnapshot) return;
+
+    const snapshot = this.deps.getThroughputSnapshot();
+    if (!snapshot) return;
+
+    // First tick: seed baselines without emitting. Prevents epoch-scale
+    // division on the first real interval (prevThroughputTimestamp starts at 0).
+    if (this.prevThroughputTimestamp === 0) {
+      this.prevThroughputTimestamp = snapshot.timestamp;
+      this.prevPauseCount = snapshot.pauseCount;
+      return;
+    }
+
+    // Always track pauseCount baseline so idle ticks don't accumulate deltas
+    // that get misattributed to the next byte-producing tick.
+    const pauseCountDelta = snapshot.pauseCount - this.prevPauseCount;
+    this.prevPauseCount = snapshot.pauseCount;
+
+    if (snapshot.totalBytes <= 0) return;
+
+    const elapsedMs = snapshot.timestamp - this.prevThroughputTimestamp;
+    const elapsedSec = elapsedMs > 0 ? elapsedMs / 1000 : 2;
+    const totalBytesPerSecond = Math.round(snapshot.totalBytes / elapsedSec);
+
+    const perTerminalThroughput = snapshot.perTerminal.map((entry) => ({
+      terminalId: entry.terminalId,
+      bytesPerSecond: Math.round(entry.byteCount / elapsedSec),
+      avgPacketSizeBytes:
+        entry.packetCount > 0 ? Math.round(entry.byteCount / entry.packetCount) : 0,
+    }));
+
+    this.deps.sendEvent({
+      type: "terminal-reliability-metric",
+      payload: {
+        terminalId: "resource-governor",
+        metricType: "throughput-rate",
+        timestamp: snapshot.timestamp,
+        totalBytesPerSecond,
+        pauseCountDelta,
+        perTerminalThroughput,
+      },
+    });
+
+    this.prevThroughputTimestamp = snapshot.timestamp;
   }
 
   private engageThrottle(currentUsageMb: number, percent: number): void {

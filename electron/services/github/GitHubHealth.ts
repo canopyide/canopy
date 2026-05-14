@@ -6,6 +6,24 @@ import { rateLimitMessage, parseGitHubError } from "./GitHubErrors.js";
 import { getRepoContext, isRepoNotFoundError } from "./GitHubRepoContext.js";
 import { repoContextCache, projectHealthCache } from "./GitHubCaches.js";
 import type { CIStatus, ProjectHealth, ProjectHealthResult } from "./types.js";
+import type { ProjectHealthData } from "../../types/index.js";
+
+export function buildEmptyProjectHealthData(
+  opts: { error?: string; hasRemote?: boolean } = {}
+): ProjectHealthData {
+  return {
+    ciStatus: "none",
+    issueCount: 0,
+    prCount: 0,
+    latestRelease: null,
+    securityAlerts: { visible: false, count: 0 },
+    mergeVelocity: { mergedCounts: { 60: 0, 120: 0, 180: 0 } },
+    repoUrl: "",
+    hasRemote: opts.hasRemote ?? false,
+    loading: false,
+    error: opts.error,
+  };
+}
 
 function parseCIStatus(statusCheckRollup: { state?: string } | null | undefined): CIStatus {
   if (!statusCheckRollup) return "none";

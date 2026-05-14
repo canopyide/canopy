@@ -71,14 +71,14 @@ export function WorktreeDetails({
     effectiveSummary ||
     (showLastCommit && rawLastCommitMsg) ||
     (hasChanges && worktree.worktreeChanges) ||
-    (showTime && lastActivityTimestamp);
+    (showTime && lastActivityTimestamp != null);
 
   return (
     <div className="space-y-4">
       {hasDetailsContent && (
         <>
           {/* Time Display for Expanded View */}
-          {showTime && lastActivityTimestamp && (
+          {showTime && lastActivityTimestamp != null && (
             <div className="flex items-center gap-2 border-b border-border-divider pb-2">
               <div className="flex items-center gap-1.5 text-xs text-text-secondary">
                 <span className="text-xs font-medium">Last active:</span>
@@ -147,7 +147,7 @@ export function WorktreeDetails({
           {/* Placeholder when no AI summary or note exists */}
           {!effectiveNote && !effectiveSummary && !rawLastCommitMsg && (
             <div className="rounded bg-overlay-subtle px-2 py-2 text-xs italic text-text-muted">
-              No AI summary yet. Run an agent task or use Copy Context to generate one.
+              No AI summary yet
             </div>
           )}
 

@@ -8,7 +8,13 @@ import {
 import { getDefaultShell, getDefaultShellArgs } from "./terminalShell.js";
 import { computePoolEnvHash } from "./ptyPoolEnvHash.js";
 import type { PtySpawnOptions } from "./types.js";
-import { BufferedPtyDataHandoff, type PooledPtyDataHandoff, type PtyPool } from "../PtyPool.js";
+import {
+  BufferedPtyDataHandoff,
+  destroyPty,
+  shouldEnablePtyPool,
+  type PooledPtyDataHandoff,
+  type PtyPool,
+} from "../PtyPool.js";
 
 // Agent CLIs that ship as Node binaries and benefit from V8 bytecode
 // caching across launches. Codex is a Rust binary and would silently
@@ -152,7 +158,12 @@ export function acquirePtyProcess(
   // lookup handles cases where another window pre-warmed at a different cwd
   // or with different env additions — those entries simply don't match the
   // wanted key and we fall through to fresh spawn + background warm.
-  const canUsePool = !!ptyPool && !options.shell && !options.args && options.kind !== "dev-preview";
+  const canUsePool =
+    shouldEnablePtyPool() &&
+    !!ptyPool &&
+    !options.shell &&
+    !options.args &&
+    options.kind !== "dev-preview";
   const envHash = canUsePool ? computePoolEnvHash(options.env) : null;
   let pooled = canUsePool && envHash !== null ? ptyPool!.acquireByKey(options.cwd, envHash) : null;
   // Suppress unused-parameter lint for the write-error callback; kept in the
@@ -173,11 +184,9 @@ export function acquirePtyProcess(
       } catch {
         // Ignore disposal errors
       }
-      try {
-        pooled.process.kill();
-      } catch {
-        // Process may already be dead
-      }
+      // Use destroyPty so the master FD is closed too — kill() alone leaves
+      // /dev/ptmx open and stacks toward the system-wide ptmx_max (#7892).
+      destroyPty(pooled.process);
       pooled = null;
     }
   }

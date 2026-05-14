@@ -14,18 +14,33 @@ export const SHELL_IDENTITY_FALLBACK_PROMPT_POLLS = 2;
 export const SHELL_IDENTITY_FALLBACK_SCAN_LINES = 4;
 export const SHELL_INPUT_BUFFER_MAX = 4096;
 
+const SINGLE_CHAR_SHELL_PROMPT_PATTERN = /^\s*[>›❯⟩$#%]\s*$/;
+const SHELL_ONLY_SINGLE_CHAR_PROMPT_PATTERN = /^\s*[$#%]\s*$/;
+const AGENT_ONLY_SINGLE_CHAR_PROMPT_PATTERN = /^\s*[>❯›]\s*$/;
+const POSIX_USER_HOST_PROMPT_PATTERN = /^\s*[A-Za-z0-9_.-]+@\S+(?:\s+[^\r\n]*)?\s*[#$%>]\s*$/;
+const DECORATED_SHELL_PROMPT_PATTERN = /^\s*[➜➤➟➔❯›]\s+.*$/;
+const MAC_BASH_PROMPT_PATTERN = /^\s*\S+:\S+\s+\S+\s*[#$%>]\s*$/;
+const POWERSHELL_PROMPT_PATTERN = /^\s*PS\s+\S.*>\s*$/i;
+
 const SHELL_PROMPT_PATTERNS = [
-  /^\s*[>›❯⟩$#%]\s*$/,
+  SINGLE_CHAR_SHELL_PROMPT_PATTERN,
   // `user@host:/path $` style — bash default with hostname. Path token may
   // contain `/`, `:`, `~`, etc., so use \S+ rather than \w/.- only.
-  /^\s*[A-Za-z0-9_.-]+@\S+(?:\s+[^\r\n]*)?\s*[#$%>]\s*$/,
-  /^\s*[➜➤➟➔❯›]\s+.*$/,
+  POSIX_USER_HOST_PROMPT_PATTERN,
+  DECORATED_SHELL_PROMPT_PATTERN,
   // macOS bash default — `host:cwd user$` (no `@`, `:` separator). Two
   // whitespace-separated tokens followed by a single trailing prompt char so
   // command output like `cat <foo>` or `foo > bar.txt` doesn't false-positive.
-  /^\s*\S+:\S+\s+\S+\s*[#$%>]\s*$/,
+  MAC_BASH_PROMPT_PATTERN,
   // PowerShell default — `PS C:\repo>` or `PS /home/user>`.
-  /^\s*PS\s+\S.*>\s*$/i,
+  POWERSHELL_PROMPT_PATTERN,
+] as const;
+
+const UNAMBIGUOUS_SHELL_PROMPT_PATTERNS = [
+  SHELL_ONLY_SINGLE_CHAR_PROMPT_PATTERN,
+  POSIX_USER_HOST_PROMPT_PATTERN,
+  MAC_BASH_PROMPT_PATTERN,
+  POWERSHELL_PROMPT_PATTERN,
 ] as const;
 
 // Locale-independent fallback signals for "command not found" detection. POSIX
@@ -275,12 +290,19 @@ export class IdentityWatcher {
     const visibleTail = [this.delegate.getCursorLine(), ...lines]
       .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
       .join("\n");
+    const currentLineIsUnambiguousShellPrompt =
+      currentVisibleLine !== undefined &&
+      UNAMBIGUOUS_SHELL_PROMPT_PATTERNS.some((pattern) => pattern.test(currentVisibleLine));
+    if (!hasPtyDescendants && currentLineIsUnambiguousShellPrompt) {
+      return false;
+    }
     const knownAgentPrompt =
       /(?:accessing workspace|yes,\s*i trust this folder|enter to confirm|quick safety check|\?\s+for\s+shortcuts|tips\s+for\s+getting\s+started|welcome\s+back!|claude code v\d)/i;
     return (
       knownAgentPrompt.test(recent) ||
       knownAgentPrompt.test(visibleTail) ||
       /^\s*[>❯›]\s+\d+\./m.test(visibleTail) ||
+      AGENT_ONLY_SINGLE_CHAR_PROMPT_PATTERN.test(currentVisibleLine ?? "") ||
       (/^\s*>\s*$/m.test(visibleTail) && /\?\s+for\s+shortcuts/i.test(visibleTail)) ||
       (hasPtyDescendants && /^\s*PS\s+\S.*>\s*$/i.test(currentVisibleLine ?? "")) ||
       (hasPtyDescendants && /^\s*[>❯›]\s*$/.test(currentVisibleLine ?? ""))
@@ -362,19 +384,25 @@ export class IdentityWatcher {
     return prompt.isPrompt;
   }
 
-  private isForegroundShellIdleForAgentDemotion(): boolean {
+  private readForegroundShellIdleForAgentDemotion(): {
+    readonly shellIdle: boolean;
+    readonly supported: boolean;
+  } {
     const snapshot = this.delegate.readForegroundProcessGroupSnapshot();
     if (!snapshot) {
       // Non-POSIX and unsupported environments fall back to the legacy prompt
       // path. On macOS/Linux this snapshot is the authoritative demotion gate.
-      return true;
+      return { shellIdle: true, supported: false };
     }
 
     if (snapshot.shellPgid <= 0 || snapshot.foregroundPgid <= 0) {
-      return true;
+      return { shellIdle: true, supported: false };
     }
 
-    return snapshot.shellPgid === snapshot.foregroundPgid;
+    return {
+      shellIdle: snapshot.shellPgid === snapshot.foregroundPgid,
+      supported: true,
+    };
   }
 
   private poll(): void {
@@ -477,7 +505,17 @@ export class IdentityWatcher {
       return;
     }
 
-    if (!promptVisible) {
+    const hasRecentCommandFailureOutput = this.hasRecentCommandFailureOutput();
+    const foregroundShellIdle = this.readForegroundShellIdleForAgentDemotion();
+    const posixShellOwnsPtyAfterAgent =
+      Boolean(this.identity.agentType) &&
+      this.sawPtyDescendant &&
+      foregroundShellIdle.supported &&
+      foregroundShellIdle.shellIdle &&
+      ptyDescendantCount === 0 &&
+      !hasRecentCommandFailureOutput;
+
+    if (!promptVisible && !posixShellOwnsPtyAfterAgent) {
       this.promptStreak = 0;
       return;
     }
@@ -487,12 +525,10 @@ export class IdentityWatcher {
       return;
     }
 
-    const hasRecentCommandFailureOutput = this.hasRecentCommandFailureOutput();
-
     if (
       this.identity.agentType &&
       !hasRecentCommandFailureOutput &&
-      !this.isForegroundShellIdleForAgentDemotion()
+      !foregroundShellIdle.shellIdle
     ) {
       if (this.promptStreak > 0) {
         console.log(
@@ -507,6 +543,7 @@ export class IdentityWatcher {
     if (
       this.identity.agentType &&
       !hasRecentCommandFailureOutput &&
+      !posixShellOwnsPtyAfterAgent &&
       this.hasAgentUiPromptFalsePositive(hasPtyDescendants)
     ) {
       if (this.promptStreak > 0) {

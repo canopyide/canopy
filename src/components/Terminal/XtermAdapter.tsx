@@ -1,12 +1,4 @@
-import React, {
-  use,
-  useCallback,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useEffect,
-  useState,
-} from "react";
+import { use, useCallback, useLayoutEffect, useMemo, useRef, useEffect, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { cn } from "@/lib/utils";
 import { TerminalRefreshTier } from "@/types";
@@ -41,7 +33,7 @@ export interface XtermAdapterProps {
 
 const MIN_CONTAINER_SIZE = 50;
 
-function XtermAdapterComponent({
+export function XtermAdapter({
   terminalId,
   launchAgentId,
   detectedAgentId,
@@ -598,5 +590,3 @@ function XtermAdapterComponent({
     </div>
   );
 }
-
-export const XtermAdapter = React.memo(XtermAdapterComponent);

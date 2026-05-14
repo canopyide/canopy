@@ -1,0 +1,2065 @@
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { StagingStatus, GitStatus } from "@shared/types";
+import type { CrossWorktreeFile } from "@shared/types/ipc/git";
+import type { PushProgressEvent } from "@shared/types/ipc/gitPush";
+import { isClientAppError } from "@/utils/clientAppError";
+import { cn } from "@/lib/utils";
+
+import { TruncatedTooltip } from "@/components/ui/TruncatedTooltip";
+import {
+  X,
+  RefreshCw,
+  CheckSquare,
+  ChevronRight,
+  ExternalLink,
+  Square,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  GitBranch,
+  GitPullRequest,
+  XCircle,
+  SlidersHorizontal,
+  ChevronUp,
+  ChevronDown,
+  Search,
+} from "lucide-react";
+import { isProtectedBranch } from "@shared/utils/gitConstants";
+import { useUIStore } from "@/store/uiStore";
+import type { GitHubPRCIStatus } from "@shared/types/github";
+import { Spinner } from "@/components/ui/Spinner";
+import { FileStageRow, type FileStageRowSection } from "./FileStageRow";
+import { CommitPanel } from "./CommitPanel";
+import { ConflictPanel } from "./ConflictPanel";
+import { FileDiffModal } from "../FileDiffModal";
+import { BaseBranchDiffModal } from "./BaseBranchDiffModal";
+import { ForcePushConfirmDialog } from "./ForcePushConfirmDialog";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { debounce } from "@/utils/debounce";
+import { useWorktreeStore } from "@/hooks/useWorktreeStore";
+import { useShallow } from "zustand/react/shallow";
+import { githubClient } from "@/clients/githubClient";
+import { actionService } from "@/services/ActionService";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
+import {
+  type DiffMode,
+  type PushBannerCta,
+  type PushErrorState,
+  type SectionViewState,
+  DEFAULT_SECTION_STATE,
+  FILTER_DEBOUNCE_MS,
+  extractGitHubErrorCode,
+  getPushBannerConfig,
+  isDensity,
+  isGeneratedFile,
+  isSortKey,
+  matchesFilter,
+  readGitErrorFields,
+  sortFiles,
+  truncateFilterQuery,
+  getBaseBranchStatusConfig,
+} from "./reviewHubUtils";
+
+export interface ReviewHubContentProps {
+  /**
+   * Drives the open/close lifecycle: starts the staging-status fetch and
+   * worktree subscription on `true`, atomically resets all internal state on
+   * `false`. Mirrors the prior `<ReviewHub isOpen>` semantics so callers that
+   * want to keep the component mounted across open/close cycles can do so by
+   * toggling this prop.
+   */
+  isOpen: boolean;
+  worktreePath: string;
+  onClose: () => void;
+  /**
+   * Where to attach the Escape-key listener. Defaults to `document` so the
+   * modal shell continues to capture Escape globally. Non-modal callers can
+   * pass a scoped element to confine Escape to their panel. `undefined`/`null`
+   * both fall back to `document`; if you intend a scoped element but the ref
+   * isn't attached yet, gate the prop yourself rather than passing `null`.
+   */
+  keyboardScope?: Document | HTMLElement | null;
+  /**
+   * Seed value for the commit message on open. The first open after `isOpen`
+   * flips from false to true populates the textarea with this value if it is
+   * not empty; subsequent edits by the user are preserved. Reset to empty on
+   * close so a future reopen without a seed starts blank.
+   */
+  initialCommitMessage?: string;
+  /**
+   * When true, stage all unstaged files on open if there are no staged files
+   * yet. Fires once per open; reopening the hub re-evaluates.
+   */
+  autoStageOnOpen?: boolean;
+}
+
+function prCIStatusVisual(
+  status: GitHubPRCIStatus | undefined
+): { Icon: typeof CheckCircle2; className: string; label: string } | null {
+  switch (status) {
+    case "SUCCESS":
+      return { Icon: CheckCircle2, className: "text-status-success", label: "passing" };
+    case "FAILURE":
+    case "ERROR":
+      return { Icon: XCircle, className: "text-status-error", label: "failing" };
+    case "PENDING":
+    case "EXPECTED":
+      return { Icon: Clock, className: "text-status-warning", label: "pending" };
+    default:
+      return null;
+  }
+}
+
+interface BaseBranchFileRowProps {
+  file: CrossWorktreeFile;
+  onClick: () => void;
+  unresolvedCount?: number;
+  onBadgeClick?: () => void;
+}
+
+function BaseBranchFileRow({
+  file,
+  onClick,
+  unresolvedCount,
+  onBadgeClick,
+}: BaseBranchFileRowProps) {
+  const config = getBaseBranchStatusConfig(file.status);
+  const normalized = file.path.replace(/\\/g, "/");
+  const lastSlash = normalized.lastIndexOf("/");
+  const dir = lastSlash === -1 ? "" : normalized.slice(0, lastSlash);
+  const base = lastSlash === -1 ? normalized : normalized.slice(lastSlash + 1);
+
+  return (
+    <TruncatedTooltip content={file.path}>
+      <div
+        className={cn(
+          "group/baserow w-full flex items-center text-xs rounded px-1.5 py-1.5",
+          "hover:bg-tint/5 transition-colors"
+        )}
+      >
+        <button
+          type="button"
+          onClick={onClick}
+          className={cn(
+            "relative flex min-w-0 flex-1 items-baseline rounded text-left",
+            "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent"
+          )}
+        >
+          <span
+            aria-hidden="true"
+            className={cn(
+              "inline-flex items-center justify-center rounded-sm px-1 mr-2 shrink-0",
+              "text-[10px] font-medium leading-4 h-4 min-w-[16px]",
+              config.bg,
+              config.text
+            )}
+          >
+            {config.label}
+          </span>
+          {dir && (
+            <span
+              data-testid="base-branch-file-row-dir"
+              className={cn(
+                "shrink truncate font-mono text-[11px] transition-colors",
+                "text-daintree-text/50 group-hover/baserow:text-daintree-text/70"
+              )}
+            >
+              {dir}/
+            </span>
+          )}
+          <span
+            data-testid="base-branch-file-row-base"
+            className={cn(
+              "shrink truncate font-medium font-mono text-[11px] transition-colors",
+              "text-daintree-text group-hover/baserow:text-daintree-text"
+            )}
+          >
+            {base}
+          </span>
+        </button>
+        {unresolvedCount !== undefined && unresolvedCount > 0 && (
+          <button
+            type="button"
+            onClick={onBadgeClick}
+            aria-label={`${unresolvedCount} unresolved review comment${unresolvedCount !== 1 ? "s" : ""} on ${file.path}`}
+            className={cn(
+              "shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 ml-2 rounded-full",
+              "text-[10px] font-semibold tabular-nums",
+              "bg-status-warning/15 text-status-warning",
+              "hover:bg-status-warning/25 transition-colors cursor-pointer",
+              "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-status-warning"
+            )}
+          >
+            {unresolvedCount}
+          </button>
+        )}
+      </div>
+    </TruncatedTooltip>
+  );
+}
+
+/**
+ * Self-contained Review & Commit surface. All staging-status fetches,
+ * subscriptions, push/pull-rebase IPC, and UI interaction state live in this
+ * component so it can be rendered inside the existing modal shell
+ * (`<ReviewHub>`) or, in the future, inside a non-modal panel kind. The
+ * `isOpen` prop drives the start/reset lifecycle: when it flips from false to
+ * true the staging fetch + worktree subscription arm; when it flips back to
+ * false every transient field is reset atomically so a later reopen starts
+ * from a clean slate (preserves the lesson-4958 atomic-reset invariant).
+ */
+export function ReviewHubContent({
+  isOpen,
+  worktreePath,
+  onClose,
+  keyboardScope,
+  initialCommitMessage,
+  autoStageOnOpen,
+}: ReviewHubContentProps) {
+  const [status, setStatus] = useState<StagingStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [pushError, setPushError] = useState<PushErrorState | null>(null);
+  const [showPushDetails, setShowPushDetails] = useState(false);
+  const [pushProgress, setPushProgress] = useState<Map<string, PushProgressEvent>>(new Map());
+  const [pushTargetBranch, setPushTargetBranch] = useState<string | null>(null);
+  const [isPushing, setIsPushing] = useState(false);
+  const [commitMessage, setCommitMessage] = useState("");
+  const [selectedFile, setSelectedFile] = useState<{
+    path: string;
+    status: GitStatus;
+  } | null>(null);
+  // Session-scoped per-file Viewed indicator. Keys are `staged:{path}` or
+  // `unstaged:{path}` so that the same path appearing in both sections (valid
+  // during partial staging) tracks Viewed independently. Resets on close and
+  // on ReviewHub unmount — intentional, this is not persisted.
+  const [viewedFiles, setViewedFiles] = useState<Set<string>>(() => new Set());
+  const [diffMode, setDiffMode] = useState<DiffMode>("working-tree");
+  const [forcePushDialogOpen, setForcePushDialogOpen] = useState(false);
+  const [pullRebasing, setPullRebasing] = useState(false);
+  const isPullRebasingRef = useRef(false);
+  const [baseBranchFiles, setBaseBranchFiles] = useState<CrossWorktreeFile[] | null>(null);
+  const [baseBranchLoading, setBaseBranchLoading] = useState(false);
+  const [baseBranchError, setBaseBranchError] = useState<string | null>(null);
+  const [selectedBaseBranchFile, setSelectedBaseBranchFile] = useState<CrossWorktreeFile | null>(
+    null
+  );
+  const [reviewThreadCounts, setReviewThreadCounts] = useState<Record<string, number> | null>(null);
+  const reviewThreadsRequestRef = useRef(0);
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
+  const [selectionSection, setSelectionSection] = useState<FileStageRowSection | null>(null);
+  const refreshIdRef = useRef(0);
+  const bgRefreshIdRef = useRef(0);
+  const baseBranchRequestRef = useRef(0);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const savedScrollTop = useRef(0);
+  const debouncedBgRefreshRef = useRef<ReturnType<typeof debounce> | null>(null);
+  const conflictSectionRef = useRef<HTMLDivElement>(null);
+  const unstagedSectionRef = useRef<HTMLDivElement>(null);
+  const selectionAnchorRef = useRef<string | null>(null);
+  const isBulkStagingRef = useRef(false);
+  // One-shot guard for the auto-stage-on-open behavior. Resets in the close
+  // branch of the isOpen effect so reopening re-arms the check.
+  const hasAutoStagedRef = useRef(false);
+
+  const fileListExpanded = useUIStore((s) => s.reviewHubFileListExpanded[worktreePath] ?? false);
+  const setFileListExpanded = useUIStore((s) => s.setReviewHubFileListExpanded);
+
+  const [stagedView, setStagedView] = useState<SectionViewState>(DEFAULT_SECTION_STATE);
+  const [changesView, setChangesView] = useState<SectionViewState>(DEFAULT_SECTION_STATE);
+  const stagedInputRef = useRef<HTMLInputElement | null>(null);
+  const changesInputRef = useRef<HTMLInputElement | null>(null);
+  const stagedDebounceRef = useRef<{
+    (v: string): void;
+    cancel: () => void;
+    flush: () => Promise<void>;
+  } | null>(null);
+  const changesDebounceRef = useRef<{
+    (v: string): void;
+    cancel: () => void;
+    flush: () => Promise<void>;
+  } | null>(null);
+
+  useEffect(() => {
+    stagedDebounceRef.current = debounce((q: string) => {
+      setStagedView((prev) => ({ ...prev, filterQuery: q }));
+    }, FILTER_DEBOUNCE_MS);
+    changesDebounceRef.current = debounce((q: string) => {
+      setChangesView((prev) => ({ ...prev, filterQuery: q }));
+    }, FILTER_DEBOUNCE_MS);
+    return () => {
+      stagedDebounceRef.current?.cancel();
+      changesDebounceRef.current?.cancel();
+    };
+  }, []);
+
+  const clearStagedFilter = useCallback(() => {
+    stagedDebounceRef.current?.cancel();
+    if (stagedInputRef.current) stagedInputRef.current.value = "";
+    setStagedView((prev) => ({ ...prev, filterQuery: "" }));
+  }, []);
+
+  const clearChangesFilter = useCallback(() => {
+    changesDebounceRef.current?.cancel();
+    if (changesInputRef.current) changesInputRef.current.value = "";
+    setChangesView((prev) => ({ ...prev, filterQuery: "" }));
+  }, []);
+
+  const derivedStaged = useMemo(() => {
+    if (!status) return [];
+    let rows = status.staged;
+    if (!stagedView.showGenerated) rows = rows.filter((f) => !isGeneratedFile(f.path));
+    if (stagedView.filterQuery)
+      rows = rows.filter((f) => matchesFilter(f.path, stagedView.filterQuery));
+    return sortFiles(rows, stagedView.sortKey, stagedView.sortDir);
+  }, [status, stagedView]);
+
+  const derivedUnstaged = useMemo(() => {
+    if (!status) return [];
+    let rows = status.unstaged;
+    if (!changesView.showGenerated) rows = rows.filter((f) => !isGeneratedFile(f.path));
+    if (changesView.filterQuery)
+      rows = rows.filter((f) => matchesFilter(f.path, changesView.filterQuery));
+    return sortFiles(rows, changesView.sortKey, changesView.sortDir);
+  }, [status, changesView]);
+
+  const stagedChurn = useMemo(
+    () =>
+      derivedStaged.reduce(
+        (acc, f) => ({
+          ins: acc.ins + (f.insertions ?? 0),
+          del: acc.del + (f.deletions ?? 0),
+        }),
+        { ins: 0, del: 0 }
+      ),
+    [derivedStaged]
+  );
+
+  const unstagedChurn = useMemo(
+    () =>
+      derivedUnstaged.reduce(
+        (acc, f) => ({
+          ins: acc.ins + (f.insertions ?? 0),
+          del: acc.del + (f.deletions ?? 0),
+        }),
+        { ins: 0, del: 0 }
+      ),
+    [derivedUnstaged]
+  );
+
+  const sortedBaseBranchFiles = useMemo(
+    () =>
+      baseBranchFiles
+        ? [...baseBranchFiles].sort((a, b) =>
+            a.path.replace(/\\/g, "/").localeCompare(b.path.replace(/\\/g, "/"))
+          )
+        : null,
+    [baseBranchFiles]
+  );
+
+  const mainBranch = useWorktreeStore(
+    (state) =>
+      Array.from(state.worktrees.values()).find((wt) => wt.isMainWorktree)?.branch ?? "main"
+  );
+
+  const worktreePR = useWorktreeStore(
+    useShallow((state) => {
+      for (const wt of state.worktrees.values()) {
+        if (wt.path === worktreePath) {
+          return wt.prNumber
+            ? {
+                prNumber: wt.prNumber,
+                prUrl: wt.prUrl,
+                prState: wt.prState,
+                prCiStatus: wt.prCiStatus,
+              }
+            : null;
+        }
+      }
+      return null;
+    })
+  );
+
+  const behindCount = useWorktreeStore((state) => {
+    for (const wt of state.worktrees.values()) {
+      if (wt.path === worktreePath) {
+        return wt.behindCount;
+      }
+    }
+    return undefined;
+  });
+
+  const refresh = useCallback(async () => {
+    if (!worktreePath) return;
+    const requestId = ++refreshIdRef.current;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const result = await window.electron.git.getStagingStatus(worktreePath);
+      if (refreshIdRef.current === requestId) {
+        setStatus(result);
+      }
+    } catch (err) {
+      if (refreshIdRef.current === requestId) {
+        setLoadError(formatErrorMessage(err, "Failed to load staging status"));
+      }
+    } finally {
+      if (refreshIdRef.current === requestId) {
+        setLoading(false);
+      }
+    }
+  }, [worktreePath]);
+
+  const handleStageFiltered = useCallback(async () => {
+    setActionError(null);
+    debouncedBgRefreshRef.current?.cancel();
+    const paths = derivedUnstaged.map((f) => f.path);
+    try {
+      for (const path of paths) {
+        await window.electron.git.stageFile(worktreePath, path);
+      }
+    } catch (err) {
+      setActionError(formatErrorMessage(err, "Failed to stage files"));
+    } finally {
+      await refresh();
+    }
+  }, [worktreePath, refresh, derivedUnstaged]);
+
+  const handleUnstageFiltered = useCallback(async () => {
+    setActionError(null);
+    debouncedBgRefreshRef.current?.cancel();
+    const paths = derivedStaged.map((f) => f.path);
+    try {
+      for (const path of paths) {
+        await window.electron.git.unstageFile(worktreePath, path);
+      }
+    } catch (err) {
+      setActionError(formatErrorMessage(err, "Failed to unstage files"));
+    } finally {
+      await refresh();
+    }
+  }, [worktreePath, refresh, derivedStaged]);
+
+  const backgroundRefresh = useCallback(async () => {
+    if (!worktreePath) return;
+    const requestId = ++bgRefreshIdRef.current;
+    setIsBackgroundRefreshing(true);
+    try {
+      const result = await window.electron.git.getStagingStatus(worktreePath);
+      if (bgRefreshIdRef.current === requestId) {
+        setStatus(result);
+        setLoadError(null);
+      }
+    } catch {
+      // Keep existing data visible; silently drop background errors
+    } finally {
+      if (bgRefreshIdRef.current === requestId) {
+        setIsBackgroundRefreshing(false);
+      }
+    }
+  }, [worktreePath]);
+
+  const fetchBaseBranch = useCallback(async () => {
+    const currentBranch = status?.currentBranch;
+    if (!currentBranch || !worktreePath) return;
+    if (currentBranch === mainBranch) return;
+
+    const requestId = ++baseBranchRequestRef.current;
+    setBaseBranchLoading(true);
+    setBaseBranchError(null);
+    setBaseBranchFiles(null);
+    setSelectedBaseBranchFile(null);
+
+    try {
+      const res = await window.electron.git.compareWorktrees(
+        worktreePath,
+        mainBranch,
+        currentBranch,
+        undefined,
+        true
+      );
+      if (baseBranchRequestRef.current !== requestId) return;
+      if (typeof res === "string") {
+        setBaseBranchError("Unexpected result from comparison");
+        return;
+      }
+      setBaseBranchFiles(res.files);
+    } catch (err) {
+      if (baseBranchRequestRef.current !== requestId) return;
+      setBaseBranchError(formatErrorMessage(err, "Failed to load base branch diff"));
+    } finally {
+      if (baseBranchRequestRef.current === requestId) setBaseBranchLoading(false);
+    }
+  }, [worktreePath, mainBranch, status?.currentBranch]);
+
+  useEffect(() => {
+    setShowPushDetails(false);
+  }, [pushError]);
+
+  // Read the latest initialCommitMessage without re-running the open/close
+  // effect when the AI-note changes mid-session — protects user edits per #4220.
+  const readInitialCommitMessage = useEffectEvent(() => initialCommitMessage ?? "");
+
+  useEffect(() => {
+    if (isOpen) {
+      setActionError(null);
+      setPushError(null);
+      const seed = readInitialCommitMessage();
+      if (seed) setCommitMessage(seed);
+      void refresh();
+    } else {
+      refreshIdRef.current++;
+      bgRefreshIdRef.current++;
+      baseBranchRequestRef.current++;
+      reviewThreadsRequestRef.current++;
+      setStatus(null);
+      setLoadError(null);
+      setActionError(null);
+      setPushError(null);
+      setSelectedFile(null);
+      setCommitMessage("");
+      setIsBackgroundRefreshing(false);
+      setDiffMode("working-tree");
+      setBaseBranchFiles(null);
+      setBaseBranchError(null);
+      setSelectedBaseBranchFile(null);
+      setReviewThreadCounts(null);
+      setForcePushDialogOpen(false);
+      setPullRebasing(false);
+      isPullRebasingRef.current = false;
+      setViewedFiles(new Set());
+      setSelectedPaths(new Set());
+      setSelectionSection(null);
+      selectionAnchorRef.current = null;
+      hasAutoStagedRef.current = false;
+      // Filter state lives in `stagedView`/`changesView` rather than refs, so the
+      // modal-shell path (which unmounts on close) never noticed leftover
+      // filters. Once mounted as a non-modal panel, the same component instance
+      // survives close→reopen — reset the filter, sort, density, and the
+      // pending debounced writes so the next open starts from defaults.
+      stagedDebounceRef.current?.cancel();
+      changesDebounceRef.current?.cancel();
+      if (stagedInputRef.current) stagedInputRef.current.value = "";
+      if (changesInputRef.current) changesInputRef.current.value = "";
+      setStagedView(DEFAULT_SECTION_STATE);
+      setChangesView(DEFAULT_SECTION_STATE);
+    }
+  }, [isOpen, refresh]);
+
+  useEffect(() => {
+    if (!isOpen || !autoStageOnOpen) return;
+    if (!status) return;
+    if (hasAutoStagedRef.current) return;
+    if (status.staged.length > 0) {
+      // Already staged from a prior session — skip and mark as handled.
+      hasAutoStagedRef.current = true;
+      return;
+    }
+    if (status.unstaged.length === 0) return;
+    // Optimistically take the guard so a concurrent status update can't
+    // re-trip this effect mid-call. If staging fails, release the guard so
+    // the next status update gets another chance instead of leaving the
+    // user stuck looking at unstaged files for the rest of the session.
+    // We inline the IPC call here (rather than reusing handleStageAll) to
+    // observe failure — handleStageAll swallows errors into a banner.
+    hasAutoStagedRef.current = true;
+    void (async () => {
+      setActionError(null);
+      debouncedBgRefreshRef.current?.cancel();
+      try {
+        await window.electron.git.stageAll(worktreePath);
+        await refresh();
+      } catch (err) {
+        hasAutoStagedRef.current = false;
+        setActionError(formatErrorMessage(err, "Failed to stage all files"));
+      }
+    })();
+  }, [isOpen, autoStageOnOpen, status, refresh, worktreePath]);
+
+  useEffect(() => {
+    if (diffMode === "base-branch" && status?.currentBranch === mainBranch) {
+      baseBranchRequestRef.current++;
+      reviewThreadsRequestRef.current++;
+      setDiffMode("working-tree");
+      setBaseBranchFiles(null);
+      setBaseBranchError(null);
+      setSelectedBaseBranchFile(null);
+      setReviewThreadCounts(null);
+    }
+  }, [status?.currentBranch, mainBranch, diffMode]);
+
+  useEffect(() => {
+    if (!isOpen || diffMode !== "base-branch" || !worktreePR?.prNumber || !worktreePath) {
+      if (diffMode !== "base-branch") {
+        setReviewThreadCounts(null);
+      }
+      return;
+    }
+
+    const requestId = ++reviewThreadsRequestRef.current;
+
+    void (async () => {
+      try {
+        const counts = await githubClient.getPRReviewThreads(worktreePath, worktreePR.prNumber!);
+        if (reviewThreadsRequestRef.current === requestId) {
+          setReviewThreadCounts(counts);
+        }
+      } catch {
+        if (reviewThreadsRequestRef.current === requestId) {
+          setReviewThreadCounts(null);
+        }
+      }
+    })();
+  }, [isOpen, diffMode, worktreePR?.prNumber, worktreePath]);
+
+  useEffect(() => {
+    if (!status || !selectionSection) return;
+    const sectionFiles = selectionSection === "staged" ? status.staged : status.unstaged;
+    const validPaths = new Set(sectionFiles.map((f) => f.path));
+    setSelectedPaths((prev) => {
+      if (prev.size === 0) return prev;
+      let mutated = false;
+      const next = new Set<string>();
+      for (const p of prev) {
+        if (validPaths.has(p)) next.add(p);
+        else mutated = true;
+      }
+      if (!mutated) return prev;
+      if (next.size === 0) {
+        setSelectionSection(null);
+        selectionAnchorRef.current = null;
+      } else if (
+        selectionAnchorRef.current !== null &&
+        !validPaths.has(selectionAnchorRef.current)
+      ) {
+        // Anchor evicted but selection survives — reseat anchor on a remaining
+        // path so the next shift-click extends from it rather than falling
+        // through to plain-click (which would wipe the selection).
+        selectionAnchorRef.current = next.values().next().value ?? null;
+      }
+      return next;
+    });
+  }, [status, selectionSection]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const debouncedBgRefresh = debounce(() => void backgroundRefresh(), 800);
+    debouncedBgRefreshRef.current = debouncedBgRefresh;
+
+    const unsubscribe = window.electron.worktree.onUpdate((state) => {
+      if (state.path === worktreePath) {
+        debouncedBgRefresh();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      debouncedBgRefresh.cancel();
+      debouncedBgRefreshRef.current = null;
+    };
+  }, [isOpen, worktreePath, backgroundRefresh]);
+
+  const handleStageFile = useCallback(
+    async (filePath: string) => {
+      setActionError(null);
+      debouncedBgRefreshRef.current?.cancel();
+      try {
+        await window.electron.git.stageFile(worktreePath, filePath);
+        await refresh();
+      } catch (err) {
+        setActionError(formatErrorMessage(err, "Failed to stage file"));
+      }
+    },
+    [worktreePath, refresh]
+  );
+
+  const handleUnstageFile = useCallback(
+    async (filePath: string) => {
+      setActionError(null);
+      debouncedBgRefreshRef.current?.cancel();
+      try {
+        await window.electron.git.unstageFile(worktreePath, filePath);
+        await refresh();
+      } catch (err) {
+        setActionError(formatErrorMessage(err, "Failed to unstage file"));
+      }
+    },
+    [worktreePath, refresh]
+  );
+
+  const handleStageAll = useCallback(async () => {
+    setActionError(null);
+    debouncedBgRefreshRef.current?.cancel();
+    try {
+      await window.electron.git.stageAll(worktreePath);
+      await refresh();
+    } catch (err) {
+      setActionError(formatErrorMessage(err, "Failed to stage all files"));
+    }
+  }, [worktreePath, refresh]);
+
+  const handleUnstageAll = useCallback(async () => {
+    setActionError(null);
+    debouncedBgRefreshRef.current?.cancel();
+    try {
+      await window.electron.git.unstageAll(worktreePath);
+      await refresh();
+    } catch (err) {
+      setActionError(formatErrorMessage(err, "Failed to unstage all files"));
+    }
+  }, [worktreePath, refresh]);
+
+  const handleStageSelection = useCallback(async () => {
+    if (isBulkStagingRef.current) return;
+    if (selectionSection !== "unstaged" || selectedPaths.size === 0) return;
+    isBulkStagingRef.current = true;
+    const paths = Array.from(selectedPaths);
+    setActionError(null);
+    debouncedBgRefreshRef.current?.cancel();
+    try {
+      await window.electron.git.stageFiles(worktreePath, paths);
+      setSelectedPaths(new Set());
+      setSelectionSection(null);
+      selectionAnchorRef.current = null;
+      await refresh();
+    } catch (err) {
+      setActionError(formatErrorMessage(err, "Failed to stage selected files"));
+    } finally {
+      isBulkStagingRef.current = false;
+    }
+  }, [worktreePath, refresh, selectedPaths, selectionSection]);
+
+  const handleUnstageSelection = useCallback(async () => {
+    if (isBulkStagingRef.current) return;
+    if (selectionSection !== "staged" || selectedPaths.size === 0) return;
+    isBulkStagingRef.current = true;
+    const paths = Array.from(selectedPaths);
+    setActionError(null);
+    debouncedBgRefreshRef.current?.cancel();
+    try {
+      await window.electron.git.unstageFiles(worktreePath, paths);
+      setSelectedPaths(new Set());
+      setSelectionSection(null);
+      selectionAnchorRef.current = null;
+      await refresh();
+    } catch (err) {
+      setActionError(formatErrorMessage(err, "Failed to unstage selected files"));
+    } finally {
+      isBulkStagingRef.current = false;
+    }
+  }, [worktreePath, refresh, selectedPaths, selectionSection]);
+
+  const handleCommit = useCallback(
+    async (message: string) => {
+      setActionError(null);
+      debouncedBgRefreshRef.current?.cancel();
+      try {
+        await window.electron.git.commit(worktreePath, message);
+        await refresh();
+      } catch (err) {
+        setActionError(formatErrorMessage(err, "Failed to commit changes"));
+        throw err;
+      }
+    },
+    [worktreePath, refresh]
+  );
+
+  const handleAbortOperation = useCallback(async () => {
+    setActionError(null);
+    debouncedBgRefreshRef.current?.cancel();
+    try {
+      await window.electron.git.abortRepositoryOperation(worktreePath);
+      await refresh();
+    } catch (err) {
+      setActionError(formatErrorMessage(err, "Failed to abort repository operation"));
+      throw err;
+    }
+  }, [worktreePath, refresh]);
+
+  const handleContinueOperation = useCallback(async () => {
+    setActionError(null);
+    debouncedBgRefreshRef.current?.cancel();
+    try {
+      await window.electron.git.continueRepositoryOperation(worktreePath);
+      await refresh();
+    } catch (err) {
+      setActionError(formatErrorMessage(err, "Failed to continue repository operation"));
+      throw err;
+    }
+  }, [worktreePath, refresh]);
+
+  const handleOpenInEditor = useCallback(
+    async (args: string | { path: string; line?: number }) => {
+      setActionError(null);
+      const filePath = typeof args === "string" ? args : args.path;
+      const line = typeof args === "string" ? undefined : args.line;
+      try {
+        const base = worktreePath.replace(/\\/g, "/").replace(/\/+$/, "");
+        const tail = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
+        const payload: { path: string; line?: number } = { path: `${base}/${tail}` };
+        if (typeof line === "number" && Number.isFinite(line) && line > 0) {
+          payload.line = line;
+        }
+        await window.electron.system.openInEditor(payload);
+      } catch (err) {
+        setActionError(formatErrorMessage(err, "Failed to open file in editor"));
+      }
+    },
+    [worktreePath]
+  );
+
+  const handleCheckoutOursTheirs = useCallback(
+    async (filePath: string, side: "ours" | "theirs") => {
+      setActionError(null);
+      debouncedBgRefreshRef.current?.cancel();
+      try {
+        await window.electron.git.checkoutOursTheirs(worktreePath, filePath, side);
+        await refresh();
+      } catch (err) {
+        setActionError(
+          formatErrorMessage(err, side === "ours" ? "Failed to take ours" : "Failed to take theirs")
+        );
+        throw err;
+      }
+    },
+    [worktreePath, refresh]
+  );
+
+  // Same body as handleStageFile but rethrows so ConflictPanel can roll back
+  // optimistic resolution on failure. The general handleStageFile is called
+  // via `void handleStageFile(...)` from FileStageRow and shouldn't change its
+  // swallow-and-banner semantics for that path.
+  const handleMarkResolved = useCallback(
+    async (filePath: string) => {
+      setActionError(null);
+      debouncedBgRefreshRef.current?.cancel();
+      try {
+        await window.electron.git.stageFile(worktreePath, filePath);
+        await refresh();
+      } catch (err) {
+        setActionError(formatErrorMessage(err, "Failed to mark file resolved"));
+        throw err;
+      }
+    },
+    [worktreePath, refresh]
+  );
+
+  const isPushingRef = useRef(false);
+
+  const runPush = useCallback(async () => {
+    if (isPushingRef.current) return;
+    isPushingRef.current = true;
+    setIsPushing(true);
+    setPushError(null);
+    setPushProgress(new Map());
+    setPushTargetBranch(null);
+
+    const cleanup = window.electron.git.onPushProgress((event) => {
+      if (event.cwd !== worktreePath) return;
+      if (event.stage === "target") {
+        setPushTargetBranch(event.targetBranch ?? null);
+        return;
+      }
+      setPushProgress((prev) => {
+        const next = new Map(prev);
+        next.set(event.stage, event);
+        return next;
+      });
+    });
+
+    try {
+      await window.electron.git.push(worktreePath);
+      setPushError(null);
+    } catch (err) {
+      // GitOperationError carries `gitReason` (auth-failed, push-rejected-*, etc.).
+      // AppError carries `code` from a different union (RATE_LIMITED, etc.) — fall
+      // back to "unknown" so getPushBannerConfig surfaces the raw message rather
+      // than rendering an unmapped reason.
+      const errFields = readGitErrorFields(err);
+      const isRateLimited =
+        isClientAppError(err) && (err as { code?: string }).code === "RATE_LIMITED";
+      setPushError({
+        reason: errFields.gitReason ?? "unknown",
+        rawMessage: isRateLimited
+          ? "Too many push attempts in a short window — wait a moment and try again."
+          : formatErrorMessage(err, "Failed to push"),
+        leaseSha: errFields.leaseSha,
+        branchName: errFields.branchName,
+      });
+    } finally {
+      cleanup();
+      setIsPushing(false);
+      isPushingRef.current = false;
+    }
+  }, [worktreePath]);
+
+  const handleCommitAndPush = useCallback(
+    async (message: string) => {
+      setActionError(null);
+      setPushError(null);
+      debouncedBgRefreshRef.current?.cancel();
+      try {
+        await window.electron.git.commit(worktreePath, message);
+      } catch (err) {
+        setActionError(formatErrorMessage(err, "Failed to commit changes"));
+        throw err;
+      }
+      await refresh();
+      await runPush();
+    },
+    [worktreePath, refresh, runPush]
+  );
+
+  const handleRetryPush = useCallback(async () => {
+    setPushError(null);
+    debouncedBgRefreshRef.current?.cancel();
+    await runPush();
+  }, [runPush]);
+
+  const handleFocusBlocker = useCallback(
+    (blocker: "conflicts" | "staged-files") => {
+      // Conflict warning + Staged + Unstaged sections live inside the
+      // collapsible file-list disclosure. Expand it first so the targeted
+      // refs exist before we try to focus them — otherwise the click on a
+      // disabled Commit button is silently swallowed when the list is hidden.
+      if (!fileListExpanded) {
+        setFileListExpanded(worktreePath, true);
+      }
+      // Defer one frame so the just-expanded DOM is committed before focus.
+      requestAnimationFrame(() => {
+        if (blocker === "conflicts") {
+          conflictSectionRef.current?.focus();
+        } else {
+          const stageAllBtn = unstagedSectionRef.current?.querySelector("button");
+          stageAllBtn?.focus();
+        }
+      });
+    },
+    [fileListExpanded, setFileListExpanded, worktreePath]
+  );
+
+  const handlePullRebase = useCallback(async () => {
+    if (isPullRebasingRef.current) return;
+    isPullRebasingRef.current = true;
+    setPullRebasing(true);
+    debouncedBgRefreshRef.current?.cancel();
+    try {
+      await window.electron.git.pullRebase(worktreePath);
+      // Successful rebase may have changed the working tree; refresh staging
+      // status before clearing the banner so the user sees the new state.
+      await refresh();
+      setPushError(null);
+    } catch (err) {
+      // A rebase that halts on conflicts surfaces as `conflict-unresolved`;
+      // surface it through the same banner so the user sees the next step.
+      const errFields = readGitErrorFields(err);
+      setPushError({
+        reason: errFields.gitReason ?? "unknown",
+        rawMessage: formatErrorMessage(err, "Failed to pull and rebase"),
+      });
+      // Refresh in case the rebase started and left files in conflict.
+      await refresh();
+    } finally {
+      isPullRebasingRef.current = false;
+      setPullRebasing(false);
+    }
+  }, [worktreePath, refresh]);
+
+  const handleForcePushSuccess = useCallback(() => {
+    setForcePushDialogOpen(false);
+    setPushError(null);
+    void refresh();
+  }, [refresh]);
+
+  const handleForcePushError = useCallback((err: unknown) => {
+    setForcePushDialogOpen(false);
+    const errFields = readGitErrorFields(err);
+    setPushError({
+      reason: errFields.gitReason ?? "unknown",
+      rawMessage: formatErrorMessage(err, "Failed to force push"),
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (scrollContainerRef.current && status) {
+      scrollContainerRef.current.scrollTop = savedScrollTop.current;
+    }
+  }, [status]);
+
+  const handleScrollContainer = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    savedScrollTop.current = e.currentTarget.scrollTop;
+  }, []);
+
+  const handleToggleStaged = useCallback(
+    (filePath: string) => {
+      void handleUnstageFile(filePath);
+    },
+    [handleUnstageFile]
+  );
+
+  const handleToggleUnstaged = useCallback(
+    (filePath: string) => {
+      void handleStageFile(filePath);
+    },
+    [handleStageFile]
+  );
+
+  const handleRowClick = useCallback(
+    (
+      section: FileStageRowSection,
+      filePath: string,
+      fileStatus: GitStatus,
+      e: React.MouseEvent
+    ) => {
+      const files = section === "staged" ? status?.staged : status?.unstaged;
+      if (e.shiftKey && files && selectionSection === section && selectionAnchorRef.current) {
+        const anchorIdx = files.findIndex((f) => f.path === selectionAnchorRef.current);
+        const clickIdx = files.findIndex((f) => f.path === filePath);
+        if (anchorIdx !== -1 && clickIdx !== -1) {
+          const start = Math.min(anchorIdx, clickIdx);
+          const end = Math.max(anchorIdx, clickIdx);
+          const range = new Set<string>();
+          for (let i = start; i <= end; i++) {
+            const entry = files[i];
+            if (entry) range.add(entry.path);
+          }
+          setSelectedPaths(range);
+          setSelectionSection(section);
+          return;
+        }
+      }
+
+      if (e.metaKey || e.ctrlKey) {
+        setSelectedPaths((prev) => {
+          const next = selectionSection === section ? new Set(prev) : new Set<string>();
+          if (next.has(filePath)) {
+            next.delete(filePath);
+          } else {
+            next.add(filePath);
+          }
+          if (next.size === 0) {
+            setSelectionSection(null);
+            selectionAnchorRef.current = null;
+          } else {
+            setSelectionSection(section);
+            selectionAnchorRef.current = filePath;
+          }
+          return next;
+        });
+        return;
+      }
+
+      // Plain click: clear any selection, open diff.
+      setSelectedPaths((prev) => (prev.size === 0 ? prev : new Set()));
+      setSelectionSection((prev) => (prev === null ? prev : null));
+      selectionAnchorRef.current = filePath;
+      setSelectedFile({ path: filePath, status: fileStatus });
+    },
+    [status, selectionSection]
+  );
+
+  const handleViewedChange = useCallback((viewedKey: string, viewed: boolean) => {
+    setViewedFiles((prev) => {
+      const next = new Set(prev);
+      if (viewed) next.add(viewedKey);
+      else next.delete(viewedKey);
+      return next;
+    });
+  }, []);
+
+  const handleDiffModeChange = useCallback(
+    (mode: DiffMode) => {
+      setDiffMode(mode);
+      if (mode === "base-branch" && baseBranchFiles === null && !baseBranchLoading) {
+        void fetchBaseBranch();
+      }
+    },
+    [baseBranchFiles, baseBranchLoading, fetchBaseBranch]
+  );
+
+  const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (selectedFile) {
+        setSelectedFile(null);
+      } else if (selectedBaseBranchFile) {
+        setSelectedBaseBranchFile(null);
+      } else if (selectedPaths.size > 0) {
+        setSelectedPaths(new Set());
+        setSelectionSection(null);
+        selectionAnchorRef.current = null;
+      } else {
+        onClose();
+      }
+    }
+  });
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const scope = keyboardScope ?? document;
+    if (scope instanceof Document) {
+      scope.addEventListener("keydown", handleKeyDown, { capture: true });
+      return () => scope.removeEventListener("keydown", handleKeyDown, { capture: true });
+    }
+    scope.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => scope.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, [isOpen, keyboardScope]);
+
+  if (!isOpen) return null;
+
+  const totalChanges =
+    (status?.staged.length ?? 0) +
+    (status?.unstaged.length ?? 0) +
+    (status?.conflicted.length ?? 0);
+  const hasConflicts = (status?.conflicted.length ?? 0) > 0;
+  const hasStagedSelection = selectionSection === "staged" && selectedPaths.size > 0;
+  const hasUnstagedSelection = selectionSection === "unstaged" && selectedPaths.size > 0;
+  const repoState = status?.repoState ?? "CLEAN";
+  const isOperationState =
+    repoState === "MERGING" ||
+    repoState === "REBASING" ||
+    repoState === "CHERRY_PICKING" ||
+    repoState === "REVERTING";
+
+  return (
+    <>
+      <div
+        className={cn("relative flex flex-col flex-1 min-h-0", "bg-daintree-bg", "outline-hidden")}
+        data-testid="review-hub-content"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-divider shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <h2
+              id="review-hub-title"
+              className="text-daintree-text font-semibold text-sm tracking-wide shrink-0"
+            >
+              Review & Commit
+            </h2>
+            {status?.currentBranch && (
+              <TruncatedTooltip content={status.currentBranch}>
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-tint/[0.07] border border-tint/[0.08] text-[11px] text-daintree-text/60 font-mono truncate max-w-[200px]">
+                  <GitBranch className="w-3 h-3 shrink-0" />
+                  <span className="truncate">{status.currentBranch}</span>
+                </span>
+              </TruncatedTooltip>
+            )}
+            {status?.currentBranch && isProtectedBranch(status.currentBranch.toLowerCase()) && (
+              <span
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-status-warning/10 border border-status-warning/30 text-[11px] text-status-warning shrink-0"
+                data-testid="review-hub-protected-branch-chip"
+              >
+                <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
+                <span>Protected</span>
+              </span>
+            )}
+            {status?.hasRemote &&
+              worktreePR &&
+              worktreePR.prUrl &&
+              (() => {
+                const ciVisual = prCIStatusVisual(worktreePR.prCiStatus);
+                const prStateLabel =
+                  worktreePR.prState === "merged"
+                    ? "merged"
+                    : worktreePR.prState === "closed"
+                      ? "closed"
+                      : "open";
+                return (
+                  <>
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono",
+                        "bg-tint/[0.07] border border-tint/[0.08]"
+                      )}
+                      aria-label={
+                        ciVisual
+                          ? `Pull request #${worktreePR.prNumber} ${prStateLabel} — CI ${ciVisual.label}`
+                          : `Pull request #${worktreePR.prNumber} ${prStateLabel}`
+                      }
+                    >
+                      <GitPullRequest
+                        className={cn(
+                          "w-3 h-3 shrink-0",
+                          worktreePR.prState === "merged"
+                            ? "text-github-merged"
+                            : worktreePR.prState === "closed"
+                              ? "text-github-closed"
+                              : "text-github-open"
+                        )}
+                      />
+                      <span
+                        className={
+                          worktreePR.prState === "merged"
+                            ? "text-github-merged"
+                            : worktreePR.prState === "closed"
+                              ? "text-github-closed"
+                              : "text-github-open"
+                        }
+                      >
+                        #{worktreePR.prNumber}
+                      </span>
+                      <span className="text-daintree-text/40">·</span>
+                      <span className="text-daintree-text/60">{prStateLabel}</span>
+                      {ciVisual && (
+                        <>
+                          <span className="text-daintree-text/40">·</span>
+                          <span className="inline-flex items-center gap-0.5">
+                            <ciVisual.Icon
+                              className={cn("w-2.5 h-2.5 shrink-0", ciVisual.className)}
+                              aria-hidden="true"
+                            />
+                            <span className={ciVisual.className}>{ciVisual.label}</span>
+                          </span>
+                        </>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void githubClient.openPR(worktreePR.prUrl as string)}
+                      className={cn(
+                        "inline-flex items-center justify-center p-0.5 rounded",
+                        "text-daintree-text/60 hover:bg-tint/5 hover:text-daintree-text",
+                        "transition-colors cursor-pointer",
+                        "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent"
+                      )}
+                      aria-label={`View pull request #${worktreePR.prNumber} on GitHub`}
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                    </button>
+                  </>
+                );
+              })()}
+            {status?.hasRemote && !worktreePR && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-tint/[0.07] border border-tint/[0.08] text-[11px] text-daintree-text/40">
+                <GitPullRequest className="w-3 h-3 shrink-0" />
+                <span>No PR</span>
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Diff mode toggle */}
+            <div
+              className="flex items-center rounded border border-tint/[0.08] overflow-hidden text-[11px]"
+              role="group"
+              aria-label="Diff mode"
+              data-testid="review-hub-diff-mode"
+            >
+              <button
+                onClick={() => handleDiffModeChange("working-tree")}
+                className={cn(
+                  "px-2 py-1 transition-colors",
+                  "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent",
+                  diffMode === "working-tree"
+                    ? "bg-filter-selected-bg-strong text-daintree-text"
+                    : "text-daintree-text/50 hover:text-daintree-text hover:bg-tint/[0.06]"
+                )}
+                aria-pressed={diffMode === "working-tree"}
+              >
+                Working tree
+              </button>
+              <button
+                onClick={() => handleDiffModeChange("base-branch")}
+                disabled={!status?.currentBranch || status.currentBranch === mainBranch}
+                className={cn(
+                  "px-2 py-1 transition-colors border-l border-tint/[0.08]",
+                  "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent",
+                  "disabled:opacity-40 disabled:cursor-not-allowed",
+                  diffMode === "base-branch"
+                    ? "bg-filter-selected-bg-strong text-daintree-text"
+                    : "text-daintree-text/50 hover:text-daintree-text hover:bg-tint/[0.06]"
+                )}
+                aria-pressed={diffMode === "base-branch"}
+              >
+                vs {mainBranch}
+              </button>
+            </div>
+
+            {diffMode === "working-tree" && (
+              <button
+                onClick={() => void refresh()}
+                disabled={loading}
+                className={cn(
+                  "p-1.5 rounded transition-colors",
+                  "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.06]",
+                  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent"
+                )}
+                aria-label="Refresh"
+              >
+                <RefreshCw
+                  className={cn(
+                    "w-3.5 h-3.5",
+                    (loading || isBackgroundRefreshing) && "animate-spin"
+                  )}
+                />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className={cn(
+                "p-1.5 rounded transition-colors",
+                "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.06]",
+                "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent"
+              )}
+              aria-label="Close"
+              data-testid="review-hub-close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Inline error banners */}
+        {actionError && (
+          <div className="px-4 py-2 text-xs text-status-error bg-status-error/10 flex items-start gap-2 shrink-0">
+            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            <span>{actionError}</span>
+          </div>
+        )}
+        {pushError &&
+          (() => {
+            const config = getPushBannerConfig(pushError, behindCount);
+            const ghCode = extractGitHubErrorCode(pushError.rawMessage);
+            const canCollapse =
+              config.detailPolicy === "collapse" && pushError.rawMessage.length > 0;
+            const dispatchCta = (cta: PushBannerCta) => {
+              switch (cta.kind) {
+                case "settings-github":
+                  void actionService.dispatch(
+                    "app.settings.openTab",
+                    { tab: "github" },
+                    { source: "user" }
+                  );
+                  return;
+                case "retry":
+                  void handleRetryPush();
+                  return;
+                case "pull-rebase":
+                  void handlePullRebase();
+                  return;
+                case "force-push":
+                  setForcePushDialogOpen(true);
+                  return;
+              }
+            };
+            const renderCta = (
+              cta: PushBannerCta,
+              isPrimary: boolean,
+              key: string,
+              isLoading: boolean
+            ) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => dispatchCta(cta)}
+                disabled={isLoading}
+                data-testid={
+                  isPrimary ? "review-hub-push-error-cta" : "review-hub-push-error-secondary-cta"
+                }
+                data-cta-kind={cta.kind}
+                className={cn(
+                  "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-colors",
+                  "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-status-warning",
+                  "disabled:opacity-50 disabled:cursor-not-allowed",
+                  isPrimary
+                    ? "bg-status-warning/20 hover:bg-status-warning/30 text-status-warning"
+                    : "bg-filter-selected-bg-soft hover:bg-tint/[0.14] text-daintree-text/80"
+                )}
+              >
+                {isLoading && cta.kind === "pull-rebase" ? "Pulling…" : cta.label}
+              </button>
+            );
+            return (
+              <div
+                role="alert"
+                data-testid="review-hub-push-error"
+                data-reason={pushError.reason}
+                className="px-4 py-2 text-xs text-status-warning bg-status-warning/10 flex items-start gap-2 shrink-0"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div>
+                    <span className="font-medium">Push failed.</span> <span>{config.message}</span>
+                  </div>
+                  {ghCode && (
+                    <div
+                      data-testid="review-hub-push-error-code"
+                      className="mt-1 text-[10px] font-mono opacity-80"
+                    >
+                      {ghCode}
+                    </div>
+                  )}
+                  {canCollapse && (
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowPushDetails((prev) => !prev)}
+                        data-testid="review-hub-push-error-toggle"
+                        aria-expanded={showPushDetails}
+                        className={cn(
+                          "inline-flex items-center px-1.5 py-0.5 rounded",
+                          "text-status-warning/80 hover:text-status-warning",
+                          "text-[10px] font-medium underline-offset-2 hover:underline transition-colors",
+                          "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-status-warning"
+                        )}
+                      >
+                        {showPushDetails ? "Hide details" : "Show details"}
+                      </button>
+                    </div>
+                  )}
+                  {canCollapse && showPushDetails && (
+                    <pre
+                      data-testid="review-hub-push-error-details"
+                      className="mt-1 text-[10px] font-mono whitespace-pre-wrap break-all opacity-70"
+                    >
+                      {pushError.rawMessage}
+                    </pre>
+                  )}
+                  {(config.cta || config.secondaryCta) && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      {config.cta && renderCta(config.cta, true, "primary", pullRebasing)}
+                      {config.secondaryCta &&
+                        renderCta(config.secondaryCta, false, "secondary", pullRebasing)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+        {/* Content */}
+        <div
+          ref={scrollContainerRef}
+          data-testid="review-hub-scroll-container"
+          className={cn(
+            "flex-1 overflow-y-auto min-h-0",
+            isBackgroundRefreshing && "surface-stale"
+          )}
+          aria-busy={isBackgroundRefreshing || undefined}
+          onScroll={handleScrollContainer}
+        >
+          {diffMode === "base-branch" ? (
+            /* Base-branch diff panel */
+            baseBranchLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Spinner size="lg" className="text-daintree-text/40" />
+              </div>
+            ) : baseBranchError ? (
+              <div className="p-4 text-xs text-status-error">
+                <p className="mb-2">{baseBranchError}</p>
+                <Button variant="subtle" size="sm" onClick={() => void fetchBaseBranch()}>
+                  Retry
+                </Button>
+              </div>
+            ) : sortedBaseBranchFiles !== null && sortedBaseBranchFiles.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-daintree-text/50">
+                <CheckSquare className="w-8 h-8 mb-2 text-daintree-text/30" />
+                <p className="text-sm">No changes vs {mainBranch}</p>
+                <p className="text-xs mt-1">This branch has no commits ahead of {mainBranch}</p>
+              </div>
+            ) : sortedBaseBranchFiles !== null ? (
+              <div>
+                <div className="flex items-center justify-between px-4 py-2 bg-overlay-subtle border-b border-divider">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-daintree-text/60">
+                    Changed vs {mainBranch}
+                    <span className="ml-1.5 tabular-nums bg-tint/10 rounded px-1 py-0.5 text-[10px] font-medium normal-case tracking-normal">
+                      {sortedBaseBranchFiles.length} file
+                      {sortedBaseBranchFiles.length !== 1 ? "s" : ""}
+                    </span>
+                  </span>
+                </div>
+                <div className="px-2 py-1 flex flex-col gap-0.5">
+                  {sortedBaseBranchFiles.map((file) => (
+                    <BaseBranchFileRow
+                      key={`${file.status}:${file.path}`}
+                      file={file}
+                      onClick={() => setSelectedBaseBranchFile(file)}
+                      unresolvedCount={reviewThreadCounts?.[file.path]}
+                      onBadgeClick={
+                        worktreePR?.prUrl
+                          ? () =>
+                              void githubClient.openPR(
+                                `${worktreePR.prUrl}/files?file=${encodeURIComponent(file.path)}`
+                              )
+                          : undefined
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : null
+          ) : (
+            /* Working-tree panel */
+            <>
+              {loading && !status ? (
+                <div className="flex items-center justify-center py-12">
+                  <Spinner size="lg" className="text-daintree-text/40" />
+                </div>
+              ) : loadError ? (
+                <div className="p-4 text-xs text-status-error">
+                  <p className="mb-2">{loadError}</p>
+                  <Button variant="subtle" size="sm" onClick={() => void refresh()}>
+                    Retry
+                  </Button>
+                </div>
+              ) : status && isOperationState ? (
+                <ConflictPanel
+                  status={status}
+                  worktreePath={worktreePath}
+                  onMarkResolved={handleMarkResolved}
+                  onOpenInEditor={handleOpenInEditor}
+                  onCheckoutOursTheirs={handleCheckoutOursTheirs}
+                  onAbort={handleAbortOperation}
+                  onContinue={handleContinueOperation}
+                />
+              ) : status && totalChanges === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-daintree-text/50">
+                  <CheckSquare className="w-8 h-8 mb-2 text-daintree-text/30" />
+                  <p className="text-sm">Working tree clean</p>
+                  <p className="text-xs mt-1">No changes to commit</p>
+                </div>
+              ) : status ? (
+                <div>
+                  {/* File-list disclosure — default collapsed so the commit
+                      textarea is the focal point on open. State lives per
+                      worktree in uiStore (session-scoped, in-memory only). */}
+                  <div className="px-4 py-2 bg-overlay-subtle border-b border-divider flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setFileListExpanded(worktreePath, !fileListExpanded)}
+                      aria-expanded={fileListExpanded}
+                      aria-controls={`review-hub-files-${worktreePath}`}
+                      data-testid="review-hub-file-list-toggle"
+                      className={cn(
+                        "inline-flex items-center gap-1 text-[11px] font-medium text-daintree-text/70 hover:text-daintree-text transition-colors",
+                        "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent rounded"
+                      )}
+                    >
+                      <ChevronRight
+                        className={cn(
+                          "w-3 h-3 transition-transform duration-150",
+                          fileListExpanded && "rotate-90"
+                        )}
+                        aria-hidden="true"
+                      />
+                      <span>
+                        {fileListExpanded ? "Hide" : "Show"} files ({totalChanges})
+                      </span>
+                    </button>
+                  </div>
+                  {fileListExpanded && (
+                    <div id={`review-hub-files-${worktreePath}`}>
+                      {/* Conflict warning */}
+                      {hasConflicts && (
+                        <div
+                          ref={conflictSectionRef}
+                          tabIndex={-1}
+                          className="px-4 py-2.5 bg-status-error/10 border-b border-divider flex items-start gap-2 outline-hidden focus:ring-2 focus:ring-daintree-accent"
+                        >
+                          <AlertTriangle className="w-3.5 h-3.5 text-status-error mt-0.5 shrink-0" />
+                          <div className="text-xs text-status-error">
+                            <span className="font-medium">
+                              {status.conflicted.length} conflicted file
+                              {status.conflicted.length !== 1 ? "s" : ""}
+                            </span>
+                            <span className="text-daintree-text/60 ml-1">
+                              — resolve conflicts before committing
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Staged section */}
+                      <div className="border-b border-divider">
+                        <div className="flex items-center justify-between px-4 py-2 bg-overlay-subtle gap-2">
+                          <span className="text-[11px] font-semibold uppercase tracking-wider text-daintree-text/60 shrink-0">
+                            Staged
+                            <span
+                              data-testid="staged-section-count-chip"
+                              className="ml-1.5 tabular-nums bg-tint/10 rounded px-1 py-0.5 text-[10px] font-medium normal-case tracking-normal inline-flex items-center gap-1"
+                            >
+                              <span>
+                                {derivedStaged.length} file{derivedStaged.length !== 1 ? "s" : ""}
+                              </span>
+                              {(stagedChurn.ins > 0 || stagedChurn.del > 0) && (
+                                <>
+                                  <span aria-hidden="true" className="text-daintree-text/30">
+                                    ·
+                                  </span>
+                                  {stagedChurn.ins > 0 && (
+                                    <span className="text-status-success/80">{`+${stagedChurn.ins}`}</span>
+                                  )}
+                                  {stagedChurn.del > 0 && (
+                                    <span className="text-status-error/80">{`-${stagedChurn.del}`}</span>
+                                  )}
+                                </>
+                              )}
+                            </span>
+                          </span>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <div className="relative flex items-center">
+                              <Search className="absolute left-1.5 w-3 h-3 text-daintree-text/30 pointer-events-none" />
+                              <input
+                                ref={stagedInputRef}
+                                type="text"
+                                placeholder="Filter…"
+                                defaultValue={stagedView.filterQuery}
+                                onChange={(e) => stagedDebounceRef.current?.(e.target.value)}
+                                className={cn(
+                                  "w-[120px] h-5 pl-6 pr-1.5 rounded text-[11px]",
+                                  "bg-tint/[0.04] border border-tint/[0.08]",
+                                  "text-daintree-text placeholder:text-daintree-text/25",
+                                  "focus:outline-hidden focus:border-daintree-accent/40",
+                                  "hover:bg-tint/[0.06] transition-colors"
+                                )}
+                              />
+                            </div>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  className={cn(
+                                    "p-1 rounded transition-colors",
+                                    "text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06]",
+                                    "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent"
+                                  )}
+                                  aria-label="View options"
+                                >
+                                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="min-w-[180px]">
+                                <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                                <DropdownMenuRadioGroup
+                                  value={stagedView.sortKey}
+                                  onValueChange={(v) =>
+                                    setStagedView((prev) => ({
+                                      ...prev,
+                                      sortKey: isSortKey(v) ? v : prev.sortKey,
+                                      sortDir:
+                                        prev.sortKey === v
+                                          ? prev.sortDir === "asc"
+                                            ? "desc"
+                                            : "asc"
+                                          : prev.sortDir,
+                                    }))
+                                  }
+                                >
+                                  <DropdownMenuRadioItem value="path">
+                                    <span className="flex items-center gap-2 flex-1">
+                                      Path
+                                      {stagedView.sortKey === "path" &&
+                                        (stagedView.sortDir === "asc" ? (
+                                          <ChevronUp className="w-3 h-3 ml-auto text-daintree-text/40" />
+                                        ) : (
+                                          <ChevronDown className="w-3 h-3 ml-auto text-daintree-text/40" />
+                                        ))}
+                                    </span>
+                                  </DropdownMenuRadioItem>
+                                  <DropdownMenuRadioItem value="status">
+                                    <span className="flex items-center gap-2 flex-1">
+                                      Status
+                                      {stagedView.sortKey === "status" &&
+                                        (stagedView.sortDir === "asc" ? (
+                                          <ChevronUp className="w-3 h-3 ml-auto text-daintree-text/40" />
+                                        ) : (
+                                          <ChevronDown className="w-3 h-3 ml-auto text-daintree-text/40" />
+                                        ))}
+                                    </span>
+                                  </DropdownMenuRadioItem>
+                                </DropdownMenuRadioGroup>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuLabel>View</DropdownMenuLabel>
+                                <DropdownMenuRadioGroup
+                                  value={stagedView.density}
+                                  onValueChange={(v) =>
+                                    setStagedView((prev) => ({
+                                      ...prev,
+                                      density: isDensity(v) ? v : prev.density,
+                                    }))
+                                  }
+                                >
+                                  <DropdownMenuRadioItem value="comfortable">
+                                    Comfortable
+                                  </DropdownMenuRadioItem>
+                                  <DropdownMenuRadioItem value="compact">
+                                    Compact
+                                  </DropdownMenuRadioItem>
+                                </DropdownMenuRadioGroup>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuCheckboxItem
+                                  checked={stagedView.showGenerated}
+                                  onCheckedChange={(checked) =>
+                                    setStagedView((prev) => ({ ...prev, showGenerated: !!checked }))
+                                  }
+                                >
+                                  Show generated files
+                                </DropdownMenuCheckboxItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                            {derivedStaged.length > 0 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  void (hasStagedSelection
+                                    ? handleUnstageSelection()
+                                    : stagedView.filterQuery || !stagedView.showGenerated
+                                      ? handleUnstageFiltered()
+                                      : handleUnstageAll())
+                                }
+                                className="h-5 px-1.5 text-[10px] shrink-0"
+                                data-testid="review-hub-unstage-section-button"
+                              >
+                                <Square className="w-3 h-3 mr-1" />
+                                {hasStagedSelection
+                                  ? `Unstage selection (${selectedPaths.size})`
+                                  : stagedView.filterQuery
+                                    ? `Unstage shown (${derivedStaged.length})`
+                                    : `Unstage all (${derivedStaged.length})`}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        {derivedStaged.length > 0 ? (
+                          <div
+                            className={cn(
+                              "px-2 py-1 flex flex-col",
+                              stagedView.density === "compact" ? "gap-0" : "gap-0.5"
+                            )}
+                          >
+                            {derivedStaged.map((file) => {
+                              const viewedKey = `staged:${file.path}`;
+                              return (
+                                <FileStageRow
+                                  key={`staged-${file.path}`}
+                                  file={file}
+                                  section="staged"
+                                  isStaged={true}
+                                  isSelected={
+                                    selectionSection === "staged" && selectedPaths.has(file.path)
+                                  }
+                                  onToggle={handleToggleStaged}
+                                  onRowClick={handleRowClick}
+                                  density={stagedView.density}
+                                  viewed={viewedFiles.has(viewedKey)}
+                                  onViewedChange={(v) => handleViewedChange(viewedKey, v)}
+                                />
+                              );
+                            })}
+                          </div>
+                        ) : stagedView.filterQuery ? (
+                          <EmptyState
+                            variant="filtered-empty"
+                            scale="sidebar"
+                            title={`No staged files matching "${truncateFilterQuery(stagedView.filterQuery)}"`}
+                            action={
+                              <button
+                                type="button"
+                                onClick={clearStagedFilter}
+                                className="text-xs text-daintree-text/60 hover:text-daintree-text transition-colors underline underline-offset-2"
+                              >
+                                Clear filter
+                              </button>
+                            }
+                          />
+                        ) : (
+                          <div className="px-4 py-3 text-xs text-daintree-text/40 italic">
+                            No staged files
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Unstaged section */}
+                      <div ref={unstagedSectionRef}>
+                        <div className="flex items-center justify-between px-4 py-2 bg-overlay-subtle gap-2">
+                          <span className="text-[11px] font-semibold uppercase tracking-wider text-daintree-text/60 shrink-0">
+                            Changes
+                            <span
+                              data-testid="changes-section-count-chip"
+                              className="ml-1.5 tabular-nums bg-tint/10 rounded px-1 py-0.5 text-[10px] font-medium normal-case tracking-normal inline-flex items-center gap-1"
+                            >
+                              <span>
+                                {derivedUnstaged.length} file
+                                {derivedUnstaged.length !== 1 ? "s" : ""}
+                              </span>
+                              {(unstagedChurn.ins > 0 || unstagedChurn.del > 0) && (
+                                <>
+                                  <span aria-hidden="true" className="text-daintree-text/30">
+                                    ·
+                                  </span>
+                                  {unstagedChurn.ins > 0 && (
+                                    <span className="text-status-success/80">{`+${unstagedChurn.ins}`}</span>
+                                  )}
+                                  {unstagedChurn.del > 0 && (
+                                    <span className="text-status-error/80">{`-${unstagedChurn.del}`}</span>
+                                  )}
+                                </>
+                              )}
+                            </span>
+                          </span>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <div className="relative flex items-center">
+                              <Search className="absolute left-1.5 w-3 h-3 text-daintree-text/30 pointer-events-none" />
+                              <input
+                                ref={changesInputRef}
+                                type="text"
+                                placeholder="Filter…"
+                                defaultValue={changesView.filterQuery}
+                                onChange={(e) => changesDebounceRef.current?.(e.target.value)}
+                                className={cn(
+                                  "w-[120px] h-5 pl-6 pr-1.5 rounded text-[11px]",
+                                  "bg-tint/[0.04] border border-tint/[0.08]",
+                                  "text-daintree-text placeholder:text-daintree-text/25",
+                                  "focus:outline-hidden focus:border-daintree-accent/40",
+                                  "hover:bg-tint/[0.06] transition-colors"
+                                )}
+                              />
+                            </div>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  className={cn(
+                                    "p-1 rounded transition-colors",
+                                    "text-daintree-text/40 hover:text-daintree-text hover:bg-tint/[0.06]",
+                                    "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-daintree-accent"
+                                  )}
+                                  aria-label="View options"
+                                >
+                                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="min-w-[180px]">
+                                <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                                <DropdownMenuRadioGroup
+                                  value={changesView.sortKey}
+                                  onValueChange={(v) =>
+                                    setChangesView((prev) => ({
+                                      ...prev,
+                                      sortKey: isSortKey(v) ? v : prev.sortKey,
+                                      sortDir:
+                                        prev.sortKey === v
+                                          ? prev.sortDir === "asc"
+                                            ? "desc"
+                                            : "asc"
+                                          : prev.sortDir,
+                                    }))
+                                  }
+                                >
+                                  <DropdownMenuRadioItem value="path">
+                                    <span className="flex items-center gap-2 flex-1">
+                                      Path
+                                      {changesView.sortKey === "path" &&
+                                        (changesView.sortDir === "asc" ? (
+                                          <ChevronUp className="w-3 h-3 ml-auto text-daintree-text/40" />
+                                        ) : (
+                                          <ChevronDown className="w-3 h-3 ml-auto text-daintree-text/40" />
+                                        ))}
+                                    </span>
+                                  </DropdownMenuRadioItem>
+                                  <DropdownMenuRadioItem value="status">
+                                    <span className="flex items-center gap-2 flex-1">
+                                      Status
+                                      {changesView.sortKey === "status" &&
+                                        (changesView.sortDir === "asc" ? (
+                                          <ChevronUp className="w-3 h-3 ml-auto text-daintree-text/40" />
+                                        ) : (
+                                          <ChevronDown className="w-3 h-3 ml-auto text-daintree-text/40" />
+                                        ))}
+                                    </span>
+                                  </DropdownMenuRadioItem>
+                                </DropdownMenuRadioGroup>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuLabel>View</DropdownMenuLabel>
+                                <DropdownMenuRadioGroup
+                                  value={changesView.density}
+                                  onValueChange={(v) =>
+                                    setChangesView((prev) => ({
+                                      ...prev,
+                                      density: isDensity(v) ? v : prev.density,
+                                    }))
+                                  }
+                                >
+                                  <DropdownMenuRadioItem value="comfortable">
+                                    Comfortable
+                                  </DropdownMenuRadioItem>
+                                  <DropdownMenuRadioItem value="compact">
+                                    Compact
+                                  </DropdownMenuRadioItem>
+                                </DropdownMenuRadioGroup>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuCheckboxItem
+                                  checked={changesView.showGenerated}
+                                  onCheckedChange={(checked) =>
+                                    setChangesView((prev) => ({
+                                      ...prev,
+                                      showGenerated: !!checked,
+                                    }))
+                                  }
+                                >
+                                  Show generated files
+                                </DropdownMenuCheckboxItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                            {derivedUnstaged.length > 0 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  void (hasUnstagedSelection
+                                    ? handleStageSelection()
+                                    : changesView.filterQuery || !changesView.showGenerated
+                                      ? handleStageFiltered()
+                                      : handleStageAll())
+                                }
+                                className="h-5 px-1.5 text-[10px] shrink-0"
+                                data-testid="review-hub-stage-section-button"
+                              >
+                                <CheckSquare className="w-3 h-3 mr-1" />
+                                {hasUnstagedSelection
+                                  ? `Stage selection (${selectedPaths.size})`
+                                  : changesView.filterQuery
+                                    ? `Stage shown (${derivedUnstaged.length})`
+                                    : `Stage all (${derivedUnstaged.length})`}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        {derivedUnstaged.length > 0 ? (
+                          <div
+                            className={cn(
+                              "px-2 py-1 flex flex-col",
+                              changesView.density === "compact" ? "gap-0" : "gap-0.5"
+                            )}
+                          >
+                            {derivedUnstaged.map((file) => {
+                              const viewedKey = `unstaged:${file.path}`;
+                              return (
+                                <FileStageRow
+                                  key={`unstaged-${file.path}`}
+                                  file={file}
+                                  section="unstaged"
+                                  isStaged={false}
+                                  isSelected={
+                                    selectionSection === "unstaged" && selectedPaths.has(file.path)
+                                  }
+                                  onToggle={handleToggleUnstaged}
+                                  onRowClick={handleRowClick}
+                                  density={changesView.density}
+                                  viewed={viewedFiles.has(viewedKey)}
+                                  onViewedChange={(v) => handleViewedChange(viewedKey, v)}
+                                />
+                              );
+                            })}
+                          </div>
+                        ) : changesView.filterQuery ? (
+                          <EmptyState
+                            variant="filtered-empty"
+                            scale="sidebar"
+                            title={`No changed files matching "${truncateFilterQuery(changesView.filterQuery)}"`}
+                            action={
+                              <button
+                                type="button"
+                                onClick={clearChangesFilter}
+                                className="text-xs text-daintree-text/60 hover:text-daintree-text transition-colors underline underline-offset-2"
+                              >
+                                Clear filter
+                              </button>
+                            }
+                          />
+                        ) : (
+                          <div className="px-4 py-3 text-xs text-daintree-text/40 italic">
+                            No unstaged changes
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+
+        {/* Commit panel — only in working-tree mode, and never during a conflict op */}
+        {diffMode === "working-tree" &&
+          status &&
+          totalChanges > 0 &&
+          !loadError &&
+          !isOperationState && (
+            <CommitPanel
+              stagedCount={status.staged.length}
+              isDetachedHead={status.isDetachedHead}
+              hasConflicts={hasConflicts}
+              hasRemote={status.hasRemote}
+              worktreePath={worktreePath}
+              currentBranch={status.currentBranch}
+              commitMessage={commitMessage}
+              onCommitMessageChange={setCommitMessage}
+              onCommit={handleCommit}
+              onCommitAndPush={handleCommitAndPush}
+              onFocusBlocker={handleFocusBlocker}
+              isPushing={isPushing}
+              pushProgress={pushProgress}
+              pushTargetBranch={pushTargetBranch}
+            />
+          )}
+      </div>
+
+      {/* File diff modal — working-tree mode */}
+      <FileDiffModal
+        isOpen={selectedFile !== null}
+        filePath={selectedFile?.path ?? ""}
+        status={selectedFile?.status ?? "modified"}
+        worktreePath={worktreePath}
+        onClose={() => setSelectedFile(null)}
+      />
+
+      {/* File diff modal — base-branch mode */}
+      <BaseBranchDiffModal
+        isOpen={selectedBaseBranchFile !== null}
+        filePath={selectedBaseBranchFile?.path ?? ""}
+        worktreePath={worktreePath}
+        mainBranch={mainBranch}
+        currentBranch={status?.currentBranch ?? "HEAD"}
+        onClose={() => setSelectedBaseBranchFile(null)}
+      />
+
+      {pushError?.leaseSha && pushError.branchName && (
+        <ForcePushConfirmDialog
+          isOpen={forcePushDialogOpen}
+          cwd={worktreePath}
+          branchName={pushError.branchName}
+          leaseSha={pushError.leaseSha}
+          behindCount={behindCount}
+          onClose={() => setForcePushDialogOpen(false)}
+          onSuccess={handleForcePushSuccess}
+          onError={handleForcePushError}
+        />
+      )}
+    </>
+  );
+}

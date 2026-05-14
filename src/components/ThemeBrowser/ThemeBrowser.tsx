@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BUILT_IN_APP_SCHEMES } from "@/config/appColorSchemes";
@@ -21,7 +21,7 @@ import { useOverlayClaim, useImageError } from "@/hooks";
 const PANEL_WIDTH = 380;
 const EMPTY_WARNINGS: AppThemeValidationWarning[] = [];
 
-const ThemeRow = memo(function ThemeRow({
+function ThemeRow({
   scheme,
   isCommitted,
   isActive,
@@ -101,7 +101,7 @@ const ThemeRow = memo(function ThemeRow({
       </div>
     </button>
   );
-});
+}
 
 export function ThemeBrowser() {
   useOverlayClaim("theme-browser", true);

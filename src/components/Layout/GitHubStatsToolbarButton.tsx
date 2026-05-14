@@ -599,7 +599,7 @@ export const GitHubStatsToolbarButton = memo(
 
     return (
       <div
-        className="toolbar-stats relative mr-2 flex h-8 items-center overflow-hidden rounded-[var(--toolbar-pill-radius,0.5rem)] border divide-x divide-[var(--toolbar-stats-divider,var(--theme-border-subtle))]"
+        className="toolbar-stats app-no-drag relative mr-2 flex h-8 w-[13rem] shrink-0 items-center overflow-hidden rounded-[var(--toolbar-pill-radius,0.5rem)] border divide-x divide-[var(--toolbar-stats-divider,var(--theme-border-subtle))]"
         style={{
           ["--toolbar-stats-divider" as string]:
             "var(--toolbar-stats-divider,var(--theme-border-subtle))",

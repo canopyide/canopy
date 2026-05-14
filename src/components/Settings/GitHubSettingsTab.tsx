@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Key, Check, AlertCircle, FlaskConical, ExternalLink, Github } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
@@ -42,7 +42,7 @@ export function GitHubSettingsTab() {
     return () => clearTimeout(timer);
   }, [validationResult]);
 
-  const handleSaveToken = useCallback(async () => {
+  const handleSaveToken = async () => {
     if (!githubToken.trim()) return;
 
     setIsValidating(true);
@@ -85,9 +85,9 @@ export function GitHubSettingsTab() {
     } finally {
       setIsValidating(false);
     }
-  }, [githubToken, updateConfig]);
+  };
 
-  const handleClearToken = useCallback(async () => {
+  const handleClearToken = async () => {
     try {
       const clearResult = await actionService.dispatch("github.clearToken", undefined, {
         source: "user",
@@ -111,9 +111,9 @@ export function GitHubSettingsTab() {
       setValidationResult("error");
       setErrorMessage("Failed to clear token");
     }
-  }, [updateConfig]);
+  };
 
-  const handleTestToken = useCallback(async () => {
+  const handleTestToken = async () => {
     if (!githubToken.trim()) return;
 
     setIsTesting(true);
@@ -141,9 +141,9 @@ export function GitHubSettingsTab() {
     } finally {
       setIsTesting(false);
     }
-  }, [githubToken]);
+  };
 
-  const openGitHubTokenPage = useCallback(() => {
+  const openGitHubTokenPage = () => {
     void actionService.dispatch(
       "system.openExternal",
       {
@@ -151,7 +151,7 @@ export function GitHubSettingsTab() {
       },
       { source: "user" }
     );
-  }, []);
+  };
 
   useSettingsTabValidation("github", Boolean(loadError) || loadTimedOut);
 

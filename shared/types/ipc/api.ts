@@ -1,3 +1,4 @@
+import type { PushProgressEvent } from "./gitPush.js";
 import type { GitStatus, StagingStatus } from "../git.js";
 import type { SnapshotInfo, SnapshotRevertResult } from "./git.js";
 import type { AgentId } from "../agent.js";
@@ -396,6 +397,7 @@ export interface ElectronAPI {
     forceQuit(): Promise<void>;
     resetAndRelaunch(): Promise<void>;
     notifyFirstInteractive(): Promise<void>;
+    notifyViewPainted(): Promise<void>;
     onMenuAction(callback: (action: string) => void): () => void;
     reloadConfig(): Promise<{ success: boolean }>;
     onConfigReloaded(callback: () => void): () => void;
@@ -452,6 +454,13 @@ export interface ElectronAPI {
     remove(projectId: string): Promise<void>;
     update(projectId: string, updates: Partial<Project>): Promise<Project>;
     switch(projectId: string, outgoingState?: ProjectSwitchOutgoingState): Promise<Project>;
+    /**
+     * Hover-prefetch trigger for the project switcher palette. Fire-and-forget:
+     * the main process builds the `HydrateResult` for the given project and
+     * caches it so the next `app:hydrate` call from the new project view
+     * resolves as a cache hit. Errors are swallowed in the cache layer.
+     */
+    prefetchHydrate(projectId: string): Promise<void>;
     openDialog(): Promise<string | null>;
     onSwitch(
       callback: (payload: {
@@ -633,6 +642,13 @@ export interface ElectronAPI {
     get(): Promise<AgentSettings>;
     set(agentId: AgentId, settings: Partial<AgentSettingsEntry>): Promise<AgentSettings>;
     reset(agentId?: AgentId): Promise<AgentSettings>;
+    /**
+     * Mark the persisted store with the given schema version. Only called by
+     * the renderer migration after every per-agent pin clear has succeeded
+     * (#7673). Idempotent: a no-op when the stored version is already ≥
+     * the requested value.
+     */
+    stampVersion(version: number): Promise<AgentSettings>;
   };
   userAgentRegistry: {
     get(): Promise<import("../userAgentRegistry.js").UserAgentRegistry>;
@@ -693,6 +709,7 @@ export interface ElectronAPI {
       issueNumber: number
     ): Promise<import("../github.js").GitHubIssue | null>;
     getPRByNumber(cwd: string, prNumber: number): Promise<import("../github.js").GitHubPR | null>;
+    getPRReviewThreads(cwd: string, prNumber: number): Promise<Record<string, number>>;
     listRemotes(cwd: string): Promise<import("./github.js").RemoteInfo[]>;
     onPRDetected(callback: (data: PRDetectedPayload) => void): () => void;
     onPRCleared(callback: (data: PRClearedPayload) => void): () => void;
@@ -737,13 +754,28 @@ export interface ElectronAPI {
     }): Promise<import("../github.js").GitCommitListResponse>;
     stageFile(cwd: string, filePath: string): Promise<void>;
     unstageFile(cwd: string, filePath: string): Promise<void>;
+    stageFiles(cwd: string, filePaths: string[]): Promise<void>;
+    unstageFiles(cwd: string, filePaths: string[]): Promise<void>;
     stageAll(cwd: string): Promise<void>;
     unstageAll(cwd: string): Promise<void>;
     commit(cwd: string, message: string): Promise<{ hash: string; summary: string }>;
     push(cwd: string, setUpstream?: boolean): Promise<void>;
+    pullRebase(cwd: string): Promise<void>;
+    forcePushWithLease(cwd: string, branchName: string, leaseSha: string): Promise<void>;
+    listRemoteCommits(
+      cwd: string,
+      branchName: string,
+      limit?: number
+    ): Promise<Array<{ hash: string; date: string; message: string; author: string }>>;
+    onPushProgress(callback: (event: PushProgressEvent) => void): () => void;
     getStagingStatus(cwd: string): Promise<StagingStatus>;
     abortRepositoryOperation(cwd: string): Promise<void>;
     continueRepositoryOperation(cwd: string): Promise<void>;
+    scanConflictMarkers(
+      cwd: string,
+      filePaths: string[]
+    ): Promise<import("./git.js").ConflictMarkerScanEntry[]>;
+    checkoutOursTheirs(cwd: string, filePath: string, side: "ours" | "theirs"): Promise<void>;
     compareWorktrees(
       cwd: string,
       branch1: string,
@@ -1220,45 +1252,20 @@ export interface ElectronAPI {
     getSettings(): Promise<VoiceInputSettings>;
     setSettings(settings: Partial<VoiceInputSettings>): Promise<void>;
     start(): Promise<{ ok: true } | { ok: false; error: string }>;
-    stop(): Promise<{ rawText: string | null; correctionId: string | null }>;
-    flushParagraph(): Promise<{ rawText: string | null; correctionId: string | null }>;
+    stop(): Promise<{ rawText: string | null }>;
+    flushParagraph(): Promise<{ rawText: string | null }>;
     sendAudioChunk(chunk: ArrayBuffer): void;
     onTranscriptionDelta(callback: (delta: string) => void): () => void;
     onTranscriptionComplete(
       callback: (payload: { text: string; willCorrect: boolean }) => void
     ): () => void;
-    onCorrectionQueued(
-      callback: (payload: {
-        correctionId: string;
-        rawText: string;
-        reason?: string;
-        segmentCount?: number;
-        recentContext?: string[];
-      }) => void
-    ): () => void;
-    onCorrectionReplace(
-      callback: (payload: {
-        correctionId: string;
-        correctedText: string;
-        rawText?: string;
-        action?: "no_change" | "replace";
-        confidence?: "low" | "medium" | "high";
-        reason?: string;
-        segmentCount?: number;
-        recentContext?: string[];
-        edits?: Array<{ start: number; end: number; fromText: string; toText: string }>;
-      }) => void
-    ): () => void;
-    onParagraphBoundary(
-      callback: (payload: { rawText: string | null; correctionId: string | null }) => void
-    ): () => void;
+    onParagraphBoundary(callback: (payload: { rawText: string | null }) => void): () => void;
     onError(callback: (error: string) => void): () => void;
     onStatus(callback: (status: VoiceInputStatus) => void): () => void;
     checkMicPermission(): Promise<MicPermissionStatus>;
     requestMicPermission(): Promise<boolean>;
     openMicSettings(): Promise<void>;
     validateApiKey(apiKey: string): Promise<{ valid: boolean; error?: string }>;
-    validateCorrectionApiKey(apiKey: string): Promise<{ valid: boolean; error?: string }>;
     onFileTokenResolved(
       callback: (payload: { description: string; replacement: string; resolved: boolean }) => void
     ): () => void;
@@ -1483,7 +1490,7 @@ export type MicPermissionStatus =
   | "restricted"
   | "unknown";
 
-export type VoiceTranscriptionModel = "nova-3" | "nova-2";
+export type VoiceTranscriptionModel = "gpt-realtime-whisper";
 
 export type VoiceCorrectionModel = "gpt-5-nano" | "gpt-5-mini";
 
@@ -1491,25 +1498,18 @@ export type VoiceCorrectionModel = "gpt-5-nano" | "gpt-5-mini";
  * Paragraphing strategy for voice dictation.
  *
  * "spoken-command" (default): The user says "new paragraph" to insert a paragraph break.
- *   Deepgram Dictation mode intercepts spoken commands ("new paragraph" → \n\n, "period" → ".",
- *   "new line" → \n, etc.) rather than transcribing them literally. Manual Enter is always
- *   available as a secondary mechanism.
+ *   Spoken commands ("new paragraph" → \n\n, "period" → ".", "new line" → \n, etc.) are
+ *   transcribed literally by the upstream service and rewritten post-hoc by the IPC handler
+ *   via applyDictationCommands. Manual Enter is always available as a secondary mechanism.
  *
  * "manual": Paragraph breaks are inserted only via the Enter key. No spoken commands.
  *   Best for users who prefer keyboard control or find spoken formatting commands awkward.
- *
- * Note: Deepgram's `paragraphs: true` parameter was evaluated and rejected as the primary
- * mechanism — in live streaming it populates a structured JSON object rather than injecting
- * \n\n into the transcript text, making it unreliable as an auto-paragraphing trigger.
- * Custom keyword detection was also evaluated and rejected in favor of Deepgram Dictation,
- * which natively handles the "new paragraph" command in Nova-3.
  */
 export type VoiceParagraphingStrategy = "spoken-command" | "manual";
 
 export interface VoiceInputSettings {
   enabled: boolean;
-  deepgramApiKey: string;
-  correctionApiKey: string;
+  openaiApiKey: string;
   language: string;
   customDictionary: string[];
   transcriptionModel: VoiceTranscriptionModel;

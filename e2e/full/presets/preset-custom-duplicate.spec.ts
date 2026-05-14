@@ -37,6 +37,25 @@ test.describe.serial("Presets: Custom Duplicate (35–44)", () => {
     await navigateToAgentSettings(ctx.window, "claude");
   };
 
+  const getVisibleDuplicateButton = async () => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await goToClaudeSettings();
+      const section = ctx.window.locator(SEL.preset.section);
+      await expect(section).toBeVisible({ timeout: T_SHORT });
+      const dupBtn = section.locator(SEL.preset.duplicateButton).first();
+      if (await dupBtn.isVisible({ timeout: T_SHORT }).catch(() => false)) {
+        return dupBtn;
+      }
+      await ctx.window.waitForTimeout(T_SETTLE);
+    }
+
+    const section = ctx.window.locator(SEL.preset.section);
+    await expect(section.locator(SEL.preset.duplicateButton).first()).toBeVisible({
+      timeout: T_SHORT,
+    });
+    return section.locator(SEL.preset.duplicateButton).first();
+  };
+
   test("35. Duplicate icon on any preset creates a custom copy", async () => {
     await goToClaudeSettings();
     await addCustomPreset(ctx.window);
@@ -154,6 +173,7 @@ test.describe.serial("Presets: Custom Duplicate (35–44)", () => {
     // before entering the duplicate loop.
     await addCustomPreset(ctx.window);
     await ctx.window.waitForTimeout(T_SETTLE);
+    await goToClaudeSettings();
 
     const allTextsBefore = await getPresetOptionLabels(ctx.window);
     const copiesBefore = allTextsBefore.filter((t) => t.includes("(copy)")).length;
@@ -163,6 +183,7 @@ test.describe.serial("Presets: Custom Duplicate (35–44)", () => {
     // previous Locator handle may resolve stale.
     const section = ctx.window.locator(SEL.preset.section);
     for (let i = 0; i < 2; i++) {
+      await goToClaudeSettings();
       const dupBtn = section.locator(SEL.preset.duplicateButton).first();
       const visible = await dupBtn.isVisible({ timeout: T_SHORT }).catch(() => false);
       if (!visible) break;
@@ -181,11 +202,9 @@ test.describe.serial("Presets: Custom Duplicate (35–44)", () => {
   test("44. Duplicate immediately reflects in toolbar and tray", async () => {
     await goToClaudeSettings();
     await addCustomPreset(ctx.window);
-    const dupBtn = ctx.window
-      .locator(SEL.preset.section)
-      .locator(SEL.preset.duplicateButton)
-      .first();
-    await dupBtn.click();
+    const dupBtn = await getVisibleDuplicateButton();
+    await dupBtn.scrollIntoViewIfNeeded().catch(() => undefined);
+    await dupBtn.click({ force: true, noWaitAfter: true });
     await ctx.window.waitForTimeout(T_SETTLE);
 
     const section = ctx.window.locator(SEL.preset.section);

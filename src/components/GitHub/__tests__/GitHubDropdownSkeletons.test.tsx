@@ -1,8 +1,8 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect } from "vitest";
-import { render } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { render, act } from "@testing-library/react";
 import {
   GitHubResourceListSkeleton,
   CommitListSkeleton,
@@ -55,11 +55,25 @@ describe("GitHubResourceListSkeleton", () => {
     expect(row?.className).not.toContain("animate-pulse-immediate");
   });
 
-  it("uses animate-pulse-immediate when immediate is true", () => {
+  it("uses animate-pulse-delayed during the 200ms gate when immediate is true", () => {
+    vi.useFakeTimers();
     const { container } = render(<GitHubResourceListSkeleton count={1} immediate />);
+    const row = container.querySelector(`[style*="height: ${RESOURCE_ITEM_HEIGHT_PX}px"]`);
+    expect(row?.className).toContain("animate-pulse-delayed");
+    expect(row?.className).not.toContain("animate-pulse-immediate");
+    vi.useRealTimers();
+  });
+
+  it("switches to animate-pulse-immediate after the 200ms gate when immediate is true", () => {
+    vi.useFakeTimers();
+    const { container } = render(<GitHubResourceListSkeleton count={1} immediate />);
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
     const row = container.querySelector(`[style*="height: ${RESOURCE_ITEM_HEIGHT_PX}px"]`);
     expect(row?.className).toContain("animate-pulse-immediate");
     expect(row?.className).not.toContain("animate-pulse-delayed");
+    vi.useRealTimers();
   });
 
   it("has accessible loading markup", () => {
@@ -90,10 +104,23 @@ describe("CommitListSkeleton", () => {
     expect(rows).toHaveLength(MAX_SKELETON_ITEMS);
   });
 
-  it("uses animate-pulse-immediate when immediate is true", () => {
+  it("uses animate-pulse-delayed during the 200ms gate when immediate is true", () => {
+    vi.useFakeTimers();
     const { container } = render(<CommitListSkeleton count={1} immediate />);
     const row = container.querySelector(`[style*="height: ${COMMIT_ITEM_HEIGHT_PX}px"]`);
+    expect(row?.className).toContain("animate-pulse-delayed");
+    vi.useRealTimers();
+  });
+
+  it("switches to animate-pulse-immediate after the 200ms gate when immediate is true", () => {
+    vi.useFakeTimers();
+    const { container } = render(<CommitListSkeleton count={1} immediate />);
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    const row = container.querySelector(`[style*="height: ${COMMIT_ITEM_HEIGHT_PX}px"]`);
     expect(row?.className).toContain("animate-pulse-immediate");
+    vi.useRealTimers();
   });
 
   it("has accessible loading markup", () => {

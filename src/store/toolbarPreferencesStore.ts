@@ -4,6 +4,7 @@ import type {
   ToolbarPreferences,
   ToolbarButtonId,
   AnyToolbarButtonId,
+  ToolbarPinnedState,
 } from "@/../../shared/types/toolbar";
 import { createSafeJSONStorage } from "./persistence/safeStorage";
 import { registerPersistedStore } from "./persistence/persistedStoreRegistry";
@@ -30,7 +31,7 @@ const DEFAULT_PREFERENCES: ToolbarPreferences = {
   layout: {
     leftButtons: DEFAULT_LEFT_BUTTONS,
     rightButtons: DEFAULT_RIGHT_BUTTONS,
-    hiddenButtons: [],
+    pinnedButtons: {},
   },
   launcher: {
     alwaysShowDevServer: false,
@@ -125,15 +126,18 @@ export const useToolbarPreferencesStore = create<ToolbarPreferencesState>()(
         }),
       toggleButtonVisibility: (buttonId, _side) =>
         set((state) => {
-          const hidden = [...state.layout.hiddenButtons];
-          const index = hidden.indexOf(buttonId);
-          if (index === -1) {
-            hidden.push(buttonId);
+          // Only record `false` (hidden) or omit (visible). Mirrors the
+          // pre-v8 `hiddenButtons` semantic — the map only tracks departures
+          // from the default, never redundantly persisting `true` for every
+          // visible button.
+          const pinned: ToolbarPinnedState = { ...state.layout.pinnedButtons };
+          if (pinned[buttonId] === false) {
+            delete pinned[buttonId];
           } else {
-            hidden.splice(index, 1);
+            pinned[buttonId] = false;
           }
           return {
-            layout: { ...state.layout, hiddenButtons: hidden },
+            layout: { ...state.layout, pinnedButtons: pinned },
           };
         }),
       setAlwaysShowDevServer: (value) =>
@@ -152,7 +156,7 @@ export const useToolbarPreferencesStore = create<ToolbarPreferencesState>()(
     }),
     {
       name: "daintree-toolbar-preferences",
-      version: 7,
+      version: 8,
       storage: createSafeJSONStorage(),
       migrate: (persisted, version) => {
         const state = persisted as Record<string, unknown>;
@@ -243,6 +247,28 @@ export const useToolbarPreferencesStore = create<ToolbarPreferencesState>()(
             layout.hiddenButtons = drop(layout.hiddenButtons);
           }
         }
+        if (version < 8) {
+          // Replace the `hiddenButtons` array with a `pinnedButtons` map so
+          // visibility uses the same tri-state semantics as agent pinning
+          // (#7666). Existing hides translate to explicit `false` entries.
+          const layout = state.layout as
+            | { hiddenButtons?: unknown; pinnedButtons?: Record<string, boolean> }
+            | undefined;
+          if (layout) {
+            const pinned: Record<string, boolean> = { ...(layout.pinnedButtons ?? {}) };
+            const hidden = Array.isArray(layout.hiddenButtons) ? layout.hiddenButtons : [];
+            for (const id of hidden) {
+              if (typeof id === "string") pinned[id] = false;
+            }
+            layout.pinnedButtons = pinned;
+            delete layout.hiddenButtons;
+          } else {
+            // Older payloads that never had a layout block at all still need a
+            // valid v8 shape so `merge()` doesn't fall back to overwriting the
+            // freshly-built `pinnedButtons` with the default empty map.
+            state.layout = { pinnedButtons: {} } as unknown as Record<string, unknown>;
+          }
+        }
         return state as unknown as ToolbarPreferencesState;
       },
       partialize: (state) => ({
@@ -266,7 +292,7 @@ export const useToolbarPreferencesStore = create<ToolbarPreferencesState>()(
               persisted.layout?.rightButtons,
               currentState.layout.rightButtons
             ),
-            hiddenButtons: persisted.layout?.hiddenButtons ?? [],
+            pinnedButtons: persisted.layout?.pinnedButtons ?? {},
           },
         };
       },

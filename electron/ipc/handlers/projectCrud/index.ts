@@ -17,6 +17,7 @@ import { registerProjectSettingsHandlers } from "./settings.js";
 import { registerProjectStatsHandlers } from "./stats.js";
 import { registerGitInitHandlers } from "./gitInit.js";
 import { registerGitCloneHandlers } from "./gitClone.js";
+import { registerProjectPrefetchHandlers } from "./prefetch.js";
 
 export { getProjectStatsService } from "./stats.js";
 
@@ -28,6 +29,7 @@ export function registerProjectCrudHandlers(deps: HandlerDependencies): () => vo
     registerProjectSettingsHandlers(),
     registerGitInitHandlers(),
     registerGitCloneHandlers(),
+    registerProjectPrefetchHandlers(),
   ];
 
   return () => cleanups.forEach((cleanup) => cleanup());

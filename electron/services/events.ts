@@ -1,6 +1,7 @@
 import { EventEmitter } from "events";
 import type { NotificationPayload, AgentState, TaskState, EventCategory } from "../types/index.js";
 import type { EventContext } from "../../shared/types/events.js";
+import type { GitHubPRCIStatus } from "../../shared/types/github.js";
 import type { WorktreeSnapshot as WorktreeState } from "../../shared/types/workspace-host.js";
 import type { TerminalReliabilityMetricPayload } from "../../shared/types/pty-host.js";
 import type { ExitReason } from "./pty/types.js";
@@ -466,6 +467,7 @@ export type DaintreeEventMap = {
     prNumber: number;
     prUrl: string;
     prState: "open" | "merged" | "closed";
+    prCiStatus?: GitHubPRCIStatus;
     prTitle?: string;
     issueNumber?: number;
     issueTitle?: string;

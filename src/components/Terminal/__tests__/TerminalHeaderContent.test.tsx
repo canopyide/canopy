@@ -283,6 +283,32 @@ describe("TerminalHeaderContent — agent state chip tooltip", () => {
     expect(screen.queryByRole("status", { name: /agent state/i })).toBeNull();
   });
 
+  it("renders 'Finished, no changes' pill when completed with no file changes", () => {
+    mockTerminal = { id: "t1" };
+
+    render(<TerminalHeaderContent id="t1" agentState="completed" completedWithNoChanges={true} />);
+
+    const pill = screen.getByRole("status", { name: /no file changes/i });
+    expect(pill).toBeTruthy();
+    expect(pill.textContent).toContain("Finished, no changes");
+  });
+
+  it("omits 'Finished, no changes' pill when completedWithNoChanges is false", () => {
+    mockTerminal = { id: "t1" };
+
+    render(<TerminalHeaderContent id="t1" agentState="completed" completedWithNoChanges={false} />);
+
+    expect(screen.queryByRole("status", { name: /no file changes/i })).toBeNull();
+  });
+
+  it("omits 'Finished, no changes' pill when sessionCost is present (regular cost chip wins)", () => {
+    mockTerminal = { id: "t1", sessionCost: 0.42 };
+
+    render(<TerminalHeaderContent id="t1" agentState="completed" completedWithNoChanges={true} />);
+
+    expect(screen.queryByRole("status", { name: /no file changes/i })).toBeNull();
+  });
+
   it("falls back to Agent {state} when no headline", () => {
     mockTerminal = { id: "t1" };
 

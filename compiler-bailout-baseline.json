@@ -85,44 +85,7 @@
     "skipReasons": [],
     "pipelineErrors": []
   },
-  "src/components/Browser/ConsolePanel.tsx": {
-    "success": 1,
-    "skip": 0,
-    "error": 1,
-    "pipeline": 0,
-    "errorBailouts": [
-      {
-        "category": "Todo",
-        "reason": "(BuildHIR::lowerExpression) Handle ??= operators in AssignmentExpression"
-      }
-    ],
-    "skipReasons": [],
-    "pipelineErrors": []
-  },
   "src/components/Browser/FindBar.tsx": {
-    "success": 1,
-    "skip": 0,
-    "error": 0,
-    "pipeline": 0,
-    "errorBailouts": [],
-    "skipReasons": [],
-    "pipelineErrors": []
-  },
-  "src/components/Browser/ObjectInspector.tsx": {
-    "success": 2,
-    "skip": 0,
-    "error": 1,
-    "pipeline": 0,
-    "errorBailouts": [
-      {
-        "category": "Todo",
-        "reason": "(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
-      }
-    ],
-    "skipReasons": [],
-    "pipelineErrors": []
-  },
-  "src/components/Browser/StackTrace.tsx": {
     "success": 1,
     "skip": 0,
     "error": 0,
@@ -764,7 +727,7 @@
     "pipelineErrors": []
   },
   "src/components/HelpPanel/HelpPanel.tsx": {
-    "success": 0,
+    "success": 1,
     "skip": 0,
     "error": 3,
     "pipeline": 0,
@@ -1025,7 +988,7 @@
     "pipelineErrors": []
   },
   "src/components/Layout/Toolbar.tsx": {
-    "success": 1,
+    "success": 3,
     "skip": 0,
     "error": 1,
     "pipeline": 0,
@@ -1210,7 +1173,7 @@
     "pipelineErrors": []
   },
   "src/components/Onboarding/GettingStartedChecklist.tsx": {
-    "success": 1,
+    "success": 2,
     "skip": 0,
     "error": 0,
     "pipeline": 0,
@@ -1853,11 +1816,15 @@
     "pipelineErrors": []
   },
   "src/components/Settings/DaintreeAssistantSettingsTab.tsx": {
-    "success": 0,
+    "success": 1,
     "skip": 0,
-    "error": 1,
+    "error": 2,
     "pipeline": 0,
     "errorBailouts": [
+      {
+        "category": "Todo",
+        "reason": "(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+      },
       {
         "category": "Todo",
         "reason": "(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
@@ -2057,7 +2024,7 @@
       },
       {
         "category": "Todo",
-        "reason": "(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+        "reason": "(BuildHIR::lowerStatement) Handle TryStatement without a catch clause"
       }
     ],
     "skipReasons": [],
@@ -2074,6 +2041,24 @@
         "reason": "(BuildHIR::lowerStatement) Handle TryStatement without a catch clause"
       }
     ],
+    "skipReasons": [],
+    "pipelineErrors": []
+  },
+  "src/components/Settings/McpAuditLatencyTable.tsx": {
+    "success": 1,
+    "skip": 0,
+    "error": 0,
+    "pipeline": 0,
+    "errorBailouts": [],
+    "skipReasons": [],
+    "pipelineErrors": []
+  },
+  "src/components/Settings/McpAuditLogViewer.tsx": {
+    "success": 1,
+    "skip": 0,
+    "error": 0,
+    "pipeline": 0,
+    "errorBailouts": [],
     "skipReasons": [],
     "pipelineErrors": []
   },
@@ -4393,7 +4378,7 @@
     "pipelineErrors": []
   },
   "src/components/ui/AppPaletteDialog.tsx": {
-    "success": 3,
+    "success": 4,
     "skip": 0,
     "error": 0,
     "pipeline": 0,
@@ -4537,6 +4522,15 @@
     "pipelineErrors": []
   },
   "src/components/ui/TruncatedTooltip.tsx": {
+    "success": 1,
+    "skip": 0,
+    "error": 0,
+    "pipeline": 0,
+    "errorBailouts": [],
+    "skipReasons": [],
+    "pipelineErrors": []
+  },
+  "src/components/ui/TypedNameConfirmInput.tsx": {
     "success": 1,
     "skip": 0,
     "error": 0,
@@ -5421,15 +5415,6 @@
         "reason": "(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
       }
     ],
-    "skipReasons": [],
-    "pipelineErrors": []
-  },
-  "src/hooks/usePanelLifecycle.ts": {
-    "success": 1,
-    "skip": 0,
-    "error": 0,
-    "pipeline": 0,
-    "errorBailouts": [],
     "skipReasons": [],
     "pipelineErrors": []
   },

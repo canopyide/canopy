@@ -22,6 +22,7 @@ const createMockProjectClient = () => ({
   remove: vi.fn().mockResolvedValue(undefined),
   update: vi.fn().mockResolvedValue({}),
   switch: vi.fn().mockResolvedValue({}),
+  prefetchHydrate: vi.fn().mockResolvedValue(undefined),
   openDialog: vi.fn().mockResolvedValue(null),
   onSwitch: vi.fn().mockReturnValue(() => {}),
   getSettings: vi.fn().mockResolvedValue({}),

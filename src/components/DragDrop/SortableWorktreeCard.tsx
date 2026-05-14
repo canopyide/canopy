@@ -1,8 +1,6 @@
 import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { m } from "framer-motion";
-import { UI_ANIMATION_DURATION, DRAG_GHOST_OPACITY, DRAG_GHOST_EASING } from "@/lib/animationUtils";
 import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 
 export interface WorktreeSortDragData {
@@ -112,34 +110,30 @@ export const SortableWorktreeCard = React.memo(function SortableWorktreeCard({
   } = attributes;
 
   return (
-    <m.div layout="position" {...filteredAttributes}>
-      <div
-        ref={setNodeRef}
-        style={style}
-        role="row"
-        aria-roledescription="sortable worktree"
-        aria-rowindex={ariaRowIndex}
-        aria-current={isActive ? "true" : undefined}
-        data-worktree-row={worktreeId}
-        tabIndex={-1}
-      >
-        <div role="gridcell">
-          <m.div
-            className="h-full"
-            animate={{ opacity: isDragging ? DRAG_GHOST_OPACITY : 1 }}
-            transition={{
-              duration: isDragging ? UI_ANIMATION_DURATION / 1000 : 0,
-              ease: DRAG_GHOST_EASING,
-            }}
-          >
-            {children({
-              isDraggingSort: isDragging,
-              dragHandleListeners: listeners,
-              dragHandleActivatorRef: setActivatorNodeRef,
-            })}
-          </m.div>
+    <div
+      ref={setNodeRef}
+      style={style}
+      role="row"
+      aria-roledescription="sortable worktree"
+      aria-rowindex={ariaRowIndex}
+      aria-current={isActive ? "true" : undefined}
+      data-worktree-row={worktreeId}
+      tabIndex={-1}
+      {...filteredAttributes}
+    >
+      <div role="gridcell">
+        <div
+          className={`h-full transition-opacity duration-150 motion-reduce:transition-none ${
+            isDragging ? "opacity-40" : ""
+          }`}
+        >
+          {children({
+            isDraggingSort: isDragging,
+            dragHandleListeners: listeners,
+            dragHandleActivatorRef: setActivatorNodeRef,
+          })}
         </div>
       </div>
-    </m.div>
+    </div>
   );
 }, sortableWorktreeCardPropsAreEqual);

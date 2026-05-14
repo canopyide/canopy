@@ -1,4 +1,5 @@
 import type { FileChangeDetail, WorktreeChanges } from "./git.js";
+import type { GitHubPRCIStatus } from "./github.js";
 
 /** Worktree mood indicator */
 export type WorktreeMood = "stable" | "active" | "stale" | "error";
@@ -121,11 +122,24 @@ export interface Worktree {
   /** Pull request state: open, merged, or closed */
   prState?: "open" | "merged" | "closed";
 
+  /**
+   * Roll-up CI check status for the PR's head commit (uppercase GraphQL
+   * enum). Absent when the PR has no checks configured or before the first
+   * PR poll has landed.
+   */
+  prCiStatus?: GitHubPRCIStatus;
+
   /** Pull request title */
   prTitle?: string;
 
+  /** Timestamp when the PR state was last updated by the workspace-host */
+  prLastUpdatedAt?: number;
+
   /** GitHub issue title */
   issueTitle?: string;
+
+  /** Timestamp when the issue title was last updated by the workspace-host */
+  issueLastUpdatedAt?: number;
 
   /** Worktree changes snapshot */
   worktreeChanges?: WorktreeChanges | null;

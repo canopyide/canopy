@@ -208,7 +208,7 @@ export function registerGitActions(actions: ActionRegistry, _callbacks: ActionCa
     description: "Push commits to remote",
     category: "git",
     kind: "command",
-    danger: "safe",
+    danger: "confirm",
     scope: "renderer",
     argsSchema: z
       .object({ cwd: z.string().optional(), setUpstream: z.boolean().optional() })
@@ -290,7 +290,7 @@ export function registerGitActions(actions: ActionRegistry, _callbacks: ActionCa
     description: "Delete the pre-agent snapshot for a worktree without reverting",
     category: "git",
     kind: "command",
-    danger: "safe",
+    danger: "confirm",
     scope: "renderer",
     argsSchema: z.object({ worktreeId: z.string() }),
     run: async (args: unknown) => {

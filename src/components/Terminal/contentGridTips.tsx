@@ -242,22 +242,38 @@ export function RotatingTip() {
     if (picked) setTip(picked);
   }, [tip, hydrated, filteredTips]);
 
-  if (!tip) return null;
+  if (tip) {
+    return (
+      <div className="flex flex-col items-center gap-2 animate-in fade-in duration-200">
+        <p className="text-xs text-daintree-text/70 text-center">
+          Tip: <LiveTipMessage tip={tip} />
+        </p>
+        {tip.actionId && tip.actionLabel && (
+          <button
+            type="button"
+            onClick={() =>
+              void actionService.dispatch(tip.actionId!, undefined, { source: "user" })
+            }
+            className="text-xs text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2 rounded px-1"
+          >
+            {tip.actionLabel}
+          </button>
+        )}
+      </div>
+    );
+  }
 
+  // No tip will ever appear (no agent tips survive filtering, no fallback). Stay quiet.
+  if (hydrated && filteredTips.length === 0) return null;
+
+  // Reserve the tip slot before hydration completes so the empty-state column
+  // doesn't reflow when `shortcutHintStore.hydrated` flips a few ticks after
+  // first paint (#7671). `invisible` keeps the box in layout flow without
+  // showing skeleton noise — the tip is sub-Doherty so a flash isn't needed.
   return (
-    <div className="flex flex-col items-center gap-2 animate-in fade-in duration-200">
-      <p className="text-xs text-daintree-text/70 text-center">
-        Tip: <LiveTipMessage tip={tip} />
-      </p>
-      {tip.actionId && tip.actionLabel && (
-        <button
-          type="button"
-          onClick={() => void actionService.dispatch(tip.actionId!, undefined, { source: "user" })}
-          className="text-xs text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2 rounded px-1"
-        >
-          {tip.actionLabel}
-        </button>
-      )}
+    <div className="flex flex-col items-center gap-2 invisible" aria-hidden="true">
+      <p className="text-xs">&nbsp;</p>
+      <span className="text-xs px-1">&nbsp;</span>
     </div>
   );
 }

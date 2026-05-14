@@ -15,7 +15,7 @@ interface ToolbarState {
   layout: {
     leftButtons: string[];
     rightButtons: string[];
-    hiddenButtons: string[];
+    pinnedButtons: Record<string, boolean>;
   };
   launcher: {
     alwaysShowDevServer: boolean;
@@ -30,7 +30,7 @@ interface ToolbarState {
 }
 
 let mockToolbarState: ToolbarState = {
-  layout: { leftButtons: [], rightButtons: [], hiddenButtons: [] },
+  layout: { leftButtons: [], rightButtons: [], pinnedButtons: {} },
   launcher: { alwaysShowDevServer: false, defaultSelection: undefined },
   setLeftButtons: setLeftButtonsMock,
   setRightButtons: setRightButtonsMock,
@@ -54,6 +54,11 @@ vi.mock("@/store/agentSettingsStore", () => ({
       setAgentPinned: typeof setAgentPinnedMock;
     }) => unknown
   ) => selector({ settings: mockAgentSettings, setAgentPinned: setAgentPinnedMock }),
+}));
+
+vi.mock("@/store/cliAvailabilityStore", () => ({
+  useCliAvailabilityStore: (selector: (s: { availability: undefined }) => unknown) =>
+    selector({ availability: undefined }),
 }));
 
 vi.mock("@shared/config/agentIds", () => ({
@@ -143,7 +148,7 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
         // Mix of agent IDs and non-agent IDs so we can test both branches.
         leftButtons: ["agent-tray", "claude", "gemini", "terminal"],
         rightButtons: ["copy-tree", "settings"],
-        hiddenButtons: [],
+        pinnedButtons: {},
       },
       launcher: { alwaysShowDevServer: false, defaultSelection: undefined },
       setLeftButtons: setLeftButtonsMock,
@@ -170,11 +175,11 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
     expect(geminiCheckbox.checked).toBe(false);
   });
 
-  it("ignores hiddenButtons for agent IDs (agentSettingsStore wins)", () => {
+  it("ignores pinnedButtons for agent IDs (agentSettingsStore wins)", () => {
     // Stale entry from pre-migration persisted state — the UI must still
     // derive the agent's visibility from `agentSettingsStore`, not from
-    // `hiddenButtons`.
-    mockToolbarState.layout.hiddenButtons = ["claude"];
+    // `pinnedButtons`.
+    mockToolbarState.layout.pinnedButtons = { claude: false };
     mockAgentSettings = agentSettings({
       claude: { pinned: true },
     });
@@ -218,6 +223,17 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
     expect(setAgentPinnedMock).not.toHaveBeenCalled();
   });
 
+  it("dispatches `'right'` as the side argument for right-side non-agent toggles", () => {
+    // Locks the side argument so future side-aware store changes can't
+    // silently swallow the right-side branch — both handlers (left, right)
+    // are nominally identical today but each is independently wired.
+    const { getByLabelText } = render(<ToolbarSettingsTab />);
+    fireEvent.click(getByLabelText("Toggle Copy Context visibility"));
+
+    expect(toggleButtonVisibilityMock).toHaveBeenCalledTimes(1);
+    expect(toggleButtonVisibilityMock).toHaveBeenCalledWith("copy-tree", "right");
+  });
+
   it("reflects pinned agents in the section visible-count summary", () => {
     mockAgentSettings = agentSettings({
       claude: { pinned: true },
@@ -244,7 +260,7 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
     mockToolbarState.layout = {
       leftButtons: ["agent-tray", "terminal"],
       rightButtons: ["codex", "settings"],
-      hiddenButtons: [],
+      pinnedButtons: {},
     };
     mockAgentSettings = agentSettings({
       codex: { pinned: true },

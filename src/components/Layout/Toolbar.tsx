@@ -2,9 +2,6 @@ import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback } fr
 import type React from "react";
 import { Button } from "@/components/ui/button";
 import {
-  SlidersHorizontal,
-  SquareTerminal,
-  AlertCircle,
   GitCommit,
   GitPullRequest,
   CircleDot,
@@ -12,15 +9,13 @@ import {
   PanelLeftClose,
   Check,
   ChevronsUpDown,
-  Globe,
   MonitorPlay,
-  Bell,
   Ellipsis,
   GitBranch,
-  Plug,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { Folders, McpServerIcon } from "@/components/icons";
+import { TOOLBAR_BUTTON_METADATA, isToolbarButtonVisible } from "./toolbarButtonMetadata";
 import { cn } from "@/lib/utils";
 import { shortcutHintStore } from "@/store/shortcutHintStore";
 import { isMac, isLinux } from "@/lib/platform";
@@ -50,8 +45,7 @@ import { usePluginToolbarButtons } from "@/hooks/usePluginToolbarButtons";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import type { CliAvailability, AgentSettings } from "@shared/types";
-import { isAgentInstalled } from "../../../shared/utils/agentAvailability";
-import { isAgentPinned } from "../../../shared/utils/agentPinned";
+import { isAgentToolbarVisible } from "../../../shared/utils/agentPinned";
 import { projectClient } from "@/clients";
 import { actionService } from "@/services/ActionService";
 import { ProjectSwitcherPalette } from "@/components/Project/ProjectSwitcherPalette";
@@ -66,8 +60,7 @@ import { ToolbarPortalButton } from "./ToolbarPortalButton";
 import { ToolbarAssistantButton } from "./ToolbarAssistantButton";
 import { useOverflowBadgeSeverity, type OverflowBadgeSeverity } from "./useOverflowBadgeSeverity";
 
-import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds";
-import { getAgentConfig } from "@/config/agents";
+import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
 
 const AGENT_TOOLBAR_IDS = new Set<ToolbarButtonId>([
   "agent-tray",
@@ -76,7 +69,39 @@ const AGENT_TOOLBAR_IDS = new Set<ToolbarButtonId>([
 
 type OverflowMenuMeta = { label: string; icon: React.ComponentType<{ className?: string }> };
 
+// voice-recording has no actionable overflow item — it's a persistent
+// indicator that only appears while recording is already active. Surface the
+// label via tooltip text only; suppress from the dropdown list itself.
+const OVERFLOW_DROPDOWN_SKIP: ReadonlySet<string> = new Set(["voice-recording"]);
+
 const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text relative";
+// These controls are project-only visually, but their no-drag rectangles must
+// exist on first paint so secondary windows don't cache them as titlebar drag.
+const PROJECT_SCOPED_TOOLBAR_IDS = new Set<AnyToolbarButtonId>(["dev-server", "github-stats"]);
+
+// How long the copy-tree button shows the green "context copied" feedback
+// before reverting to its idle state. Long enough to register the success,
+// short enough that re-clicks don't feel stuck.
+const COPY_TREE_FEEDBACK_RESET_MS = 2000;
+
+function GitHubStatsPlaceholder() {
+  return (
+    <div className="toolbar-stats app-no-drag relative mr-2 flex h-8 w-[13rem] shrink-0 items-center overflow-hidden rounded-[var(--toolbar-pill-radius,0.5rem)] border divide-x divide-[var(--toolbar-stats-divider,var(--theme-border-subtle))] opacity-0 pointer-events-none">
+      <div className="h-8 flex-1" />
+      <div className="h-8 flex-1" />
+      <div className="h-8 flex-1" />
+    </div>
+  );
+}
+
+function DevServerPlaceholder() {
+  return (
+    <div
+      className={cn(toolbarIconButtonClass, "h-9 w-9 opacity-0 pointer-events-none")}
+      aria-hidden="true"
+    />
+  );
+}
 
 export function PluginToolbarButton({
   pluginId,
@@ -115,23 +140,16 @@ export function PluginToolbarButton({
   );
 }
 
-export const OVERFLOW_MENU_META: Partial<Record<AnyToolbarButtonId, OverflowMenuMeta>> = {
-  ...(Object.fromEntries(
-    BUILT_IN_AGENT_IDS.map((id) => [
-      id,
-      { label: getAgentConfig(id)?.name ?? id, icon: SquareTerminal },
-    ])
-  ) as unknown as Record<BuiltInAgentId, OverflowMenuMeta>),
-  "agent-tray": { label: "Agent Tray", icon: Plug },
-  terminal: { label: "Terminal", icon: SquareTerminal },
-  browser: { label: "Browser", icon: Globe },
-  "dev-server": { label: "Dev Preview", icon: MonitorPlay },
-  "github-stats": { label: "GitHub Stats", icon: GitPullRequest },
-  "notification-center": { label: "Notifications", icon: Bell },
-  "copy-tree": { label: "Copy Context", icon: Folders },
-  settings: { label: "Settings", icon: SlidersHorizontal },
-  problems: { label: "Problems", icon: AlertCircle },
-};
+// Adapter view over the unified `TOOLBAR_BUTTON_METADATA` registry. Skips
+// entries that should never render as overflow menu items (see
+// `OVERFLOW_DROPDOWN_SKIP`) — those are still surfaced in tooltip text.
+const overflowMenuMetaInit: Record<string, OverflowMenuMeta> = {};
+for (const [id, meta] of Object.entries(TOOLBAR_BUTTON_METADATA)) {
+  if (!meta || OVERFLOW_DROPDOWN_SKIP.has(id)) continue;
+  overflowMenuMetaInit[id] = { label: meta.label, icon: meta.icon };
+}
+export const OVERFLOW_MENU_META: Partial<Record<AnyToolbarButtonId, OverflowMenuMeta>> =
+  overflowMenuMetaInit;
 
 interface ToolbarProps {
   onLaunchAgent: (type: string) => void;
@@ -296,7 +314,7 @@ export function Toolbar({
           setTreeCopied(false);
           setCopyFeedback("");
           treeCopyTimeoutRef.current = null;
-        }, 2000);
+        }, COPY_TREE_FEEDBACK_RESET_MS);
       }
     } finally {
       setIsCopyingTree(false);
@@ -430,9 +448,10 @@ export function Toolbar({
                 data-toolbar-item=""
               />
             ),
-            isAvailable:
-              isAgentInstalled(agentAvailability?.[id]) &&
-              isAgentPinned(effectiveAgentSettings?.agents?.[id]),
+            isAvailable: isAgentToolbarVisible(
+              effectiveAgentSettings?.agents?.[id],
+              agentAvailability?.[id]
+            ),
           },
         ])
       ),
@@ -459,44 +478,50 @@ export function Toolbar({
         isAvailable: true,
       },
       "dev-server": {
-        render: () => (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                {...devServerHintHover}
-                variant="ghost"
-                size="icon"
-                data-toolbar-item=""
-                onClick={() =>
-                  actionService.dispatch("devServer.start", undefined, { source: "user" })
-                }
-                className={toolbarIconButtonClass}
-                aria-label="Open Dev Preview"
-              >
-                <MonitorPlay />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {createTooltipContent("Open Dev Preview", devServerShortcut)}
-            </TooltipContent>
-          </Tooltip>
-        ),
-        isAvailable: !!currentProject,
+        render: () =>
+          currentProject ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  {...devServerHintHover}
+                  variant="ghost"
+                  size="icon"
+                  data-toolbar-item=""
+                  onClick={() =>
+                    actionService.dispatch("devServer.start", undefined, { source: "user" })
+                  }
+                  className={toolbarIconButtonClass}
+                  aria-label="Open Dev Preview"
+                >
+                  <MonitorPlay />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {createTooltipContent("Open Dev Preview", devServerShortcut)}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <DevServerPlaceholder />
+          ),
+        isAvailable: true,
       },
       "voice-recording": {
         render: () => <VoiceRecordingToolbarButton key="voice-recording" data-toolbar-item="" />,
         isAvailable: hasActiveVoiceRecording,
       },
       "github-stats": {
-        render: () => (
-          <GitHubStatsToolbarButton
-            key="github-stats"
-            ref={githubStatsRef}
-            currentProject={currentProject}
-            data-toolbar-item=""
-          />
-        ),
-        isAvailable: !!currentProject,
+        render: () =>
+          currentProject ? (
+            <GitHubStatsToolbarButton
+              key="github-stats"
+              ref={githubStatsRef}
+              currentProject={currentProject}
+              data-toolbar-item=""
+            />
+          ) : (
+            <GitHubStatsPlaceholder />
+          ),
+        isAvailable: true,
       },
       "notification-center": {
         render: () => (
@@ -624,29 +649,43 @@ export function Toolbar({
     ]
   );
 
-  const hiddenSet = useMemo(
-    () => new Set(toolbarLayout.hiddenButtons),
-    [toolbarLayout.hiddenButtons]
-  );
+  const pinnedButtons = toolbarLayout.pinnedButtons;
 
   const effectiveLeftButtons = useMemo(
-    () => toolbarLayout.leftButtons.filter((id) => !hiddenSet.has(id)),
-    [toolbarLayout.leftButtons, hiddenSet]
+    () =>
+      toolbarLayout.leftButtons.filter((id) =>
+        isToolbarButtonVisible(id, pinnedButtons, effectiveAgentSettings, agentAvailability)
+      ),
+    [toolbarLayout.leftButtons, pinnedButtons, effectiveAgentSettings, agentAvailability]
   );
 
   const effectiveRightButtons = useMemo(() => {
     const existing = new Set(toolbarLayout.rightButtons);
     const extra = pluginButtonIds.filter((id) => !existing.has(id));
-    return [...toolbarLayout.rightButtons, ...extra].filter((id) => !hiddenSet.has(id));
-  }, [toolbarLayout.rightButtons, pluginButtonIds, hiddenSet]);
+    return [...toolbarLayout.rightButtons, ...extra].filter((id) =>
+      isToolbarButtonVisible(id, pinnedButtons, effectiveAgentSettings, agentAvailability)
+    );
+  }, [
+    toolbarLayout.rightButtons,
+    pluginButtonIds,
+    pinnedButtons,
+    effectiveAgentSettings,
+    agentAvailability,
+  ]);
 
   const availableLeftIds = useMemo(
-    () => effectiveLeftButtons.filter((id) => buttonRegistry[id]?.isAvailable),
+    () =>
+      effectiveLeftButtons.filter(
+        (id) => buttonRegistry[id]?.isAvailable || PROJECT_SCOPED_TOOLBAR_IDS.has(id)
+      ),
     [effectiveLeftButtons, buttonRegistry]
   );
 
   const availableRightIds = useMemo(
-    () => effectiveRightButtons.filter((id) => buttonRegistry[id]?.isAvailable),
+    () =>
+      effectiveRightButtons.filter(
+        (id) => buttonRegistry[id]?.isAvailable || PROJECT_SCOPED_TOOLBAR_IDS.has(id)
+      ),
     [effectiveRightButtons, buttonRegistry]
   );
 
@@ -686,6 +725,9 @@ export function Toolbar({
             !visibleSet.has(id) && "invisible absolute pointer-events-none"
           )}
           aria-hidden={visibleSet.has(id) ? undefined : true}
+          data-toolbar-placeholder={
+            !currentProject && PROJECT_SCOPED_TOOLBAR_IDS.has(id) ? "true" : undefined
+          }
         >
           {buttonRegistry[id]!.render()}
         </div>
@@ -709,6 +751,9 @@ export function Toolbar({
           data-toolbar-button-id={id}
           className={cn("app-no-drag", !isVisible && "invisible absolute pointer-events-none")}
           aria-hidden={isVisible ? undefined : true}
+          data-toolbar-placeholder={
+            !currentProject && PROJECT_SCOPED_TOOLBAR_IDS.has(id) ? "true" : undefined
+          }
         >
           {buttonRegistry[id]!.render()}
         </div>
@@ -953,7 +998,7 @@ export function Toolbar({
         <div
           role="group"
           aria-label="Project"
-          className="flex items-center justify-center min-w-0 max-w-full pointer-events-none justify-self-center"
+          className="app-no-drag flex items-center justify-center min-w-0 max-w-full pointer-events-none justify-self-center"
         >
           <ProjectSwitcherPalette
             mode="dropdown"
@@ -965,6 +1010,8 @@ export function Toolbar({
             onSelectPrevious={projectSwitcher.selectPrevious}
             onSelectNext={projectSwitcher.selectNext}
             onSelect={projectSwitcher.selectProject}
+            onHoverProject={projectSwitcher.onHoverProject}
+            onHoverProjectEnd={projectSwitcher.onHoverProjectEnd}
             onClose={handleDropdownClose}
             onAddProject={projectSwitcher.addProject}
             onCloneRepo={projectSwitcher.cloneRepo}
@@ -997,33 +1044,33 @@ export function Toolbar({
               aria-label={currentProject ? undefined : "Open project"}
               onClick={() => projectSwitcher.open("dropdown")}
             >
-              {currentProject ? (
-                <>
-                  <span className="text-base leading-none shrink-0" aria-label="Project emoji">
-                    {currentProject.emoji}
-                  </span>
-                  <span className="min-w-0 truncate text-xs font-semibold tracking-wide text-daintree-text">
-                    {currentProject.name}
-                  </span>
-                  {branchName && (
-                    <span
-                      className="toolbar-project-chip shrink-0 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono tabular-nums"
-                      aria-label={`Current branch ${branchName}`}
-                    >
-                      <GitBranch className="toolbar-project-chip-icon h-3 w-3 shrink-0" />
-                      <span className="toolbar-project-chip-label">{branchName}</span>
-                    </span>
-                  )}
-                  <ChevronsUpDown className="toolbar-project-meta ml-0.5 h-3 w-3 shrink-0" />
-                </>
-              ) : (
-                <>
-                  <span className="text-xs font-medium text-daintree-text tracking-wide truncate min-w-0">
-                    Open project
-                  </span>
-                  <ChevronsUpDown className="toolbar-project-meta ml-0.5 h-3 w-3 shrink-0" />
-                </>
-              )}
+              <span
+                className={cn("text-base leading-none shrink-0", !currentProject && "opacity-0")}
+                aria-label={currentProject ? "Project emoji" : undefined}
+                aria-hidden={currentProject ? undefined : true}
+              >
+                {currentProject?.emoji ?? "•"}
+              </span>
+              <span
+                className={cn(
+                  "min-w-0 truncate text-xs tracking-wide text-daintree-text",
+                  currentProject ? "font-semibold" : "font-medium"
+                )}
+              >
+                {currentProject?.name ?? "Open project"}
+              </span>
+              <span
+                className={cn(
+                  "toolbar-project-chip shrink-0 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono tabular-nums",
+                  !branchName && "opacity-0"
+                )}
+                aria-label={branchName ? `Current branch ${branchName}` : undefined}
+                aria-hidden={branchName ? undefined : true}
+              >
+                <GitBranch className="toolbar-project-chip-icon h-3 w-3 shrink-0" />
+                <span className="toolbar-project-chip-label">{branchName ?? "main"}</span>
+              </span>
+              <ChevronsUpDown className="toolbar-project-meta ml-0.5 h-3 w-3 shrink-0" />
             </button>
           </ProjectSwitcherPalette>
         </div>

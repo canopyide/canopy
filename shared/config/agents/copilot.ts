@@ -7,6 +7,23 @@ export const config: AgentConfig = {
   color: "#8957e5",
   iconId: "copilot",
   supportsContextInjection: true,
+  // Copilot help sessions read MCP from `.mcp.json` written into the
+  // per-session cwd (root key `mcpServers`, `type: "http"`, `$VAR` env-var
+  // substitution in headers). `--plan` is appended at spawn time via
+  // `HelpSessionService.buildCopilotLaunchArgs` to pin the session to
+  // read-only mode. Held at `"experimental"` until end-to-end validation
+  // lands.
+  supports: {
+    mcpInjection: "project-config",
+    settingsOverlay: false,
+    permissionBypass: false,
+    trustDialog: false,
+    versionProbe: true,
+    tier: "experimental",
+  },
+  // `--plan` flag landed in Copilot CLI v1.0.40; below this floor we'd
+  // launch without the read-only guardrail.
+  assistantMinVersion: "1.0.40",
   tooltip: "GitHub's AI coding agent",
   usageUrl: "https://github.com/features/copilot",
   contextWindow: 160_000,
@@ -67,7 +84,12 @@ export const config: AgentConfig = {
     blockMouseReporting: true,
     resizeStrategy: "settled",
     supportsBracketedPaste: true,
-    submitEnterDelayMs: 0,
+    // Ink TUI needs a gap between pasted body and the CR submit; see issue #5830.
+    submitEnterDelayMs: 200,
+    // Same Ink-TUI constraint applies to /exit on shutdown: the body and CR must
+    // arrive as one write, or Copilot treats the gap as slow typing and never
+    // submits the slash command. Matches Claude (also Ink-based).
+    quitSubmitMode: "single-write",
   },
   detection: {
     primaryPatterns: ["\\(Esc to cancel\\)", "[∙∘○◎◉]\\s+.+\\(Esc to cancel\\)"],

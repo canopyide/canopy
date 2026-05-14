@@ -2,56 +2,47 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "../../lib/utils";
 import type { AgentState } from "@/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { STATE_PRIORITY } from "./terminalStateConfig";
+import { STATE_LABELS, STATE_PRIORITY } from "./terminalStateConfig";
 
 interface AgentStatusIndicatorProps {
   state: AgentState | null | undefined;
   className?: string;
 }
 
+// Keys deliberately narrowed to states the render guard below actually renders:
+// "idle" and "waiting" both early-return null, so including them here would be
+// dead config. The explicit Record annotation enforces both the narrowing and
+// exhaustiveness at compile time.
 const STATE_CONFIG: Record<
-  Exclude<AgentState, "idle">,
+  Exclude<AgentState, "idle" | "waiting">,
   {
     icon: string;
     color: string;
     bgColor?: string;
     borderColor?: string;
     glow?: string;
-    label: string;
     tooltip: string;
   }
 > = {
   working: {
     icon: "⟳",
     color: "status-working",
-    label: "working",
     tooltip: "Agent is working on your request",
-  },
-  waiting: {
-    icon: "?",
-    color: "text-daintree-bg",
-    bgColor: "bg-state-waiting",
-    glow: "shadow-[0_0_8px_color-mix(in_srgb,var(--color-activity-waiting)_40%,transparent)]",
-    label: "waiting",
-    tooltip: "Agent is waiting for your direction",
   },
   completed: {
     icon: "✓",
-    color: "text-status-success",
-    label: "completed",
+    color: "text-status-info",
     tooltip: "Agent finished this task",
   },
   exited: {
     icon: "–",
     color: "text-daintree-text/40",
-    label: "exited",
     tooltip: "Process exited",
   },
   directing: {
     icon: "✎",
     color: "text-status-info",
     borderColor: "border-status-info",
-    label: "directing",
     tooltip: "You are typing a prompt for this agent",
   },
 };
@@ -86,9 +77,6 @@ export function AgentStatusIndicator({ state, className }: AgentStatusIndicatorP
   }
 
   const config = STATE_CONFIG[state];
-  if (!config) {
-    return null;
-  }
 
   return (
     <Tooltip>
@@ -105,7 +93,7 @@ export function AgentStatusIndicator({ state, className }: AgentStatusIndicatorP
             className
           )}
           role="img"
-          aria-label={`Agent status: ${config.label}`}
+          aria-label={`Agent status: ${STATE_LABELS[state]}`}
           onAnimationEnd={() => setIsFlashing(false)}
         >
           {config.icon}
@@ -136,13 +124,11 @@ export function getDominantAgentState(states: (AgentState | undefined)[]): Agent
 // the actionable states a human should attend to — earn a visible dot. Keeping
 // passive sessions unmarked lets the actionable few stand out on a toolbar
 // that may show many running agents at once.
+const AGENT_DOT_COLORS = {
+  directing: "bg-state-working",
+  waiting: "bg-state-waiting",
+} as const satisfies Record<Extract<AgentState, "directing" | "waiting">, string>;
+
 export function agentStateDotColor(state: AgentState): string | null {
-  switch (state) {
-    case "directing":
-      return "bg-state-working";
-    case "waiting":
-      return "bg-state-waiting";
-    default:
-      return null;
-  }
+  return (AGENT_DOT_COLORS as Partial<Record<AgentState, string>>)[state] ?? null;
 }

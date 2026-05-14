@@ -26,6 +26,7 @@ import { eq, desc } from "drizzle-orm";
 import { generateProjectId, getProjectStateDir } from "./projectStorePaths.js";
 import { ProjectSettingsManager } from "./ProjectSettingsManager.js";
 import { ProjectStateManager, type ProjectStateReadResult } from "./ProjectStateManager.js";
+import { invalidatePrefetchCache } from "./prefetchHydrateCache.js";
 import { ProjectFileStore } from "./ProjectFileStore.js";
 import { GlobalFileStore } from "./GlobalFileStore.js";
 import { ProjectIdentityFiles } from "./ProjectIdentityFiles.js";
@@ -601,6 +602,10 @@ export class ProjectStore {
   // --- State ---
 
   async saveProjectState(projectId: string, state: ProjectState): Promise<void> {
+    // Invalidate before the write so any in-flight prefetch sees a version bump
+    // and discards its result — otherwise a prefetch resolving after the write
+    // could clobber the cache with pre-mutation state.
+    invalidatePrefetchCache(projectId);
     return this.stateManager.saveProjectState(projectId, state);
   }
 

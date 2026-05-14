@@ -19,6 +19,8 @@ export interface WorktreeDialogsProps {
   onDetachIssue: () => void;
   showReviewHub: boolean;
   onCloseReviewHub: () => void;
+  reviewHubInitialCommitMessage?: string;
+  reviewHubAutoStageOnOpen?: boolean;
   showPlanViewer: boolean;
   onClosePlanViewer: () => void;
 }
@@ -35,6 +37,8 @@ export function WorktreeDialogs({
   onDetachIssue,
   showReviewHub,
   onCloseReviewHub,
+  reviewHubInitialCommitMessage,
+  reviewHubAutoStageOnOpen,
   showPlanViewer,
   onClosePlanViewer,
 }: WorktreeDialogsProps) {
@@ -65,7 +69,13 @@ export function WorktreeDialogs({
         onDetach={onDetachIssue}
       />
 
-      <ReviewHub isOpen={showReviewHub} worktreePath={worktree.path} onClose={onCloseReviewHub} />
+      <ReviewHub
+        isOpen={showReviewHub}
+        worktreePath={worktree.path}
+        onClose={onCloseReviewHub}
+        initialCommitMessage={reviewHubInitialCommitMessage}
+        autoStageOnOpen={reviewHubAutoStageOnOpen}
+      />
 
       <PlanFileViewer
         isOpen={showPlanViewer}

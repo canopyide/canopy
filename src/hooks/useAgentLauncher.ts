@@ -78,10 +78,20 @@ export interface LaunchAgentOptions {
    * (#6959).
    */
   spawnedBy?: TerminalSpawnSource;
+  /**
+   * Pre-reserved terminal ID passed through to `addPanel` so the dock filter
+   * is active the moment the panel commits, preventing a one-frame visual
+   * flash. Used by the help panel's `+` new-session and run-anyway paths
+   * (#6951, #7651).
+   */
+  requestedId?: string;
 }
 
 export interface UseAgentLauncherReturn {
-  launchAgent: (agentId: string, options?: LaunchAgentOptions) => Promise<string | null>;
+  launchAgent: (
+    agentId: string,
+    options?: LaunchAgentOptions
+  ) => Promise<{ terminalId: string; location: "grid" | "dock" } | null>;
   availability: CliAvailability;
   isCheckingAvailability: boolean;
   agentSettings: AgentSettings | null;
@@ -199,7 +209,10 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
   }, [initializeCliAvailability, refreshCliAvailability]);
 
   const launchAgent = useCallback(
-    async (agentId: string, launchOptions?: LaunchAgentOptions): Promise<string | null> => {
+    async (
+      agentId: string,
+      launchOptions?: LaunchAgentOptions
+    ): Promise<{ terminalId: string; location: "grid" | "dock" } | null> => {
       if (!isElectronAvailable()) {
         console.warn("Electron API not available");
         return null;
@@ -239,7 +252,10 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               activateDockOnCreate: launchOptions?.activateDockOnCreate,
               spawnedBy: launchOptions?.spawnedBy,
             });
-            return terminalId;
+            if (!terminalId) return null;
+            const rawLocation = usePanelStore.getState().panelsById[terminalId]?.location ?? "grid";
+            const location = rawLocation === "dock" ? "dock" : "grid";
+            return { terminalId, location };
           } catch (error) {
             logError("Failed to launch browser pane", error);
             return null;
@@ -258,7 +274,10 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               activateDockOnCreate: launchOptions?.activateDockOnCreate,
               spawnedBy: launchOptions?.spawnedBy,
             });
-            return terminalId;
+            if (!terminalId) return null;
+            const rawLocation = usePanelStore.getState().panelsById[terminalId]?.location ?? "grid";
+            const location = rawLocation === "dock" ? "dock" : "grid";
+            return { terminalId, location };
           } catch (error) {
             logError("Failed to launch dev-preview pane", error);
             return null;
@@ -461,6 +480,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               activateDockOnCreate: launchOptions?.activateDockOnCreate,
               ephemeral: launchOptions?.ephemeral,
               spawnedBy,
+              requestedId: launchOptions?.requestedId,
             }
           : {
               kind: "terminal",
@@ -472,6 +492,7 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               activateDockOnCreate: launchOptions?.activateDockOnCreate,
               ephemeral: launchOptions?.ephemeral,
               spawnedBy,
+              requestedId: launchOptions?.requestedId,
             };
 
         // Soft launch gate: intercept when the CLI is not launchable (missing,
@@ -529,13 +550,19 @@ export function useAgentLauncher(): UseAgentLauncherReturn {
               }
               return next;
             });
-            return gateId;
+            return {
+              terminalId: gateId,
+              location: gatePanel.location === "dock" ? "dock" : "grid",
+            };
           }
         }
 
         try {
           const terminalId = await addPanel(options);
-          return terminalId;
+          if (!terminalId) return null;
+          const rawLocation = usePanelStore.getState().panelsById[terminalId]?.location ?? "grid";
+          const location = rawLocation === "dock" ? "dock" : "grid";
+          return { terminalId, location };
         } catch (error) {
           logError(`Failed to launch ${agentId} agent`, error);
           return null;

@@ -691,6 +691,181 @@ describe("SettingsShortcutCapture", () => {
     });
   });
 
+  describe("validateCombo prop", () => {
+    it("shows inline validation error and disables Save when validator returns a message", () => {
+      const validate = vi.fn((_combo: string) => "Agent shortcuts use Ctrl+Alt+letter");
+
+      render(
+        <SettingsShortcutCapture
+          onCapture={mockOnCapture}
+          onCancel={mockOnCancel}
+          excludeActionId="test.action"
+          validateCombo={validate}
+        />
+      );
+
+      fireEvent.click(screen.getByText("Click to record shortcut"));
+
+      const keyEvent = new KeyboardEvent("keydown", {
+        key: "s",
+        code: "KeyS",
+        ctrlKey: true,
+        bubbles: true,
+      });
+
+      act(() => {
+        window.dispatchEvent(keyEvent);
+        vi.advanceTimersByTime(1100);
+      });
+
+      expect(screen.getByTestId("shortcut-capture-validation-error")).toBeTruthy();
+      expect(screen.getByText("Agent shortcuts use Ctrl+Alt+letter")).toBeTruthy();
+
+      const saveButton = screen.getByText("Save") as HTMLButtonElement;
+      expect(saveButton.disabled).toBe(true);
+
+      fireEvent.click(saveButton);
+      expect(mockOnCapture).not.toHaveBeenCalled();
+    });
+
+    it("allows Save when validateCombo returns null", () => {
+      const validate = vi.fn((_combo: string) => null);
+
+      render(
+        <SettingsShortcutCapture
+          onCapture={mockOnCapture}
+          onCancel={mockOnCancel}
+          excludeActionId="test.action"
+          validateCombo={validate}
+        />
+      );
+
+      fireEvent.click(screen.getByText("Click to record shortcut"));
+
+      const keyEvent = new KeyboardEvent("keydown", {
+        key: "k",
+        code: "KeyK",
+        ctrlKey: true,
+        altKey: true,
+        bubbles: true,
+      });
+
+      act(() => {
+        window.dispatchEvent(keyEvent);
+        vi.advanceTimersByTime(1100);
+      });
+
+      expect(screen.queryByTestId("shortcut-capture-validation-error")).toBeNull();
+
+      const saveButton = screen.getByText("Save") as HTMLButtonElement;
+      expect(saveButton.disabled).toBe(false);
+
+      fireEvent.click(saveButton);
+      expect(mockOnCapture).toHaveBeenCalled();
+    });
+  });
+
+  describe("window blur during recording", () => {
+    it("clears the in-progress combo and exits recording state on window blur", () => {
+      render(
+        <SettingsShortcutCapture
+          onCapture={mockOnCapture}
+          onCancel={mockOnCancel}
+          excludeActionId="test.action"
+        />
+      );
+
+      fireEvent.click(screen.getByText("Click to record shortcut"));
+
+      // Start a chord — held modifier state would otherwise be stuck on blur.
+      const firstKey = new KeyboardEvent("keydown", {
+        key: "k",
+        code: "KeyK",
+        ctrlKey: true,
+        bubbles: true,
+      });
+
+      act(() => {
+        window.dispatchEvent(firstKey);
+      });
+
+      expect(screen.getByText(/press second key or wait to finish/)).toBeTruthy();
+
+      // Simulate the window losing focus (e.g., user Cmd+Tabs away mid-chord).
+      act(() => {
+        window.dispatchEvent(new Event("blur"));
+      });
+
+      // Recording should be cancelled — the prompt and Save button both gone.
+      expect(screen.queryByText("Save")).toBeNull();
+      expect(screen.queryByText(/press second key or wait to finish/)).toBeNull();
+      expect(screen.getByText("Click to record shortcut")).toBeTruthy();
+    });
+
+    it("invokes onCancel on window blur so parent capture coordination clears", () => {
+      render(
+        <SettingsShortcutCapture
+          onCapture={mockOnCapture}
+          onCancel={mockOnCancel}
+          excludeActionId="test.action"
+        />
+      );
+
+      fireEvent.click(screen.getByText("Click to record shortcut"));
+
+      act(() => {
+        window.dispatchEvent(new Event("blur"));
+      });
+
+      expect(mockOnCancel).toHaveBeenCalled();
+    });
+  });
+
+  describe("conflict suppression while validation error is active", () => {
+    it("hides the conflicts section when validateCombo returns an error", async () => {
+      const { keybindingService } = await import("@/services/KeybindingService");
+      vi.mocked(keybindingService.findConflicts).mockReturnValue([
+        {
+          actionId: "conflict.action",
+          description: "Conflicting Action",
+          combo: "Cmd+A",
+          scope: "global",
+          priority: 0,
+          kind: "conflict",
+        },
+      ]);
+
+      render(
+        <SettingsShortcutCapture
+          onCapture={mockOnCapture}
+          onCancel={mockOnCancel}
+          excludeActionId="test.action"
+          validateCombo={() => "Use a different shape"}
+        />
+      );
+
+      fireEvent.click(screen.getByText("Click to record shortcut"));
+
+      const keyEvent = new KeyboardEvent("keydown", {
+        key: "k",
+        code: "KeyK",
+        ctrlKey: true,
+        bubbles: true,
+      });
+
+      act(() => {
+        window.dispatchEvent(keyEvent);
+        vi.advanceTimersByTime(1100);
+      });
+
+      // Validation error is shown.
+      expect(screen.getByTestId("shortcut-capture-validation-error")).toBeTruthy();
+      // Conflict section suppressed — no Unbind button to accidentally fire.
+      expect(screen.queryByText("Conflicts with:")).toBeNull();
+      expect(screen.queryByText("Unbind")).toBeNull();
+    });
+  });
+
   describe("conflict remediation", () => {
     it("renders unbind buttons for each conflict", async () => {
       const { keybindingService } = await import("@/services/KeybindingService");

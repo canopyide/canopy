@@ -8,10 +8,8 @@ import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { VOICE_INPUT_SETTINGS_CHANGED_EVENT } from "@/lib/voiceInputSettingsEvents";
 import { logDebug, logWarn, logError } from "@/utils/logger";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
-import type { PendingCorrection } from "@/store/voiceRecordingStore";
 
 const LOG_PREFIX = "[VoiceRecording]";
-const CORRECTION_MATCH_RADIUS = 32;
 
 function formatTargetLabel(target: VoiceRecordingTarget): string {
   const project = target.projectName?.trim();
@@ -31,71 +29,6 @@ function getVoiceInsertMetadata(draft: string): { separator: string; insertStart
     separator,
     insertStart: draft.length + separator.length,
   };
-}
-
-function collectOccurrences(haystack: string, needle: string): number[] {
-  if (!needle) return [];
-
-  const occurrences: number[] = [];
-  let searchFrom = 0;
-  while (searchFrom <= haystack.length) {
-    const idx = haystack.indexOf(needle, searchFrom);
-    if (idx === -1) break;
-    occurrences.push(idx);
-    searchFrom = idx + 1;
-  }
-  return occurrences;
-}
-
-function findCorrectionRange(
-  draft: string,
-  pending: Pick<PendingCorrection, "segmentStart" | "rawText">
-): { start: number; end: number } | null {
-  const { segmentStart, rawText } = pending;
-  if (!rawText) return null;
-
-  const exactEnd = segmentStart + rawText.length;
-  if (
-    segmentStart >= 0 &&
-    exactEnd <= draft.length &&
-    draft.slice(segmentStart, exactEnd) === rawText
-  ) {
-    return { start: segmentStart, end: exactEnd };
-  }
-
-  const occurrences = collectOccurrences(draft, rawText);
-  if (occurrences.length === 0) return null;
-
-  const nearby =
-    segmentStart >= 0
-      ? occurrences.filter((idx) => Math.abs(idx - segmentStart) <= CORRECTION_MATCH_RADIUS)
-      : [];
-  if (nearby.length === 1) {
-    const start = nearby[0]!;
-    return { start, end: start + rawText.length };
-  }
-
-  if (occurrences.length === 1) {
-    const start = occurrences[0]!;
-    return { start, end: start + rawText.length };
-  }
-
-  return null;
-}
-
-function resolveQueuedCorrectionStart(draft: string, rawText: string): number {
-  if (!rawText) return -1;
-  if (draft.endsWith(rawText)) {
-    return draft.length - rawText.length;
-  }
-
-  const lastMatch = draft.lastIndexOf(rawText);
-  if (lastMatch >= 0) {
-    return lastMatch;
-  }
-
-  const occurrences = collectOccurrences(draft, rawText);
-  return occurrences.length === 1 ? occurrences[0]! : -1;
 }
 
 class VoiceRecordingService {
@@ -191,95 +124,6 @@ class VoiceRecordingService {
     );
 
     this.unsubscribers.push(
-      voiceInput.onCorrectionQueued(({ correctionId, rawText }) => {
-        logDebug(`${LOG_PREFIX} Received correction queued`, {
-          correctionId,
-          length: rawText.length,
-        });
-
-        const voiceState = useVoiceRecordingStore.getState();
-        const currentTarget = voiceState.activeTarget;
-        if (!currentTarget || !rawText) return;
-
-        const { panelId, projectId } = currentTarget;
-        const buffer = voiceState.panelBuffers[panelId];
-        if (buffer?.pendingCorrections.some((pending) => pending.id === correctionId)) {
-          return;
-        }
-        const draft = useTerminalInputStore.getState().getDraftInput(panelId, projectId);
-        const preferredStart = buffer?.sessionDraftStart ?? -1;
-        const correctionStart =
-          preferredStart >= 0 &&
-          draft.slice(preferredStart, preferredStart + rawText.length) === rawText
-            ? preferredStart
-            : resolveQueuedCorrectionStart(draft, rawText);
-        if (correctionStart < 0) {
-          logDebug(`${LOG_PREFIX} Skipping pending correction registration — text not found`, {
-            correctionId,
-          });
-          return;
-        }
-
-        useVoiceRecordingStore
-          .getState()
-          .addPendingCorrection(panelId, correctionId, correctionStart, rawText);
-      })
-    );
-
-    this.unsubscribers.push(
-      voiceInput.onCorrectionReplace(({ correctionId, correctedText }) => {
-        logDebug(`${LOG_PREFIX} Received correction replace`, { correctionId });
-        const voiceState = useVoiceRecordingStore.getState();
-
-        // Find the panel that owns this correction ID.
-        let panelId: string | undefined;
-        let projectId: string | undefined;
-        let pending: PendingCorrection | undefined;
-
-        for (const [id, buffer] of Object.entries(voiceState.panelBuffers)) {
-          const found = buffer.pendingCorrections.find((p) => p.id === correctionId);
-          if (found) {
-            panelId = id;
-            projectId = buffer.projectId;
-            pending = found;
-            break;
-          }
-        }
-
-        if (!panelId || !pending) return;
-
-        if (correctedText !== pending.rawText) {
-          const inputStore = useTerminalInputStore.getState();
-          const draft = inputStore.getDraftInput(panelId, projectId);
-          const matchedRange = findCorrectionRange(draft, pending);
-
-          // Apply the correction only if the raw text still exists in an unambiguous
-          // location. If the user edited that region, skip rather than guessing.
-          if (matchedRange) {
-            const before = draft.slice(0, matchedRange.start);
-            const after = draft.slice(matchedRange.end);
-            inputStore.setDraftInput(panelId, before + correctedText + after, projectId);
-            inputStore.bumpVoiceDraftRevision();
-
-            const lengthDelta = correctedText.length - pending.rawText.length;
-            if (lengthDelta !== 0) {
-              useVoiceRecordingStore
-                .getState()
-                .rebasePendingCorrections(panelId, pending.segmentStart, lengthDelta);
-            }
-          } else {
-            logDebug(`${LOG_PREFIX} Skipping correction — text at tracked position has changed`, {
-              correctionId,
-              segmentStart: pending.segmentStart,
-            });
-          }
-        }
-
-        useVoiceRecordingStore.getState().resolvePendingCorrection(panelId, correctionId);
-      })
-    );
-
-    this.unsubscribers.push(
       voiceInput.onFileTokenResolved(({ description, replacement }) => {
         logDebug(`${LOG_PREFIX} Received file token resolved`, { description, replacement });
         const voiceState = useVoiceRecordingStore.getState();
@@ -307,11 +151,8 @@ class VoiceRecordingService {
     );
 
     this.unsubscribers.push(
-      voiceInput.onParagraphBoundary(({ rawText, correctionId }) => {
-        logDebug(`${LOG_PREFIX} Received paragraph boundary from Deepgram`, {
-          rawText,
-          correctionId,
-        });
+      voiceInput.onParagraphBoundary(({ rawText }) => {
+        logDebug(`${LOG_PREFIX} Received paragraph boundary`, { rawText });
         const voiceState = useVoiceRecordingStore.getState();
         const currentTarget = voiceState.activeTarget;
         if (!currentTarget) return;
@@ -436,17 +277,17 @@ class VoiceRecordingService {
 
   async refreshConfiguration(): Promise<boolean> {
     const settings = await window.electron.voiceInput.getSettings();
-    const isConfigured = settings.enabled && !!settings.deepgramApiKey;
+    const isConfigured = settings.enabled && !!settings.openaiApiKey;
     logDebug(`${LOG_PREFIX} refreshConfiguration`, {
       enabled: settings.enabled,
-      hasApiKey: !!settings.deepgramApiKey,
+      hasApiKey: !!settings.openaiApiKey,
       isConfigured,
       correctionEnabled: settings.correctionEnabled,
     });
     // Keep correction state in sync for live-segment dimming
     useVoiceRecordingStore
       .getState()
-      .setCorrectionEnabled(!!(settings.correctionEnabled && settings.correctionApiKey));
+      .setCorrectionEnabled(!!(settings.correctionEnabled && settings.openaiApiKey));
     useVoiceRecordingStore.getState().setConfigured(isConfigured);
     return isConfigured;
   }
@@ -687,7 +528,7 @@ class VoiceRecordingService {
       .getState()
       .announce(`Dictation started in ${formatTargetLabel(target)}.`);
 
-    // Connect to Deepgram in parallel — audio is already flowing.
+    // Connect in parallel — audio is already flowing.
     logDebug(`${LOG_PREFIX} Calling voiceInput.start() IPC`);
     const result = await window.electron.voiceInput.start();
     logDebug(`${LOG_PREFIX} voiceInput.start() returned`, {

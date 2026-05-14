@@ -1,5 +1,7 @@
 import { CHANNELS } from "../channels.js";
-import { broadcastToRenderer, typedHandle } from "../utils.js";
+import { broadcastToRenderer } from "../utils.js";
+import { defineIpcNamespace, op } from "../define.js";
+import { DEV_PREVIEW_METHOD_CHANNELS } from "./devPreview.preload.js";
 import type { HandlerDependencies } from "../types.js";
 import type {
   DevPreviewEnsureRequest,
@@ -12,8 +14,6 @@ import type { DevPreviewSessionService as DevPreviewSessionServiceType } from ".
 import { getHibernationService } from "../../services/HibernationService.js";
 
 export function registerDevPreviewHandlers(deps: HandlerDependencies): () => void {
-  const handlers: Array<() => void> = [];
-
   let sessionService: DevPreviewSessionServiceType | null = null;
   let sessionServicePromise: Promise<DevPreviewSessionServiceType> | null = null;
 
@@ -38,44 +38,52 @@ export function registerDevPreviewHandlers(deps: HandlerDependencies): () => voi
     return sessionServicePromise;
   }
 
-  const handleEnsure = async (request: DevPreviewEnsureRequest) => {
-    const svc = await getSessionService();
-    return svc.ensure(request);
-  };
-  handlers.push(typedHandle(CHANNELS.DEV_PREVIEW_ENSURE, handleEnsure));
+  const namespace = defineIpcNamespace({
+    name: "devPreview",
+    ops: {
+      ensure: op(DEV_PREVIEW_METHOD_CHANNELS.ensure, async (request: DevPreviewEnsureRequest) => {
+        const svc = await getSessionService();
+        return svc.ensure(request);
+      }),
+      restart: op(
+        DEV_PREVIEW_METHOD_CHANNELS.restart,
+        async (request: DevPreviewSessionRequest) => {
+          const svc = await getSessionService();
+          return svc.restart(request);
+        }
+      ),
+      stop: op(DEV_PREVIEW_METHOD_CHANNELS.stop, async (request: DevPreviewSessionRequest) => {
+        const svc = await getSessionService();
+        return svc.stop(request);
+      }),
+      stopByPanel: op(
+        DEV_PREVIEW_METHOD_CHANNELS.stopByPanel,
+        async (request: DevPreviewStopByPanelRequest) => {
+          const svc = await getSessionService();
+          await svc.stopByPanel(request);
+        }
+      ),
+      getState: op(
+        DEV_PREVIEW_METHOD_CHANNELS.getState,
+        async (request: DevPreviewSessionRequest) => {
+          const svc = await getSessionService();
+          return svc.getState(request);
+        }
+      ),
+      getByWorktree: op(
+        DEV_PREVIEW_METHOD_CHANNELS.getByWorktree,
+        async (request: DevPreviewGetByWorktreeRequest) => {
+          if (!request || typeof request.worktreeId !== "string" || !request.worktreeId.trim()) {
+            throw new Error("worktreeId is required");
+          }
+          const svc = await getSessionService();
+          return svc.getByWorktree(request.worktreeId);
+        }
+      ),
+    },
+  });
 
-  const handleRestart = async (request: DevPreviewSessionRequest) => {
-    const svc = await getSessionService();
-    return svc.restart(request);
-  };
-  handlers.push(typedHandle(CHANNELS.DEV_PREVIEW_RESTART, handleRestart));
-
-  const handleStop = async (request: DevPreviewSessionRequest) => {
-    const svc = await getSessionService();
-    return svc.stop(request);
-  };
-  handlers.push(typedHandle(CHANNELS.DEV_PREVIEW_STOP, handleStop));
-
-  const handleStopByPanel = async (request: DevPreviewStopByPanelRequest) => {
-    const svc = await getSessionService();
-    await svc.stopByPanel(request);
-  };
-  handlers.push(typedHandle(CHANNELS.DEV_PREVIEW_STOP_BY_PANEL, handleStopByPanel));
-
-  const handleGetState = async (request: DevPreviewSessionRequest) => {
-    const svc = await getSessionService();
-    return svc.getState(request);
-  };
-  handlers.push(typedHandle(CHANNELS.DEV_PREVIEW_GET_STATE, handleGetState));
-
-  const handleGetByWorktree = async (request: DevPreviewGetByWorktreeRequest) => {
-    if (!request || typeof request.worktreeId !== "string" || !request.worktreeId.trim()) {
-      throw new Error("worktreeId is required");
-    }
-    const svc = await getSessionService();
-    return svc.getByWorktree(request.worktreeId);
-  };
-  handlers.push(typedHandle(CHANNELS.DEV_PREVIEW_GET_BY_WORKTREE, handleGetByWorktree));
+  const cleanups: Array<() => void> = [namespace.register()];
 
   const unsubHibernation = getHibernationService().onProjectHibernated((projectId) => {
     // Skip if the session service was never created — no sessions exist to stop.
@@ -90,6 +98,6 @@ export function registerDevPreviewHandlers(deps: HandlerDependencies): () => voi
     if (sessionService) {
       sessionService.dispose();
     }
-    handlers.forEach((dispose) => dispose());
+    cleanups.forEach((dispose) => dispose());
   };
 }

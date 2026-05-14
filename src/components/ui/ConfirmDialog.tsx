@@ -6,7 +6,22 @@ import { TypedNameConfirmInput } from "@/components/ui/TypedNameConfirmInput";
 const DESTRUCTIVE_CONFIRM_LABEL_RE =
   /^\s*(delete|remove|destroy|erase|wipe|purge|abort|reset|revoke|terminate|uninstall)\b/i;
 
-export interface ConfirmDialogProps {
+const GENERIC_CONFIRM_LABEL_RE =
+  /^\s*(ok|confirm|yes|save|continue|proceed|done|got it|accept|apply|submit)\s*$/i;
+
+const devWarnedKeys = new Set<string>();
+
+export const __devWarnedKeys = devWarnedKeys;
+
+function warnOnce(key: string, message: string) {
+  if (!import.meta.env.DEV) return;
+  if (devWarnedKeys.has(key)) return;
+  devWarnedKeys.add(key);
+  // eslint-disable-next-line no-console
+  console.error(message);
+}
+
+type ConfirmDialogBaseProps = {
   isOpen: boolean;
   onClose?: () => void;
   title: React.ReactNode;
@@ -16,25 +31,36 @@ export interface ConfirmDialogProps {
   cancelLabel?: string;
   onConfirm: () => void | Promise<void>;
   isConfirmLoading?: boolean;
-  variant: "default" | "destructive" | "info";
   zIndex?: DialogZIndex;
-  typedNameTarget?: string;
-}
+};
 
-export function ConfirmDialog({
-  isOpen,
-  onClose,
-  title,
-  description,
-  children,
-  confirmLabel,
-  cancelLabel = "Cancel",
-  onConfirm,
-  isConfirmLoading = false,
-  variant,
-  zIndex,
-  typedNameTarget,
-}: ConfirmDialogProps) {
+export type ConfirmDialogProps =
+  | (ConfirmDialogBaseProps & {
+      variant: "destructive";
+      typedNameTarget?: string;
+    })
+  | (ConfirmDialogBaseProps & {
+      variant: "default" | "info";
+      typedNameTarget?: never;
+    });
+
+export function ConfirmDialog(props: ConfirmDialogProps) {
+  const {
+    isOpen,
+    onClose,
+    title,
+    description,
+    children,
+    confirmLabel,
+    cancelLabel = "Cancel",
+    onConfirm,
+    isConfirmLoading = false,
+    variant,
+    zIndex,
+  } = props;
+  const rawTypedNameTarget = (props as { typedNameTarget?: string }).typedNameTarget;
+  const typedNameTarget = variant === "destructive" ? rawTypedNameTarget : undefined;
+
   const handleClose = onClose ?? (() => {});
   const [typedValue, setTypedValue] = useState("");
 
@@ -42,21 +68,24 @@ export function ConfirmDialog({
     if (!isOpen) setTypedValue("");
   }, [isOpen]);
 
-  if (
-    import.meta.env.DEV &&
-    variant !== "destructive" &&
-    DESTRUCTIVE_CONFIRM_LABEL_RE.test(confirmLabel)
-  ) {
-    // eslint-disable-next-line no-console
-    console.error(
+  if (variant !== "destructive" && DESTRUCTIVE_CONFIRM_LABEL_RE.test(confirmLabel)) {
+    warnOnce(
+      `forward-label:${variant}:${confirmLabel.trim().toLowerCase()}`,
       `[ConfirmDialog] Destructive confirmLabel "${confirmLabel}" rendered with variant="${variant}". Use variant="destructive" so the primary button gets the destructive styling.`
     );
   }
 
-  if (import.meta.env.DEV && typedNameTarget && variant !== "destructive") {
-    // eslint-disable-next-line no-console
-    console.error(
-      `[ConfirmDialog] typedNameTarget="${typedNameTarget}" was set with variant="${variant}". The typed-name gate is intended for destructive actions; use variant="destructive".`
+  if (variant === "destructive" && GENERIC_CONFIRM_LABEL_RE.test(confirmLabel)) {
+    warnOnce(
+      `inverse-label:${confirmLabel.trim().toLowerCase()}`,
+      `[ConfirmDialog] Destructive variant rendered with generic confirmLabel "${confirmLabel}". Use a verb-noun label like "Delete worktree" so the button names the action.`
+    );
+  }
+
+  if (rawTypedNameTarget && variant !== "destructive") {
+    warnOnce(
+      `typed-name-variant:${variant}`,
+      `[ConfirmDialog] typedNameTarget="${rawTypedNameTarget}" was set with variant="${variant}". The typed-name gate is intended for destructive actions; use variant="destructive".`
     );
   }
 

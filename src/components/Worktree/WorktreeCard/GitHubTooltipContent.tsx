@@ -1,4 +1,3 @@
-import { memo } from "react";
 import type { IssueTooltipData, PRTooltipData } from "@shared/types/github";
 import { User, Users, Calendar, KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -12,7 +11,7 @@ function formatDate(dateString: string): string {
   });
 }
 
-export const TooltipLoading = memo(function TooltipLoading() {
+export function TooltipLoading() {
   // Doherty-gated skeleton: `animate-pulse-delayed` keeps the bars invisible
   // for the first 400ms, so a fast cache-warm response (the common case after
   // the poll has pre-warmed `prTooltipCache`) shows nothing rather than a
@@ -32,29 +31,27 @@ export const TooltipLoading = memo(function TooltipLoading() {
       </div>
     </div>
   );
-});
+}
 
 interface TokenMissingTooltipProps {
   type: "issue" | "pr";
 }
 
-export const TokenMissingTooltip = memo(function TokenMissingTooltip({
-  type,
-}: TokenMissingTooltipProps) {
+export function TokenMissingTooltip({ type }: TokenMissingTooltipProps) {
   return (
     <div className="flex items-center gap-2 text-daintree-text/60 py-1">
-      <KeyRound className="w-3.5 h-3.5 shrink-0 text-daintree-accent/60" aria-hidden="true" />
+      <KeyRound className="w-3.5 h-3.5 shrink-0 text-daintree-text/50" aria-hidden="true" />
       <span className="text-xs">Configure GitHub token to see {type} details</span>
     </div>
   );
-});
+}
 
 interface LabelBadgeProps {
   name: string;
   color: string;
 }
 
-const LabelBadge = memo(function LabelBadge({ name, color }: LabelBadgeProps) {
+function LabelBadge({ name, color }: LabelBadgeProps) {
   return (
     <span
       className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium"
@@ -67,15 +64,13 @@ const LabelBadge = memo(function LabelBadge({ name, color }: LabelBadgeProps) {
       {name}
     </span>
   );
-});
+}
 
 interface IssueTooltipContentProps {
   data: IssueTooltipData;
 }
 
-export const IssueTooltipContent = memo(function IssueTooltipContent({
-  data,
-}: IssueTooltipContentProps) {
+export function IssueTooltipContent({ data }: IssueTooltipContentProps) {
   const stateColor = data.state === "OPEN" ? "text-github-open" : "text-github-merged";
 
   return (
@@ -124,13 +119,13 @@ export const IssueTooltipContent = memo(function IssueTooltipContent({
       )}
     </div>
   );
-});
+}
 
 interface PRTooltipContentProps {
   data: PRTooltipData;
 }
 
-export const PRTooltipContent = memo(function PRTooltipContent({ data }: PRTooltipContentProps) {
+export function PRTooltipContent({ data }: PRTooltipContentProps) {
   const stateColor =
     data.state === "MERGED"
       ? "text-github-merged"
@@ -198,4 +193,4 @@ export const PRTooltipContent = memo(function PRTooltipContent({ data }: PRToolt
       )}
     </div>
   );
-});
+}

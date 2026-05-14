@@ -397,6 +397,81 @@ describe("secretScrubber", () => {
         input: `DD_APP_KEY="${"f".repeat(40)}" next`,
         expected: `${REDACTED} next`,
       },
+      {
+        name: "pulumi-api-token",
+        input: `PULUMI_ACCESS_TOKEN=pul-${"a".repeat(40)} end`,
+        expected: `PULUMI_ACCESS_TOKEN=${REDACTED} end`,
+      },
+      {
+        name: "rubygems-api-token",
+        input: `GEM_HOST_API_KEY=rubygems_${"a".repeat(48)} next`,
+        expected: `GEM_HOST_API_KEY=${REDACTED} next`,
+      },
+      {
+        name: "readme-api-token",
+        input: `README_API_KEY=rdme_${"a".repeat(70)}`,
+        expected: `README_API_KEY=${REDACTED}`,
+      },
+      {
+        name: "huggingface-org-api-token",
+        input: `HF_ORG_TOKEN=api_org_${"A".repeat(34)} end`,
+        expected: `HF_ORG_TOKEN=${REDACTED} end`,
+      },
+      {
+        name: "age-secret-key",
+        input: `AGE_SECRET_KEY=AGE-SECRET-KEY-1${"Q".repeat(58)}`,
+        expected: `AGE_SECRET_KEY=${REDACTED}`,
+      },
+      {
+        name: "infracost-api-token",
+        input: `INFRACOST_API_KEY=ico-${"A".repeat(32)} next`,
+        expected: `INFRACOST_API_KEY=${REDACTED} next`,
+      },
+      {
+        name: "artifactory-api-key",
+        input: `ARTIFACTORY_KEY=AKCp${"A".repeat(69)} end`,
+        expected: `ARTIFACTORY_KEY=${REDACTED} end`,
+      },
+      {
+        name: "artifactory-reference-token",
+        input: `ARTIFACTORY_TOKEN=cmVmd${"a".repeat(59)}`,
+        expected: `ARTIFACTORY_TOKEN=${REDACTED}`,
+      },
+      {
+        name: "grafana-service-account-token",
+        input: `GF_SERVICE_ACCOUNT_TOKEN=glsa_${"A".repeat(32)}_${"a".repeat(8)} end`,
+        expected: `GF_SERVICE_ACCOUNT_TOKEN=${REDACTED} end`,
+      },
+      {
+        name: "easypost-api-token",
+        input: `EASYPOST_API_KEY=EZAK${"a".repeat(54)} next`,
+        expected: `EASYPOST_API_KEY=${REDACTED} next`,
+      },
+      {
+        name: "easypost-test-api-token",
+        input: `EASYPOST_TEST_API_KEY=EZTK${"b".repeat(54)}`,
+        expected: `EASYPOST_TEST_API_KEY=${REDACTED}`,
+      },
+      {
+        name: "maxmind-license-key",
+        input: `MAXMIND_LICENSE_KEY=${"X".repeat(6)}_${"y".repeat(29)}_mmk end`,
+        expected: `MAXMIND_LICENSE_KEY=${REDACTED} end`,
+      },
+      {
+        name: "doppler-api-token",
+        input: `DOPPLER_TOKEN=dp.pt.${"a".repeat(43)} next`,
+        expected: `DOPPLER_TOKEN=${REDACTED} next`,
+      },
+      {
+        name: "scalingo-api-token",
+        input: `SCALINGO_API_TOKEN=tk-us-${"A".repeat(48)}`,
+        expected: `SCALINGO_API_TOKEN=${REDACTED}`,
+      },
+      {
+        name: "heroku-api-key-v2",
+        input: `HEROKU_API_KEY=HRKU-AA${"a".repeat(58)} end`,
+        expected: `HEROKU_API_KEY=${REDACTED} end`,
+      },
     ];
 
     for (const { name, input, expected } of positive) {
@@ -611,6 +686,81 @@ describe("secretScrubber", () => {
       const out = scrubSecrets(realistic);
       expect(out).toBe(`auth=${REDACTED}`);
     });
+
+    it("does not flag too-short pulumi token", () => {
+      const ts = `pul-${"a".repeat(39)}`;
+      expect(scrubSecrets(ts)).toBe(ts);
+    });
+
+    it("does not flag too-short rubygems token", () => {
+      const ts = `rubygems_${"a".repeat(47)}`;
+      expect(scrubSecrets(ts)).toBe(ts);
+    });
+
+    it("does not flag too-short readme token", () => {
+      const ts = `rdme_${"a".repeat(69)}`;
+      expect(scrubSecrets(ts)).toBe(ts);
+    });
+
+    it("does not flag too-short huggingface-org token", () => {
+      const ts = `api_org_${"A".repeat(33)}`;
+      expect(scrubSecrets(ts)).toBe(ts);
+    });
+
+    it("does not flag too-short age secret key", () => {
+      const ts = `AGE-SECRET-KEY-1${"Q".repeat(57)}`;
+      expect(scrubSecrets(ts)).toBe(ts);
+    });
+
+    it("does not flag too-short infracost token", () => {
+      const ts = `ico-${"A".repeat(31)}`;
+      expect(scrubSecrets(ts)).toBe(ts);
+    });
+
+    it("does not flag too-short artifactory API key", () => {
+      const ts = `AKCp${"A".repeat(68)}`;
+      expect(scrubSecrets(ts)).toBe(ts);
+    });
+
+    it("does not flag too-short artifactory reference token", () => {
+      const ts = `cmVmd${"a".repeat(58)}`;
+      expect(scrubSecrets(ts)).toBe(ts);
+    });
+
+    it("does not flag malformed grafana-sa token (too few hex chars)", () => {
+      const ts = `glsa_${"A".repeat(32)}_${"a".repeat(7)}`;
+      expect(scrubSecrets(ts)).toBe(ts);
+    });
+
+    it("does not flag too-short easypost API token", () => {
+      const ts = `EZAK${"a".repeat(53)}`;
+      expect(scrubSecrets(ts)).toBe(ts);
+    });
+
+    it("does not flag too-short easypost test token", () => {
+      const ts = `EZTK${"b".repeat(53)}`;
+      expect(scrubSecrets(ts)).toBe(ts);
+    });
+
+    it("does not flag too-short maxmind license key", () => {
+      const ts = `${"X".repeat(6)}_${"y".repeat(28)}_mmk`;
+      expect(scrubSecrets(ts)).toBe(ts);
+    });
+
+    it("does not flag too-short doppler token", () => {
+      const ts = `dp.pt.${"a".repeat(42)}`;
+      expect(scrubSecrets(ts)).toBe(ts);
+    });
+
+    it("does not flag too-short scalingo token", () => {
+      const ts = `tk-us-${"A".repeat(47)}`;
+      expect(scrubSecrets(ts)).toBe(ts);
+    });
+
+    it("does not flag too-short heroku-v2 token", () => {
+      const ts = `HRKU-AA${"a".repeat(57)}`;
+      expect(scrubSecrets(ts)).toBe(ts);
+    });
   });
 
   describe("idempotence", () => {
@@ -627,6 +777,21 @@ describe("secretScrubber", () => {
         "https://user:pass@example.com/path",
         "AKIAIOSFODNN7EXAMPLE",
         "plain text with no secrets",
+        `pul-${"a".repeat(40)}`,
+        `rubygems_${"a".repeat(48)}`,
+        `rdme_${"a".repeat(70)}`,
+        `api_org_${"A".repeat(34)}`,
+        `AGE-SECRET-KEY-1${"Q".repeat(58)}`,
+        `ico-${"A".repeat(32)}`,
+        `AKCp${"A".repeat(69)}`,
+        `cmVmd${"a".repeat(59)}`,
+        `glsa_${"A".repeat(32)}_${"a".repeat(8)}`,
+        `EZAK${"a".repeat(54)}`,
+        `EZTK${"b".repeat(54)}`,
+        `${"X".repeat(6)}_${"y".repeat(29)}_mmk`,
+        `dp.pt.${"a".repeat(43)}`,
+        `tk-us-${"A".repeat(48)}`,
+        `HRKU-AA${"a".repeat(58)}`,
       ].join(" | ");
 
       const once = scrubSecrets(mixed);
@@ -705,6 +870,26 @@ describe("secretScrubber", () => {
       const out = scrubSecrets(`prefix ${pem} suffix`);
       expect(out).toBe(`prefix ${REDACTED} suffix`);
     });
+
+    it("scalingo token ending in dash is scrubbed (no trailing \\b)", () => {
+      const input = `SCALINGO_API_TOKEN=tk-us-${"A".repeat(47)}- end`;
+      expect(scrubSecrets(input)).toBe(`SCALINGO_API_TOKEN=${REDACTED} end`);
+    });
+
+    it("scalingo token ending in underscore is scrubbed (no trailing \\b)", () => {
+      const input = `SCALINGO_API_TOKEN=tk-us-${"A".repeat(47)}_ end`;
+      expect(scrubSecrets(input)).toBe(`SCALINGO_API_TOKEN=${REDACTED} end`);
+    });
+
+    it("heroku-v2 token ending in underscore is scrubbed (no trailing \\b)", () => {
+      const input = `HEROKU_API_KEY=HRKU-AA${"a".repeat(57)}_ end`;
+      expect(scrubSecrets(input)).toBe(`HEROKU_API_KEY=${REDACTED} end`);
+    });
+
+    it("heroku-v2 token ending in dash is scrubbed (no trailing \\b)", () => {
+      const input = `HEROKU_API_KEY=HRKU-AA${"a".repeat(57)}- end`;
+      expect(scrubSecrets(input)).toBe(`HEROKU_API_KEY=${REDACTED} end`);
+    });
   });
 
   describe("pattern upper bounds", () => {
@@ -752,6 +937,13 @@ describe("secretScrubber", () => {
       expect(out).not.toContain("sk-D");
       const redactionCount = (out.match(/\[REDACTED\]/g) ?? []).length;
       expect(redactionCount).toBe(5);
+    });
+
+    it("HRKU-AA v2 token fully scrubbed (not partially by HRKU- oauth)", () => {
+      const token = `HRKU-AA${"a".repeat(58)}`;
+      const out = scrubSecrets(token);
+      expect(out).toBe(REDACTED);
+      expect(out).not.toContain("HRKU");
     });
   });
 

@@ -85,7 +85,7 @@ describe("Worktree list keyboard grid — issue #6422", () => {
 
     it("uses group-hover/card for mouse row-level reveal (not self-scoped hover)", async () => {
       const cardSource = await fs.readFile(WORKTREE_CARD_PATH, "utf-8");
-      expect(cardSource).toContain("group-hover/card:text-text-primary/30");
+      expect(cardSource).toContain("group-hover/card:text-text-primary/40");
       expect(cardSource).toContain("group-hover/card:bg-overlay-soft");
     });
 
@@ -128,7 +128,7 @@ describe("Worktree list keyboard grid — issue #6422", () => {
       expect(staticSource).toContain("tabIndex={-1}");
       // Ensure the static path also has a gridcell wrapper
       const staticRowMatch = staticSource.match(
-        /const StaticWorktreeRow[\s\S]*?<\/div>\s*\)\s*;\s*\}\s*\)\s*;/
+        /function StaticWorktreeRow[\s\S]*?<\/div>\s*\)\s*;\s*\}/
       );
       expect(staticRowMatch).toBeTruthy();
       expect(staticRowMatch?.[0]).toContain('role="gridcell"');

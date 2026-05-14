@@ -8,16 +8,23 @@ export const config: AgentConfig = {
   color: "#4285F4",
   iconId: "gemini",
   supportsContextInjection: true,
-  // Gemini help sessions read MCP from the bundled `.gemini/settings.json`
-  // copied into the per-session cwd; `--approval-mode=plan` is injected at
-  // spawn time via `HelpSessionService.buildGeminiLaunchArgs`. Held at the
-  // `"experimental"` tier so the help-panel picker stays Claude/Codex only
-  // until end-to-end validation lands.
+  // Gemini help sessions read MCP from `<sessionPath>/.gemini/settings.json`
+  // (written at provision time with the daintree entry using `httpUrl` +
+  // streamable HTTP + `${DAINTREE_MCP_TOKEN}` substitution + `trust: true`).
+  // The workspace-level settings file takes precedence over user-level
+  // `~/.gemini/settings.json` for same-name MCP entries, which gives us
+  // the isolation we need without redirecting `os.homedir()` (Gemini reads
+  // OAuth credentials from `~/.gemini/oauth_creds.json` and `~/.gemini/
+  // google_accounts.json`, so a redirect would break auth for users
+  // without `GEMINI_API_KEY`). The `--approval-mode=plan` flag is appended
+  // at spawn time via `HelpSessionService.buildGeminiLaunchArgs`. Held at
+  // the `"experimental"` tier so the help-panel picker stays Claude/Codex
+  // only until end-to-end validation lands.
   supports: {
     mcpInjection: "project-config",
-    settingsOverlay: false,
+    settingsOverlay: true,
     permissionBypass: false,
-    trustDialog: false,
+    trustDialog: true,
     versionProbe: true,
     tier: "experimental",
   },

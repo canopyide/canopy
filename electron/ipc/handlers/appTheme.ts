@@ -56,12 +56,16 @@ function getAppThemeConfig(): AppThemeConfig {
     return cfg;
   }
 
-  const defaultSchemeId = nativeTheme.shouldUseDarkColors
-    ? DEFAULT_DARK_SCHEME
-    : DEFAULT_LIGHT_SCHEME;
+  // First-run default: always the dark Daintree scheme, regardless of OS
+  // color-scheme preference. Users who want light or system-following
+  // behavior opt in via Settings → Appearance (the auto-switch listener
+  // below honors `followSystem` once it's enabled).
   return {
     ...(config && typeof config === "object" && !Array.isArray(config) ? config : {}),
-    colorSchemeId: defaultSchemeId,
+    colorSchemeId:
+      process.env.DAINTREE_SCREENSHOT_SCALE || nativeTheme.shouldUseDarkColors
+        ? DEFAULT_DARK_SCHEME
+        : DEFAULT_LIGHT_SCHEME,
     customSchemes: [],
   } as AppThemeConfig;
 }

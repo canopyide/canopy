@@ -5,8 +5,15 @@
 // the flag explicitly via `_resetIpcGuardForTesting()`.
 
 import { markIpcSecurityReady } from "./electron/ipc/ipcGuard.js";
+import { primeRadix } from "./src/components/ui/radix-loader";
 
 markIpcSecurityReady();
+
+// Tests render Radix wrappers synchronously, but our production wrappers
+// dynamic-import the Radix primitive chunk on demand. Prime the loader once
+// at setup so the module-level cache is populated and wrappers render Radix
+// content synchronously throughout the suite.
+await primeRadix();
 
 // jsdom does not implement Trusted Types. The renderer policy module
 // (`src/lib/trustedTypesPolicy.ts`) throws at import time if

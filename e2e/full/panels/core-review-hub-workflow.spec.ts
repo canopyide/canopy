@@ -54,6 +54,19 @@ test.describe.serial("Core: Review Hub Workflow", () => {
 
     const hub = window.locator(SEL.reviewHub.container);
     await expect(hub).toBeVisible({ timeout: T_MEDIUM });
+
+    // PR #7890 collapses the file list by default and auto-stages everything
+    // when the hub is launched from a worktree card. Expand the list so the
+    // Changes-section assertions in subsequent tests can locate file rows,
+    // then unstage so they start from the unstaged baseline.
+    const fileListToggle = hub.locator(SEL.reviewHub.fileListToggle);
+    await expect(fileListToggle).toBeVisible({ timeout: T_MEDIUM });
+    if ((await fileListToggle.getAttribute("aria-expanded")) !== "true") {
+      await fileListToggle.click();
+    }
+    await expect(hub.locator(SEL.reviewHub.unstageAllButton)).toBeVisible({ timeout: T_MEDIUM });
+    await hub.locator(SEL.reviewHub.unstageAllButton).click();
+    await expect(hub.locator(SEL.reviewHub.noStagedFiles)).toBeVisible({ timeout: T_MEDIUM });
   });
 
   test("file list shows uncommitted.txt in Changes section", async () => {

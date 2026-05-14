@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Check, Copy, RefreshCw, ShieldOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { McpAuditRecord, McpAuditResult } from "@shared/types";
@@ -90,9 +90,9 @@ export function McpAuditLogViewer({
 
   const showCopyAll = filteredRecords.length === visibleRecords.length;
 
-  const showTierRejections = useCallback(() => {
+  const showTierRejections = () => {
     setResultFilter("unauthorized");
-  }, []);
+  };
 
   return (
     <div className="contents">

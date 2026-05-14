@@ -107,7 +107,19 @@ export async function gracefulShutdown(host: TerminalGracefulShutdownHost): Prom
       const stripped = stripAnsiCodes(shutdownBuffer);
       const match = pattern.exec(stripped);
       if (match?.[1]) {
-        finish(match[1]);
+        // Guard against truncated captures when the PTY delivers the
+        // session-ID line in chunks. Every `sessionIdPattern` ends with a
+        // greedy `[\w-]+` capture group — if that group ends at the buffer
+        // tail, the regex's character class may still be consuming a token
+        // that is mid-arrival. Wait for at least one trailing character
+        // (newline, space, prompt glyph) that confirms the token boundary
+        // has been seen. Without this, Gemini's resume hint can be captured
+        // as "fc1c3a37-2294-4" instead of the full 36-char UUID, leaving
+        // restore-on-restart to hand the agent an invalid identifier.
+        const captureEnd = match.index + match[0].length;
+        if (captureEnd < stripped.length) {
+          finish(match[1]);
+        }
       }
     });
 

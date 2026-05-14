@@ -38,9 +38,22 @@ test.describe.serial("Core: Review Hub Staging Edge Cases", () => {
       const reviewBtn = ctx.window.locator(SEL.worktree.reviewHubButton);
       await expect(reviewBtn.first()).toBeVisible({ timeout: T_LONG });
       await reviewBtn.first().click();
-      await expect(ctx.window.locator(SEL.reviewHub.container)).toBeVisible({
-        timeout: T_MEDIUM,
-      });
+      const hub = ctx.window.locator(SEL.reviewHub.container);
+      await expect(hub).toBeVisible({ timeout: T_MEDIUM });
+
+      // PR #7890 collapses the file list by default (commit textarea is the
+      // focal point on open) and auto-stages all unstaged files for the
+      // card-launched flow. Expand the list so the staging selectors below
+      // are mountable, then unstage everything to restore the pre-#7890
+      // baseline the rest of this describe block exercises.
+      const fileListToggle = hub.locator(SEL.reviewHub.fileListToggle);
+      await expect(fileListToggle).toBeVisible({ timeout: T_MEDIUM });
+      if ((await fileListToggle.getAttribute("aria-expanded")) !== "true") {
+        await fileListToggle.click();
+      }
+      await expect(hub.locator(SEL.reviewHub.unstageAllButton)).toBeVisible({ timeout: T_MEDIUM });
+      await hub.locator(SEL.reviewHub.unstageAllButton).click();
+      await expect(hub.locator(SEL.reviewHub.noStagedFiles)).toBeVisible({ timeout: T_MEDIUM });
     });
 
     test.afterAll(async () => {
@@ -210,9 +223,22 @@ test.describe.serial("Core: Review Hub Staging Edge Cases", () => {
       const reviewBtn = ctx.window.locator(SEL.worktree.reviewHubButton);
       await expect(reviewBtn.first()).toBeVisible({ timeout: T_LONG });
       await reviewBtn.first().click();
-      await expect(ctx.window.locator(SEL.reviewHub.container)).toBeVisible({
-        timeout: T_MEDIUM,
-      });
+      const hub = ctx.window.locator(SEL.reviewHub.container);
+      await expect(hub).toBeVisible({ timeout: T_MEDIUM });
+
+      // PR #7890 collapses the file list by default (commit textarea is the
+      // focal point on open) and auto-stages all unstaged files for the
+      // card-launched flow. Expand the list so the staging selectors below
+      // are mountable, then unstage everything to restore the pre-#7890
+      // baseline the rest of this describe block exercises.
+      const fileListToggle = hub.locator(SEL.reviewHub.fileListToggle);
+      await expect(fileListToggle).toBeVisible({ timeout: T_MEDIUM });
+      if ((await fileListToggle.getAttribute("aria-expanded")) !== "true") {
+        await fileListToggle.click();
+      }
+      await expect(hub.locator(SEL.reviewHub.unstageAllButton)).toBeVisible({ timeout: T_MEDIUM });
+      await hub.locator(SEL.reviewHub.unstageAllButton).click();
+      await expect(hub.locator(SEL.reviewHub.noStagedFiles)).toBeVisible({ timeout: T_MEDIUM });
     });
 
     test.afterAll(async () => {

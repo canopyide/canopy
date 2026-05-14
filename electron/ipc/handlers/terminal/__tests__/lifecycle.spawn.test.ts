@@ -75,7 +75,7 @@ vi.mock("../../../utils.js", () => ({
 
 vi.mock("../../../../shared/config/agentRegistry.js", () => ({
   isRegisteredAgent: vi.fn(() => false),
-  getAssistantWiredAgentIds: vi.fn(() => ["claude", "codex", "gemini"]),
+  getAssistantWiredAgentIds: vi.fn(() => ["claude", "codex", "gemini", "copilot"]),
   getEffectiveAgentConfig: vi.fn((id: string) => {
     if (id === "claude") {
       return {
@@ -102,6 +102,18 @@ vi.mock("../../../../shared/config/agentRegistry.js", () => ({
       };
     }
     if (id === "gemini") {
+      return {
+        supports: {
+          mcpInjection: "project-config",
+          settingsOverlay: true,
+          permissionBypass: false,
+          trustDialog: true,
+          versionProbe: true,
+          tier: "experimental",
+        },
+      };
+    }
+    if (id === "copilot") {
       return {
         supports: {
           mcpInjection: "project-config",
@@ -139,6 +151,14 @@ const mockGetGeminiLaunchArgs = vi.hoisted(() =>
   vi.fn<(token: string) => string[] | null>(() => null)
 );
 
+const mockGetCopilotLaunchArgs = vi.hoisted(() =>
+  vi.fn<(token: string) => string[] | null>(() => null)
+);
+
+const mockGetGeminiSpawnEnv = vi.hoisted(() =>
+  vi.fn<(token: string) => Record<string, string> | null>(() => null)
+);
+
 const mockMarkTerminalForToken = vi.hoisted(() =>
   vi.fn<(token: string, terminalId: string) => boolean>(() => true)
 );
@@ -152,6 +172,8 @@ vi.mock("../../../../services/HelpSessionService.js", () => ({
     validateToken: (token: string) => mockValidateToken(token),
     getCodexLaunchArgs: (token: string) => mockGetCodexLaunchArgs(token),
     getGeminiLaunchArgs: (token: string) => mockGetGeminiLaunchArgs(token),
+    getCopilotLaunchArgs: (token: string) => mockGetCopilotLaunchArgs(token),
+    getGeminiSpawnEnv: (token: string) => mockGetGeminiSpawnEnv(token),
     getBypassPermissions: (token: string) => mockGetBypassPermissions(token),
     markTerminalForToken: (token: string, terminalId: string) =>
       mockMarkTerminalForToken(token, terminalId),
@@ -1261,6 +1283,169 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
     );
 
     expect(mockGetGeminiLaunchArgs).not.toHaveBeenCalled();
+  });
+
+  it("merges per-agent env from getGeminiSpawnEnv into the PTY env when non-empty (#7542)", async () => {
+    // Today `getGeminiSpawnEnv` returns `{}` for Gemini sessions — we don't
+    // redirect `GEMINI_CLI_HOME` because it would break OAuth credential
+    // lookup. This test guards the merge plumbing so future per-agent env
+    // additions land in the PTY env without regression. Uses a sentinel
+    // key that isn't actually injected today.
+    mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
+    mockGetGeminiLaunchArgs.mockReturnValue(["--approval-mode=plan"]);
+    mockGetGeminiSpawnEnv.mockImplementation((token) =>
+      token === "help-token" ? { GEMINI_TEST_SENTINEL: "1" } : null
+    );
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "gemini",
+        launchAgentId: "gemini",
+        env: { DAINTREE_MCP_TOKEN: "help-token" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.env).toMatchObject({
+      DAINTREE_MCP_TOKEN: "help-token",
+      GEMINI_TEST_SENTINEL: "1",
+    });
+  });
+
+  it("does not inject GEMINI_CLI_HOME when getGeminiSpawnEnv returns {} (#7542)", async () => {
+    // OAuth-only Gemini users would lose auth if we redirected `os.homedir()`
+    // via `GEMINI_CLI_HOME`. Guard that the renderer + main both honor the
+    // empty-env return value.
+    mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
+    mockGetGeminiLaunchArgs.mockReturnValue(["--approval-mode=plan"]);
+    mockGetGeminiSpawnEnv.mockReturnValue({});
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "gemini",
+        launchAgentId: "gemini",
+        env: { DAINTREE_MCP_TOKEN: "help-token" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.env.GEMINI_CLI_HOME).toBeUndefined();
+    expect(spawnArgs.env.DAINTREE_MCP_TOKEN).toBe("help-token");
+  });
+
+  it("appends --plan to a Copilot help-session spawn (#7542)", async () => {
+    mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
+    mockGetCopilotLaunchArgs.mockImplementation((token) =>
+      token === "help-token" ? ["--plan"] : null
+    );
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "copilot",
+        launchAgentId: "copilot",
+        env: { DAINTREE_MCP_TOKEN: "help-token" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.command).toContain("'--plan'");
+    // Copilot help launches don't flow through the Claude per-pane MCP path.
+    expect(mockPreparePaneConfig).not.toHaveBeenCalled();
+  });
+
+  it("refuses to spawn a Copilot help session when getCopilotLaunchArgs returns null — cross-agent token reuse signal (#7542)", async () => {
+    mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
+    mockGetCopilotLaunchArgs.mockReturnValue(null);
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await expect(
+      handler(
+        {} as Electron.IpcMainInvokeEvent,
+        {
+          cols: 80,
+          rows: 24,
+          cwd: tmpDir,
+          command: "copilot",
+          launchAgentId: "copilot",
+          env: { DAINTREE_MCP_TOKEN: "help-token" },
+        } as unknown as Parameters<typeof handler>[1]
+      )
+    ).rejects.toThrow(/does not belong to a Copilot session/);
+    expect(ptyClient.spawn).not.toHaveBeenCalled();
+  });
+
+  it("strips a smuggled --plan from a Copilot command so the appended flag is unambiguously authoritative (#7542)", async () => {
+    mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
+    mockGetCopilotLaunchArgs.mockReturnValue(["--plan"]);
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "copilot --plan",
+        launchAgentId: "copilot",
+        env: { DAINTREE_MCP_TOKEN: "help-token" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    const matches = spawnArgs.command.match(/--plan/g) ?? [];
+    expect(matches).toHaveLength(1);
+    expect(spawnArgs.command).toContain("'--plan'");
+  });
+
+  it("does not query Copilot launch args for a non-help Copilot launch (#7542)", async () => {
+    mockValidateToken.mockReturnValue(false);
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "copilot",
+        launchAgentId: "copilot",
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    expect(mockGetCopilotLaunchArgs).not.toHaveBeenCalled();
   });
 
   it("binds terminalId to the help session before spawn so HelpSessionService can kill it on displacement (#7509)", async () => {

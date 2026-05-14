@@ -11,6 +11,7 @@ import { useIsWorktreeSortDragging } from "../DragDrop/DndProvider";
 import { GripVertical } from "lucide-react";
 import { useErrorStore, usePanelStore, type RetryAction, type TerminalInstance } from "../../store";
 import { useRecipeStore } from "../../store/recipeStore";
+import { useUIStore } from "../../store/uiStore";
 import { useWorktreeSelectionStore } from "../../store/worktreeStore";
 import {
   useProjectSettingsStore,
@@ -26,6 +27,7 @@ import { getAgentSettingsEntry } from "@/types";
 import type { UseAgentLauncherReturn } from "@/hooks/useAgentLauncher";
 import { isAgentLaunchable } from "../../../shared/utils/agentAvailability";
 import { isAgentPinned } from "../../../shared/utils/agentPinned";
+import { FocusedSubLine } from "./WorktreeCard/FocusedSubLine";
 import { WorktreeDetailsSection } from "./WorktreeCard/WorktreeDetailsSection";
 import { WorktreeDialogs } from "./WorktreeCard/WorktreeDialogs";
 import { WorktreeHeader } from "./WorktreeCard/WorktreeHeader";
@@ -77,7 +79,7 @@ export function WorktreeCard({
   isActive,
   isFocused,
   isSingleWorktree: _isSingleWorktree,
-  aggregateCounts,
+  aggregateCounts: _aggregateCounts,
   onSelect,
   onCopyTree,
   onOpenEditor,
@@ -291,6 +293,7 @@ export function WorktreeCard({
     effectiveNote,
     effectiveSummary,
     computedSubtitle,
+    reviewState,
     spineState,
     isLifecycleRunning,
     lifecycleLabel,
@@ -318,6 +321,8 @@ export function WorktreeCard({
     handleSelectAllAgents,
     handleSelectWaitingAgents,
     handleSelectWorkingAgents,
+    handleCloseAll,
+    handleTerminateAll,
   } = useWorktreeActions({
     worktree,
     onCopyTree,
@@ -432,6 +437,37 @@ export function WorktreeCard({
 
   const onCloseReviewHub = () => setShowReviewHub(false);
   const onClosePlanViewer = () => setShowPlanViewer(false);
+
+  const pendingReviewHubWorktreeId = useUIStore((s) => s.pendingReviewHubWorktreeId);
+  useEffect(() => {
+    if (pendingReviewHubWorktreeId !== worktree.id) return;
+    setShowReviewHub(true);
+    useUIStore.getState().clearPendingReviewHubWorktreeId();
+  }, [pendingReviewHubWorktreeId, worktree.id]);
+
+  // All Review Hub open paths (banner button, menu, header, terminal section)
+  // route through this window-scoped event so any open also dismisses pane
+  // completion banners for the same worktree. TerminalPane is rendered via
+  // the panel registry — not in this component's React tree — so an event
+  // bridge is the only practical channel.
+  const openReviewHubForThisWorktree = () => {
+    window.dispatchEvent(
+      new CustomEvent("daintree:open-review-hub", { detail: { worktreeId: worktree.id } })
+    );
+  };
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ worktreeId?: string }>).detail;
+      if (detail?.worktreeId === worktree.id) {
+        setShowReviewHub(true);
+      }
+    };
+    window.addEventListener("daintree:open-review-hub", handler);
+    return () => window.removeEventListener("daintree:open-review-hub", handler);
+  }, [worktree.id]);
+
+  const aiNoteFirstLine = effectiveNote?.split("\n")[0]?.trim() ?? "";
 
   const handleAttachIssue = async (issue: GitHubIssue) => {
     await worktreeClient.attachIssue({
@@ -665,7 +701,7 @@ export function WorktreeCard({
                   "shrink-0 w-4 flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none transition-colors group-hover/card:delay-[50ms] motion-reduce:transition-none",
                   isDraggingSort
                     ? "bg-overlay-emphasis text-text-primary"
-                    : "text-transparent group-hover/card:text-text-primary/30 group-hover/card:bg-overlay-soft"
+                    : "text-text-primary/25 group-hover/card:text-text-primary/40 group-hover/card:bg-overlay-soft"
                 )}
                 aria-label="Drag to reorder"
                 {...dragHandleListeners}
@@ -732,7 +768,7 @@ export function WorktreeCard({
                   onOpenPRExternal: worktree.prUrl ? handleOpenPRExternal : undefined,
                   onAttachIssue: () => setShowIssuePicker(true),
                   onViewPlan: () => setShowPlanViewer(true),
-                  onOpenReviewHub: () => setShowReviewHub(true),
+                  onOpenReviewHub: openReviewHubForThisWorktree,
                   onCompareDiff: () =>
                     useWorktreeSelectionStore.getState().openCrossWorktreeDiff(worktree.id),
                   onRunRecipe: (recipeId) => void handleRunRecipe(recipeId),
@@ -755,6 +791,8 @@ export function WorktreeCard({
                   },
                   onDockAll: handleDockAll,
                   onMaximizeAll: handleMaximizeAll,
+                  onCloseAll: handleCloseAll,
+                  onTerminateAll: handleTerminateAll,
                   onResetRenderers: handleResetRenderers,
                   onSelectAllAgents: handleSelectAllAgents,
                   onSelectWaitingAgents: handleSelectWaitingAgents,
@@ -778,6 +816,13 @@ export function WorktreeCard({
                 }}
               />
 
+              <FocusedSubLine
+                open={!isMainWorktree && effectiveIsCollapsed && (isActive || isFocused)}
+                changedFileCount={worktree.worktreeChanges?.changedFileCount}
+                lastActivityTimestamp={worktree.lastActivityTimestamp}
+                statusLabel={lifecycleLabel ?? resourceStatusLabel ?? null}
+              />
+
               {!effectiveIsCollapsed && (
                 <div id={`worktree-body-${worktree.id}`}>
                   {worktree.isWslPath && !worktree.wslGitOptIn && !worktree.wslGitDismissed && (
@@ -787,12 +832,7 @@ export function WorktreeCard({
                       wslGitEligible={worktree.wslGitEligible}
                     />
                   )}
-                  {isMainWorktree && (
-                    <MainWorktreeSummaryRows
-                      aggregateCounts={aggregateCounts}
-                      health={projectHealth ?? null}
-                    />
-                  )}
+                  {isMainWorktree && <MainWorktreeSummaryRows health={projectHealth ?? null} />}
 
                   <WorktreeDetailsSection
                     worktree={worktree}
@@ -800,6 +840,7 @@ export function WorktreeCard({
                     isExpanded={isExpanded}
                     hasChanges={hasChanges}
                     computedSubtitle={computedSubtitle}
+                    reviewState={reviewState}
                     effectiveNote={effectiveNote}
                     effectiveSummary={effectiveSummary}
                     worktreeErrors={worktreeErrors}
@@ -808,7 +849,7 @@ export function WorktreeCard({
                     onPathClick={handlePathClick}
                     onDismissError={dismissError}
                     onRetryError={handleErrorRetry}
-                    onOpenReviewHub={() => setShowReviewHub(true)}
+                    onOpenReviewHub={openReviewHubForThisWorktree}
                     isLifecycleRunning={isLifecycleRunning}
                     lifecycleLabel={lifecycleLabel}
                     hasResourceConfig={hasResourceConfig}
@@ -846,6 +887,8 @@ export function WorktreeCard({
                 onDetachIssue={() => void handleDetachIssue()}
                 showReviewHub={showReviewHub}
                 onCloseReviewHub={onCloseReviewHub}
+                reviewHubInitialCommitMessage={aiNoteFirstLine}
+                reviewHubAutoStageOnOpen={true}
                 showPlanViewer={showPlanViewer}
                 onClosePlanViewer={onClosePlanViewer}
               />
@@ -886,7 +929,7 @@ export function WorktreeCard({
           onOpenPRExternal={worktree.prUrl ? handleOpenPRExternal : undefined}
           onAttachIssue={() => setShowIssuePicker(true)}
           onViewPlan={() => setShowPlanViewer(true)}
-          onOpenReviewHub={() => setShowReviewHub(true)}
+          onOpenReviewHub={openReviewHubForThisWorktree}
           onCompareDiff={() =>
             useWorktreeSelectionStore.getState().openCrossWorktreeDiff(worktree.id)
           }
@@ -897,6 +940,8 @@ export function WorktreeCard({
           isCollapsed={effectiveIsCollapsed}
           onDockAll={handleDockAll}
           onMaximizeAll={handleMaximizeAll}
+          onCloseAll={handleCloseAll}
+          onTerminateAll={handleTerminateAll}
           onResetRenderers={handleResetRenderers}
           onSelectAllAgents={handleSelectAllAgents}
           onSelectWaitingAgents={handleSelectWaitingAgents}

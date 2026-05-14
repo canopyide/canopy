@@ -5,18 +5,27 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { SimpleGit } from "simple-git";
 import { CHANNELS } from "../channels.js";
-import { checkRateLimit, typedHandle } from "../utils.js";
-import type { HandlerDependencies } from "../types.js";
+import { checkRateLimit, typedHandle, typedHandleWithContext, sendToRenderer } from "../utils.js";
+import type { HandlerDependencies, IpcContext } from "../types.js";
+import type { PushProgressEvent } from "../../../shared/types/ipc/gitPush.js";
 import type {
   ConflictedFileEntry,
   GitStatus,
+  RebaseSequence,
   RepoState,
   StagingStatus,
 } from "../../../shared/types/git.js";
 import { validateCwd, createHardenedGit, createAuthenticatedGit } from "../../utils/hardenedGit.js";
+import { getPerFileDiffStats, invalidateStagingDiffStatCache } from "../../utils/git.js";
 import { store } from "../../store.js";
 import { getSoundService } from "../../services/getSoundService.js";
 import type * as SoundServiceModule from "../../services/SoundService.js";
+import { detectRepoOperationState, resolveGitDir } from "../../services/git/repoOperationState.js";
+import { parsePorcelainV2Conflicts } from "../../services/git/porcelainConflicts.js";
+import {
+  STAGED_FILE_SIZE_CAP,
+  scanStagedFilesForConflictMarkers,
+} from "../../services/git/conflictMarkerScan.js";
 
 type SoundId = keyof typeof SoundServiceModule.SOUND_FILES;
 
@@ -26,7 +35,13 @@ function playSoundFireAndForget(id: SoundId): void {
     .catch((err) => console.error("[git-write] sound play failed:", err));
 }
 import { preAgentSnapshotService } from "../../services/PreAgentSnapshotService.js";
-import type { SnapshotInfo, SnapshotRevertResult } from "../../../shared/types/ipc/git.js";
+import type {
+  SnapshotInfo,
+  SnapshotRevertResult,
+  ConflictMarkerScanEntry,
+  GitScanConflictMarkersPayload,
+  GitCheckoutOursTheirsPayload,
+} from "../../../shared/types/ipc/git.js";
 import { classifyGitError } from "../../../shared/utils/gitOperationErrors.js";
 import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 import { GitOperationError } from "../../utils/errorTypes.js";
@@ -38,198 +53,6 @@ interface StagingFileEntry {
   status: GitStatus;
   insertions: number | null;
   deletions: number | null;
-}
-
-const CONFLICT_LABELS: Record<string, string> = {
-  UU: "both modified",
-  AA: "both added",
-  DD: "both deleted",
-  AU: "added by us",
-  UA: "added by them",
-  DU: "deleted by us",
-  UD: "deleted by them",
-};
-
-// Cap text scans at 1 MB per staged file — above this, assume the file is
-// effectively machine-generated and skip. Matches the cap already used in
-// projectInRepoSettings.ts:81 for in-process file reads.
-const STAGED_FILE_SIZE_CAP = 1_000_000;
-
-// Line-anchored 7-char conflict markers (standard + diff3 ancestor). The
-// `<<<<<<<` and `>>>>>>>` anchors are definitive; `=======` and `|||||||` are
-// flagged as well to match VS Code's own marker detection. No `g` flag so
-// `.test()` stays stateless across sequential calls on different blobs.
-const CONFLICT_MARKER_RE = /^(?:<{7}|\|{7}|={7}|>{7})[ \t\r]?/m;
-
-async function pathExists(p: string): Promise<boolean> {
-  return fs.promises
-    .access(p)
-    .then(() => true)
-    .catch(() => false);
-}
-
-async function readTextOrNull(p: string): Promise<string | null> {
-  return fs.promises.readFile(p, "utf8").catch(() => null);
-}
-
-async function resolveGitDir(git: SimpleGit, cwd: string): Promise<string> {
-  const raw = (await git.revparse(["--git-dir"])).trim();
-  return path.isAbsolute(raw) ? raw : path.resolve(cwd, raw);
-}
-
-interface RepoOperationState {
-  state: RepoState;
-  rebaseStep: number | null;
-  rebaseTotalSteps: number | null;
-}
-
-async function detectRepoOperationState(
-  gitDir: string,
-  hasUnmerged: boolean
-): Promise<RepoOperationState> {
-  const [hasMergeHead, hasRebaseMerge, hasRebaseApply, hasCherryPickHead, hasRevertHead] =
-    await Promise.all([
-      pathExists(path.join(gitDir, "MERGE_HEAD")),
-      pathExists(path.join(gitDir, "rebase-merge")),
-      pathExists(path.join(gitDir, "rebase-apply")),
-      pathExists(path.join(gitDir, "CHERRY_PICK_HEAD")),
-      pathExists(path.join(gitDir, "REVERT_HEAD")),
-    ]);
-
-  // REBASING takes precedence: during rebase conflict, MERGE_HEAD may also appear.
-  if (hasRebaseMerge || hasRebaseApply) {
-    const { step, total } = await readRebaseProgress(gitDir, hasRebaseMerge ? "merge" : "apply");
-    return { state: "REBASING", rebaseStep: step, rebaseTotalSteps: total };
-  }
-  if (hasCherryPickHead) {
-    return { state: "CHERRY_PICKING", rebaseStep: null, rebaseTotalSteps: null };
-  }
-  if (hasRevertHead) {
-    return { state: "REVERTING", rebaseStep: null, rebaseTotalSteps: null };
-  }
-  if (hasMergeHead) {
-    return { state: "MERGING", rebaseStep: null, rebaseTotalSteps: null };
-  }
-  return {
-    state: hasUnmerged ? "DIRTY" : "CLEAN",
-    rebaseStep: null,
-    rebaseTotalSteps: null,
-  };
-}
-
-async function readRebaseProgress(
-  gitDir: string,
-  backend: "merge" | "apply"
-): Promise<{ step: number | null; total: number | null }> {
-  const dir = path.join(gitDir, backend === "merge" ? "rebase-merge" : "rebase-apply");
-  const [stepRaw, totalRaw] = await Promise.all([
-    readTextOrNull(path.join(dir, backend === "merge" ? "msgnum" : "next")),
-    readTextOrNull(path.join(dir, backend === "merge" ? "end" : "last")),
-  ]);
-  const toInt = (raw: string | null): number | null => {
-    if (raw == null) return null;
-    const n = Number.parseInt(raw.trim(), 10);
-    return Number.isFinite(n) ? n : null;
-  };
-  return { step: toInt(stepRaw), total: toInt(totalRaw) };
-}
-
-/**
- * Parse `u` lines from `git status --porcelain=v2` (no `-z`) into conflict
- * entries. Each u-line has the form:
- *   `u <XY> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>`
- */
-export function parsePorcelainV2Conflicts(raw: string): ConflictedFileEntry[] {
-  const entries: ConflictedFileEntry[] = [];
-  for (const line of raw.split("\n")) {
-    if (!line.startsWith("u ")) continue;
-    // Ten whitespace-separated fields before the path; the path itself may
-    // contain spaces, so split with a small limit and rejoin the tail.
-    const parts = line.split(" ");
-    if (parts.length < 11) continue;
-    const xy = parts[1] ?? "";
-    const filePath = parts.slice(10).join(" ");
-    if (!filePath) continue;
-    entries.push({
-      path: filePath,
-      xy,
-      label: CONFLICT_LABELS[xy] ?? xy,
-    });
-  }
-  return entries;
-}
-
-/**
- * Parse `git diff --cached --numstat` output into the set of staged paths that
- * git reports as binary (added/deleted counts rendered as `-`). Binary blobs
- * are skipped by the conflict-marker scan because regex matching on non-text
- * bytes is meaningless and may produce false positives.
- */
-function parseBinaryPathsFromNumstat(raw: string): Set<string> {
-  const binary = new Set<string>();
-  for (const line of raw.split("\n")) {
-    // Numstat format: "<added>\t<deleted>\t<path>". Binary → "-\t-\t<path>".
-    // Rename diffs may emit "{old => new}" in the path column; we key the set
-    // on whatever text appears after the second tab and compare using `has`
-    // on the post-rename path reported by status(), so renamed binary files
-    // may miss this set. That's tolerated: a binary will still fail the
-    // marker regex harmlessly on the subsequent `git.show`.
-    const tabIdx1 = line.indexOf("\t");
-    if (tabIdx1 === -1) continue;
-    const tabIdx2 = line.indexOf("\t", tabIdx1 + 1);
-    if (tabIdx2 === -1) continue;
-    if (line.slice(0, tabIdx2) !== "-\t-") continue;
-    const filePath = line.slice(tabIdx2 + 1);
-    if (filePath) binary.add(filePath);
-  }
-  return binary;
-}
-
-/**
- * Block commits that would include unresolved merge conflict markers. Reads
- * the staged (index) blob for each non-binary, non-deleted file via
- * `git cat-file blob :<path>`, which works on both normal and unborn branches
- * and bypasses smudge/textconv filter machinery (`git show` would still apply
- * smudge filters depending on git version). Throws a descriptive `Error`
- * naming the first offending file; the IPC layer surfaces `.message` directly.
- */
-export async function scanStagedFilesForConflictMarkers(git: SimpleGit): Promise<void> {
-  const status = await git.status();
-  const candidates: string[] = [];
-  for (const file of status.files) {
-    const indexStatus = file.index;
-    if (!indexStatus || indexStatus === " " || indexStatus === "?" || indexStatus === "D") {
-      continue;
-    }
-    candidates.push(file.path);
-  }
-  if (candidates.length === 0) return;
-
-  // `--no-ext-diff` is mandatory: without it, a user-configured `diff.external`
-  // tool can break the numstat call (lesson #4221). `--no-textconv` blocks
-  // user-defined diff drivers that would execute arbitrary binaries via
-  // `.gitattributes` textconv mappings.
-  const numstatRaw = await git.diff(["--no-ext-diff", "--no-textconv", "--cached", "--numstat"]);
-  const binaryPaths = parseBinaryPathsFromNumstat(numstatRaw);
-
-  for (const filePath of candidates) {
-    if (binaryPaths.has(filePath)) continue;
-    // `--end-of-options` so a leading-dash path inside the index reference
-    // (e.g. `:-foo.txt`) cannot be parsed as a flag.
-    const content = await git.raw(["cat-file", "blob", "--end-of-options", `:${filePath}`]);
-    if (typeof content !== "string") continue;
-    // Compare against the UTF-8 byte length so a multibyte file isn't
-    // misclassified against a character-count cap.
-    if (Buffer.byteLength(content, "utf8") > STAGED_FILE_SIZE_CAP) continue;
-    // A leading UTF-8 BOM pushes a first-line `<<<<<<<` past the `^` anchor;
-    // strip it before testing so marker-on-line-1 files still block.
-    const probe = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
-    if (CONFLICT_MARKER_RE.test(probe)) {
-      throw new Error(
-        `Unresolved conflict markers found in ${filePath}. Resolve all conflicts before committing.`
-      );
-    }
-  }
 }
 
 export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void {
@@ -244,6 +67,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
 
     const git = createHardenedGit(payload.cwd);
     await git.add(["--", payload.filePath]);
+    invalidateStagingDiffStatCache(payload.cwd);
   };
   handlers.push(typedHandle(CHANNELS.GIT_STAGE_FILE, handleStageFile));
 
@@ -268,8 +92,56 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     } else {
       await git.raw(["rm", "--cached", "--", payload.filePath]);
     }
+    invalidateStagingDiffStatCache(payload.cwd);
   };
   handlers.push(typedHandle(CHANNELS.GIT_UNSTAGE_FILE, handleUnstageFile));
+
+  const validateFilePaths = (filePaths: unknown): string[] => {
+    if (!Array.isArray(filePaths) || filePaths.length === 0) {
+      throw new Error("filePaths must be a non-empty array");
+    }
+    for (const p of filePaths) {
+      if (typeof p !== "string" || !p) {
+        throw new Error("Invalid file path in filePaths");
+      }
+    }
+    return filePaths as string[];
+  };
+
+  const handleStageFiles = async (payload: { cwd: string; filePaths: string[] }): Promise<void> => {
+    checkRateLimit(CHANNELS.GIT_STAGE_FILES, 10, 10_000);
+    validateCwd(payload?.cwd);
+    const paths = validateFilePaths(payload?.filePaths);
+
+    const git = createHardenedGit(payload.cwd);
+    await git.add(["--", ...paths]);
+  };
+  handlers.push(typedHandle(CHANNELS.GIT_STAGE_FILES, handleStageFiles));
+
+  const handleUnstageFiles = async (payload: {
+    cwd: string;
+    filePaths: string[];
+  }): Promise<void> => {
+    checkRateLimit(CHANNELS.GIT_UNSTAGE_FILES, 10, 10_000);
+    validateCwd(payload?.cwd);
+    const paths = validateFilePaths(payload?.filePaths);
+
+    const git = createHardenedGit(payload.cwd);
+
+    let hasHead = true;
+    try {
+      await git.revparse(["HEAD"]);
+    } catch {
+      hasHead = false;
+    }
+
+    if (hasHead) {
+      await git.reset(["HEAD", "--", ...paths]);
+    } else {
+      await git.raw(["rm", "--cached", "--", ...paths]);
+    }
+  };
+  handlers.push(typedHandle(CHANNELS.GIT_UNSTAGE_FILES, handleUnstageFiles));
 
   const handleStageAll = async (cwd: string): Promise<void> => {
     checkRateLimit(CHANNELS.GIT_STAGE_ALL, 10, 10_000);
@@ -277,6 +149,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
 
     const git = createHardenedGit(cwd);
     await git.add("-A");
+    invalidateStagingDiffStatCache(cwd);
   };
   handlers.push(typedHandle(CHANNELS.GIT_STAGE_ALL, handleStageAll));
 
@@ -298,6 +171,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     } else {
       await git.raw(["rm", "--cached", "-r", "."]);
     }
+    invalidateStagingDiffStatCache(cwd);
   };
   handlers.push(typedHandle(CHANNELS.GIT_UNSTAGE_ALL, handleUnstageAll));
 
@@ -324,27 +198,77 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
   };
   handlers.push(typedHandle(CHANNELS.GIT_COMMIT, handleCommit));
 
-  const handlePush = async (payload: { cwd: string; setUpstream?: boolean }): Promise<void> => {
+  const pushingCwds = new Set<string>();
+
+  const handlePush = async (
+    ctx: IpcContext,
+    payload: { cwd: string; setUpstream?: boolean }
+  ): Promise<void> => {
+    if (pushingCwds.has(payload.cwd)) return;
+
     checkRateLimit(CHANNELS.GIT_PUSH, 5, 10_000);
     validateCwd(payload?.cwd);
 
+    pushingCwds.add(payload.cwd);
     const git = createAuthenticatedGit(payload.cwd);
+    let branchName: string | undefined;
+    const senderWindow = ctx.senderWindow;
+
+    const sendProgress = (event: PushProgressEvent) => {
+      if (senderWindow && !senderWindow.isDestroyed()) {
+        sendToRenderer(senderWindow, CHANNELS.GIT_PUSH_PROGRESS, event);
+      }
+    };
 
     try {
       const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
-      const branchName = branch.trim();
+      branchName = branch.trim();
+
+      let targetBranch: string | null = null;
+      try {
+        targetBranch = (await git.revparse(["--abbrev-ref", "@{upstream}"])).trim();
+      } catch {
+        targetBranch = payload.setUpstream ? `origin/${branchName}` : null;
+      }
+
+      sendProgress({
+        cwd: payload.cwd,
+        stage: "target",
+        progress: null,
+        processed: null,
+        total: null,
+        targetBranch: targetBranch ?? undefined,
+      });
+
+      const authGit = createAuthenticatedGit(payload.cwd, {
+        progress: (data) => {
+          sendProgress({
+            cwd: payload.cwd,
+            stage: data.stage,
+            progress: data.progress,
+            processed: data.processed,
+            total: data.total,
+          });
+        },
+      });
 
       if (payload.setUpstream) {
-        await git.push(["--set-upstream", "origin", branchName]);
+        await authGit.push(["--set-upstream", "origin", branchName]);
       } else {
         try {
-          await git.push();
+          await authGit.push();
         } catch (pushErr) {
-          // Keep the narrow upstream-missing auto-retry via substring match —
-          // classifier's `config-missing` also covers unrelated config errors.
           const msg = formatErrorMessage(pushErr, "git push failed");
           if (msg.includes("no upstream branch") || msg.includes("has no upstream")) {
-            await git.push(["--set-upstream", "origin", branchName]);
+            await authGit.push(["--set-upstream", "origin", branchName]);
+            sendProgress({
+              cwd: payload.cwd,
+              stage: "target",
+              progress: null,
+              processed: null,
+              total: null,
+              targetBranch: `origin/${branchName}`,
+            });
           } else {
             throw pushErr;
           }
@@ -359,14 +283,144 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
       }
       const errorMessage = formatErrorMessage(error, "git push failed");
       const gitReason = classifyGitError(error);
+      // Capture the lease SHA at rejection time, not at click time. A
+      // background fetch advancing `refs/remotes/origin/<branch>` between
+      // here and the user's force-push click would silently degrade
+      // `--force-with-lease` to plain `--force`. revparse may itself fail
+      // (no upstream tracking); on failure we omit leaseSha and the renderer
+      // suppresses the force-push CTA.
+      let leaseSha: string | undefined;
+      if (gitReason === "push-rejected-outdated" && branchName) {
+        try {
+          const sha = await git.revparse([`refs/remotes/origin/${branchName}`]);
+          leaseSha = sha.trim() || undefined;
+        } catch {
+          leaseSha = undefined;
+        }
+      }
       throw new GitOperationError(gitReason, errorMessage, {
         cwd: payload.cwd,
         op: "push",
         cause: error instanceof Error ? error : undefined,
+        leaseSha,
+        branchName,
+      });
+    } finally {
+      pushingCwds.delete(payload.cwd);
+    }
+  };
+  handlers.push(typedHandleWithContext(CHANNELS.GIT_PUSH, handlePush));
+
+  const handlePullRebase = async (payload: { cwd: string }): Promise<void> => {
+    checkRateLimit(CHANNELS.GIT_PULL_REBASE, 3, 10_000);
+    validateCwd(payload?.cwd);
+
+    const git = createAuthenticatedGit(payload.cwd);
+
+    try {
+      const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
+      const branchName = branch.trim();
+      await git.pull("origin", branchName, ["--rebase"]);
+      if (store.get("notificationSettings").uiFeedbackSoundEnabled) {
+        playSoundFireAndForget("git-push");
+      }
+    } catch (error) {
+      if (store.get("notificationSettings").uiFeedbackSoundEnabled) {
+        playSoundFireAndForget("git-push-error");
+      }
+      const errorMessage = formatErrorMessage(error, "git pull --rebase failed");
+      const gitReason = classifyGitError(error);
+      throw new GitOperationError(gitReason, errorMessage, {
+        cwd: payload.cwd,
+        op: "pull-rebase",
+        cause: error instanceof Error ? error : undefined,
       });
     }
   };
-  handlers.push(typedHandle(CHANNELS.GIT_PUSH, handlePush));
+  handlers.push(typedHandle(CHANNELS.GIT_PULL_REBASE, handlePullRebase));
+
+  const handleForcePushWithLease = async (payload: {
+    cwd: string;
+    branchName: string;
+    leaseSha: string;
+  }): Promise<void> => {
+    checkRateLimit(CHANNELS.GIT_FORCE_PUSH_WITH_LEASE, 3, 10_000);
+    validateCwd(payload?.cwd);
+    if (typeof payload.branchName !== "string" || !payload.branchName.trim()) {
+      throw new Error("Invalid branch name");
+    }
+    if (typeof payload.leaseSha !== "string" || !/^[0-9a-f]{4,64}$/i.test(payload.leaseSha)) {
+      // Reject anything that isn't a hex SHA — the lease ref:sha form must
+      // never receive arbitrary user input that could include `--` flags.
+      throw new Error("Invalid lease SHA");
+    }
+
+    const git = createAuthenticatedGit(payload.cwd);
+    const branchName = payload.branchName.trim();
+
+    try {
+      await git.push("origin", branchName, [
+        `--force-with-lease=${branchName}:${payload.leaseSha}`,
+        "--force-if-includes",
+      ]);
+      if (store.get("notificationSettings").uiFeedbackSoundEnabled) {
+        playSoundFireAndForget("git-push");
+      }
+    } catch (error) {
+      if (store.get("notificationSettings").uiFeedbackSoundEnabled) {
+        playSoundFireAndForget("git-push-error");
+      }
+      const errorMessage = formatErrorMessage(error, "git push --force-with-lease failed");
+      const gitReason = classifyGitError(error);
+      throw new GitOperationError(gitReason, errorMessage, {
+        cwd: payload.cwd,
+        op: "force-push-with-lease",
+        cause: error instanceof Error ? error : undefined,
+      });
+    }
+  };
+  handlers.push(typedHandle(CHANNELS.GIT_FORCE_PUSH_WITH_LEASE, handleForcePushWithLease));
+
+  const handleListRemoteCommits = async (payload: {
+    cwd: string;
+    branchName: string;
+    limit?: number;
+  }): Promise<Array<{ hash: string; date: string; message: string; author: string }>> => {
+    checkRateLimit(CHANNELS.GIT_LIST_REMOTE_COMMITS, 10, 10_000);
+    validateCwd(payload?.cwd);
+    if (typeof payload.branchName !== "string" || !payload.branchName.trim()) {
+      throw new Error("Invalid branch name");
+    }
+    const branchName = payload.branchName.trim();
+    const limit = Math.max(1, Math.min(100, payload.limit ?? 20));
+
+    const git = createHardenedGit(payload.cwd);
+    try {
+      // No `--no-merges` — `behindCount` from `git status -b` includes merge
+      // commits, and the dialog's "N more" tail relies on the listed rows
+      // matching what `--force-with-lease` would actually discard. Filtering
+      // merges here would understate the discard preview against `behindCount`.
+      const log = await git.log([
+        `--max-count=${limit}`,
+        `HEAD..refs/remotes/origin/${branchName}`,
+      ]);
+      return log.all.map((commit) => ({
+        hash: commit.hash,
+        date: commit.date,
+        message: commit.message,
+        author: commit.author_name,
+      }));
+    } catch (error) {
+      const errorMessage = formatErrorMessage(error, "git log failed");
+      const gitReason = classifyGitError(error);
+      throw new GitOperationError(gitReason, errorMessage, {
+        cwd: payload.cwd,
+        op: "list-remote-commits",
+        cause: error instanceof Error ? error : undefined,
+      });
+    }
+  };
+  handlers.push(typedHandle(CHANNELS.GIT_LIST_REMOTE_COMMITS, handleListRemoteCommits));
 
   const handleGetUsername = async (cwd: string): Promise<string | null> => {
     checkRateLimit(CHANNELS.GIT_GET_USERNAME, 20, 10_000);
@@ -444,6 +498,44 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
       }
     }
 
+    // Populate per-file churn from `git diff --numstat`. The handler is
+    // rate-limited to 20/10s and getPerFileDiffStats caches per (cwd, headOid,
+    // mode), so this adds at most two batched git invocations per refresh.
+    // Untracked entries don't appear in numstat output and keep insertions/
+    // deletions = null (renderer omits the churn span in that case).
+    let headOid = "";
+    try {
+      headOid = (await git.revparse(["HEAD"])).trim();
+    } catch {
+      // No HEAD (unborn branch / empty repo) — staged numstat would also throw;
+      // skip churn entirely below.
+    }
+
+    const stagedPaths = staged.map((entry) => entry.path);
+    const unstagedTrackedPaths = unstaged
+      .filter((entry) => entry.status !== "untracked")
+      .map((entry) => entry.path);
+
+    const [stagedStats, unstagedStats] = await Promise.all([
+      getPerFileDiffStats(git, cwd, headOid, stagedPaths, "staged"),
+      getPerFileDiffStats(git, cwd, headOid, unstagedTrackedPaths, "unstaged"),
+    ]);
+
+    for (const entry of staged) {
+      const stats = stagedStats.get(entry.path);
+      if (stats) {
+        entry.insertions = stats.insertions;
+        entry.deletions = stats.deletions;
+      }
+    }
+    for (const entry of unstaged) {
+      const stats = unstagedStats.get(entry.path);
+      if (stats) {
+        entry.insertions = stats.insertions;
+        entry.deletions = stats.deletions;
+      }
+    }
+
     let isDetachedHead = false;
     let currentBranch: string | null = status.current;
     if (status.current === "HEAD" || status.detached) {
@@ -462,7 +554,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     let conflictedFiles: ConflictedFileEntry[] = [];
     if (conflicted.length > 0) {
       try {
-        const porcelain = await git.raw(["status", "--porcelain=v2"]);
+        const porcelain = await git.raw(["-c", "core.quotepath=false", "status", "--porcelain=v2"]);
         conflictedFiles = parsePorcelainV2Conflicts(porcelain);
       } catch {
         // Fall back to the simple-git path list without XY labels.
@@ -475,12 +567,14 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     let repoState: RepoState = conflicted.length > 0 ? "DIRTY" : "CLEAN";
     let rebaseStep: number | null = null;
     let rebaseTotalSteps: number | null = null;
+    let rebaseSequence: RebaseSequence | null = null;
     try {
       const gitDir = await resolveGitDir(git, cwd);
       const detected = await detectRepoOperationState(gitDir, conflicted.length > 0);
       repoState = detected.state;
       rebaseStep = detected.rebaseStep;
       rebaseTotalSteps = detected.rebaseTotalSteps;
+      rebaseSequence = detected.rebaseSequence;
     } catch {
       // If git-dir resolution fails, fall back to CLEAN/DIRTY from index alone.
     }
@@ -496,6 +590,7 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
       repoState,
       rebaseStep,
       rebaseTotalSteps,
+      rebaseSequence,
     };
   };
   handlers.push(typedHandle(CHANNELS.GIT_GET_STAGING_STATUS, handleGetStagingStatus));
@@ -610,6 +705,99 @@ export function registerGitWriteHandlers(_deps: HandlerDependencies): () => void
     return raw;
   };
   handlers.push(typedHandle(CHANNELS.GIT_GET_WORKING_DIFF, handleGetWorkingDiff));
+
+  // Rejects path traversal, absolute paths, and the worktree root itself
+  // (`.`, `./`). Resolves the file under `cwd` and confirms the resolved path
+  // stays strictly inside the worktree boundary — the `cwd + path.sep` guard
+  // also blocks sibling-directory matches (e.g. `/foo` matching `/foobar/...`).
+  const validateFilePathUnderCwd = (cwd: string, filePath: string): void => {
+    if (typeof filePath !== "string" || !filePath) {
+      throw new Error("Invalid file path");
+    }
+    if (path.isAbsolute(filePath)) {
+      throw new Error("Invalid file path: must be relative to the worktree");
+    }
+    const resolvedCwd = path.resolve(cwd);
+    const resolved = path.resolve(resolvedCwd, filePath);
+    const boundary = resolvedCwd.endsWith(path.sep) ? resolvedCwd : resolvedCwd + path.sep;
+    // Strict prefix match — `resolved === resolvedCwd` (i.e. `.`/`./`) is
+    // rejected so the renderer can't accidentally invoke a worktree-wide
+    // `git checkout --ours -- .` resolving every conflict at once.
+    if (!resolved.startsWith(boundary)) {
+      throw new Error("Invalid file path: must point at a file inside the worktree");
+    }
+  };
+
+  const handleScanConflictMarkers = async (
+    payload: GitScanConflictMarkersPayload
+  ): Promise<ConflictMarkerScanEntry[]> => {
+    checkRateLimit(CHANNELS.GIT_SCAN_CONFLICT_MARKERS, 30, 10_000);
+    validateCwd(payload?.cwd);
+    if (!Array.isArray(payload?.filePaths)) {
+      throw new Error("Invalid file paths: must be an array");
+    }
+    if (payload.filePaths.length === 0) return [];
+
+    // `g` flag is required for `matchAll`/`exec` iteration; the regex is local
+    // to this call so the shared `CONFLICT_MARKER_RE` (single-match, `/m`) is
+    // untouched. Counts only opening `<<<<<<<` markers — one per hunk.
+    const HUNK_OPEN_RE = /^<{7}/gm;
+
+    const scanOne = async (filePath: string): Promise<ConflictMarkerScanEntry> => {
+      try {
+        validateFilePathUnderCwd(payload.cwd, filePath);
+        const absolute = path.resolve(payload.cwd, filePath);
+        const stat = await fs.promises.stat(absolute);
+        if (!stat.isFile() || stat.size > STAGED_FILE_SIZE_CAP) {
+          return { path: filePath, hunkCount: null, firstMarkerLine: null };
+        }
+        const content = await fs.promises.readFile(absolute, "utf8");
+        // BOM-strip so a marker on line 1 isn't shifted past the `^` anchor.
+        const probe = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
+        let hunkCount = 0;
+        let firstMarkerLine: number | null = null;
+        let match: RegExpExecArray | null;
+        HUNK_OPEN_RE.lastIndex = 0;
+        while ((match = HUNK_OPEN_RE.exec(probe)) !== null) {
+          hunkCount++;
+          if (firstMarkerLine === null) {
+            // Compute 1-based line number from byte offset within the probed string.
+            let line = 1;
+            for (let i = 0; i < match.index; i++) {
+              if (probe.charCodeAt(i) === 0x0a) line++;
+            }
+            firstMarkerLine = line;
+          }
+        }
+        return { path: filePath, hunkCount, firstMarkerLine };
+      } catch {
+        // Treat any per-file error as a degraded scan result — the UI hides
+        // the badge rather than blocking the worklist on a single bad path.
+        return { path: filePath, hunkCount: null, firstMarkerLine: null };
+      }
+    };
+
+    return Promise.all(payload.filePaths.map(scanOne));
+  };
+  handlers.push(typedHandle(CHANNELS.GIT_SCAN_CONFLICT_MARKERS, handleScanConflictMarkers));
+
+  const handleCheckoutOursTheirs = async (payload: GitCheckoutOursTheirsPayload): Promise<void> => {
+    checkRateLimit(CHANNELS.GIT_CHECKOUT_OURS_THEIRS, 30, 10_000);
+    validateCwd(payload?.cwd);
+    validateFilePathUnderCwd(payload.cwd, payload?.filePath);
+    if (payload.side !== "ours" && payload.side !== "theirs") {
+      throw new Error("Invalid side: must be 'ours' or 'theirs'");
+    }
+
+    const git = createHardenedGit(payload.cwd);
+    const flag = payload.side === "ours" ? "--ours" : "--theirs";
+    // `checkout --ours/--theirs` leaves the file unstaged — the conflict markers
+    // are still in the index. Follow with `git add` so the resolution lands in
+    // the staged tree and the file falls off the conflicted list.
+    await git.raw(["checkout", flag, "--", payload.filePath]);
+    await git.add(["--", payload.filePath]);
+  };
+  handlers.push(typedHandle(CHANNELS.GIT_CHECKOUT_OURS_THEIRS, handleCheckoutOursTheirs));
 
   // Snapshot handlers
   const handleSnapshotGet = async (worktreeId: string): Promise<SnapshotInfo | null> => {

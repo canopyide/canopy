@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { SortableWorktreeCard } from "@/components/DragDrop/SortableWorktreeCard";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { WorktreeCard } from "@/components/Worktree";
@@ -27,7 +27,7 @@ interface SidebarWorktreeRowProps {
   ariaRowIndex: number;
 }
 
-const SidebarWorktreeRow = React.memo(function SidebarWorktreeRow({
+function SidebarWorktreeRow({
   worktreeId,
   activeWorktreeId,
   focusedWorktreeId,
@@ -184,7 +184,7 @@ const SidebarWorktreeRow = React.memo(function SidebarWorktreeRow({
       )}
     </SortableWorktreeCard>
   );
-});
+}
 
 export { SidebarWorktreeRow };
 export type { SidebarWorktreeRowProps };

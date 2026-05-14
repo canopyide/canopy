@@ -22,7 +22,9 @@ import { SpawnErrorBanner } from "./SpawnErrorBanner";
 import { ReconnectErrorBanner } from "./ReconnectErrorBanner";
 import { UpdateCwdDialog } from "./UpdateCwdDialog";
 import { ErrorBanner } from "../Errors/ErrorBanner";
+import { AgentCompletionBanner } from "./AgentCompletionBanner";
 import { ContentPanel } from "@/components/Panel";
+import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import { useIsDragging } from "@/components/DragDrop";
 import { MissingCliGate } from "./MissingCliGate";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
@@ -165,6 +167,7 @@ function TerminalPaneComponent({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isUpdateCwdOpen, setIsUpdateCwdOpen] = useState(false);
   const [isAutoRestarting, setIsAutoRestarting] = useState(false);
+  const [completionBannerDismissed, setCompletionBannerDismissed] = useState(false);
   const autoRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoRestartAttemptRef = useRef(0);
   const processStartTimeRef = useRef<number>(0);
@@ -534,11 +537,15 @@ function TerminalPaneComponent({
   };
 
   const handleClick = (e?: React.MouseEvent) => {
+    const target = e?.target as HTMLElement | null;
+    const isBufferClick = !!target?.closest(".xterm");
     const managed = terminalInstanceService.get(id);
-    if (managed?.terminal.hasSelection()) {
+    if (isBufferClick && managed?.terminal.hasSelection()) {
       // Prevent ContentPanel from calling onFocus() which triggers parent
       // re-renders. Don't call setFocused() either — it triggers a
       // wake+restore cycle that calls terminal.reset(), clearing selection.
+      // Scoped to buffer clicks: a click on pane chrome (e.g. the title)
+      // must not be swallowed just because xterm has a leftover selection.
       e?.preventDefault();
       return;
     }
@@ -548,12 +555,14 @@ function TerminalPaneComponent({
     // interactive child of the chrome (overflow menu, close, restore,
     // title input, etc). Without the interactive guard, clicking the
     // overflow trigger of a pane while a fleet is armed would clear
-    // the fleet before the menu opens.
-    const target = e?.target as HTMLElement | null;
+    // the fleet before the menu opens. The passthrough whitelist lets
+    // specific chrome elements (title span carries role="button" for
+    // a11y) participate in fleet gestures without losing their a11y role.
     const isChromeClick = !!target?.closest("[data-pane-chrome]");
-    const isInteractiveChild = !!target?.closest(
-      "button, input, textarea, select, a, [role='button'], [role='menuitem']"
-    );
+    const isPassthrough = !!target?.closest("[data-fleet-gesture-passthrough]");
+    const isInteractiveChild =
+      !isPassthrough &&
+      !!target?.closest("button, input, textarea, select, a, [role='button'], [role='menuitem']");
 
     if (e && isChromeClick && !isInteractiveChild) {
       const terminal = getTerminal(id);
@@ -725,6 +734,51 @@ function TerminalPaneComponent({
     terminalInstanceService.setAgentState(id, agentState ?? "idle");
   }, [id, agentState]);
 
+  // Per-pane dismiss state resets when the agent leaves the completed phase —
+  // a rerun should re-arm the banner from scratch.
+  useEffect(() => {
+    if (agentState !== "completed") {
+      setCompletionBannerDismissed(false);
+    }
+  }, [agentState]);
+
+  // The current worktree's changed-file count drives the review strip and
+  // the zero-change pill. We prefer the explicit `worktreeId` prop (matches
+  // `worktree.id` in WorktreeCard) over `cwd` so a user-initiated `cd` away
+  // from the worktree root doesn't break the lookup.
+  const reviewWorktreeId = worktreeId ?? cwd;
+  const changedFileCount = useWorktreeStore((s) =>
+    reviewWorktreeId
+      ? (s.worktrees.get(reviewWorktreeId)?.worktreeChanges?.changedFileCount ?? 0)
+      : 0
+  );
+
+  const completedWithChanges = agentState === "completed" && changedFileCount > 0;
+  const completedWithNoChanges = agentState === "completed" && changedFileCount === 0;
+
+  // All "open Review Hub" entry points (banner button, menu, header) flow
+  // through this event so any open path auto-dismisses sibling banners for
+  // the same worktree. WorktreeCard listens for the same event to open the
+  // hub itself.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ worktreeId?: string }>).detail;
+      if (detail?.worktreeId === reviewWorktreeId) {
+        setCompletionBannerDismissed(true);
+      }
+    };
+    window.addEventListener("daintree:open-review-hub", handler);
+    return () => window.removeEventListener("daintree:open-review-hub", handler);
+  }, [reviewWorktreeId]);
+
+  const handleOpenReviewHub = () => {
+    if (reviewWorktreeId) {
+      window.dispatchEvent(
+        new CustomEvent("daintree:open-review-hub", { detail: { worktreeId: reviewWorktreeId } })
+      );
+    }
+  };
+
   const isWorking = agentState === "working";
   const allowPing = !isMaximized && (location !== "grid" || (gridPanelCount ?? 2) > 1);
 
@@ -776,6 +830,7 @@ function TerminalPaneComponent({
       exitCode={exitCode}
       isWorking={isWorking}
       agentState={agentState}
+      completedWithNoChanges={completedWithNoChanges}
       activity={activity}
       lastCommand={lastCommand}
       detectedProcessId={detectedProcessId}
@@ -949,7 +1004,7 @@ function TerminalPaneComponent({
               <TerminalScrollIndicator terminalId={id} />
 
               {isFleetPrimary && (
-                <div className="absolute inset-0 z-30 pointer-events-none flex items-end justify-start pb-4 pl-[14px]">
+                <div className="absolute inset-0 z-30 pointer-events-none flex items-end justify-start pb-1.5 pl-[14px]">
                   <div className="pointer-events-auto">
                     <FleetDraftingPill />
                   </div>
@@ -972,6 +1027,14 @@ function TerminalPaneComponent({
                 </div>
               )}
             </div>
+
+            {completedWithChanges && !completionBannerDismissed && (
+              <AgentCompletionBanner
+                fileCount={changedFileCount}
+                onReview={handleOpenReviewHub}
+                onDismiss={() => setCompletionBannerDismissed(true)}
+              />
+            )}
 
             {showHybridInputBar && (
               <Suspense fallback={null}>

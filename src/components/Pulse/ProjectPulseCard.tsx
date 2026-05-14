@@ -232,7 +232,7 @@ function PulseSkeleton({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "pulse-card w-fit rounded-[var(--radius-lg)] border border-daintree-border",
+        "pulse-card w-fit rounded-[var(--radius-lg)] border border-daintree-border min-h-[240px]",
         className
       )}
     >
@@ -263,7 +263,7 @@ function PulseSkeleton({ className }: { className?: string }) {
 
         <div className="h-3 pulse-skeleton-shimmer rounded w-72" />
 
-        <div className="border-t border-daintree-border pt-3">
+        <div className="border-t border-daintree-border pt-3 min-h-9">
           <div className="flex items-center gap-2">
             <div className="h-5 w-16 rounded-full pulse-skeleton-shimmer" />
             <div className="h-5 w-12 rounded-full pulse-skeleton-shimmer" />
@@ -286,35 +286,29 @@ function PulseSkeleton({ className }: { className?: string }) {
 
 function HealthSectionSkeleton() {
   return (
-    <div className="border-t border-daintree-border pt-3 animate-pulse-delayed">
-      <div className="flex items-center gap-2">
-        <div className="h-5 pulse-skeleton-shimmer rounded-full w-16" />
-        <div className="h-5 pulse-skeleton-shimmer rounded-full w-12" />
-        <div className="h-5 pulse-skeleton-shimmer rounded-full w-12" />
-        <div className="h-5 pulse-skeleton-shimmer rounded-full w-24" />
-      </div>
+    <div className="animate-pulse-delayed flex items-center gap-2">
+      <div className="h-5 pulse-skeleton-shimmer rounded-full w-16" />
+      <div className="h-5 pulse-skeleton-shimmer rounded-full w-12" />
+      <div className="h-5 pulse-skeleton-shimmer rounded-full w-12" />
+      <div className="h-5 pulse-skeleton-shimmer rounded-full w-24" />
     </div>
   );
 }
 
 function NoRemoteHint() {
   return (
-    <div className="border-t border-daintree-border pt-3">
-      <div className="flex items-center gap-2 text-xs text-daintree-text/75">
-        <Github className="w-3.5 h-3.5" />
-        <span>Connect a GitHub remote for CI status, issues, and PRs</span>
-      </div>
+    <div className="flex items-center gap-2 text-xs text-daintree-text/75">
+      <Github className="w-3.5 h-3.5" />
+      <span>Connect a GitHub remote for CI status, issues, and PRs</span>
     </div>
   );
 }
 
 function OfflineHint() {
   return (
-    <div className="border-t border-daintree-border pt-3">
-      <div className="flex items-center gap-2 text-xs text-daintree-text/75">
-        <WifiOff className="w-3.5 h-3.5" />
-        <span>Offline — GitHub status unavailable</span>
-      </div>
+    <div className="flex items-center gap-2 text-xs text-daintree-text/75">
+      <WifiOff className="w-3.5 h-3.5" />
+      <span>Offline — GitHub status unavailable</span>
     </div>
   );
 }
@@ -416,6 +410,11 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
       <div
         className={cn(
           "pulse-card p-4 rounded-[var(--radius-lg)] border border-daintree-border",
+          // Hold the slot at PulseSkeleton's natural height so the empty-state
+          // column doesn't reflow when the skeleton swaps to this one-liner
+          // (#7671). The card centers its short message inside the reserved
+          // box instead of shrinking and shifting siblings up.
+          "min-h-[240px] flex items-center",
           className
         )}
       >
@@ -436,10 +435,13 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
       <div
         className={cn(
           "pulse-card p-4 rounded-[var(--radius-lg)] border border-daintree-border",
+          // Match PulseSkeleton height so the error swap doesn't collapse the
+          // card and shift siblings up (#7671).
+          "min-h-[240px] flex items-center",
           className
         )}
       >
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 w-full">
           <div className="flex items-center gap-2 text-daintree-text/75" role="alert">
             <AlertCircle className="w-4 h-4 text-status-error" aria-hidden="true" />
             <span className="text-xs">{error}</span>
@@ -475,7 +477,7 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
   return (
     <div
       className={cn(
-        "pulse-card w-fit rounded-[var(--radius-lg)] border border-daintree-border",
+        "pulse-card w-fit rounded-[var(--radius-lg)] border border-daintree-border min-h-[240px]",
         className
       )}
       aria-busy={isLoading}
@@ -542,17 +544,22 @@ export function ProjectPulseCard({ worktreeId, className }: ProjectPulseCardProp
 
         <p className="text-xs text-daintree-text/80">{getCoachLine(pulse)}</p>
 
-        {health && !health.error && health.repoUrl ? (
-          <div className="border-t border-daintree-border pt-3">
+        {/* Health section: always renders the wrapper so the 4 sub-variants
+            (signals, skeleton, no-remote hint, offline hint) can swap without
+            growing or collapsing the card. `min-h-9` matches the chip row
+            height (h-5 chip + pt-3 padding) so the loaded HealthSignals row
+            doesn't push siblings down when it resolves after pulse (#7671). */}
+        <div className="border-t border-daintree-border pt-3 min-h-9">
+          {health && !health.error && health.repoUrl ? (
             <HealthSignals health={health} rangeDays={rangeDays} />
-          </div>
-        ) : healthLoading ? (
-          <HealthSectionSkeleton />
-        ) : health && !health.hasRemote ? (
-          <NoRemoteHint />
-        ) : health && health.hasRemote ? (
-          <OfflineHint />
-        ) : null}
+          ) : healthLoading ? (
+            <HealthSectionSkeleton />
+          ) : health && !health.hasRemote ? (
+            <NoRemoteHint />
+          ) : health && health.hasRemote ? (
+            <OfflineHint />
+          ) : null}
+        </div>
 
         <div className="border-t border-daintree-border pt-3">
           <PulseSummary pulse={pulse} />

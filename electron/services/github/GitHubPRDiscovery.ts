@@ -12,7 +12,7 @@ import {
   truncateBody,
   getETagCacheVersion,
 } from "./GitHubCaches.js";
-import type { PRTooltipData } from "../../../shared/types/github.js";
+import type { GitHubPRCIStatus, PRTooltipData } from "../../../shared/types/github.js";
 import type { PRCheckCandidate, PRCheckResult, BatchPRCheckResult, LinkedPR } from "./types.js";
 
 interface BatchPRTooltipFields {
@@ -30,6 +30,28 @@ interface BatchPRRawNode extends BatchPRTooltipFields {
   state?: string;
   isDraft?: boolean;
   merged?: boolean;
+  commits?: {
+    nodes?: Array<{
+      commit?: {
+        statusCheckRollup?: { state?: string } | null;
+      } | null;
+    }>;
+  } | null;
+}
+
+const CI_STATUS_VALUES = new Set<GitHubPRCIStatus>([
+  "SUCCESS",
+  "FAILURE",
+  "ERROR",
+  "PENDING",
+  "EXPECTED",
+]);
+
+function extractCIStatus(node: BatchPRRawNode): GitHubPRCIStatus | undefined {
+  const raw = node.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state;
+  if (typeof raw !== "string") return undefined;
+  const upper = raw.toUpperCase() as GitHubPRCIStatus;
+  return CI_STATUS_VALUES.has(upper) ? upper : undefined;
 }
 
 function buildTooltipDataFromBatchNode(node: BatchPRRawNode): PRTooltipData | undefined {
@@ -98,6 +120,7 @@ function parseBatchPRResponse(
         const prData = node?.source ?? node?.subject;
         if (prData?.number && prData?.url && !seenPRNumbers.has(prData.number)) {
           seenPRNumbers.add(prData.number);
+          const ciStatus = extractCIStatus(prData);
           prs.push({
             pr: {
               number: prData.number,
@@ -107,6 +130,7 @@ function parseBatchPRResponse(
                 ? "merged"
                 : (prData.state?.toLowerCase() as "open" | "closed") || "open",
               isDraft: prData.isDraft ?? false,
+              ...(ciStatus ? { ciStatus } : {}),
             },
             raw: prData,
           });
@@ -138,6 +162,7 @@ function parseBatchPRResponse(
         const branchPRs: Array<{ pr: LinkedPR; raw: BatchPRRawNode }> = [];
         for (const node of branchData as BatchPRRawNode[]) {
           if (node?.number && node?.url) {
+            const ciStatus = extractCIStatus(node);
             branchPRs.push({
               pr: {
                 number: node.number,
@@ -147,6 +172,7 @@ function parseBatchPRResponse(
                   ? "merged"
                   : (node.state?.toLowerCase() as "open" | "closed") || "open",
                 isDraft: node.isDraft ?? false,
+                ...(ciStatus ? { ciStatus } : {}),
               },
               raw: node,
             });

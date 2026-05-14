@@ -875,4 +875,155 @@ describe("rendererStoreOrchestrator", () => {
       expect(agentSettingsClient.get).not.toHaveBeenCalled();
     });
   });
+
+  describe("storeAccessors wiring", () => {
+    it("populates accessor slots so projectStore.switchProject can read panel + worktree state", async () => {
+      const { getPanelStoreSnapshot, getWorktreeSelectionSnapshot } =
+        await import("../storeAccessors");
+
+      usePanelStore.setState({
+        panelsById: {
+          "browser-1": {
+            id: "browser-1",
+            kind: "browser",
+            title: "Browser",
+            location: "grid",
+          },
+        },
+        panelIds: ["browser-1"],
+      });
+      useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-real" });
+
+      const panelSnapshot = getPanelStoreSnapshot();
+      expect(panelSnapshot?.panelIds).toEqual(["browser-1"]);
+      expect(panelSnapshot?.panelsById["browser-1"]?.kind).toBe("browser");
+
+      const worktreeSnapshot = getWorktreeSelectionSnapshot();
+      expect(worktreeSnapshot?.activeWorktreeId).toBe("wt-real");
+    });
+
+    it("clears accessor slots on destroy so consumers see the null fallback before re-init", async () => {
+      const { getPanelStoreSnapshot, getWorktreeSelectionSnapshot, getFleetArmedIds } =
+        await import("../storeAccessors");
+
+      // Sanity: init populated slots
+      expect(getPanelStoreSnapshot()).not.toBeNull();
+
+      destroyStoreOrchestrator();
+
+      expect(getPanelStoreSnapshot()).toBeNull();
+      expect(getWorktreeSelectionSnapshot()).toBeNull();
+      expect(getFleetArmedIds()).toBeNull();
+
+      initStoreOrchestrator();
+
+      expect(getPanelStoreSnapshot()).not.toBeNull();
+    });
+  });
+
+  describe("fleet-arming panel pruning", () => {
+    it("does not double-prune after destroy/re-init cycle", async () => {
+      const { useFleetArmingStore } = await import("../fleetArmingStore");
+      useFleetArmingStore.setState({
+        armedIds: new Set<string>(),
+        armOrder: [],
+        armOrderById: {},
+        lastArmedId: null,
+        broadcastSignal: 0,
+        previewArmedIds: new Set<string>(),
+      });
+
+      usePanelStore.setState({
+        panelsById: {
+          "agent-a": {
+            id: "agent-a",
+            kind: "terminal",
+            title: "A",
+            location: "grid",
+            worktreeId: "wt-1",
+            detectedAgentId: "claude",
+            everDetectedAgent: true,
+            agentState: "idle",
+            hasPty: true,
+          },
+          "agent-b": {
+            id: "agent-b",
+            kind: "terminal",
+            title: "B",
+            location: "grid",
+            worktreeId: "wt-1",
+            detectedAgentId: "claude",
+            everDetectedAgent: true,
+            agentState: "idle",
+            hasPty: true,
+          },
+        },
+        panelIds: ["agent-a", "agent-b"],
+      });
+      useFleetArmingStore.getState().armIds(["agent-a", "agent-b"]);
+
+      destroyStoreOrchestrator();
+      initStoreOrchestrator();
+
+      const pruneSpy = vi.spyOn(useFleetArmingStore.getState(), "prune");
+
+      // Trigger one panel removal — should fire prune exactly once even though
+      // the subscription was disposed and re-registered.
+      usePanelStore.setState({
+        panelsById: {
+          "agent-a": usePanelStore.getState().panelsById["agent-a"]!,
+        },
+        panelIds: ["agent-a"],
+      });
+
+      expect(pruneSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("prunes stale armed ids on re-init when a panel became ineligible while torn down", async () => {
+      const { useFleetArmingStore } = await import("../fleetArmingStore");
+      useFleetArmingStore.setState({
+        armedIds: new Set<string>(),
+        armOrder: [],
+        armOrderById: {},
+        lastArmedId: null,
+        broadcastSignal: 0,
+        previewArmedIds: new Set<string>(),
+      });
+
+      usePanelStore.setState({
+        panelsById: {
+          "agent-a": {
+            id: "agent-a",
+            kind: "terminal",
+            title: "A",
+            location: "grid",
+            worktreeId: "wt-1",
+            detectedAgentId: "claude",
+            everDetectedAgent: true,
+            agentState: "idle",
+            hasPty: true,
+          },
+        },
+        panelIds: ["agent-a"],
+      });
+      useFleetArmingStore.getState().armIds(["agent-a"]);
+
+      // Subscription torn down while panel state mutates underneath.
+      destroyStoreOrchestrator();
+      usePanelStore.setState({
+        panelsById: {
+          "agent-a": {
+            ...usePanelStore.getState().panelsById["agent-a"]!,
+            location: "trash",
+          },
+        },
+        panelIds: ["agent-a"],
+      });
+
+      // Re-init triggers the initial reconciliation pass.
+      initStoreOrchestrator();
+
+      expect([...useFleetArmingStore.getState().armedIds]).toEqual([]);
+    });
+  });
 });

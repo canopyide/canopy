@@ -3,7 +3,7 @@
  */
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import type { WorktreeState } from "@/types";
 import type { WorktreeChanges } from "@shared/types/git";
@@ -288,5 +288,104 @@ describe("WorktreeDetailsSection count pill bump", () => {
 
     expect(mockAnimate).not.toHaveBeenCalled();
     expect(screen.getByText(/5 files/)).toBeDefined();
+  });
+});
+
+describe("WorktreeDetailsSection — reviewState surfaces", () => {
+  it('replaces churn subtitle with conflict callout when reviewState is "conflicted"', () => {
+    renderSection({
+      reviewState: "conflicted",
+      worktree: withChanges({
+        changedFileCount: 4,
+        changes: [{ path: "a.ts", status: "conflicted", insertions: null, deletions: null }],
+      }),
+    });
+    expect(screen.getByText("Conflicts need review")).toBeDefined();
+    expect(screen.queryByText(/files/)).toBeNull();
+  });
+
+  it("renders the Review & Commit button when there are changes", () => {
+    const onOpenReviewHub = vi.fn();
+    renderSection({
+      reviewState: "has-changes",
+      onOpenReviewHub,
+    });
+    const button = screen.getByLabelText("Open Review & Commit");
+    expect(button).toBeDefined();
+    fireEvent.click(button);
+    expect(onOpenReviewHub).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders no commit-side button when reviewState is "unpushed-clean"', () => {
+    renderSection({
+      reviewState: "unpushed-clean",
+      hasChanges: false,
+      computedSubtitle: { text: "fix: stuff", tone: "muted" },
+      worktree: {
+        ...baseWorktree,
+        worktreeChanges: {
+          ...baseWorktree.worktreeChanges,
+          changedFileCount: 0,
+          ahead: 2,
+        } as WorktreeChanges,
+      },
+    });
+    expect(screen.queryByLabelText("Open Review & Commit")).toBeNull();
+    expect(screen.queryByText("Conflicts need review")).toBeNull();
+    expect(screen.getByText("fix: stuff")).toBeDefined();
+  });
+});
+
+describe("WorktreeDetailsSection activity indicator", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-06-15T12:00:00Z").getTime());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("renders 'No activity' placeholder when lastActivityTimestamp is null", () => {
+    const worktree: WorktreeState = { ...baseWorktree, lastActivityTimestamp: null };
+    renderSection({ worktree, hasChanges: false });
+    expect(screen.getByText("No activity")).toBeDefined();
+  });
+
+  it("renders the activity dot and time ago when timestamp is present", () => {
+    const worktree: WorktreeState = {
+      ...baseWorktree,
+      lastActivityTimestamp: Date.now(),
+    };
+    renderSection({ worktree, hasChanges: false });
+    expect(screen.queryByText("No activity")).toBeNull();
+    // LiveTimeAgo renders "now" for a just-now timestamp
+    expect(screen.getByText("now")).toBeDefined();
+  });
+
+  it("renders hollow ring and time label for decayed timestamp", () => {
+    const worktree: WorktreeState = {
+      ...baseWorktree,
+      lastActivityTimestamp: Date.now() - 120_000, // 2 minutes ago — past DECAY_DURATION (90s)
+    };
+    renderSection({ worktree, hasChanges: false });
+    expect(screen.queryByText("No activity")).toBeNull();
+    // LiveTimeAgo renders a time label like "2m"
+    expect(screen.getByText("2m")).toBeDefined();
+  });
+
+  it("collapsed view shows 'No activity' when expanded view shows worktree details without activity section", () => {
+    // The expanded view (WorktreeDetails) already gates the activity section
+    // on showTime && lastActivityTimestamp (line 81). Verify the collapsed
+    // view handles the null case distinctly.
+    const worktree: WorktreeState = { ...baseWorktree, lastActivityTimestamp: null };
+    renderSection({ worktree, hasChanges: false });
+    expect(screen.getByText("No activity")).toBeDefined();
+  });
+
+  it("null timestamp worktree does not render an ActivityLight dot", () => {
+    const worktree: WorktreeState = { ...baseWorktree, lastActivityTimestamp: null };
+    const { container } = renderSection({ worktree, hasChanges: false });
+    expect(container.querySelector('[aria-hidden="true"]')).toBeNull();
   });
 });

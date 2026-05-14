@@ -1,4 +1,4 @@
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { cn } from "@/lib/utils";
@@ -45,12 +45,7 @@ interface LogEntryRowProps {
   toggleExpanded: (id: string) => void;
 }
 
-const LogEntryRow = memo(function LogEntryRow({
-  display,
-  copyMeta,
-  isExpanded,
-  toggleExpanded,
-}: LogEntryRowProps) {
+function LogEntryRow({ display, copyMeta, isExpanded, toggleExpanded }: LogEntryRowProps) {
   const onToggle = useCallback(
     () => toggleExpanded(display.entry.id),
     [toggleExpanded, display.entry.id]
@@ -64,7 +59,7 @@ const LogEntryRow = memo(function LogEntryRow({
       onToggle={onToggle}
     />
   );
-});
+}
 
 export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
   const {
@@ -273,6 +268,7 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
             <div className="flex items-center justify-center h-full">
               <EmptyState
                 variant="filtered-empty"
+                scale="sidebar"
                 title="No logs match filters"
                 action={
                   <button

@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Key, Eye, EyeOff, Trash2, Plus, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Spinner } from "@/components/ui/Spinner";
 import { Button } from "@/components/ui/button";
 import { SettingsSection } from "./SettingsSection";
 import { isSensitiveEnvKey } from "@shared/utils/envVars";
@@ -97,7 +96,7 @@ export function EnvironmentSettingsTab() {
     };
   }, []);
 
-  const updateRow = useCallback((index: number, field: "key" | "value", value: string) => {
+  const updateRow = (index: number, field: "key" | "value", value: string) => {
     setEnvRows((prev) => {
       const updated = [...prev];
       const row = updated[index];
@@ -128,14 +127,14 @@ export function EnvironmentSettingsTab() {
       return updated;
     });
     setIsDirty(true);
-  }, []);
+  };
 
-  const addRow = useCallback(() => {
+  const addRow = () => {
     setEnvRows((prev) => [...prev, { id: `env-${crypto.randomUUID()}`, key: "", value: "" }]);
     setIsDirty(true);
-  }, []);
+  };
 
-  const deleteRow = useCallback((index: number, id: string) => {
+  const deleteRow = (index: number, id: string) => {
     setEnvRows((prev) => prev.filter((_, i) => i !== index));
     setVisibleEnvVars((prev) => {
       const next = new Set(prev);
@@ -148,18 +147,18 @@ export function EnvironmentSettingsTab() {
       return next;
     });
     setIsDirty(true);
-  }, []);
+  };
 
-  const toggleVisibility = useCallback((id: string) => {
+  const toggleVisibility = (id: string) => {
     setVisibleEnvVars((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }, []);
+  };
 
-  const validate = useCallback((): boolean => {
+  const validate = (): boolean => {
     const errors: Record<string, string> = {};
     const seenKeys = new Map<string, number>();
     let valid = true;
@@ -184,9 +183,9 @@ export function EnvironmentSettingsTab() {
 
     setRowErrors(errors);
     return valid;
-  }, [envRows]);
+  };
 
-  const handleSave = useCallback(async () => {
+  const handleSave = async () => {
     if (isSaving) return;
     if (!validate()) return;
 
@@ -206,29 +205,21 @@ export function EnvironmentSettingsTab() {
     } finally {
       setIsSaving(false);
     }
-  }, [envRows, validate, isSaving]);
+  };
 
-  const handleDiscard = useCallback(() => {
+  const handleDiscard = () => {
     setEnvRows(envVarsFromRecord(savedSnapshot));
     setVisibleEnvVars(new Set());
     setRowErrors({});
     setSaveError(null);
     setIsDirty(false);
-  }, [savedSnapshot]);
+  };
 
   // Persist pending edits before the dialog dismisses (X click) or the
   // WebContentsView detaches on project switch. handleSave's validate() gate
   // is intentional — invalid rows are dropped rather than persisted (matches
   // user-initiated save).
   useSettingsTabFlush("environment", handleSave, isDirty);
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <Spinner size="lg" />
-      </div>
-    );
-  }
 
   if (loadFailed) {
     return (
@@ -339,7 +330,7 @@ export function EnvironmentSettingsTab() {
             })
           )}
 
-          <Button variant="outline" onClick={addRow} className="w-full">
+          <Button variant="outline" onClick={addRow} disabled={isLoading} className="w-full">
             <Plus />
             Add Variable
           </Button>

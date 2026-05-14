@@ -1,0 +1,69 @@
+import type { ActionCallbacks, ActionRegistry } from "../actionTypes";
+import { z } from "zod";
+import { keybindingService } from "@/services/KeybindingService";
+
+export function registerKeybindingActions(
+  actions: ActionRegistry,
+  _callbacks: ActionCallbacks
+): void {
+  actions.set("keybinding.getOverrides", () => ({
+    id: "keybinding.getOverrides",
+    title: "Get Keybinding Overrides",
+    description: "Get configured keybinding overrides",
+    category: "settings",
+    kind: "query",
+    danger: "safe",
+    scope: "renderer",
+    run: async () => {
+      await keybindingService.loadOverrides();
+      return keybindingService.getOverridesSnapshot();
+    },
+  }));
+
+  actions.set("keybinding.setOverride", () => ({
+    id: "keybinding.setOverride",
+    title: "Set Keybinding Override",
+    description: "Set keybinding override for an action",
+    category: "settings",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({ actionId: z.string(), combo: z.array(z.string()) }),
+    run: async (args: unknown) => {
+      const { actionId, combo } = args as { actionId: string; combo: string[] };
+      await keybindingService.setOverride(actionId, combo);
+      return keybindingService.getOverridesSnapshot();
+    },
+  }));
+
+  actions.set("keybinding.removeOverride", () => ({
+    id: "keybinding.removeOverride",
+    title: "Remove Keybinding Override",
+    description: "Remove keybinding override for an action",
+    category: "settings",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({ actionId: z.string() }),
+    run: async (args: unknown) => {
+      const { actionId } = args as { actionId: string };
+      await keybindingService.removeOverride(actionId);
+      return keybindingService.getOverridesSnapshot();
+    },
+  }));
+
+  actions.set("keybinding.resetAll", () => ({
+    id: "keybinding.resetAll",
+    title: "Reset All Keybinding Overrides",
+    description: "Reset all keybinding overrides",
+    category: "settings",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    keywords: ["shortcuts", "hotkeys", "defaults", "restore"],
+    run: async () => {
+      await keybindingService.resetAllOverrides();
+      return keybindingService.getOverridesSnapshot();
+    },
+  }));
+}

@@ -176,7 +176,34 @@ async function deleteWorktree(
   await expect(confirmBtn).toBeVisible({ timeout: T_MEDIUM });
   await confirmBtn.click();
 
-  await expect(card).not.toBeVisible({ timeout: T_LONG });
+  await waitForWorktreeCardRemoval(window, branch);
+}
+
+async function waitForWorktreeCardRemoval(
+  window: Awaited<ReturnType<typeof launchApp>>["window"],
+  branch: string
+) {
+  const card = window.locator(SEL.worktree.card(branch));
+
+  await expect
+    .poll(
+      async () => {
+        const count = await card.count();
+        if (count === 0) return 0;
+
+        // Windows CI occasionally misses the app-owned removal event even
+        // though delete has already advanced through teardown. A refresh forces
+        // a fresh snapshot from the workspace host and clears any stale entry.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await window.evaluate(() => (window as any).electron.worktree.refresh());
+        return card.count();
+      },
+      {
+        timeout: T_LONG,
+        message: `Worktree card ${branch} should disappear after delete`,
+      }
+    )
+    .toBe(0);
 }
 
 test.describe.serial("Full: Worktree Resource Lifecycle", () => {
@@ -731,7 +758,7 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
     await confirmBtn.click();
 
     // Worktree card should disappear
-    await expect(newCard).not.toBeVisible({ timeout: T_LONG });
+    await waitForWorktreeCardRemoval(window, BRANCH);
 
     // Main card should become selected again
     const mainCard = window.locator(SEL.worktree.card(mainBranch));

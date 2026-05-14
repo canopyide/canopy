@@ -2,13 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   getAgentIds,
   getAgentConfig,
-  isRegisteredAgent,
   setUserRegistry,
   getEffectiveAgentIds,
   getEffectiveAgentConfig,
   isEffectivelyRegisteredAgent,
   isBuiltInAgent,
-  isUserDefinedAgent,
   getAgentModelConfig,
   getAgentDisplayTitle,
   getAgentPreset,
@@ -24,6 +22,7 @@ import {
   AgentDomainWeightsSchema,
   DEFAULT_ROUTING_CONFIG,
 } from "../../types/agentSettings.js";
+import { UserAgentConfigSchema } from "../../types/userAgentRegistry.js";
 
 describe("agentRegistry", () => {
   beforeEach(() => {
@@ -84,9 +83,9 @@ describe("agentRegistry", () => {
       expect(getAgentConfig("nonexistent")).toBeUndefined();
     });
 
-    it("correctly identifies registered agents", () => {
-      expect(isRegisteredAgent("claude")).toBe(true);
-      expect(isRegisteredAgent("nonexistent")).toBe(false);
+    it("correctly identifies built-in agents", () => {
+      expect(isBuiltInAgent("claude")).toBe(true);
+      expect(isBuiltInAgent("nonexistent")).toBe(false);
     });
   });
 
@@ -230,12 +229,17 @@ describe("agentRegistry", () => {
       setUserRegistry({ "custom-agent": customAgent });
 
       expect(isBuiltInAgent("custom-agent")).toBe(false);
-      expect(isUserDefinedAgent("custom-agent")).toBe(true);
+      expect(isEffectivelyRegisteredAgent("custom-agent")).toBe(true);
     });
 
     it("built-in agents are not user-defined", () => {
+      setUserRegistry({});
+
       expect(isBuiltInAgent("claude")).toBe(true);
-      expect(isUserDefinedAgent("claude")).toBe(false);
+      // user-defined check: a key in userRegistry but NOT in AGENT_REGISTRY
+      const effectiveKeys = getEffectiveAgentIds();
+      const onlyUserDefined = effectiveKeys.filter((id) => !isBuiltInAgent(id));
+      expect(onlyUserDefined).not.toContain("claude");
     });
 
     it("user-defined agents can have custom routing config", () => {
@@ -321,9 +325,9 @@ describe("agentRegistry", () => {
       const gemini = getAgentConfig("gemini");
       expect(gemini?.supports).toMatchObject({
         mcpInjection: "project-config",
-        settingsOverlay: false,
+        settingsOverlay: true,
         permissionBypass: false,
-        trustDialog: false,
+        trustDialog: true,
         versionProbe: true,
         tier: "experimental",
       });
@@ -369,6 +373,176 @@ describe("agentRegistry", () => {
         expect(ids).toContain("claude");
       } finally {
         AGENT_REGISTRY.codex = original;
+      }
+    });
+  });
+
+  describe("user-defined agents in assistant lists", () => {
+    const stableSupports: AssistantSupports = {
+      mcpInjection: "cli-flags",
+      settingsOverlay: false,
+      permissionBypass: true,
+      trustDialog: false,
+      versionProbe: true,
+      tier: "stable",
+    };
+
+    const experimentalSupports: AssistantSupports = {
+      ...stableSupports,
+      tier: "experimental",
+    };
+
+    const userDefinedWithStable: AgentConfig = {
+      id: "my-cli-agent",
+      name: "My CLI Agent",
+      command: "mycli",
+      color: "#FF8800",
+      iconId: "custom",
+      supportsContextInjection: true,
+      supports: stableSupports,
+      routing: { capabilities: ["custom"], maxConcurrent: 2, enabled: true },
+    };
+
+    const userDefinedWithExperimental: AgentConfig = {
+      id: "exp-agent",
+      name: "Experimental Agent",
+      command: "exp",
+      color: "#0088FF",
+      iconId: "custom",
+      supportsContextInjection: true,
+      supports: experimentalSupports,
+      routing: { capabilities: ["experimental"], maxConcurrent: 1, enabled: true },
+    };
+
+    const userDefinedWithoutSupports: AgentConfig = {
+      id: "no-support-agent",
+      name: "No Support Agent",
+      command: "nosup",
+      color: "#888888",
+      iconId: "custom",
+      supportsContextInjection: true,
+      routing: { capabilities: ["basic"], maxConcurrent: 1, enabled: true },
+    };
+
+    const userDefinedStructurallyIneligible: AgentConfig = {
+      id: "ineligible-agent",
+      name: "Ineligible Agent",
+      command: "noassist",
+      color: "#444444",
+      iconId: "custom",
+      supportsContextInjection: false,
+      supports: false,
+      routing: { capabilities: ["ineligible"], maxConcurrent: 1, enabled: true },
+    };
+
+    it("user-defined agent with stable-tier supports appears in supported list", () => {
+      setUserRegistry({ "my-cli-agent": userDefinedWithStable });
+      try {
+        const ids = getAssistantSupportedAgentIds();
+        expect(ids).toContain("my-cli-agent");
+      } finally {
+        setUserRegistry({});
+      }
+    });
+
+    it("user-defined agent without supports is excluded from supported list", () => {
+      setUserRegistry({ "no-support-agent": userDefinedWithoutSupports });
+      try {
+        const ids = getAssistantSupportedAgentIds();
+        expect(ids).not.toContain("no-support-agent");
+      } finally {
+        setUserRegistry({});
+      }
+    });
+
+    it("experimental user-defined agent appears in wired but not supported list", () => {
+      setUserRegistry({ "exp-agent": userDefinedWithExperimental });
+      try {
+        const supported = getAssistantSupportedAgentIds();
+        const wired = getAssistantWiredAgentIds();
+        expect(supported).not.toContain("exp-agent");
+        expect(wired).toContain("exp-agent");
+      } finally {
+        setUserRegistry({});
+      }
+    });
+
+    it("user-defined agent structurally ineligible excluded from both lists", () => {
+      setUserRegistry({ "ineligible-agent": userDefinedStructurallyIneligible });
+      try {
+        const supported = getAssistantSupportedAgentIds();
+        const wired = getAssistantWiredAgentIds();
+        expect(supported).not.toContain("ineligible-agent");
+        expect(wired).not.toContain("ineligible-agent");
+      } finally {
+        setUserRegistry({});
+      }
+    });
+
+    it("built-in still shadows user-defined entry with same ID in assistant lists", () => {
+      const fakeClaudeAgent: AgentConfig = {
+        ...userDefinedWithStable,
+        id: "claude",
+        name: "Fake Claude",
+        command: "fake-claude",
+      };
+      setUserRegistry({ claude: fakeClaudeAgent });
+      try {
+        const ids = getAssistantSupportedAgentIds();
+        expect(ids).toContain("claude");
+        // The effective config must be the REAL Claude, not the fake one
+        const effective = getEffectiveAgentConfig("claude");
+        expect(effective?.name).toBe("Claude");
+        expect(effective?.command).toBe("claude");
+      } finally {
+        setUserRegistry({});
+      }
+    });
+
+    it("empty user registry produces same supported list as before", () => {
+      setUserRegistry({});
+      const ids = getAssistantSupportedAgentIds();
+      expect(ids).toEqual(expect.arrayContaining(["claude", "codex"]));
+      expect(ids).toHaveLength(2);
+    });
+
+    it("supported list returns built-ins in BUILT_IN_AGENT_IDS order then user-defined", () => {
+      const userAgent1: AgentConfig = {
+        ...userDefinedWithStable,
+        id: "zzz-last-agent",
+        name: "ZZZ Agent",
+        command: "zzz",
+      };
+      const userAgent2: AgentConfig = {
+        ...userDefinedWithStable,
+        id: "aaa-first-agent",
+        name: "AAA Agent",
+        command: "aaa",
+      };
+      setUserRegistry({ "zzz-last-agent": userAgent1, "aaa-first-agent": userAgent2 });
+      try {
+        const ids = getAssistantSupportedAgentIds();
+        // Built-ins first: claude, codex (in BUILT_IN_AGENT_IDS order)
+        expect(ids[0]).toBe("claude");
+        expect(ids[1]).toBe("codex");
+        // Then user-defined agents in registration order
+        const userDefinedIds = ids.slice(2);
+        expect(userDefinedIds[0]).toBe("zzz-last-agent");
+        expect(userDefinedIds[1]).toBe("aaa-first-agent");
+      } finally {
+        setUserRegistry({});
+      }
+    });
+
+    it("user-defined shadow with supports:false does not remove built-in", () => {
+      setUserRegistry({
+        claude: { ...userDefinedStructurallyIneligible, id: "claude", supports: false },
+      });
+      try {
+        const ids = getAssistantSupportedAgentIds();
+        expect(ids).toContain("claude");
+      } finally {
+        setUserRegistry({});
       }
     });
   });
@@ -633,6 +807,16 @@ describe("copilot configuration", () => {
     expect(config?.capabilities?.blockMouseReporting).toBe(true);
     expect(config?.capabilities?.resizeStrategy).toBe("settled");
     expect(config?.capabilities?.blockAltScreen).toBeUndefined();
+  });
+
+  it("uses submitEnterDelayMs >= 200 so Ink TUI registers input before CR (issue #5830)", () => {
+    const config = getAgentConfig("copilot");
+    expect(config?.capabilities?.submitEnterDelayMs).toBeGreaterThanOrEqual(200);
+  });
+
+  it("uses single-write quit so /exit submits as one write (Ink TUI constraint)", () => {
+    const config = getAgentConfig("copilot");
+    expect(config?.capabilities?.quitSubmitMode).toBe("single-write");
   });
 
   it("has correct npm package and GitHub repo", () => {
@@ -1645,5 +1829,81 @@ describe("aider detection patterns", () => {
     expect(patterns.some((p) => p.test("> "))).toBe(true);
     expect(patterns.some((p) => p.test("architect> "))).toBe(true);
     expect(patterns.some((p) => p.test("ask> "))).toBe(true);
+  });
+});
+
+describe("UserAgentConfigSchema supports field", () => {
+  it("preserves supports:false through validation", () => {
+    const result = UserAgentConfigSchema.safeParse({
+      id: "test-agent",
+      name: "Test Agent",
+      command: "test",
+      color: "#FF0000",
+      iconId: "test",
+      supportsContextInjection: true,
+      supports: false,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.supports).toBe(false);
+    }
+  });
+
+  it("preserves structured supports through validation", () => {
+    const result = UserAgentConfigSchema.safeParse({
+      id: "test-agent",
+      name: "Test Agent",
+      command: "test",
+      color: "#FF0000",
+      iconId: "test",
+      supportsContextInjection: true,
+      supports: {
+        mcpInjection: "cli-flags",
+        settingsOverlay: false,
+        permissionBypass: true,
+        trustDialog: false,
+        versionProbe: true,
+        tier: "stable",
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.supports).toMatchObject({ tier: "stable", mcpInjection: "cli-flags" });
+    }
+  });
+
+  it("rejects invalid supports tier", () => {
+    const result = UserAgentConfigSchema.safeParse({
+      id: "test-agent",
+      name: "Test Agent",
+      command: "test",
+      color: "#FF0000",
+      iconId: "test",
+      supportsContextInjection: true,
+      supports: {
+        mcpInjection: "cli-flags",
+        settingsOverlay: false,
+        permissionBypass: true,
+        trustDialog: false,
+        versionProbe: true,
+        tier: "bogus",
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("omitting supports is valid (optional field)", () => {
+    const result = UserAgentConfigSchema.safeParse({
+      id: "test-agent",
+      name: "Test Agent",
+      command: "test",
+      color: "#FF0000",
+      iconId: "test",
+      supportsContextInjection: true,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.supports).toBeUndefined();
+    }
   });
 });

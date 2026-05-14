@@ -31,6 +31,13 @@ interface PooledPty {
   dataDisposable: IDisposable;
   dataHandoff?: BufferedPtyDataHandoff;
   /**
+   * Set false in the onExit handler so acquireByKey can reject entries whose
+   * process has exited even though the JS object still references a defined
+   * pid. The previous `pid !== undefined` liveness probe was always truthy
+   * because pid stays set for the lifetime of the IPty wrapper.
+   */
+  alive: boolean;
+  /**
    * Bounded buffer of shell-init output (banner, MOTD, first prompt) emitted
    * before this entry was acquired. Replayed on acquire so the consumer's
    * xterm sees the prompt the user expects. Without this, fast Macs that
@@ -39,6 +46,11 @@ interface PooledPty {
    * after the prompt and stays blank. See PR for #7625.
    */
   prelude: string;
+}
+
+interface PoolFailureState {
+  count: number;
+  blockedUntil: number;
 }
 
 const DEFAULT_POOL_SIZE = 2;
@@ -50,6 +62,54 @@ const DEFAULT_MAX_ENTRIES = 8;
  * dropped, which matches the prior (unbuffered) behaviour for that overflow.
  */
 const PRELUDE_BYTE_CAP = 64 * 1024;
+
+/**
+ * Window in which an exit is treated as a crash rather than a normal exit.
+ * Combined with `MAX_KEY_FAILURES` and `KEY_BACKOFF_MS`, this gates the
+ * onExit→refill cascade for a misconfigured (cwd, envHash) key whose shell
+ * exits immediately on spawn (rc syntax error, missing binary, etc.).
+ */
+const FAST_EXIT_THRESHOLD_MS = 2_000;
+const MAX_KEY_FAILURES = 3;
+const KEY_BACKOFF_MS = 30_000;
+
+/**
+ * Windows ConPTY has shown native heap-corruption crashes (0xC0000374) when
+ * pooled shells are prewarmed, handed off, and destroyed under release-runner
+ * churn. Keep the pool off on Windows while preserving direct PTY spawns.
+ */
+export function shouldEnablePtyPool(platform: NodeJS.Platform = process.platform): boolean {
+  return platform !== "win32";
+}
+
+/**
+ * Closes a pooled PTY's master/slave file descriptors. node-pty's `kill()`
+ * only signals the child process; on Unix the `/dev/ptmx` master FD stays
+ * open until `destroy()` is called (or the IPty wrapper is GC'd, but the
+ * native binding retains a reference until then). Without this, every
+ * pool-exit path leaks an FD — and #7892 showed the crash-loop multiplied
+ * the leak by ~60 FDs/iter until the system-wide `ptmx_max` (≈511 on macOS)
+ * was hit.
+ *
+ * `destroy()` exists on UnixTerminal and WindowsTerminal but is not on the
+ * exported `IPty` TypeScript interface; access it structurally and fall back
+ * to `kill()` when missing (e.g. test mocks). Both calls are wrapped in
+ * try/catch because either may throw on an already-dead handle.
+ */
+export function destroyPty(p: pty.IPty): void {
+  const withDestroy = p as pty.IPty & { destroy?: () => void };
+  try {
+    withDestroy.destroy?.();
+  } catch {
+    // Already destroyed or socket closed — destroy() is idempotent in node-pty,
+    // but mocks/future versions may throw.
+  }
+  try {
+    p.kill();
+  } catch {
+    // Already dead — ESRCH on Unix, similar on Windows.
+  }
+}
 
 export interface AcquiredPty {
   process: pty.IPty;
@@ -139,6 +199,14 @@ export class PtyPool {
    */
   private readonly warmsInFlight: Set<string> = new Set();
   /**
+   * Per-key fast-exit accounting. Incremented whenever a pool entry's onExit
+   * fires within FAST_EXIT_THRESHOLD_MS of spawn; trips the circuit breaker
+   * at MAX_KEY_FAILURES and holds it for KEY_BACKOFF_MS. Without this the
+   * onExit→refillPool cascade for a doomed (cwd, envHash) is unbounded and
+   * leaks an FD per cycle (#7892).
+   */
+  private readonly keyFailures: Map<string, PoolFailureState> = new Map();
+  /**
    * Generation counter incremented on each drainAndRefill() call.
    * Captured in createPoolEntry closures so async spawns from a prior
    * drain cycle can be rejected instead of registering at the new cwd.
@@ -165,6 +233,13 @@ export class PtyPool {
       } else {
         this.defaultCwd = nextCwd;
       }
+    }
+
+    // drainAndRefill() ends with warmPool(), which would otherwise let a
+    // post-trip project switch re-enter the crash loop on the same blocked
+    // (cwd, env-empty) key. Gate warmPool with the same breaker as refillPool.
+    if (this.isKeyBlocked(makePoolKey(this.defaultCwd, POOL_ENV_EMPTY_HASH))) {
+      return;
     }
 
     const promises: Promise<void>[] = [];
@@ -222,6 +297,7 @@ export class PtyPool {
         env,
         createdAt: Date.now(),
         dataDisposable: { dispose: () => {} },
+        alive: true,
         prelude: "",
       };
 
@@ -251,11 +327,20 @@ export class PtyPool {
         const entry = this.pool.get(id);
         if (!entry) {
           // Entry was already removed (drain, evict, or acquire path). Those
-          // paths handle their own followup; refilling here would race them.
+          // paths handle their own followup and FD cleanup; refilling or
+          // counting failures here would race them.
           return;
         }
+        entry.alive = false;
         entry.dataDisposable.dispose();
+        // Remove from the pool BEFORE destroying. Real node-pty delivers
+        // onExit via libuv (always async), so synchronous re-entry can't
+        // happen — but the invariant "removed from map → never re-observed"
+        // matches dispose()/evictIfAtCapacity()/drainAndRefill() and makes
+        // the code easier to reason about.
         this.pool.delete(id);
+        destroyPty(entry.process);
+        this.recordFastExit(entry.poolKey, entry.createdAt);
         // Skip refill if this entry belonged to a prior drain cycle — a
         // newer drainAndRefill() already initiated its own refill.
         if (!this.isDisposed && this.drainEpoch === epoch) {
@@ -265,11 +350,7 @@ export class PtyPool {
 
       if (this.isDisposed || this.drainEpoch !== epoch) {
         dataDisposable.dispose();
-        try {
-          ptyProcess.kill();
-        } catch {
-          // already dead
-        }
+        destroyPty(ptyProcess);
         return;
       }
 
@@ -328,17 +409,29 @@ export class PtyPool {
     const { id, entry } = matched;
     this.pool.delete(id);
 
-    try {
-      const pid = entry.process.pid;
-      if (pid === undefined) {
-        console.warn(`[PtyPool] Pooled PTY ${id} has no PID (already dead), discarding`);
-        entry.dataDisposable.dispose();
-        this.warmForKey(cwd, entry.env, envHash);
-        return null;
+    // Liveness check. `alive` is set false by the onExit handler — it tracks
+    // actual process exit, unlike the prior `pid !== undefined` probe which
+    // was always truthy because pid persists on the IPty JS wrapper after the
+    // child has exited. The pid undefined branch is kept as a defensive check
+    // for a corrupted spawn handle that never received a pid; both paths fall
+    // through to discard + background warm.
+    let dead = !entry.alive;
+    if (!dead) {
+      try {
+        if (entry.process.pid === undefined) {
+          dead = true;
+        }
+      } catch (error) {
+        console.warn(`[PtyPool] Pooled PTY ${id} health check failed:`, error);
+        dead = true;
       }
-    } catch (error) {
-      console.warn(`[PtyPool] Pooled PTY ${id} health check failed:`, error);
+    }
+
+    if (dead) {
+      console.warn(`[PtyPool] Pooled PTY ${id} already dead, discarding`);
+      entry.alive = false;
       entry.dataDisposable.dispose();
+      destroyPty(entry.process);
       this.warmForKey(cwd, entry.env, envHash);
       return null;
     }
@@ -373,6 +466,7 @@ export class PtyPool {
     if (this.isDisposed) return;
 
     const key = makePoolKey(cwd, envHash);
+    if (this.isKeyBlocked(key)) return;
     if (this.warmsInFlight.has(key)) return;
     if (this.countEntriesForKey(cwd, envHash) >= this.poolSize) return;
 
@@ -388,6 +482,14 @@ export class PtyPool {
 
   refillPool(): void {
     if (this.isDisposed || this.refillInProgress) {
+      return;
+    }
+
+    // Circuit-break before claiming `refillInProgress` so a blocked key
+    // doesn't lock the flag for the cooldown window. The (defaultCwd,
+    // POOL_ENV_EMPTY_HASH) key is the only one refillPool ever warms; the
+    // arbitrary-key path is `warmForKey`, which has its own breaker check.
+    if (this.isKeyBlocked(makePoolKey(this.defaultCwd, POOL_ENV_EMPTY_HASH))) {
       return;
     }
 
@@ -468,18 +570,13 @@ export class PtyPool {
     this.pool.clear();
 
     for (const entry of snapshot) {
+      entry.alive = false;
       try {
         entry.dataDisposable.dispose();
       } catch {
         // ignore
       }
-      try {
-        entry.process.kill();
-      } catch (error) {
-        if (process.env.DAINTREE_VERBOSE) {
-          console.warn("[PtyPool] Error killing pooled PTY during drain:", error);
-        }
-      }
+      destroyPty(entry.process);
     }
 
     if (process.env.DAINTREE_VERBOSE) {
@@ -518,19 +615,26 @@ export class PtyPool {
 
     this.isDisposed = true;
 
-    for (const [id, entry] of this.pool) {
+    // Snapshot + clear BEFORE destroying so the destroyPty→kill→onExit chain
+    // sees an empty pool and skips re-processing the same entry (which would
+    // double-call destroy and dataDisposable.dispose for every entry).
+    const entries = Array.from(this.pool.entries());
+    this.pool.clear();
+
+    for (const [id, entry] of entries) {
+      entry.alive = false;
       try {
         entry.dataDisposable.dispose();
-        entry.process.kill();
-        if (process.env.DAINTREE_VERBOSE) {
-          console.log(`[PtyPool] Killed pooled PTY ${id}`);
-        }
       } catch (error) {
-        console.warn(`[PtyPool] Error killing pooled PTY ${id}:`, error);
+        console.warn(`[PtyPool] Error disposing pooled PTY ${id} data listener:`, error);
+      }
+      destroyPty(entry.process);
+      if (process.env.DAINTREE_VERBOSE) {
+        console.log(`[PtyPool] Killed pooled PTY ${id}`);
       }
     }
 
-    this.pool.clear();
+    this.keyFailures.clear();
     console.log("[PtyPool] Disposed");
   }
 
@@ -559,22 +663,64 @@ export class PtyPool {
     if (!chosen) return;
 
     this.pool.delete(chosen.id);
+    chosen.entry.alive = false;
     try {
       chosen.entry.dataDisposable.dispose();
     } catch {
       // ignore
     }
-    try {
-      chosen.entry.process.kill();
-    } catch {
-      // already dead
-    }
+    destroyPty(chosen.entry.process);
 
     if (process.env.DAINTREE_VERBOSE) {
       console.log(
         `[PtyPool] Evicted ${chosen.id} (key ${chosen.entry.poolKey}) to make room for ${incomingKey}`
       );
     }
+  }
+
+  /**
+   * Circuit-breaker check for the automatic refill paths. Returns true while
+   * `blockedUntil` is in the future. On expiry the entry is deleted so the
+   * count resets lazily — eager reset on a single non-fast exit would let a
+   * borderline-fast shell oscillate the breaker open/closed (lesson from
+   * the powerMonitor circuit breaker, #518).
+   *
+   * `acquireByKey` does NOT consult this — explicit user-triggered acquires
+   * must still get a fresh fall-through spawn. The breaker only gates the
+   * background `refillPool` / `warmForKey` paths that would otherwise burn
+   * FDs in a spawn-exit loop.
+   */
+  private isKeyBlocked(poolKey: string): boolean {
+    const state = this.keyFailures.get(poolKey);
+    if (!state) return false;
+    if (state.blockedUntil > Date.now()) return true;
+    if (state.blockedUntil > 0) {
+      // Cooldown expired — reset so the next fast-exit starts a fresh count.
+      this.keyFailures.delete(poolKey);
+    }
+    return false;
+  }
+
+  /**
+   * Record a pool entry exit. Counts toward the circuit breaker only if the
+   * entry lived <FAST_EXIT_THRESHOLD_MS — a normal long-lived idle exit
+   * (system going to sleep, user killing the shell after acquire, etc.)
+   * shouldn't accumulate failures.
+   */
+  private recordFastExit(poolKey: string, createdAt: number): void {
+    const lifetime = Date.now() - createdAt;
+    if (lifetime >= FAST_EXIT_THRESHOLD_MS) return;
+
+    const state = this.keyFailures.get(poolKey) ?? { count: 0, blockedUntil: 0 };
+    state.count += 1;
+    if (state.count >= MAX_KEY_FAILURES) {
+      state.blockedUntil = Date.now() + KEY_BACKOFF_MS;
+      console.warn(
+        `[PtyPool] Circuit breaker tripped for key ${poolKey} after ${state.count} fast exits — ` +
+          `pausing refill for ${KEY_BACKOFF_MS}ms`
+      );
+    }
+    this.keyFailures.set(poolKey, state);
   }
 
   /**

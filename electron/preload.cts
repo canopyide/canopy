@@ -15,6 +15,7 @@ import { isIpcEnvelope } from "../shared/types/ipc/errors.js";
 import { deserializeError } from "../shared/utils/ipcErrorSerialization.js";
 import type { AppErrorCode } from "../shared/types/appError.js";
 import type { McpRuntimeSnapshot } from "../shared/types/ipc/mcpServer.js";
+import type { PushProgressEvent } from "../shared/types/ipc/gitPush.js";
 import type { HelpAssistantTier } from "../shared/types/ipc/maps.js";
 import { CHANNELS } from "./ipc/channels.js";
 import { buildClipboardPreloadBindings } from "./ipc/handlers/clipboard.preload.js";
@@ -22,6 +23,12 @@ import { buildSlashCommandsPreloadBindings } from "./ipc/handlers/slashCommands.
 import { buildGlobalEnvPreloadBindings } from "./ipc/handlers/globalEnv.preload.js";
 import { buildAccessibilityPreloadBindings } from "./ipc/handlers/accessibility.preload.js";
 import { buildHelpPreloadBindings } from "./ipc/handlers/help.preload.js";
+import { buildEventInspectorPreloadBindings } from "./ipc/handlers/eventInspector.preload.js";
+import { buildCommandsPreloadBindings } from "./ipc/handlers/commands.preload.js";
+import { buildPortalPreloadBindings } from "./ipc/handlers/portal.preload.js";
+import { buildDevPreviewPreloadBindings } from "./ipc/handlers/devPreview.preload.js";
+import { buildPluginPreloadBindings } from "./ipc/handlers/plugin.preload.js";
+import { buildScratchPreloadBindings } from "./ipc/handlers/scratch/preload.js";
 
 import type {
   WorktreeState,
@@ -34,7 +41,6 @@ import type {
   LogEntry,
   LogFilterOptions,
   EventRecord,
-  EventFilterOptions,
   RetryAction,
   RetryProgressPayload,
   ErrorRecord,
@@ -77,12 +83,7 @@ import type {
   ArtifactDetectedPayload,
   SaveArtifactOptions,
   ApplyPatchOptions,
-  DevPreviewEnsureRequest,
-  DevPreviewSessionRequest,
-  DevPreviewStopByPanelRequest,
-  DevPreviewSessionState,
   DevPreviewStateChangedPayload,
-  DevPreviewGetByWorktreeRequest,
 } from "../shared/types/ipc.js";
 import type { TerminalActivityPayload } from "../shared/types/terminal.js";
 import type {
@@ -94,10 +95,7 @@ import type {
 } from "../shared/types/pty-host.js";
 
 type SpawnResultPayload = SpawnResult;
-import type {
-  PortalNewTabMenuAction,
-  PortalShowNewTabMenuPayload,
-} from "../shared/types/portal.js";
+import type { PortalNewTabMenuAction } from "../shared/types/portal.js";
 import type { ShowContextMenuPayload } from "../shared/types/menu.js";
 import type { ResourceProfilePayload } from "../shared/types/resourceProfile.js";
 import type { PluginActionDescriptor } from "../shared/types/plugin.js";
@@ -1114,6 +1112,8 @@ const api: ElectronAPI = {
 
     notifyFirstInteractive: () => _unwrappingInvoke(CHANNELS.APP_FIRST_INTERACTIVE),
 
+    notifyViewPainted: () => _unwrappingInvoke(CHANNELS.APP_VIEW_PAINTED),
+
     onMenuAction: (callback: (action: string) => void) => _typedOn(CHANNELS.MENU_ACTION, callback),
 
     reloadConfig: () => _unwrappingInvoke(CHANNELS.APP_RELOAD_CONFIG),
@@ -1188,12 +1188,7 @@ const api: ElectronAPI = {
 
   // Event Inspector API
   eventInspector: {
-    getEvents: () => _unwrappingInvoke(CHANNELS.EVENT_INSPECTOR_GET_EVENTS),
-
-    getFiltered: (filters: EventFilterOptions) =>
-      _unwrappingInvoke(CHANNELS.EVENT_INSPECTOR_GET_FILTERED, filters),
-
-    clear: () => _unwrappingInvoke(CHANNELS.EVENT_INSPECTOR_CLEAR),
+    ...buildEventInspectorPreloadBindings(_unwrappingInvoke),
 
     subscribe: () => ipcRenderer.send(CHANNELS.EVENT_INSPECTOR_SUBSCRIBE),
 
@@ -1230,6 +1225,9 @@ const api: ElectronAPI = {
       projectId: string,
       outgoingState?: import("../shared/types/ipc/project.js").ProjectSwitchOutgoingState
     ) => _unwrappingInvoke(CHANNELS.PROJECT_SWITCH, projectId, outgoingState),
+
+    prefetchHydrate: (projectId: string) =>
+      _unwrappingInvoke(CHANNELS.PROJECT_PREFETCH_HYDRATE, projectId),
 
     openDialog: () => _unwrappingInvoke(CHANNELS.PROJECT_OPEN_DIALOG),
 
@@ -1438,31 +1436,7 @@ const api: ElectronAPI = {
 
   // Scratch (one-off agent workspace) API
   scratch: {
-    getAll: (): Promise<import("../shared/types/scratch.js").Scratch[]> =>
-      _unwrappingInvoke(CHANNELS.SCRATCH_GET_ALL),
-
-    getCurrent: (): Promise<import("../shared/types/scratch.js").Scratch | null> =>
-      _unwrappingInvoke(CHANNELS.SCRATCH_GET_CURRENT),
-
-    create: (name?: string): Promise<import("../shared/types/scratch.js").Scratch> =>
-      _unwrappingInvoke(CHANNELS.SCRATCH_CREATE, name),
-
-    update: (
-      scratchId: string,
-      updates: { name?: string; lastOpened?: number }
-    ): Promise<import("../shared/types/scratch.js").Scratch> =>
-      _unwrappingInvoke(CHANNELS.SCRATCH_UPDATE, scratchId, updates),
-
-    remove: (scratchId: string): Promise<void> =>
-      _unwrappingInvoke(CHANNELS.SCRATCH_REMOVE, scratchId),
-
-    switch: (scratchId: string): Promise<import("../shared/types/scratch.js").Scratch> =>
-      _unwrappingInvoke(CHANNELS.SCRATCH_SWITCH, scratchId),
-
-    saveAsProject: (
-      scratchId: string
-    ): Promise<import("../shared/types/ipc/scratch.js").ScratchSaveAsProjectResult> =>
-      _unwrappingInvoke(CHANNELS.SCRATCH_SAVE_AS_PROJECT, scratchId),
+    ...buildScratchPreloadBindings(_unwrappingInvoke),
 
     onUpdated: (callback: (scratch: import("../shared/types/scratch.js").Scratch) => void) =>
       _typedOn(CHANNELS.SCRATCH_UPDATED, callback),
@@ -1502,6 +1476,9 @@ const api: ElectronAPI = {
       _unwrappingInvoke(CHANNELS.AGENT_SETTINGS_SET, { agentType: agentId, settings }),
 
     reset: (agentType?: string) => _unwrappingInvoke(CHANNELS.AGENT_SETTINGS_RESET, agentType),
+
+    stampVersion: (version: number) =>
+      _unwrappingInvoke(CHANNELS.AGENT_SETTINGS_STAMP_VERSION, version),
   },
 
   userAgentRegistry: {
@@ -1592,6 +1569,9 @@ const api: ElectronAPI = {
     getPRByNumber: (cwd: string, prNumber: number) =>
       _unwrappingInvoke(CHANNELS.GITHUB_GET_PR_BY_NUMBER, { cwd, prNumber }),
 
+    getPRReviewThreads: (cwd: string, prNumber: number) =>
+      _unwrappingInvoke(CHANNELS.GITHUB_GET_PR_REVIEW_THREADS, { cwd, prNumber }),
+
     listRemotes: (cwd: string) => _unwrappingInvoke(CHANNELS.GITHUB_LIST_REMOTES, cwd),
 
     onPRDetected: (callback: (data: PRDetectedPayload) => void) =>
@@ -1631,28 +1611,7 @@ const api: ElectronAPI = {
 
   // Dev Preview API
   devPreview: {
-    ensure: (request: DevPreviewEnsureRequest): Promise<DevPreviewSessionState> =>
-      _unwrappingInvoke(CHANNELS.DEV_PREVIEW_ENSURE, request) as Promise<DevPreviewSessionState>,
-
-    restart: (request: DevPreviewSessionRequest): Promise<DevPreviewSessionState> =>
-      _unwrappingInvoke(CHANNELS.DEV_PREVIEW_RESTART, request) as Promise<DevPreviewSessionState>,
-
-    stop: (request: DevPreviewSessionRequest): Promise<DevPreviewSessionState> =>
-      _unwrappingInvoke(CHANNELS.DEV_PREVIEW_STOP, request) as Promise<DevPreviewSessionState>,
-
-    stopByPanel: (request: DevPreviewStopByPanelRequest): Promise<void> =>
-      _unwrappingInvoke(CHANNELS.DEV_PREVIEW_STOP_BY_PANEL, request) as Promise<void>,
-
-    getState: (request: DevPreviewSessionRequest): Promise<DevPreviewSessionState> =>
-      _unwrappingInvoke(CHANNELS.DEV_PREVIEW_GET_STATE, request) as Promise<DevPreviewSessionState>,
-
-    getByWorktree: (
-      request: DevPreviewGetByWorktreeRequest
-    ): Promise<DevPreviewSessionState | null> =>
-      _unwrappingInvoke(
-        CHANNELS.DEV_PREVIEW_GET_BY_WORKTREE,
-        request
-      ) as Promise<DevPreviewSessionState | null>,
+    ...buildDevPreviewPreloadBindings(_unwrappingInvoke),
 
     onStateChanged: (callback: (payload: DevPreviewStateChangedPayload) => void) =>
       _typedOn(CHANNELS.DEV_PREVIEW_STATE_CHANGED, callback),
@@ -1685,6 +1644,12 @@ const api: ElectronAPI = {
     unstageFile: (cwd: string, filePath: string) =>
       _unwrappingInvoke(CHANNELS.GIT_UNSTAGE_FILE, { cwd, filePath }),
 
+    stageFiles: (cwd: string, filePaths: string[]) =>
+      _unwrappingInvoke(CHANNELS.GIT_STAGE_FILES, { cwd, filePaths }),
+
+    unstageFiles: (cwd: string, filePaths: string[]) =>
+      _unwrappingInvoke(CHANNELS.GIT_UNSTAGE_FILES, { cwd, filePaths }),
+
     stageAll: (cwd: string) => _unwrappingInvoke(CHANNELS.GIT_STAGE_ALL, cwd),
 
     unstageAll: (cwd: string) => _unwrappingInvoke(CHANNELS.GIT_UNSTAGE_ALL, cwd),
@@ -1695,6 +1660,17 @@ const api: ElectronAPI = {
     push: (cwd: string, setUpstream?: boolean) =>
       _unwrappingInvoke(CHANNELS.GIT_PUSH, { cwd, setUpstream }),
 
+    pullRebase: (cwd: string) => _unwrappingInvoke(CHANNELS.GIT_PULL_REBASE, { cwd }),
+
+    forcePushWithLease: (cwd: string, branchName: string, leaseSha: string) =>
+      _unwrappingInvoke(CHANNELS.GIT_FORCE_PUSH_WITH_LEASE, { cwd, branchName, leaseSha }),
+
+    listRemoteCommits: (cwd: string, branchName: string, limit?: number) =>
+      _unwrappingInvoke(CHANNELS.GIT_LIST_REMOTE_COMMITS, { cwd, branchName, limit }),
+
+    onPushProgress: (callback: (event: PushProgressEvent) => void) =>
+      _typedOn(CHANNELS.GIT_PUSH_PROGRESS, callback),
+
     getStagingStatus: (cwd: string) => _unwrappingInvoke(CHANNELS.GIT_GET_STAGING_STATUS, cwd),
 
     abortRepositoryOperation: (cwd: string) =>
@@ -1702,6 +1678,12 @@ const api: ElectronAPI = {
 
     continueRepositoryOperation: (cwd: string) =>
       _unwrappingInvoke(CHANNELS.GIT_CONTINUE_REPOSITORY_OPERATION, cwd),
+
+    scanConflictMarkers: (cwd: string, filePaths: string[]) =>
+      _unwrappingInvoke(CHANNELS.GIT_SCAN_CONFLICT_MARKERS, { cwd, filePaths }),
+
+    checkoutOursTheirs: (cwd: string, filePath: string, side: "ours" | "theirs") =>
+      _unwrappingInvoke(CHANNELS.GIT_CHECKOUT_OURS_THEIRS, { cwd, filePath, side }),
 
     compareWorktrees: (
       cwd: string,
@@ -1795,32 +1777,7 @@ const api: ElectronAPI = {
 
   // Portal API
   portal: {
-    create: (payload: { tabId: string; url: string }) =>
-      _unwrappingInvoke(CHANNELS.PORTAL_CREATE, payload),
-
-    show: (payload: {
-      tabId: string;
-      bounds: { x: number; y: number; width: number; height: number };
-    }) => _unwrappingInvoke(CHANNELS.PORTAL_SHOW, payload),
-
-    hide: () => _unwrappingInvoke(CHANNELS.PORTAL_HIDE),
-
-    resize: (bounds: { x: number; y: number; width: number; height: number }) =>
-      _unwrappingInvoke(CHANNELS.PORTAL_RESIZE, bounds),
-
-    closeTab: (payload: { tabId: string }) => _unwrappingInvoke(CHANNELS.PORTAL_CLOSE_TAB, payload),
-
-    navigate: (payload: { tabId: string; url: string }) =>
-      _unwrappingInvoke(CHANNELS.PORTAL_NAVIGATE, payload),
-
-    goBack: (tabId: string) => _unwrappingInvoke(CHANNELS.PORTAL_GO_BACK, tabId),
-
-    goForward: (tabId: string) => _unwrappingInvoke(CHANNELS.PORTAL_GO_FORWARD, tabId),
-
-    reload: (tabId: string) => _unwrappingInvoke(CHANNELS.PORTAL_RELOAD, tabId),
-
-    showNewTabMenu: (payload: PortalShowNewTabMenuPayload) =>
-      _unwrappingInvoke(CHANNELS.PORTAL_SHOW_NEW_TAB_MENU, payload),
+    ...buildPortalPreloadBindings(_unwrappingInvoke),
 
     onNavEvent: (callback: (data: { tabId: string; title: string; url: string }) => void) =>
       _typedOn(CHANNELS.PORTAL_NAV_EVENT, callback),
@@ -2139,40 +2096,7 @@ const api: ElectronAPI = {
   },
 
   // Commands API
-  commands: {
-    list: (context?: {
-      terminalId?: string;
-      worktreeId?: string;
-      projectId?: string;
-      cwd?: string;
-      agentId?: string;
-    }) => _unwrappingInvoke(CHANNELS.COMMANDS_LIST, context),
-
-    get: (payload: {
-      commandId: string;
-      context?: {
-        terminalId?: string;
-        worktreeId?: string;
-        projectId?: string;
-        cwd?: string;
-        agentId?: string;
-      };
-    }) => _unwrappingInvoke(CHANNELS.COMMANDS_GET, payload),
-
-    execute: (payload: {
-      commandId: string;
-      context: {
-        terminalId?: string;
-        worktreeId?: string;
-        projectId?: string;
-        cwd?: string;
-        agentId?: string;
-      };
-      args?: Record<string, unknown>;
-    }) => _unwrappingInvoke(CHANNELS.COMMANDS_EXECUTE, payload),
-
-    getBuilder: (commandId: string) => _unwrappingInvoke(CHANNELS.COMMANDS_GET_BUILDER, commandId),
-  },
+  commands: buildCommandsPreloadBindings(_unwrappingInvoke),
 
   // App Agent API - Configuration and API key management
   appAgent: {
@@ -2395,11 +2319,10 @@ const api: ElectronAPI = {
     setSettings: (
       patch: Partial<{
         enabled: boolean;
-        deepgramApiKey: string;
-        correctionApiKey: string;
+        openaiApiKey: string;
         language: string;
         customDictionary: string[];
-        transcriptionModel: "nova-3" | "nova-2";
+        transcriptionModel: "gpt-realtime-whisper";
         correctionEnabled: boolean;
         correctionModel: "gpt-5-nano" | "gpt-5-mini";
         correctionCustomInstructions: string;
@@ -2417,14 +2340,8 @@ const api: ElectronAPI = {
     onTranscriptionComplete: (
       callback: (payload: { text: string; willCorrect: boolean }) => void
     ) => _typedOn(CHANNELS.VOICE_INPUT_TRANSCRIPTION_COMPLETE, callback),
-    onCorrectionQueued: (callback: (payload: { correctionId: string; rawText: string }) => void) =>
-      _typedOn(CHANNELS.VOICE_INPUT_CORRECTION_QUEUED, callback),
-    onCorrectionReplace: (
-      callback: (payload: { correctionId: string; correctedText: string }) => void
-    ) => _typedOn(CHANNELS.VOICE_INPUT_CORRECTION_REPLACE, callback),
-    onParagraphBoundary: (
-      callback: (payload: { rawText: string | null; correctionId: string | null }) => void
-    ) => _typedOn(CHANNELS.VOICE_INPUT_PARAGRAPH_BOUNDARY, callback),
+    onParagraphBoundary: (callback: (payload: { rawText: string | null }) => void) =>
+      _typedOn(CHANNELS.VOICE_INPUT_PARAGRAPH_BOUNDARY, callback),
     onError: (callback: (error: string) => void) => _typedOn(CHANNELS.VOICE_INPUT_ERROR, callback),
     onStatus: (callback: (status: VoiceInputStatus) => void) =>
       _typedOn(CHANNELS.VOICE_INPUT_STATUS, callback),
@@ -2433,8 +2350,6 @@ const api: ElectronAPI = {
     openMicSettings: () => _unwrappingInvoke(CHANNELS.VOICE_INPUT_OPEN_MIC_SETTINGS),
     validateApiKey: (apiKey: string) =>
       _unwrappingInvoke(CHANNELS.VOICE_INPUT_VALIDATE_API_KEY, apiKey),
-    validateCorrectionApiKey: (apiKey: string) =>
-      _unwrappingInvoke(CHANNELS.VOICE_INPUT_VALIDATE_CORRECTION_API_KEY, apiKey),
     onFileTokenResolved: (
       callback: (payload: { description: string; replacement: string; resolved: boolean }) => void
     ) => _typedOn(CHANNELS.VOICE_INPUT_FILE_TOKEN_RESOLVED, callback),
@@ -2520,8 +2435,10 @@ const api: ElectronAPI = {
   },
 
   plugin: {
-    list: () => _unwrappingInvoke(CHANNELS.PLUGIN_LIST),
+    ...buildPluginPreloadBindings(_unwrappingInvoke),
 
+    // plugin:invoke uses raw ipcMain.handle with variadic args — its signature
+    // can't be expressed through IpcInvokeMap, so it stays inline.
     invoke: (pluginId: string, channel: string, ...args: unknown[]) =>
       _unwrappingInvoke(CHANNELS.PLUGIN_INVOKE, pluginId, channel, ...args),
 
@@ -2534,19 +2451,8 @@ const api: ElectronAPI = {
       };
     },
 
-    toolbarButtons: () => _unwrappingInvoke(CHANNELS.PLUGIN_TOOLBAR_BUTTONS),
-    menuItems: () => _unwrappingInvoke(CHANNELS.PLUGIN_MENU_ITEMS),
-    validateActionIds: (actionIds: string[]) =>
-      _unwrappingInvoke(CHANNELS.PLUGIN_VALIDATE_ACTION_IDS, actionIds),
-
-    getActions: () => _unwrappingInvoke(CHANNELS.PLUGIN_ACTIONS_GET),
-    registerAction: (pluginId: string, contribution: unknown) =>
-      _unwrappingInvoke(CHANNELS.PLUGIN_ACTIONS_REGISTER, pluginId, contribution),
-    unregisterAction: (pluginId: string, actionId: string) =>
-      _unwrappingInvoke(CHANNELS.PLUGIN_ACTIONS_UNREGISTER, pluginId, actionId),
     onActionsChanged: (callback: (payload: { actions: PluginActionDescriptor[] }) => void) =>
       _eventBusOn("plugin:actions-changed", callback),
-    getPanelKinds: () => _unwrappingInvoke(CHANNELS.PLUGIN_PANEL_KINDS_GET),
     onPanelKindsChanged: (callback: (payload: { kinds: PanelKindConfig[] }) => void) =>
       _eventBusOn("plugin:panel-kinds-changed", callback),
   },
@@ -2576,6 +2482,11 @@ const api: ElectronAPI = {
     }) => ipcRenderer.send(CHANNELS.PERF_FLUSH_RENDERER_MARKS, payload),
   },
 
+  // Demo API — channel constants live in `./ipc/handlers/demo.preload.ts` and
+  // back the main-side `defineIpcNamespace`, but the renderer-facing shape
+  // takes positional args (moveTo(x, y, durationMs)) while channels carry a
+  // single payload object. The translation stays inline so window.electron.demo
+  // matches its declared `ElectronAPI.demo` signature.
   ...(isDemoMode
     ? {
         demo: {

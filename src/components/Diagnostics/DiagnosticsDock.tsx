@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, useEffect, memo } from "react";
+import { useCallback, useRef, useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -34,13 +34,7 @@ interface TabButtonProps {
   badge?: number;
 }
 
-const TabButton = memo(function TabButton({
-  tab,
-  label,
-  isActive,
-  onClick,
-  badge,
-}: TabButtonProps) {
+function TabButton({ tab, label, isActive, onClick, badge }: TabButtonProps) {
   return (
     <button
       id={`diagnostics-${tab}-tab`}
@@ -66,7 +60,7 @@ const TabButton = memo(function TabButton({
       {isActive && <div className="absolute bottom-0 left-0 right-0 h-px bg-daintree-accent/70" />}
     </button>
   );
-});
+}
 
 interface DiagnosticsDockProps {
   onRetry?: (id: string, action: RetryAction, args?: Record<string, unknown>) => void;

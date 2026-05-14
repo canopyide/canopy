@@ -57,6 +57,25 @@ GitHub's release UI already renders the version and date as the page header, so 
 
 The `/release` command produces the GitHub release body from the `CHANGELOG.md` section by stripping the `## [X.Y.Z] - YYYY-MM-DD` line. Everything else (summary, sections, entries) is identical between the two surfaces.
 
+## Dry Runs
+
+Before tagging a real release, run the workflow in dry-run mode to validate the full pipeline against the current `develop` head. The `/release` command prompts for this between preflight and the changelog work — it's the recommended way to avoid the "tag → CI fails → re-tag" loop.
+
+```bash
+gh workflow run release.yml --ref develop -f dry_run=true
+```
+
+A dry run executes every gate and build job — checks, unit tests, every E2E bucket (`core` and `online` on macOS + Linux + Windows; the six `full-*` buckets on macOS + Linux only), and the full `build-daintree` matrix (macOS sign + notarize, Linux, Windows including Store package + WACK) — but **skips** the side effects that matter for an actual release:
+
+- No R2 upload (binaries or metadata)
+- No Microsoft Store submission (`Submit to Microsoft Store` is gated by `inputs.dry_run != true`)
+- No website refresh webhook
+- `publish-daintree` doesn't run at all (its `if:` requires both a `v*` tag ref and `dry_run != true`)
+
+macOS signing and notarization still execute — that's intentional, because Apple notarization is one of the most common reasons a tag-triggered release fails late. The stapler validation step runs against the resulting `.app` bundles.
+
+A dry run typically takes **30–40 minutes** end-to-end. Watch it with `gh run watch <RUN_ID> --exit-status`. If it goes green, you can tag with high confidence the real release will succeed; if it fails, fix on `develop` and re-run before doing any of the changelog / version-bump work.
+
 ## macOS Code Signing
 
 macOS builds are signed with a Developer ID Application certificate. The signing identity and certificate are stored as GitHub secrets.

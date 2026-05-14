@@ -261,6 +261,40 @@ describe("round-trip serialization", () => {
     });
   });
 
+  it("round-trips GitOperationError leaseSha + branchName divergence-recovery fields", () => {
+    // The divergence-recovery flow (#7796) attaches `leaseSha` and `branchName`
+    // to a `push-rejected-outdated` GitOperationError so the renderer can drive
+    // `--force-with-lease=<branch>:<sha>` without re-querying git at click time.
+    // Both fields are promoted to top-level slots on `SerializedError` so they
+    // survive the packaged-build strip in `electron/setup/security.ts`.
+    const sha = "deadbeefcafe1234567890deadbeefcafe123456";
+    const original = Object.assign(
+      new Error("! [rejected] feature/x -> feature/x (non-fast-forward)"),
+      {
+        name: "GitOperationError",
+        reason: "push-rejected-outdated",
+        op: "push",
+        leaseSha: sha,
+        branchName: "feature/x",
+      }
+    );
+
+    const serialized = serializeError(original);
+    expect(serialized.leaseSha).toBe(sha);
+    expect(serialized.branchName).toBe("feature/x");
+
+    const cloned = structuredClone(serialized);
+    const restored = deserializeError(cloned) as Error & {
+      leaseSha?: string;
+      branchName?: string;
+      gitReason?: string;
+    };
+
+    expect(restored.gitReason).toBe("push-rejected-outdated");
+    expect(restored.leaseSha).toBe(sha);
+    expect(restored.branchName).toBe("feature/x");
+  });
+
   it("round-trips an AppError code + userMessage via serialize -> structuredClone -> deserialize", () => {
     const original = Object.assign(new Error("Binary file"), {
       name: "AppError",

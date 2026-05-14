@@ -125,6 +125,28 @@ describe("createWorktreeStore — applySnapshot identity preservation", () => {
     expect(store.getState().worktrees.size).toBe(2);
   });
 
+  it("rebuilds when only prCiStatus changes (CI flip should trigger re-render)", () => {
+    const store = createWorktreeStore();
+
+    const initial = makeSnapshot("wt-1");
+    (initial as { prCiStatus?: string }).prCiStatus = "PENDING";
+
+    const v1 = store.getState().nextVersion();
+    store.getState().applySnapshot([initial], v1);
+    const firstMap = store.getState().worktrees;
+
+    const updated = makeSnapshot("wt-1");
+    (updated as { prCiStatus?: string }).prCiStatus = "SUCCESS";
+
+    const v2 = store.getState().nextVersion();
+    store.getState().applySnapshot([updated], v2);
+
+    // snapshotsEqual must include prCiStatus so the Map is rebuilt and
+    // selectors using useShallow re-render with the new CI state.
+    expect(store.getState().worktrees).not.toBe(firstMap);
+    expect(store.getState().worktrees.get("wt-1")?.prCiStatus).toBe("SUCCESS");
+  });
+
   it("rebuilds when an id is replaced (same size, different keys)", () => {
     const store = createWorktreeStore();
 
