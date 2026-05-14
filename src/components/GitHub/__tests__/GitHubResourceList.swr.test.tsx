@@ -7,6 +7,7 @@ import React, { Activity, type ReactNode } from "react";
 import type { GitHubIssue, GitHubListResponse, GitHubListOptions } from "@shared/types/github";
 import { setCache, buildCacheKey, _resetForTests } from "@/lib/githubResourceCache";
 import { useGitHubFilterStore } from "@/store/githubFilterStore";
+import { useIssueSelectionStore } from "@/store/issueSelectionStore";
 
 const mockListIssues = vi.fn();
 const mockListPRs = vi.fn();
@@ -197,6 +198,7 @@ beforeEach(() => {
   dispatchMock.mockReset();
   initializeMock.mockClear();
   mockSelectionClear.mockReset();
+  useIssueSelectionStore.setState({ selections: new Map() });
   mockIsSelectionActive = false;
   mockGitHubConfig = { hasToken: true };
   mockGitHubConfigInitialized = true;
@@ -1941,18 +1943,24 @@ describe("GitHubResourceList dismissal preserves bulk selection", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("clears selection when projectPath changes (project switch)", () => {
-    // The toolbar keeps one GitHubResourceList per type mounted across every
-    // project, so a project switch only updates projectPath without remounting.
-    // Without an explicit reset, project A's selection + cached items would
-    // leak into project B's dropdown.
+  it("clears the outgoing project's keyed selection on projectPath change", () => {
+    // Bulk selection is keyed by `${type}:${projectPath}` in useIssueSelectionStore
+    // so it survives the toolbar's lazy/direct remount. On a real project switch
+    // the component must still clear the project it's leaving, otherwise a stale
+    // selection outlives the issue cache reset and the bulk bar shows a count
+    // with no backing objects.
     mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+    useIssueSelectionStore.getState().selectAll("issue:/test/proj-a", [1, 2, 3]);
 
     const { rerender } = render(<GitHubResourceList type="issue" projectPath="/test/proj-a" />);
-    expect(mockSelectionClear).not.toHaveBeenCalled();
+    expect(
+      useIssueSelectionStore.getState().selections.get("issue:/test/proj-a")?.selectedIds.size
+    ).toBe(3);
 
     rerender(<GitHubResourceList type="issue" projectPath="/test/proj-b" />);
 
-    expect(mockSelectionClear).toHaveBeenCalledTimes(1);
+    expect(
+      useIssueSelectionStore.getState().selections.get("issue:/test/proj-a")?.selectedIds.size ?? 0
+    ).toBe(0);
   });
 });
