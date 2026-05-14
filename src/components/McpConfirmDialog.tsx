@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useMcpConfirmStore } from "@/store/mcpConfirmStore";
 
 /**
@@ -37,33 +38,45 @@ export function McpConfirmDialog() {
 
   if (current === null) {
     return (
-      <ConfirmDialog
-        isOpen={false}
-        title=""
-        confirmLabel="Run action"
-        onConfirm={() => {}}
-        variant="destructive"
-      />
+      <ErrorBoundary
+        variant="component"
+        componentName="McpConfirmDialog"
+        resetKeys={[Number(current != null)]}
+      >
+        <ConfirmDialog
+          isOpen={false}
+          title=""
+          confirmLabel="Run action"
+          onConfirm={() => {}}
+          variant="destructive"
+        />
+      </ErrorBoundary>
     );
   }
 
   return (
-    <ConfirmDialog
-      isOpen={true}
-      onClose={() => resolveCurrent("rejected")}
-      title={`Run '${current.actionTitle}'?`}
-      description={current.actionDescription}
-      confirmLabel="Run action"
-      cancelLabel="Cancel"
-      onConfirm={() => resolveCurrent("approved")}
-      variant="destructive"
+    <ErrorBoundary
+      variant="component"
+      componentName="McpConfirmDialog"
+      resetKeys={[Number(current != null)]}
     >
-      <div className="space-y-2">
-        <div className="text-xs text-daintree-text/60 uppercase tracking-wide">Arguments</div>
-        <pre className="text-xs font-mono whitespace-pre-wrap break-words bg-overlay-subtle rounded px-2 py-1.5 text-daintree-text/80">
-          {current.argsSummary || "(none)"}
-        </pre>
-      </div>
-    </ConfirmDialog>
+      <ConfirmDialog
+        isOpen={true}
+        onClose={() => resolveCurrent("rejected")}
+        title={`Run '${current.actionTitle}'?`}
+        description={current.actionDescription}
+        confirmLabel="Run action"
+        cancelLabel="Cancel"
+        onConfirm={() => resolveCurrent("approved")}
+        variant="destructive"
+      >
+        <div className="space-y-2">
+          <div className="text-xs text-daintree-text/60 uppercase tracking-wide">Arguments</div>
+          <pre className="text-xs font-mono whitespace-pre-wrap break-words bg-overlay-subtle rounded px-2 py-1.5 text-daintree-text/80">
+            {current.argsSummary || "(none)"}
+          </pre>
+        </div>
+      </ConfirmDialog>
+    </ErrorBoundary>
   );
 }

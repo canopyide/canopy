@@ -50,12 +50,12 @@ describe("WorktreeCardErrorFallback", () => {
     expect(screen.queryByText("Card broke")).toBeNull();
   });
 
-  it("calls resetError when retry is clicked", () => {
+  it("calls resetError when Try again is clicked", () => {
     const resetError = vi.fn();
     render(
       wrap(<WorktreeCardErrorFallback error={new Error("Card broke")} resetError={resetError} />)
     );
-    fireEvent.click(screen.getByText("Retry"));
+    fireEvent.click(screen.getByText("Try again"));
     expect(resetError).toHaveBeenCalledOnce();
   });
 
@@ -82,7 +82,7 @@ describe("WorktreeCardErrorFallback", () => {
     );
 
     expect(screen.getByText("Card render failed")).toBeTruthy();
-    expect(screen.getByText("Retry")).toBeTruthy();
+    expect(screen.getByText("Try again")).toBeTruthy();
     // Should NOT show the default ErrorFallback component variant
     expect(screen.queryByText("WorktreeCard Error")).toBeNull();
   });
