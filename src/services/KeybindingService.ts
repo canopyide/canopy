@@ -15,16 +15,37 @@ function scopesConflict(a: KeyScope, b: KeyScope): boolean {
   return a === b || a === "global" || b === "global";
 }
 
-function combosFieldsEqual(a: string, b: string): boolean {
+function singleComboFieldsEqual(a: string, b: string, mac: boolean): boolean {
   const pa = parseCombo(a);
   const pb = parseCombo(b);
+  // On non-Mac, Cmd and Ctrl bindings both fire on the physical Ctrl key, so
+  // "Cmd+Shift+E" and "Ctrl+Shift+E" must compare equal for conflict detection
+  // and registration guards. On Mac the keys are physically distinct — keep
+  // them separate. (#7941)
+  const aCmd = mac ? pa.cmd : pa.cmd || pa.ctrl;
+  const bCmd = mac ? pb.cmd : pb.cmd || pb.ctrl;
+  const aCtrl = mac ? pa.ctrl : false;
+  const bCtrl = mac ? pb.ctrl : false;
   return (
-    pa.cmd === pb.cmd &&
-    pa.ctrl === pb.ctrl &&
+    aCmd === bCmd &&
+    aCtrl === bCtrl &&
     pa.shift === pb.shift &&
     pa.alt === pb.alt &&
     pa.key.toLowerCase() === pb.key.toLowerCase()
   );
+}
+
+// Compare two combo strings field-by-field with platform-aware Cmd/Ctrl folding.
+// Handles both single combos ("Cmd+Shift+E") and chord sequences ("Cmd+K Cmd+W")
+// by splitting on whitespace and comparing each segment individually.
+function combosFieldsEqual(a: string, b: string, mac = isMac()): boolean {
+  const segmentsA = a.trim().split(/\s+/);
+  const segmentsB = b.trim().split(/\s+/);
+  if (segmentsA.length !== segmentsB.length) return false;
+  for (let i = 0; i < segmentsA.length; i++) {
+    if (!singleComboFieldsEqual(segmentsA[i]!, segmentsB[i]!, mac)) return false;
+  }
+  return true;
 }
 
 class KeybindingService {
@@ -129,9 +150,9 @@ class KeybindingService {
     scope: KeyScope = "global"
   ): KeybindingConflict[] {
     const conflicts: KeybindingConflict[] = [];
-    const normalizedCombo = combo.trim().toLowerCase();
-    if (!normalizedCombo) return conflicts;
-    const candidateParts = normalizedCombo.split(" ");
+    const trimmedCombo = combo.trim();
+    if (!trimmedCombo) return conflicts;
+    const candidateParts = trimmedCombo.split(" ");
 
     for (const arr of this.bindings.values()) {
       for (const binding of arr) {
@@ -144,21 +165,24 @@ class KeybindingService {
 
         let matched: "conflict" | "shadowed" | null = null;
         for (const existingCombo of effectiveCombos) {
-          const normalizedExisting = existingCombo.trim().toLowerCase();
-          if (!normalizedExisting) continue;
+          const trimmedExisting = existingCombo.trim();
+          if (!trimmedExisting) continue;
 
-          if (normalizedExisting === normalizedCombo) {
+          const existingParts = trimmedExisting.split(" ");
+          if (
+            existingParts.length === candidateParts.length &&
+            existingParts.every((p, i) => combosFieldsEqual(p, candidateParts[i]!))
+          ) {
             matched = "conflict";
             break;
           }
 
-          const existingParts = normalizedExisting.split(" ");
           const candidateIsPrefix =
             candidateParts.length < existingParts.length &&
-            candidateParts.every((p, i) => p === existingParts[i]);
+            candidateParts.every((p, i) => combosFieldsEqual(p, existingParts[i]!));
           const existingIsPrefix =
             existingParts.length < candidateParts.length &&
-            existingParts.every((p, i) => p === candidateParts[i]);
+            existingParts.every((p, i) => combosFieldsEqual(p, candidateParts[i]!));
           if (candidateIsPrefix || existingIsPrefix) {
             matched = "shadowed";
             // Don't break: a later combo on the same binding might be an exact
@@ -244,6 +268,12 @@ class KeybindingService {
     // On Windows/Linux, Ctrl is the primary modifier
     const mac = isMac();
     const hasCmd = mac ? event.metaKey : event.ctrlKey;
+
+    // AltGr on Windows synthesizes ctrlKey+altKey on the keyboard event. Reject
+    // the match early so international character input (€, @, {, etc.) is never
+    // swallowed by a Cmd/Ctrl+Alt binding that happens to share the produced
+    // character or the underlying physical key. (#7941)
+    if (!mac && event.getModifierState?.("AltGraph")) return false;
 
     // Check modifiers
     if (parsed.cmd && !hasCmd) return false;
@@ -424,12 +454,11 @@ class KeybindingService {
 
   registerBinding(config: KeybindingConfig): void {
     if (config.combo) {
-      const normalized = config.combo.trim().toLowerCase();
       for (const arr of this.bindings.values()) {
         for (const existing of arr) {
           if (existing.actionId === config.actionId) continue;
           if (!existing.combo) continue;
-          if (existing.combo.trim().toLowerCase() !== normalized) continue;
+          if (!combosFieldsEqual(existing.combo, config.combo)) continue;
           if (!scopesConflict(existing.scope, config.scope)) continue;
           console.warn(
             `[KeybindingService] Skipping binding for "${config.actionId}" (${config.combo}, scope=${config.scope}) — combo already registered to "${existing.actionId}" (scope=${existing.scope}). Use setOverride() to rebind.`
