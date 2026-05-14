@@ -1,11 +1,11 @@
 ---
-name: fix-release-nightly
-description: Fix Daintree release dry-run or nightly GitHub Actions failures end-to-end. Use when the user asks Codex to repair `.github/workflows/release.yml` dry runs, `.github/workflows/nightly.yml`, release-gating E2E failures, nightly memory-leak failures, CI packaging/signing/update-metadata failures, or to repeatedly run the failing workflow until it passes on a dedicated branch and then squash/merge the fix back to `develop`.
+name: fix-workflow
+description: Fix Daintree GitHub Actions workflows until the selected workflow passes. Use when the user asks Codex to repair `.github/workflows/release.yml` dry runs, `.github/workflows/nightly.yml`, release-gating E2E failures, nightly memory-leak failures, CI packaging/signing/update-metadata failures, or to repeatedly run a failing workflow until it passes on a dedicated branch and then squash/merge the fix back to `develop`.
 ---
 
-# Fix Release/Nightly
+# Fix Workflow
 
-Drive Daintree release dry-run and nightly failures to green. Treat this as a durable, multi-hour repair loop: work from the actual workflow logs, reproduce the narrow failure first, fix either the app or the test, rerun the failing surface, then rerun the full workflow. Continue through every newly exposed failure until the selected full workflow passes.
+Drive Daintree release dry-run and nightly workflows to green. Treat this as a durable, multi-hour repair loop: work from the actual workflow logs, reproduce the narrow failure first, fix either the app, the test, or the workflow, rerun the failing surface, then rerun the full workflow. Continue through every newly exposed failure until the selected full workflow passes.
 
 ## Core Rules
 
@@ -29,7 +29,7 @@ rg -n "tmp|temp|\\.tmp|temporary" .gitignore AGENTS.md CLAUDE.md docs scripts
 find . -maxdepth 2 -type d \( -name tmp -o -name .tmp -o -name temp \)
 ```
 
-In this repo, `.gitignore` ignores both `tmp/` and `.tmp`, and `.tmp` is already used for working notes and CI logs. Prefer `.tmp/fix-release-nightly-<branch-or-run-id>.md` when a note is necessary. Do not commit the note.
+In this repo, `.gitignore` ignores both `tmp/` and `.tmp`, and `.tmp` is already used for working notes and CI logs. Prefer `.tmp/fix-workflow-<branch-or-run-id>.md` when a note is necessary. Do not commit the note.
 
 Track:
 
