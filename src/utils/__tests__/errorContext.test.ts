@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { classifyError, isTransientError, getErrorMessage } from "../errorContext";
+import {
+  classifyError,
+  getErrorMessage,
+  getRetryabilityFromError,
+  isTransientError,
+} from "../errorContext";
 
 /** Helper: create an error-like object with structured properties */
 function makeError(
@@ -218,6 +223,25 @@ describe("isTransientError", () => {
     it("returns false for string errors without transient keywords", () => {
       expect(isTransientError("permanent failure")).toBe(false);
     });
+  });
+});
+
+describe("getRetryabilityFromError", () => {
+  it("returns 'auto' for transient errno codes", () => {
+    expect(getRetryabilityFromError(makeError("busy", { code: "EBUSY" }))).toBe("auto");
+    expect(getRetryabilityFromError(makeError("dns", { code: "ENOTFOUND" }))).toBe("auto");
+  });
+
+  it("returns 'auto' for transient-keyword messages (timeout, 429, 503)", () => {
+    expect(getRetryabilityFromError(new Error("connection timeout"))).toBe("auto");
+    expect(getRetryabilityFromError(new Error("HTTP 429 rate limited"))).toBe("auto");
+    expect(getRetryabilityFromError(new Error("upstream 503"))).toBe("auto");
+  });
+
+  it("returns 'none' for permanent errors", () => {
+    expect(getRetryabilityFromError(new Error("file not found"))).toBe("none");
+    expect(getRetryabilityFromError(makeError("denied", { code: "EACCES" }))).toBe("none");
+    expect(getRetryabilityFromError(null)).toBe("none");
   });
 });
 

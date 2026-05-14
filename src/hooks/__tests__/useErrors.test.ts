@@ -50,7 +50,7 @@ function makeError(overrides: Partial<ErrorRecord> = {}): ErrorRecord {
     timestamp: Date.now(),
     type: "unknown",
     message: "Something went wrong",
-    isTransient: false,
+    retryability: "none",
     dismissed: false,
     ...overrides,
   };
@@ -63,37 +63,37 @@ describe("getErrorPriority", () => {
     ({ getErrorPriority } = await import("../useErrors"));
   });
 
-  it("returns 'low' for transient errors regardless of type", () => {
-    expect(getErrorPriority({ type: "process", isTransient: true })).toBe("low");
-    expect(getErrorPriority({ type: "config", isTransient: true })).toBe("low");
-    expect(getErrorPriority({ type: "git", isTransient: true })).toBe("low");
-    expect(getErrorPriority({ type: "network", isTransient: true })).toBe("low");
-    expect(getErrorPriority({ type: "filesystem", isTransient: true })).toBe("low");
-    expect(getErrorPriority({ type: "unknown", isTransient: true })).toBe("low");
+  it("returns 'low' for retryability='auto' regardless of type", () => {
+    expect(getErrorPriority({ type: "process", retryability: "auto" })).toBe("low");
+    expect(getErrorPriority({ type: "config", retryability: "auto" })).toBe("low");
+    expect(getErrorPriority({ type: "git", retryability: "auto" })).toBe("low");
+    expect(getErrorPriority({ type: "network", retryability: "auto" })).toBe("low");
+    expect(getErrorPriority({ type: "filesystem", retryability: "auto" })).toBe("low");
+    expect(getErrorPriority({ type: "unknown", retryability: "auto" })).toBe("low");
   });
 
-  it("returns 'high' for non-transient process errors", () => {
-    expect(getErrorPriority({ type: "process", isTransient: false })).toBe("high");
+  it("returns 'high' for retryability='none' process errors", () => {
+    expect(getErrorPriority({ type: "process", retryability: "none" })).toBe("high");
   });
 
-  it("returns 'high' for non-transient config errors", () => {
-    expect(getErrorPriority({ type: "config", isTransient: false })).toBe("high");
+  it("returns 'high' for retryability='none' config errors", () => {
+    expect(getErrorPriority({ type: "config", retryability: "none" })).toBe("high");
   });
 
-  it("returns 'high' for non-transient git errors", () => {
-    expect(getErrorPriority({ type: "git", isTransient: false })).toBe("high");
+  it("returns 'high' for retryability='none' git errors", () => {
+    expect(getErrorPriority({ type: "git", retryability: "none" })).toBe("high");
   });
 
-  it("returns 'high' for non-transient network errors", () => {
-    expect(getErrorPriority({ type: "network", isTransient: false })).toBe("high");
+  it("returns 'high' for retryability='none' network errors", () => {
+    expect(getErrorPriority({ type: "network", retryability: "none" })).toBe("high");
   });
 
-  it("returns 'high' for non-transient filesystem errors", () => {
-    expect(getErrorPriority({ type: "filesystem", isTransient: false })).toBe("high");
+  it("returns 'high' for retryability='none' filesystem errors", () => {
+    expect(getErrorPriority({ type: "filesystem", retryability: "none" })).toBe("high");
   });
 
-  it("returns 'high' for non-transient unknown errors", () => {
-    expect(getErrorPriority({ type: "unknown", isTransient: false })).toBe("high");
+  it("returns 'high' for retryability='none' unknown errors", () => {
+    expect(getErrorPriority({ type: "unknown", retryability: "none" })).toBe("high");
   });
 });
 
@@ -119,22 +119,22 @@ describe("useErrors — onError path", () => {
     vi.restoreAllMocks();
   });
 
-  it("calls notify with 'high' priority for non-transient process error", async () => {
+  it("calls notify with 'high' priority for retryability='none' process error", async () => {
     const { useErrors } = await import("../useErrors");
     const { unmount } = renderHook(() => useErrors());
 
-    const error = makeError({ type: "process", isTransient: false });
+    const error = makeError({ type: "process", retryability: "none" });
     act(() => capturedOnError(error));
 
     expect(notifyMock).toHaveBeenCalledWith(expect.objectContaining({ priority: "high" }));
     unmount();
   });
 
-  it("calls notify with 'low' priority for transient error", async () => {
+  it("calls notify with 'low' priority for retryability='auto' error", async () => {
     const { useErrors } = await import("../useErrors");
     const { unmount } = renderHook(() => useErrors());
 
-    const error = makeError({ type: "network", isTransient: true });
+    const error = makeError({ type: "network", retryability: "auto" });
     act(() => capturedOnError(error));
 
     expect(notifyMock).toHaveBeenCalledWith(expect.objectContaining({ priority: "low" }));
@@ -158,10 +158,10 @@ describe("useErrors — getPending path", () => {
     vi.restoreAllMocks();
   });
 
-  it("calls notify with 'high' priority for pending non-transient errors", async () => {
+  it("calls notify with 'high' priority for pending retryability='none' errors", async () => {
     const pendingError = makeError({
       type: "config",
-      isTransient: false,
+      retryability: "none",
       fromPreviousSession: true,
     });
     getPendingMock.mockResolvedValue([pendingError]);
@@ -179,10 +179,10 @@ describe("useErrors — getPending path", () => {
     unmount();
   });
 
-  it("calls notify with 'low' priority for pending transient errors", async () => {
+  it("calls notify with 'low' priority for pending retryability='auto' errors", async () => {
     const pendingError = makeError({
       type: "git",
-      isTransient: true,
+      retryability: "auto",
       fromPreviousSession: true,
     });
     getPendingMock.mockResolvedValue([pendingError]);
@@ -232,7 +232,7 @@ describe("useErrors — escalation of persistent transient errors", () => {
     const { useErrors } = await import("../useErrors");
     const { unmount } = renderHook(() => useErrors());
 
-    const error = makeError({ type: "network", isTransient: true });
+    const error = makeError({ type: "network", retryability: "auto" });
     act(() => capturedOnError(error));
 
     expect(notifyMock).toHaveBeenCalledWith(expect.objectContaining({ priority: "high" }));
@@ -244,7 +244,7 @@ describe("useErrors — escalation of persistent transient errors", () => {
     const { useErrors } = await import("../useErrors");
     const { unmount } = renderHook(() => useErrors());
 
-    const error = makeError({ type: "network", isTransient: true });
+    const error = makeError({ type: "network", retryability: "auto" });
     act(() => capturedOnError(error));
 
     expect(notifyMock).toHaveBeenCalledWith(expect.objectContaining({ priority: "low" }));
@@ -260,7 +260,7 @@ describe("useErrors — escalation of persistent transient errors", () => {
     const { useErrors } = await import("../useErrors");
     const { unmount } = renderHook(() => useErrors());
 
-    const error = makeError({ type: "filesystem", isTransient: true });
+    const error = makeError({ type: "filesystem", retryability: "auto" });
     act(() => capturedOnError(error));
 
     expect(callOrder[0]).toBe("escalate");
@@ -274,7 +274,7 @@ describe("useErrors — escalation of persistent transient errors", () => {
     const { useErrors } = await import("../useErrors");
     const { unmount } = renderHook(() => useErrors());
 
-    const error = makeError({ type: "network", isTransient: true });
+    const error = makeError({ type: "network", retryability: "auto" });
     act(() => capturedOnError(error));
 
     expect(consumeEscalationMock).toHaveBeenCalled();
@@ -287,7 +287,7 @@ describe("useErrors — escalation of persistent transient errors", () => {
     const { useErrors } = await import("../useErrors");
     const { unmount } = renderHook(() => useErrors());
 
-    const error = makeError({ type: "network", isTransient: true });
+    const error = makeError({ type: "network", retryability: "auto" });
     act(() => capturedOnError(error));
 
     expect(consumeEscalationMock).not.toHaveBeenCalled();
@@ -328,7 +328,7 @@ describe("useErrors — humanized toast payload", () => {
       type: "filesystem",
       source: "WorktreeMonitor",
       message: "EBUSY: resource busy or locked",
-      isTransient: false,
+      retryability: "none",
     });
     act(() => capturedOnError(error));
 
@@ -346,7 +346,7 @@ describe("useErrors — humanized toast payload", () => {
       type: "filesystem",
       source: "WorktreeMonitor",
       message: "EBUSY: resource busy or locked /Users/me/proj",
-      isTransient: false,
+      retryability: "none",
     });
     act(() => capturedOnError(error));
 
@@ -364,7 +364,7 @@ describe("useErrors — humanized toast payload", () => {
       type: "git",
       gitReason: "auth-failed",
       message: "fatal: Authentication failed for 'https://...'",
-      isTransient: false,
+      retryability: "none",
     });
     act(() => capturedOnError(error));
 
@@ -378,7 +378,7 @@ describe("useErrors — humanized toast payload", () => {
     const { useErrors } = await import("../useErrors");
     const { unmount } = renderHook(() => useErrors());
 
-    const error = makeError({ type: "process", isTransient: false });
+    const error = makeError({ type: "process", retryability: "none" });
     act(() => capturedOnError(error));
 
     const payload = notifyMock.mock.calls.at(-1)?.[0] ?? {};
@@ -391,7 +391,7 @@ describe("useErrors — humanized toast payload", () => {
     const { useErrors } = await import("../useErrors");
     const { unmount } = renderHook(() => useErrors());
 
-    const error = makeError({ type: "network", isTransient: true });
+    const error = makeError({ type: "network", retryability: "auto" });
     act(() => capturedOnError(error));
 
     const payload = notifyMock.mock.calls.at(-1)?.[0] ?? {};
@@ -417,7 +417,7 @@ describe("useErrors — humanized toast payload", () => {
       details: "stack trace goes here",
       correlationId: "corr-1",
       context: { worktreeId: "wt-42", filePath: "/tmp/proj/src/foo.ts" },
-      isTransient: false,
+      retryability: "none",
     });
     act(() => capturedOnError(error));
 
@@ -443,7 +443,7 @@ describe("useErrors — humanized toast payload", () => {
       gitReason: "auth-failed",
       source: "GitHubService",
       message: "fatal: Authentication failed for 'https://ghp_secrettoken@github.com/org/repo'",
-      isTransient: false,
+      retryability: "none",
     });
     act(() => capturedOnError(error));
 
@@ -468,7 +468,7 @@ describe("useErrors — humanized toast payload", () => {
     const { useErrors } = await import("../useErrors");
     const { unmount } = renderHook(() => useErrors());
 
-    const error = makeError({ type: "process", isTransient: false });
+    const error = makeError({ type: "process", retryability: "none" });
     act(() => capturedOnError(error));
 
     const payload = notifyMock.mock.calls.at(-1)?.[0] ?? {};
@@ -513,7 +513,7 @@ describe("useErrors — retry action on toast", () => {
 
     const error = makeError({
       type: "git",
-      isTransient: false,
+      retryability: "none",
       retryAction: "git",
       retryArgs: { branch: "main" },
     });
@@ -530,7 +530,7 @@ describe("useErrors — retry action on toast", () => {
     const { useErrors } = await import("../useErrors");
     const { unmount } = renderHook(() => useErrors());
 
-    const error = makeError({ type: "git", isTransient: false });
+    const error = makeError({ type: "git", retryability: "none" });
     act(() => capturedOnError(error));
 
     const payload = notifyMock.mock.calls.at(-1)?.[0] ?? {};
@@ -546,7 +546,7 @@ describe("useErrors — retry action on toast", () => {
 
     const error = makeError({
       type: "git",
-      isTransient: false,
+      retryability: "none",
       retryAction: "git",
     });
     act(() => capturedOnError(error));
@@ -564,7 +564,7 @@ describe("useErrors — retry action on toast", () => {
 
     const error = makeError({
       type: "network",
-      isTransient: false,
+      retryability: "none",
       retryAction: "terminal",
       retryArgs: { terminalId: "term-1" },
     });
@@ -586,7 +586,7 @@ describe("useErrors — retry action on toast", () => {
 
     const error = makeError({
       type: "network",
-      isTransient: false,
+      retryability: "none",
       retryAction: "terminal",
     });
     act(() => capturedOnError(error));
@@ -607,7 +607,7 @@ describe("useErrors — retry action on toast", () => {
 
     const error = makeError({
       type: "network",
-      isTransient: false,
+      retryability: "none",
       retryAction: "git",
     });
     act(() => capturedOnError(error));
@@ -626,7 +626,7 @@ describe("useErrors — retry action on toast", () => {
       type: "git",
       message: "fetch failed",
       source: "GitService",
-      isTransient: false,
+      retryability: "none",
     });
     act(() => capturedOnError(first));
 
@@ -635,7 +635,7 @@ describe("useErrors — retry action on toast", () => {
       type: "git",
       message: "fetch failed",
       source: "GitService",
-      isTransient: false,
+      retryability: "none",
       retryAction: "git",
       retryArgs: { branch: "main" },
     });
@@ -660,7 +660,7 @@ describe("useErrors — retry action on toast", () => {
       type: "git",
       message: "fetch failed",
       source: "GitService",
-      isTransient: false,
+      retryability: "none",
       retryAction: "git",
       retryArgs: { branch: "old" },
     });
@@ -670,7 +670,7 @@ describe("useErrors — retry action on toast", () => {
       type: "git",
       message: "fetch failed",
       source: "GitService",
-      isTransient: false,
+      retryability: "none",
       retryAction: "git",
       retryArgs: { branch: "new" },
     });
@@ -692,7 +692,7 @@ describe("useErrors — retry action on toast", () => {
 
     const error = makeError({
       type: "network",
-      isTransient: false,
+      retryability: "none",
       retryAction: "git",
     });
     act(() => capturedOnError(error));

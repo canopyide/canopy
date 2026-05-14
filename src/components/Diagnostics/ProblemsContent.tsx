@@ -53,7 +53,7 @@ function ErrorRow({
   const typeLabel = ERROR_TYPE_LABELS[error.type] || "Error";
   const typeColor = ERROR_TYPE_COLORS[error.type] || "text-status-error";
   const isRetrying = !!error.retryProgress;
-  const canRetry = error.isTransient && error.retryAction && onRetry;
+  const canRetry = error.retryability === "auto" && error.retryAction && onRetry;
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 

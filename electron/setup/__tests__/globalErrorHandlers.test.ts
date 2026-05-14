@@ -157,7 +157,7 @@ describe("globalErrorHandlers", () => {
             type: "unknown",
             message: expect.stringContaining("test crash"),
             source: "main-process",
-            isTransient: false,
+            retryability: "none",
             dismissed: false,
             fromPreviousSession: true,
             recoveryHint: "The application encountered a fatal error and will restart.",
@@ -183,7 +183,7 @@ describe("globalErrorHandlers", () => {
         type: "unknown",
         message: `seeded ${i}`,
         source: "main-process",
-        isTransient: false,
+        retryability: "none",
         dismissed: false,
       }));
       storeMock.get.mockReturnValue(seeded);
@@ -353,7 +353,7 @@ describe("globalErrorHandlers", () => {
       expect(sentPayload.source).toBe("main-process");
       expect(sentPayload.message).toContain("rejected");
       expect(sentPayload.recoveryHint).toContain("degraded state");
-      expect(sentPayload.isTransient).toBe(false);
+      expect(sentPayload.retryability).toBe("none");
       expect(sentPayload.dismissed).toBe(false);
     });
 
@@ -381,7 +381,7 @@ describe("globalErrorHandlers", () => {
             type: "unknown",
             message: expect.stringContaining("rejected"),
             source: "main-process",
-            isTransient: false,
+            retryability: "none",
             dismissed: false,
             fromPreviousSession: true,
             recoveryHint: expect.stringContaining("degraded state"),
@@ -407,7 +407,7 @@ describe("globalErrorHandlers", () => {
         type: "unknown",
         message: `seeded ${i}`,
         source: "main-process",
-        isTransient: false,
+        retryability: "none",
         dismissed: false,
       }));
       storeMock.get.mockReturnValue(seeded);

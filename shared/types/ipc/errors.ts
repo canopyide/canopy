@@ -165,6 +165,20 @@ export interface RecoveryAction {
 /** Action that can be retried after an error */
 export type RetryAction = "terminal" | "git" | "worktree";
 
+/**
+ * Discriminant classifying how (or whether) an error can be recovered from.
+ *
+ * - `"auto"`: transient failure where silent retry is appropriate (e.g.,
+ *   `EBUSY`, `ETIMEDOUT`, `ECONNRESET`). UI may surface a Retry button.
+ * - `"user-gated"`: recoverable only after user action (e.g., re-auth,
+ *   missing config). UI surfaces the structured `recoveryAction` CTA.
+ * - `"exhausted"`: the retry loop ran to its retry budget and gave up.
+ *   Treated as a permanent failure for UI/persistence purposes.
+ * - `"none"`: permanent failure with no retry path (programmer error,
+ *   resource exhaustion, push-rejected-by-policy, etc.).
+ */
+export type ErrorRetryability = "auto" | "user-gated" | "exhausted" | "none";
+
 /** Payload sent from main to renderer to report retry progress */
 export interface RetryProgressPayload {
   id: string;
@@ -193,8 +207,8 @@ export interface ErrorRecord {
     filePath?: string;
     command?: string;
   };
-  /** Whether this error will auto-dismiss */
-  isTransient: boolean;
+  /** Classifies whether and how this error can be recovered from. */
+  retryability: ErrorRetryability;
   /** Whether user has dismissed this error */
   dismissed: boolean;
   /** Action that can be retried */

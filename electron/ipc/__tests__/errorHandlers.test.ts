@@ -730,7 +730,7 @@ describe("errorHandlers", () => {
         message: `seeded ${i}`,
         timestamp: i,
         source: "main-process",
-        isTransient: false,
+        retryability: "none",
         dismissed: false,
       }));
       storeMock.store.get.mockReturnValue(seeded);
@@ -1480,7 +1480,7 @@ describe("errorHandlers", () => {
           timestamp: Date.now() - 60000,
           type: "config" as const,
           message: "Config error from last session",
-          isTransient: false,
+          retryability: "none" as const,
           dismissed: false,
           correlationId: "aabbccdd-1111-2222-3333-444455556666",
         },
@@ -1501,6 +1501,46 @@ describe("errorHandlers", () => {
       ]);
     });
 
+    it("migrates legacy isTransient field on persisted errors", async () => {
+      const CHANNELS = await getChannels();
+      // Pre-#7912 persisted shape with the boolean field.
+      storeMock.store.get.mockReturnValue([
+        {
+          id: "error-legacy-transient",
+          timestamp: 1,
+          type: "filesystem",
+          message: "EBUSY: legacy persisted",
+          isTransient: true,
+          dismissed: false,
+        },
+        {
+          id: "error-legacy-permanent",
+          timestamp: 2,
+          type: "config",
+          message: "config corrupt",
+          isTransient: false,
+          dismissed: false,
+        },
+      ]);
+
+      registerErrorHandlers(null, null);
+      const handler = getInvokeHandler(CHANNELS.ERROR_GET_PENDING);
+      const result = handler({} as never) as Array<Record<string, unknown>>;
+
+      expect(result[0]).toMatchObject({
+        id: "error-legacy-transient",
+        retryability: "auto",
+        fromPreviousSession: true,
+      });
+      expect(result[0].isTransient).toBeUndefined();
+      expect(result[1]).toMatchObject({
+        id: "error-legacy-permanent",
+        retryability: "none",
+        fromPreviousSession: true,
+      });
+      expect(result[1].isTransient).toBeUndefined();
+    });
+
     it("clears persisted errors after retrieval", async () => {
       const CHANNELS = await getChannels();
       storeMock.store.get.mockReturnValue([
@@ -1509,7 +1549,7 @@ describe("errorHandlers", () => {
           timestamp: Date.now(),
           type: "filesystem",
           message: "test",
-          isTransient: false,
+          retryability: "none",
           dismissed: false,
         },
       ]);

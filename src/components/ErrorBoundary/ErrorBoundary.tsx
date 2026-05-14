@@ -79,7 +79,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         details: `${error.stack || ""}\n\nComponent Stack:${componentStack}`,
         source: componentName || "ErrorBoundary",
         context,
-        isTransient: false,
+        retryability: "none",
         correlationId,
       });
     } catch (storeError) {

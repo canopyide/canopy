@@ -8,9 +8,9 @@ import type { NotificationAction, NotificationPriority } from "@/store/notificat
 import { humanizeAppError } from "@shared/utils/errorMessage";
 
 export function getErrorPriority(
-  error: Pick<ErrorRecord, "type" | "isTransient">
+  error: Pick<ErrorRecord, "type" | "retryability">
 ): NotificationPriority {
-  if (error.isTransient) return "low";
+  if (error.retryability === "auto") return "low";
   return "high";
 }
 
@@ -60,13 +60,14 @@ function routeError(error: ErrorRecord): void {
     details: error.details,
     source: error.source,
     context: error.context,
-    isTransient: error.isTransient,
+    retryability: error.retryability,
     retryAction: error.retryAction,
     retryArgs: error.retryArgs,
     fromPreviousSession: error.fromPreviousSession,
     correlationId: error.correlationId,
     recoveryHint: error.recoveryHint,
     gitReason: error.gitReason,
+    recoveryAction: error.recoveryAction,
   });
 
   const { title, body } = humanizeAppError(error);
