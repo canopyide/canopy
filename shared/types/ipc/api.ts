@@ -1266,6 +1266,11 @@ export interface ElectronAPI {
     requestMicPermission(): Promise<boolean>;
     openMicSettings(): Promise<void>;
     validateApiKey(apiKey: string): Promise<{ valid: boolean; error?: string }>;
+    /** Run a whole-passage AI cleanup pass over the dictated text after recording stops. */
+    correct(request: {
+      rawText: string;
+      recentContext?: string[];
+    }): Promise<{ action: "no_change" | "replace"; correctedText: string }>;
     onFileTokenResolved(
       callback: (payload: { description: string; replacement: string; resolved: boolean }) => void
     ): () => void;

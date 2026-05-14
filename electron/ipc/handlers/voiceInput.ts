@@ -382,6 +382,42 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
     return validateOpenAIKey(apiKey);
   };
 
+  // Whole-passage cleanup pass. The renderer calls this once after recording
+  // stops, with the full dictated text; correction runs as a single gpt-5-mini
+  // request rather than the old per-segment streaming pipeline.
+  const handleCorrect = async (request: {
+    rawText: string;
+    recentContext?: string[];
+  }): Promise<{ action: "no_change" | "replace"; correctedText: string }> => {
+    const settings = getVoiceSettings();
+    if (!settings.correctionEnabled || !settings.openaiApiKey || !request.rawText.trim()) {
+      return { action: "no_change", correctedText: request.rawText };
+    }
+
+    if (!correctionService) {
+      correctionService = new VoiceCorrectionService();
+    }
+
+    const projectInfo = getProjectInfo();
+    const result = await correctionService.correct(
+      {
+        rawText: request.rawText,
+        recentContext: request.recentContext,
+        reason: "stop",
+      },
+      {
+        model: settings.correctionModel,
+        apiKey: settings.openaiApiKey,
+        customDictionary: settings.customDictionary,
+        customInstructions: settings.correctionCustomInstructions,
+        projectName: projectInfo.name,
+        projectPath: projectInfo.path,
+      }
+    );
+
+    return { action: result.action, correctedText: result.confirmedText };
+  };
+
   const cleanups: Array<() => void> = [
     typedHandle(CHANNELS.VOICE_INPUT_GET_SETTINGS, handleGetSettings),
     typedHandle(CHANNELS.VOICE_INPUT_SET_SETTINGS, handleSetSettings),
@@ -392,6 +428,7 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
     typedHandle(CHANNELS.VOICE_INPUT_REQUEST_MIC_PERMISSION, handleRequestMicPermission),
     typedHandle(CHANNELS.VOICE_INPUT_OPEN_MIC_SETTINGS, handleOpenMicSettings),
     typedHandle(CHANNELS.VOICE_INPUT_VALIDATE_API_KEY, handleValidateApiKey),
+    typedHandle(CHANNELS.VOICE_INPUT_CORRECT, handleCorrect),
     typedHandle(CHANNELS.VOICE_INPUT_FLUSH_PARAGRAPH, handleFlushParagraph),
   ];
 

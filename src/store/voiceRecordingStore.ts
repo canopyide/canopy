@@ -22,6 +22,11 @@ interface VoiceTranscriptBuffer {
   activeParagraphStart: number;
   /** Explicit transcript lifecycle phase — derived from and updated alongside buffer state. */
   transcriptPhase: VoiceTranscriptPhase;
+  /**
+   * Draft range currently undergoing the post-stop whole-passage AI cleanup
+   * pass (null = none). Drives the `cm-voice-pending-ai` editor decoration.
+   */
+  correctionRange: { from: number; to: number } | null;
 }
 
 interface VoiceAnnouncement {
@@ -56,6 +61,7 @@ interface VoiceRecordingState {
   setSessionDraftStart: (panelId: string, length: number) => void;
   setDraftLengthAtSegmentStart: (panelId: string, length: number) => void;
   completeSegment: (text: string) => void;
+  setCorrectionRange: (panelId: string, range: { from: number; to: number } | null) => void;
   setActiveParagraphStart: (panelId: string, length: number) => void;
   resetParagraphState: (panelId: string) => void;
   finishSession: (options?: FinishSessionOptions) => void;
@@ -77,6 +83,7 @@ function getBuffer(
       draftLengthAtSegmentStart: -1,
       activeParagraphStart: -1,
       transcriptPhase: "idle" as VoiceTranscriptPhase,
+      correctionRange: null,
     }
   );
 }
@@ -115,6 +122,7 @@ export const useVoiceRecordingStore = create<VoiceRecordingState>()((set, get) =
           draftLengthAtSegmentStart: -1,
           activeParagraphStart: -1,
           transcriptPhase: "idle" as VoiceTranscriptPhase,
+          correctionRange: null,
         },
       },
     })),
@@ -197,6 +205,18 @@ export const useVoiceRecordingStore = create<VoiceRecordingState>()((set, get) =
             completedSegments: [...buffer.completedSegments, normalized],
             transcriptPhase: "utterance_final" as VoiceTranscriptPhase,
           },
+        },
+      };
+    }),
+
+  setCorrectionRange: (panelId, range) =>
+    set((state) => {
+      const buffer = getBuffer(state.panelBuffers, panelId);
+      if (buffer.correctionRange === range) return state;
+      return {
+        panelBuffers: {
+          ...state.panelBuffers,
+          [panelId]: { ...buffer, correctionRange: range },
         },
       };
     }),
