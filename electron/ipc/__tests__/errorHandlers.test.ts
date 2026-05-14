@@ -23,7 +23,7 @@ const loggerMock = vi.hoisted(() => ({
 
 const storeMock = vi.hoisted(() => ({
   store: {
-    get: vi.fn((_key?: string): unknown[] => []),
+    get: vi.fn((_key?: string): unknown => []),
     set: vi.fn(),
   },
 }));
