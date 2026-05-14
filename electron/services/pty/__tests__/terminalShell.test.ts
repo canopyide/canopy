@@ -36,13 +36,16 @@ describe("getDefaultShellArgs", () => {
     it("forces UTF-8 code page for cmd.exe", () => {
       setPlatform("win32");
 
-      expect(getDefaultShellArgs("cmd.exe")).toEqual(["/K", "chcp 65001"]);
+      expect(getDefaultShellArgs("cmd.exe")).toEqual(["/K", "chcp 65001 >NUL"]);
     });
 
     it("forces UTF-8 code page for cmd.exe resolved via COMSPEC path", () => {
       setPlatform("win32");
 
-      expect(getDefaultShellArgs("C:\\Windows\\system32\\cmd.exe")).toEqual(["/K", "chcp 65001"]);
+      expect(getDefaultShellArgs("C:\\Windows\\system32\\cmd.exe")).toEqual([
+        "/K",
+        "chcp 65001 >NUL",
+      ]);
     });
 
     it("forces UTF-8 console encoding for Windows PowerShell 5.1", () => {
@@ -72,7 +75,7 @@ describe("getDefaultShellArgs", () => {
     it("matches Windows shell basenames case-insensitively", () => {
       setPlatform("win32");
 
-      expect(getDefaultShellArgs("CMD.EXE")).toEqual(["/K", "chcp 65001"]);
+      expect(getDefaultShellArgs("CMD.EXE")).toEqual(["/K", "chcp 65001 >NUL"]);
       expect(getDefaultShellArgs("PowerShell.EXE")).toEqual([
         "-NoLogo",
         "-NoExit",

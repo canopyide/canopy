@@ -55,7 +55,7 @@ export function getDefaultShellArgs(shell: string, _options?: ShellArgsOptions):
   if (process.platform === "win32") {
     const basename = shellName.split(/[\\/]/).pop() ?? "";
     if (basename === "cmd.exe") {
-      return ["/K", "chcp 65001"];
+      return ["/K", "chcp 65001 >NUL"];
     }
     if (basename === "powershell.exe") {
       return ["-NoLogo", "-NoExit", "-Command", WINDOWS_PS_UTF8_BOOTSTRAP];
