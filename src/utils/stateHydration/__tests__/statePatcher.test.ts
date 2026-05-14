@@ -1124,9 +1124,22 @@ describe("inferWorktreeIdFromCwd", () => {
     expect(inferWorktreeIdFromCwd("C:/repo/wt-a/src/lib", worktrees)).toBe("C:\\repo\\wt-a");
   });
 
-  it("ignores trailing separators on worktree paths", () => {
+  it("returns the worktree id unchanged when it differs from the path", () => {
+    const worktrees = [{ id: "worktree-uuid-123", path: "C:/repo/wt-a" }];
+    expect(inferWorktreeIdFromCwd("C:\\repo\\wt-a\\src\\lib", worktrees)).toBe(
+      "worktree-uuid-123"
+    );
+  });
+
+  it("ignores trailing separators on either side", () => {
     const worktrees = [{ id: "C:/repo/wt-a", path: "C:/repo/wt-a/" }];
     expect(inferWorktreeIdFromCwd("C:/repo/wt-a/src", worktrees)).toBe("C:/repo/wt-a");
+    expect(inferWorktreeIdFromCwd("C:\\repo\\wt-a\\", worktrees)).toBe("C:/repo/wt-a");
+  });
+
+  it("does not match Windows sibling directories that share a prefix across separator styles", () => {
+    const worktrees = [{ id: "C:/repo/wt-a", path: "C:/repo/wt-a" }];
+    expect(inferWorktreeIdFromCwd("C:\\repo\\wt-a-long\\src", worktrees)).toBeUndefined();
   });
 });
 
