@@ -91,8 +91,17 @@ export function DiagnosticsDock({ onRetry, onCancelRetry, className }: Diagnosti
       openDock("problems");
       useErrorStore.getState().promoteErrors();
     }
+    // Promote new errors arriving while the dock is already open on problems
+    if (
+      errorCount > prevErrorCountRef.current &&
+      prevErrorCountRef.current > 0 &&
+      isOpen &&
+      activeTab === "problems"
+    ) {
+      useErrorStore.getState().promoteErrors();
+    }
     prevErrorCountRef.current = errorCount;
-  }, [errorCount, isOpen, openDock]);
+  }, [errorCount, isOpen, openDock, activeTab]);
 
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartY = useRef(0);
@@ -335,7 +344,12 @@ export function DiagnosticsDock({ onRetry, onCancelRetry, className }: Diagnosti
               tab={tab.id}
               label={tab.label}
               isActive={activeTab === tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => {
+                if (tab.id === "problems" && activeTab !== "problems") {
+                  useErrorStore.getState().promoteErrors();
+                }
+                setActiveTab(tab.id);
+              }}
               badge={tab.badge}
             />
           ))}

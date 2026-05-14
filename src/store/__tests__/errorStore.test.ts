@@ -401,22 +401,32 @@ describe("errorStore", () => {
       ).toBe(true);
     });
 
-    it("preserves promotedToDock when a matching error is deduplicated", () => {
+    it("preserves promotedToDock when a normalized-identical error is deduplicated", () => {
       vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
-      useErrorStore.getState().promoteErrors([errorIds[0]!]);
+      // Add an error with a UUID suffix and promote it
+      const id = useErrorStore.getState().addError({
+        type: "process",
+        message: "Spawn failed abc12345-6789-4abc-def0-123456789abc",
+        source: "pty",
+        retryability: "auto",
+      });
+      useErrorStore.getState().promoteErrors([id]);
 
-      // Fire a duplicate that normalizes to the same message
+      // Fire a duplicate with a different UUID that normalizes to the same key
       vi.setSystemTime(new Date("2026-01-01T00:00:00.200Z"));
       useErrorStore.getState().addError({
         type: "process",
-        message: "err-a",
-        source: "test",
+        message: "Spawn failed deadbeef-1111-4abc-def0-222222222222",
+        source: "pty",
         retryability: "auto",
       });
 
       const state = useErrorStore.getState();
-      expect(state.errors).toHaveLength(3);
-      expect(state.errors.find((e) => e.id === errorIds[0])?.promotedToDock).toBe(true);
+      expect(state.errors).toHaveLength(4); // 3 from beforeEach + 1 promoted (duplicate merged)
+      const promoted = state.errors.find((e) => e.id === id);
+      expect(promoted?.promotedToDock).toBe(true);
+      // Original message preserved for display
+      expect(promoted?.message).toBe("Spawn failed abc12345-6789-4abc-def0-123456789abc");
     });
 
     it("is a no-op with empty ids array", () => {
