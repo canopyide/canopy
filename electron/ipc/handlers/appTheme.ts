@@ -249,7 +249,7 @@ export function registerAppThemeHandlers(mainWindow?: BrowserWindow): () => void
         win.setTitleBarOverlay({
           color: scheme.tokens["surface-canvas"],
           symbolColor: "#a1a1aa",
-          height: 36,
+          height: 48,
         });
       }
     }, 300);

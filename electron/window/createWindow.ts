@@ -211,7 +211,7 @@ export function setupBrowserWindow(
               titleBarOverlay: {
                 color: windowBg,
                 symbolColor: "#a1a1aa",
-                height: 36,
+                height: 48,
               },
             }
           : {}),
