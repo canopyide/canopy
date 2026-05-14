@@ -786,6 +786,12 @@ export class WorktreeMonitor {
     if (this.pollingStrategy.isCircuitBreakerTripped()) {
       this.pollingStrategy.reset();
     }
+    if (this._isCurrent && this.gitWatchEnabled) {
+      const budgetReset = this.watcherController.resetRetryBudget();
+      if (budgetReset) {
+        this.watcherController.update();
+      }
+    }
     await this.updateGitStatus(true);
   }
 
