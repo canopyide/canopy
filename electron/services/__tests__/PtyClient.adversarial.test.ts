@@ -70,6 +70,7 @@ interface MockMessagePortMain {
 interface PtyClientPrivateAccess {
   lifecycle: {
     child: MockUtilityProcess | null;
+    start(): void;
   };
   pendingMessagePorts: Map<number, MockMessagePortMain>;
   pendingKillCount: Map<string, number>;
@@ -368,9 +369,7 @@ describe("PtyClient adversarial", () => {
     // Neutralize the auto-restart so `child` stays null for the duration of
     // the broker timeout — this scenario covers "host gone, no restart in
     // flight, gracefulKill arrives anyway".
-    const startSpy = vi
-      .spyOn(privateAccess.lifecycle, "start")
-      .mockImplementation(() => undefined);
+    const startSpy = vi.spyOn(privateAccess.lifecycle, "start").mockImplementation(() => {});
 
     mockChild.emit("exit", 1);
     expect(privateAccess.lifecycle.child).toBeNull();

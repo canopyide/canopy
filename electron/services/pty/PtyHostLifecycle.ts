@@ -297,7 +297,6 @@ export class PtyHostLifecycle {
     });
 
     const hostPath = path.join(this.config.electronDir, "pty-host-bootstrap.js");
-    console.log(`[PtyClient] Starting Pty Host from: ${hostPath}`);
 
     try {
       this.child = utilityProcess.fork(hostPath, [], {
@@ -328,7 +327,6 @@ export class PtyHostLifecycle {
           ...(process.platform === "linux" ? { UV_USE_IO_URING: "0" } : {}),
         },
       });
-      console.log(`[PtyClient] Pty Host started with ${this.config.memoryLimitMb}MB memory limit`);
     } catch (error) {
       console.error("[PtyClient] Failed to fork Pty Host:", error);
       if (this.readyReject) {
@@ -349,8 +347,6 @@ export class PtyHostLifecycle {
     this.child.on("exit", (code) => {
       this.handleExit(code);
     });
-
-    console.log("[PtyClient] Pty Host started");
   }
 
   /** Send one request to the host. Treats `postMessage` failure as a crash. */
@@ -536,15 +532,9 @@ export class PtyHostLifecycle {
         const windowAttempt = this.crashTimestamps.length;
         // Full jitter with floor: break deterministic retry lockstep while
         // keeping a minimum wait so instant-fail crashes don't spin the CPU.
-        const cap = Math.min(
-          RESTART_CAP_BASE_MS * Math.pow(2, windowAttempt),
-          RESTART_CAP_MAX_MS
-        );
+        const cap = Math.min(RESTART_CAP_BASE_MS * Math.pow(2, windowAttempt), RESTART_CAP_MAX_MS);
         const delay =
           RESTART_FLOOR_MS + Math.floor(Math.random() * Math.max(0, cap - RESTART_FLOOR_MS));
-        console.log(
-          `[PtyClient] Restarting Host in ${delay}ms (crash ${windowAttempt}/${CRASH_THRESHOLD} in window)`
-        );
 
         if (this.restartTimer) {
           clearTimeout(this.restartTimer);
