@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const spawnMock = vi.fn();
 vi.mock("node-pty", () => ({
@@ -6,7 +6,7 @@ vi.mock("node-pty", () => ({
 }));
 
 import { acquirePtyProcess } from "../terminalSpawn.js";
-import type { PtyPool } from "../../PtyPool.js";
+import { shouldEnablePtyPool, type PtyPool } from "../../PtyPool.js";
 import type { PtySpawnOptions } from "../types.js";
 
 interface FakePooledPty {
@@ -90,8 +90,19 @@ const baseOptions: PtySpawnOptions = {
 };
 
 describe("acquirePtyProcess pool handling", () => {
+  const originalPlatformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
+
   beforeEach(() => {
     spawnMock.mockReset();
+    if (originalPlatformDescriptor) {
+      Object.defineProperty(process, "platform", originalPlatformDescriptor);
+    }
+  });
+
+  afterEach(() => {
+    if (originalPlatformDescriptor) {
+      Object.defineProperty(process, "platform", originalPlatformDescriptor);
+    }
   });
 
   it("acquires a pooled PTY when an env-keyed slot is available for the request cwd", () => {
@@ -338,6 +349,38 @@ describe("acquirePtyProcess pool handling", () => {
 
     expect(acquireByKey).not.toHaveBeenCalled();
     expect(spawnMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips the pool on Windows and directly spawns a PTY", () => {
+    Object.defineProperty(process, "platform", {
+      value: "win32",
+      configurable: true,
+    });
+    const acquireByKey = vi.fn();
+    const warmForKey = vi.fn();
+    const pool = createFakePool({
+      defaultCwd: "C:\\repo",
+      acquireByKey,
+      warmForKey,
+    });
+    const spawnedPty = createFakeSpawnedPty();
+    spawnMock.mockReturnValue(spawnedPty);
+
+    const result = acquirePtyProcess(
+      "win1",
+      { cwd: "C:\\repo", cols: 80, rows: 24 },
+      { PATH: "C:\\Windows\\System32" },
+      "powershell.exe",
+      [],
+      pool,
+      () => {}
+    );
+
+    expect(shouldEnablePtyPool()).toBe(false);
+    expect(acquireByKey).not.toHaveBeenCalled();
+    expect(warmForKey).not.toHaveBeenCalled();
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    expect(result.ptyProcess).toBe(spawnedPty);
   });
 
   it("skips the pool when caller provides a custom shell or args", () => {

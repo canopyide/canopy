@@ -258,6 +258,9 @@ vi.mock("../services/PtyManager.js", () => {
 
 vi.mock("../services/PtyPool.js", () => ({
   PtyPool: class {},
+  shouldEnablePtyPool: vi.fn(
+    (platform: NodeJS.Platform = process.platform) => platform !== "win32"
+  ),
   getPtyPool: vi.fn(() => ({
     warmPool: vi.fn(async () => undefined),
     drainAndRefill: vi.fn(async () => undefined),
@@ -575,8 +578,10 @@ vi.mock("../pty-host/index.js", async () => {
 });
 
 import { BACKPRESSURE_SAFETY_TIMEOUT_MS } from "../pty-host/index.js";
+import { getPtyPool } from "../services/PtyPool.js";
 
 const originalParentPortDescriptor = Object.getOwnPropertyDescriptor(process, "parentPort");
+const originalPlatformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
 const originalMaxListeners = process.getMaxListeners();
 process.setMaxListeners(50);
 
@@ -613,6 +618,7 @@ function terminalStatusPayloads(parentPort: MockParentPort): Array<Record<string
 describe("pty-host adversarial", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.mocked(getPtyPool).mockClear();
   });
 
   afterEach(async () => {
@@ -624,11 +630,28 @@ describe("pty-host adversarial", () => {
     } else {
       delete (process as unknown as { parentPort?: unknown }).parentPort;
     }
+    if (originalPlatformDescriptor) {
+      Object.defineProperty(process, "platform", originalPlatformDescriptor);
+    }
     vi.useRealTimers();
   });
 
   afterAll(() => {
     process.setMaxListeners(originalMaxListeners);
+  });
+
+  it("WINDOWS_STARTUP_SKIPS_PTY_POOL", async () => {
+    Object.defineProperty(process, "platform", {
+      value: "win32",
+      configurable: true,
+    });
+
+    const parentPort = await loadHost();
+
+    expect(parentPort.postMessage).toHaveBeenCalledWith({ type: "ready" });
+    expect(getPtyPool).not.toHaveBeenCalled();
+    const manager = hostState.currentPtyManager as MiniEmitter & { setPtyPool: TestMock };
+    expect(manager.setPtyPool).not.toHaveBeenCalled();
   });
 
   it("SAB_ACK_TIMEOUT_SUSPENDS_STREAM", async () => {

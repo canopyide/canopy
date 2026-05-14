@@ -74,6 +74,15 @@ const MAX_KEY_FAILURES = 3;
 const KEY_BACKOFF_MS = 30_000;
 
 /**
+ * Windows ConPTY has shown native heap-corruption crashes (0xC0000374) when
+ * pooled shells are prewarmed, handed off, and destroyed under release-runner
+ * churn. Keep the pool off on Windows while preserving direct PTY spawns.
+ */
+export function shouldEnablePtyPool(platform: NodeJS.Platform = process.platform): boolean {
+  return platform !== "win32";
+}
+
+/**
  * Closes a pooled PTY's master/slave file descriptors. node-pty's `kill()`
  * only signals the child process; on Unix the `/dev/ptmx` master FD stays
  * open until `destroy()` is called (or the IPty wrapper is GC'd, but the

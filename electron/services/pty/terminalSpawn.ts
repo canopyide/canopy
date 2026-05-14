@@ -11,6 +11,7 @@ import type { PtySpawnOptions } from "./types.js";
 import {
   BufferedPtyDataHandoff,
   destroyPty,
+  shouldEnablePtyPool,
   type PooledPtyDataHandoff,
   type PtyPool,
 } from "../PtyPool.js";
@@ -157,7 +158,12 @@ export function acquirePtyProcess(
   // lookup handles cases where another window pre-warmed at a different cwd
   // or with different env additions — those entries simply don't match the
   // wanted key and we fall through to fresh spawn + background warm.
-  const canUsePool = !!ptyPool && !options.shell && !options.args && options.kind !== "dev-preview";
+  const canUsePool =
+    shouldEnablePtyPool() &&
+    !!ptyPool &&
+    !options.shell &&
+    !options.args &&
+    options.kind !== "dev-preview";
   const envHash = canUsePool ? computePoolEnvHash(options.env) : null;
   let pooled = canUsePool && envHash !== null ? ptyPool!.acquireByKey(options.cwd, envHash) : null;
   // Suppress unused-parameter lint for the write-error callback; kept in the

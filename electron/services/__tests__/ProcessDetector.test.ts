@@ -997,6 +997,46 @@ describe("ProcessDetector", () => {
       vi.useRealTimers();
     });
 
+    it("retains runtime-promoted shell-agent evidence through idle empty-tree polls", () => {
+      // A user can type `claude` into a plain shell. On Windows the idle TUI can
+      // look like an empty process tree even though Claude still owns the
+      // terminal, so unanchored/runtime promotion must still honor shell-agent
+      // evidence until prompt-return clears it.
+      const base = Date.now();
+      vi.setSystemTime(base);
+      const cache = createCacheMock();
+      const callback = vi.fn();
+      const detector = new ProcessDetector(
+        "terminal-runtime-idle",
+        base,
+        100,
+        callback,
+        cache as never,
+        false
+      );
+      detector.start();
+
+      detector.injectShellCommandEvidence(
+        { agentType: "claude", processIconId: "claude", processName: "claude" },
+        "claude",
+        base
+      );
+      expect(detector.getLastDetected()).toBe("claude");
+      callback.mockClear();
+
+      vi.setSystemTime(base + 45_000);
+      cache.setChildren(100, []);
+      cache.emitRefresh();
+      cache.emitRefresh();
+
+      expect(detector.getLastDetected()).toBe("claude");
+      expect(callback.mock.calls.filter(([r]) => r.detectionState === "no_agent")).toHaveLength(0);
+
+      detector.clearShellCommandEvidence("prompt-return");
+      expect(detector.getLastDetected()).toBeNull();
+      vi.useRealTimers();
+    });
+
     it("retains expired shell-agent evidence while the PTY still has a live child", () => {
       // Real agent CLIs can rewrite argv/comm so process-tree matching never
       // corroborates the shell command, but a live child still proves the

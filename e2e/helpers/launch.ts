@@ -630,7 +630,11 @@ export async function closeApp(app: ElectronApplication): Promise<void> {
   // These may have been reparented to PID 1 after the main process exited.
   for (const childPid of descendantPids) {
     try {
-      process.kill(childPid, "SIGKILL");
+      if (process.platform === "win32") {
+        execSync(`taskkill /F /PID ${childPid} /T 2>nul`, { stdio: "ignore" });
+      } else {
+        process.kill(childPid, "SIGKILL");
+      }
     } catch {
       // Already dead
     }

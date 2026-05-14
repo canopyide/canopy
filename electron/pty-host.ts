@@ -33,7 +33,7 @@ nodeV8.setHeapSnapshotNearHeapLimit(2);
 import { MessagePort } from "node:worker_threads";
 import os from "node:os";
 import { PtyManager } from "./services/PtyManager.js";
-import { PtyPool, getPtyPool } from "./services/PtyPool.js";
+import { PtyPool, getPtyPool, shouldEnablePtyPool } from "./services/PtyPool.js";
 import { ProcessTreeCache } from "./services/ProcessTreeCache.js";
 import { TerminalResourceMonitor } from "./services/pty/TerminalResourceMonitor.js";
 import { events } from "./services/events.js";
@@ -955,20 +955,24 @@ async function initialize(): Promise<void> {
     sendEvent({ type: "ready" });
     console.log("[PtyHost] Initialized and ready (accepting IPC)");
 
-    ptyPool = getPtyPool({ poolSize: 2, maxEntries: 8 });
-    const homedir = os.homedir();
+    if (shouldEnablePtyPool()) {
+      ptyPool = getPtyPool({ poolSize: 2, maxEntries: 8 });
+      const homedir = os.homedir();
 
-    // Warm pool in background
-    ptyPool
-      .warmPool(homedir)
-      .then(() => {
-        console.log("[PtyHost] PTY pool warmed in background");
-      })
-      .catch((err) => {
-        console.error("[PtyHost] Failed to warm pool:", err);
-      });
+      // Warm pool in background
+      ptyPool
+        .warmPool(homedir)
+        .then(() => {
+          console.log("[PtyHost] PTY pool warmed in background");
+        })
+        .catch((err) => {
+          console.error("[PtyHost] Failed to warm pool:", err);
+        });
 
-    ptyManager.setPtyPool(ptyPool);
+      ptyManager.setPtyPool(ptyPool);
+    } else {
+      console.log("[PtyHost] PTY pool disabled on Windows; terminals will spawn directly");
+    }
   } catch (error) {
     console.error("[PtyHost] Initialization failed:", error);
     emergencyLogFatal("INIT_ERROR", error);

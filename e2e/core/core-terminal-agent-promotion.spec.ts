@@ -34,6 +34,13 @@ const T_IDENTITY = 60_000;
 const T_AGENT_STICKY_REGRESSION = 45_000;
 const FAKE_CLAUDE_STOP = "__DAINTREE_FAKE_CLAUDE_STOP__";
 const FAKE_NPM_STOP = "__DAINTREE_FAKE_NPM_STOP__";
+const fakeBuildProcess = [
+  "console.log('NPM_READY');",
+  "process.stdin.resume();",
+  "process.stdin.setEncoding('utf8');",
+  `process.stdin.on('data', (chunk) => { if (String(chunk).includes('${FAKE_NPM_STOP}')) { console.log('NPM_EXIT'); process.exit(0); } });`,
+  "setTimeout(() => {}, 10000);",
+].join(" ");
 
 function panelHeaderIcon(panel: Locator): Locator {
   return panel.locator("[data-pane-chrome] [data-terminal-icon-id]").first();
@@ -52,6 +59,20 @@ function prependPathCommand(dir: string): string {
     return `$env:PATH = ${powershellQuote(`${dir}${path.delimiter}`)} + $env:PATH`;
   }
   return `export PATH=${shellQuote(dir)}:$PATH`;
+}
+
+function buildProcessCommand(): string {
+  // Windows PowerShell/npm can obscure npm's long-running Node child from the
+  // PTY process tree, which makes this transition test depend on npm internals
+  // instead of Daintree's runtime promotion path. Use the Node child directly
+  // on Windows; Unix keeps npm coverage for the wrapper path.
+  return process.platform === "win32"
+    ? `node -e ${JSON.stringify(fakeBuildProcess)}`
+    : "npm run build";
+}
+
+function expectedBuildProcessId(): string {
+  return process.platform === "win32" ? "node" : "npm";
 }
 
 async function expectPanelHeaderIcon(panel: Locator, iconId: string): Promise<void> {
@@ -237,13 +258,6 @@ function prepareFixture(): void {
   mkdirSync(fakeBinDir, { recursive: true });
 
   const fakeClaude = path.join(fakeBinDir, "claude");
-  const fakeNpmBuild = [
-    "console.log('NPM_READY');",
-    "process.stdin.resume();",
-    "process.stdin.setEncoding('utf8');",
-    `process.stdin.on('data', (chunk) => { if (String(chunk).includes('${FAKE_NPM_STOP}')) { console.log('NPM_EXIT'); process.exit(0); } });`,
-    "setTimeout(() => {}, 10000);",
-  ].join(" ");
 
   writeFileSync(
     fakeClaude,
@@ -302,7 +316,7 @@ function prepareFixture(): void {
         version: "1.0.0",
         private: true,
         scripts: {
-          build: `node -e ${JSON.stringify(fakeNpmBuild)}`,
+          build: `node -e ${JSON.stringify(fakeBuildProcess)}`,
         },
       },
       null,
@@ -410,11 +424,9 @@ test.describe.serial("Core: terminal runtime agent promotion", () => {
       await expectPanelHasNoAgentState(panel);
 
       await runTerminalCommand(window, panel, prependPathCommand(fakeBinDir));
-      await runTerminalCommand(window, panel, "npm run build");
+      await runTerminalCommand(window, panel, buildProcessCommand());
       await waitForTerminalText(panel, "NPM_READY", T_LONG);
-      // Windows process-tree detection sees the Node child behind npm.cmd;
-      // Unix runners keep the npm wrapper as the detected foreground process.
-      const buildProcessId = process.platform === "win32" ? "node" : "npm";
+      const buildProcessId = expectedBuildProcessId();
       await expect
         .poll(() => panel.getAttribute("data-detected-process-id"), {
           timeout: T_IDENTITY,
