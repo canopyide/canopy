@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef } from "react";
-import { useErrorStore, type ErrorRecord, type RetryAction } from "@/store";
+import { useErrorStore, RECURRENCE_THRESHOLD, type ErrorRecord, type RetryAction } from "@/store";
 import { isElectronAvailable } from "./useElectron";
 import { errorsClient } from "@/clients";
 import { logErrorWithContext } from "@/utils/errorContext";
@@ -68,6 +68,8 @@ function routeError(error: ErrorRecord): void {
     recoveryHint: error.recoveryHint,
     recoveryAction: error.recoveryAction,
     gitReason: error.gitReason,
+    retryExhausted: error.retryExhausted,
+    occurrenceCount: error.occurrenceCount,
   });
 
   const { title, body } = humanizeAppError(error);
@@ -82,7 +84,14 @@ function routeError(error: ErrorRecord): void {
   // retryability means the retry loop already exhausted (or the failure was
   // never auto-retryable) — surfacing a Retry button would re-run the same
   // failed loop. "user-gated" surfaces its own recovery CTA elsewhere.
-  if (error.retryAction && error.retryability === "auto") {
+  // Also gate on the cross-session recurrence counter so a fingerprint that
+  // has fired ≥ RECURRENCE_THRESHOLD times is escalated past Retry.
+  if (
+    error.retryAction &&
+    error.retryability === "auto" &&
+    !error.retryExhausted &&
+    (error.occurrenceCount ?? 0) < RECURRENCE_THRESHOLD
+  ) {
     retryNotificationAction = {
       label: "Retry",
       successLabel: "Retried",

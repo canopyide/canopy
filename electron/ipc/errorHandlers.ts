@@ -14,9 +14,46 @@ import type { WorkspaceClient } from "../services/WorkspaceClient.js";
 import type {
   ErrorRecord,
   ErrorRetryability,
+  ErrorType,
   RetryAction,
 } from "../../shared/types/ipc/errors.js";
 import type { SpawnResult } from "../../shared/types/pty-host.js";
+
+const MAX_FINGERPRINT_ENTRIES = 200;
+
+function buildFingerprintKey(type: ErrorType, source: string | undefined, message: string): string {
+  return `${type}|${source ?? ""}|${message}`;
+}
+
+function recordErrorFingerprint(
+  type: ErrorType,
+  source: string | undefined,
+  message: string
+): number {
+  const key = buildFingerprintKey(type, source, message);
+  const raw = store.get("errorFingerprints");
+  const fingerprints: Record<string, { count: number; firstSeen: number; lastSeen: number }> =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, { count: number; firstSeen: number; lastSeen: number }>)
+      : {};
+  const now = Date.now();
+  const existing = fingerprints[key];
+  const count = (existing?.count ?? 0) + 1;
+  fingerprints[key] = { count, firstSeen: existing?.firstSeen ?? now, lastSeen: now };
+
+  const entries = Object.entries(fingerprints);
+  if (entries.length > MAX_FINGERPRINT_ENTRIES) {
+    entries.sort((a, b) => a[1].lastSeen - b[1].lastSeen);
+    for (const [k] of entries.slice(0, entries.length - MAX_FINGERPRINT_ENTRIES)) {
+      delete fingerprints[k];
+    }
+    store.set("errorFingerprints", fingerprints);
+  } else {
+    store.set("errorFingerprints", fingerprints);
+  }
+
+  return count;
+}
 
 interface RetryPayload {
   errorId: string;
@@ -94,6 +131,14 @@ function createErrorRecord(
      * exhaustion is loop state, not an intrinsic of the error itself.
      */
     retryability?: ErrorRetryability;
+    /**
+     * Companion flag set when the retry loop exhausted its budget. The
+     * `"exhausted"` retryability above already encodes this for retryability-
+     * aware consumers; this boolean keeps backwards-compatible gating in the
+     * banner / toast / problems-content paths and is what the recurrence
+     * tracking persists to detect runaway retry loops across sessions.
+     */
+    retryExhausted?: boolean;
   } = {}
 ): ErrorRecord {
   const details = getErrorDetails(error);
@@ -117,6 +162,8 @@ function createErrorRecord(
     gitReason: classification.gitReason,
     recoveryAction: classification.recoveryAction,
     isCritical: classification.isCritical,
+    retryExhausted: options.retryExhausted ?? false,
+    occurrenceCount: 0,
   };
 }
 
@@ -206,6 +253,16 @@ class ErrorService {
 
   notifyError(error: unknown, options: Parameters<typeof createErrorRecord>[1] = {}) {
     const appError = createErrorRecord(error, options);
+
+    appError.occurrenceCount = recordErrorFingerprint(
+      appError.type,
+      appError.source,
+      appError.message
+    );
+    if (options.retryExhausted) {
+      appError.retryExhausted = true;
+    }
+
     logErrorUtil(`[${appError.correlationId}] ${appError.message}`, error, {
       correlationId: appError.correlationId,
       type: appError.type,
@@ -492,6 +549,7 @@ export function registerErrorHandlers(
         retryAction: actionForError,
         retryArgs: argsForError,
         retryability: intrinsic === "auto" ? "exhausted" : intrinsic,
+        retryExhausted: true,
       });
       throw error;
     }

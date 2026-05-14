@@ -309,6 +309,95 @@ describe("ErrorBanner", () => {
     });
   });
 
+  describe("retryExhausted and occurrenceCount gating", () => {
+    afterEach(() => {
+      useDiagnosticsStore.getState().reset();
+    });
+
+    it("shows 'View errors' not 'Retry' when retryExhausted is true (compact)", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            isTransient: true,
+            retryAction: "git",
+            retryExhausted: true,
+          })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+          compact
+        />
+      );
+      expect(screen.getByRole("button", { name: "View errors" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    });
+
+    it("shows 'View errors' not 'Retry' when retryExhausted is true (full)", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            isTransient: true,
+            retryAction: "git",
+            retryExhausted: true,
+          })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+        />
+      );
+      expect(screen.getByRole("button", { name: "View errors" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    });
+
+    it("shows 'View errors' not 'Retry' when occurrenceCount reaches threshold 5 (compact)", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            isTransient: true,
+            retryAction: "git",
+            occurrenceCount: 5,
+          })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+          compact
+        />
+      );
+      expect(screen.getByRole("button", { name: "View errors" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    });
+
+    it("still shows 'Retry' when occurrenceCount is below threshold 5", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            isTransient: true,
+            retryAction: "git",
+            occurrenceCount: 4,
+          })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+          compact
+        />
+      );
+      expect(screen.queryByRole("button", { name: "View errors" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    });
+
+    it("remains non-retryable (0 occurrenceCount) when isTransient is false", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            isTransient: false,
+            occurrenceCount: 0,
+            retryAction: undefined,
+          })}
+          onDismiss={onDismiss}
+          compact
+        />
+      );
+      expect(screen.getByRole("button", { name: "View errors" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    });
+  });
+
   describe("correlation ID copy", () => {
     let writeText: ReturnType<typeof vi.fn>;
     const fullId = "abcd1234-5678-90ef-1234-567890abcdef";
