@@ -706,7 +706,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
           }`}
           aria-label={armMatchingLabel}
         >
-          <Zap className="w-3.5 h-3.5" aria-hidden="true" />
+          <Zap className="w-3 h-3" aria-hidden="true" />
         </button>
       </TooltipTrigger>
       <TooltipContent side="bottom">{armMatchingLabel}</TooltipContent>
