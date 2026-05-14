@@ -100,6 +100,8 @@ const CHECKING_MENU_DELAY_MS = 400;
 describe("AutoUpdaterService", () => {
   const originalPlatform = process.platform;
   const originalResourcesPath = process.resourcesPath;
+  const originalWindowsStore = (process as NodeJS.Process & { windowsStore?: boolean })
+    .windowsStore;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -110,6 +112,7 @@ describe("AutoUpdaterService", () => {
     delete process.env.PORTABLE_EXECUTABLE_FILE;
     delete process.env.APPIMAGE;
     Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+    delete (process as NodeJS.Process & { windowsStore?: boolean }).windowsStore;
     Object.defineProperty(process, "resourcesPath", {
       value: "/mock/resources",
       configurable: true,
@@ -144,6 +147,14 @@ describe("AutoUpdaterService", () => {
       value: originalResourcesPath,
       configurable: true,
     });
+    if (originalWindowsStore === undefined) {
+      delete (process as NodeJS.Process & { windowsStore?: boolean }).windowsStore;
+    } else {
+      Object.defineProperty(process, "windowsStore", {
+        value: originalWindowsStore,
+        configurable: true,
+      });
+    }
     delete process.env.APPIMAGE;
     vi.useRealTimers();
     vi.restoreAllMocks();
@@ -567,8 +578,9 @@ describe("AutoUpdaterService", () => {
   });
 
   describe("Windows Store updater guard", () => {
-    it("registers only channel-preference IPC handlers on Windows", () => {
+    it("registers only channel-preference IPC handlers on MSIX (Windows Store) builds", () => {
       Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+      Object.defineProperty(process, "windowsStore", { value: true, configurable: true });
 
       autoUpdaterService.initialize();
 
@@ -581,13 +593,25 @@ describe("AutoUpdaterService", () => {
       expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
     });
 
-    it("manual checks are no-ops on Windows", () => {
+    it("manual checks are no-ops on MSIX (Windows Store) builds", () => {
       Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+      Object.defineProperty(process, "windowsStore", { value: true, configurable: true });
 
       autoUpdaterService.initialize();
       autoUpdaterService.checkForUpdatesManually();
 
       expect(autoUpdaterMock.checkForUpdates).not.toHaveBeenCalled();
+    });
+
+    it("does NOT suppress the updater on non-Store Windows builds (NSIS/Squirrel)", () => {
+      Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+      delete (process as NodeJS.Process & { windowsStore?: boolean }).windowsStore;
+
+      autoUpdaterService.initialize();
+
+      const registeredChannels = (ipcMainMock.handle as Mock).mock.calls.map((args) => args[0]);
+      expect(registeredChannels).toContain(CHANNELS.UPDATE_CHECK_FOR_UPDATES);
+      expect(registeredChannels).toContain(CHANNELS.UPDATE_QUIT_AND_INSTALL);
     });
   });
 

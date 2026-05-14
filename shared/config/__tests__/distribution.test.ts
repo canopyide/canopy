@@ -1,40 +1,97 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getRuntimePlatform, isWindowsStoreBuild } from "../distribution.js";
 
+type WindowsStoreProcess = NodeJS.Process & { windowsStore?: boolean };
+
 describe("distribution config", () => {
-  it("treats win32 as the Store-managed update channel", () => {
-    expect(isWindowsStoreBuild("win32")).toBe(true);
-  });
+  describe("isWindowsStoreBuild", () => {
+    const originalWindowsStore = (process as WindowsStoreProcess).windowsStore;
 
-  it("keeps macOS and Linux on the in-app updater path", () => {
-    expect(isWindowsStoreBuild("darwin")).toBe(false);
-    expect(isWindowsStoreBuild("linux")).toBe(false);
-  });
-
-  it("falls back to navigator detection when process.platform is not an OS platform", () => {
-    const originalProcess = globalThis.process;
-    const originalNavigator = globalThis.navigator;
-
-    Object.defineProperty(globalThis, "process", {
-      value: { platform: "browser" },
-      configurable: true,
-    });
-    Object.defineProperty(globalThis, "navigator", {
-      value: { platform: "Win32", userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
-      configurable: true,
+    afterEach(() => {
+      if (originalWindowsStore === undefined) {
+        delete (process as WindowsStoreProcess).windowsStore;
+      } else {
+        Object.defineProperty(process, "windowsStore", {
+          value: originalWindowsStore,
+          configurable: true,
+        });
+      }
     });
 
-    try {
-      expect(getRuntimePlatform()).toBe("win32");
-    } finally {
+    it("returns the explicit override when provided", () => {
+      expect(isWindowsStoreBuild(true)).toBe(true);
+      expect(isWindowsStoreBuild(false)).toBe(false);
+    });
+
+    it("returns true when process.windowsStore is true (MSIX build)", () => {
+      Object.defineProperty(process, "windowsStore", { value: true, configurable: true });
+      expect(isWindowsStoreBuild()).toBe(true);
+    });
+
+    it("returns false when process.windowsStore is undefined (NSIS/Squirrel build)", () => {
+      delete (process as WindowsStoreProcess).windowsStore;
+      expect(isWindowsStoreBuild()).toBe(false);
+    });
+
+    it("returns false when process.windowsStore is false", () => {
+      Object.defineProperty(process, "windowsStore", { value: false, configurable: true });
+      expect(isWindowsStoreBuild()).toBe(false);
+    });
+  });
+
+  describe("isWindowsStoreBuild in renderer context", () => {
+    const originalWindow = (globalThis as { window?: unknown }).window;
+
+    afterEach(() => {
+      if (originalWindow === undefined) {
+        delete (globalThis as { window?: unknown }).window;
+      } else {
+        (globalThis as { window?: unknown }).window = originalWindow;
+      }
+    });
+
+    it("reads window.electron.isWindowsStoreBuild when window is defined", () => {
+      (globalThis as { window?: unknown }).window = { electron: { isWindowsStoreBuild: true } };
+      expect(isWindowsStoreBuild()).toBe(true);
+    });
+
+    it("returns false when window.electron is missing", () => {
+      (globalThis as { window?: unknown }).window = {};
+      expect(isWindowsStoreBuild()).toBe(false);
+    });
+
+    it("returns false when window.electron.isWindowsStoreBuild is false", () => {
+      (globalThis as { window?: unknown }).window = { electron: { isWindowsStoreBuild: false } };
+      expect(isWindowsStoreBuild()).toBe(false);
+    });
+  });
+
+  describe("getRuntimePlatform", () => {
+    it("falls back to navigator detection when process.platform is not an OS platform", () => {
+      const originalProcess = globalThis.process;
+      const originalNavigator = globalThis.navigator;
+
       Object.defineProperty(globalThis, "process", {
-        value: originalProcess,
+        value: { platform: "browser" },
         configurable: true,
       });
       Object.defineProperty(globalThis, "navigator", {
-        value: originalNavigator,
+        value: { platform: "Win32", userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
         configurable: true,
       });
-    }
+
+      try {
+        expect(getRuntimePlatform()).toBe("win32");
+      } finally {
+        Object.defineProperty(globalThis, "process", {
+          value: originalProcess,
+          configurable: true,
+        });
+        Object.defineProperty(globalThis, "navigator", {
+          value: originalNavigator,
+          configurable: true,
+        });
+      }
+    });
   });
 });

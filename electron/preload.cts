@@ -2484,6 +2484,8 @@ const api: ElectronAPI = {
     }) => ipcRenderer.send(CHANNELS.PERF_FLUSH_RENDERER_MARKS, payload),
   },
 
+  isWindowsStoreBuild: process.windowsStore === true,
+
   // Demo API — channel constants live in `./ipc/handlers/demo.preload.ts` and
   // back the main-side `defineIpcNamespace`, but the renderer-facing shape
   // takes positional args (moveTo(x, y, durationMs)) while channels carry a

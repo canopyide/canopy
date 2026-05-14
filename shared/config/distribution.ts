@@ -22,6 +22,19 @@ export function getRuntimePlatform(): string {
   return "unknown";
 }
 
-export function isWindowsStoreBuild(platform = getRuntimePlatform()): boolean {
-  return platform === "win32";
+export function isWindowsStoreBuild(override?: boolean): boolean {
+  if (override !== undefined) {
+    return override;
+  }
+
+  if (typeof window !== "undefined") {
+    return (window as { electron?: { isWindowsStoreBuild?: boolean } }).electron
+      ?.isWindowsStoreBuild === true;
+  }
+
+  if (typeof process !== "undefined") {
+    return (process as NodeJS.Process & { windowsStore?: boolean }).windowsStore === true;
+  }
+
+  return false;
 }

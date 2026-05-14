@@ -1442,6 +1442,7 @@ export interface ElectronAPI {
   perf: {
     flushMarks(payload: import("../../perf/marks.js").RendererPerfFlushPayload): void;
   };
+  isWindowsStoreBuild: boolean;
   demo?: {
     moveTo(x: number, y: number, durationMs?: number): Promise<void>;
     moveToSelector(
