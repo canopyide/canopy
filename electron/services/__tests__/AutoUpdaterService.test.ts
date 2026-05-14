@@ -100,8 +100,9 @@ const CHECKING_MENU_DELAY_MS = 400;
 describe("AutoUpdaterService", () => {
   const originalPlatform = process.platform;
   const originalResourcesPath = process.resourcesPath;
-  const originalWindowsStore = (process as NodeJS.Process & { windowsStore?: boolean })
-    .windowsStore;
+  const originalWindowsStore = (
+    process as Partial<NodeJS.Process & { windowsStore?: boolean }> & NodeJS.Process
+  ).windowsStore;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -112,7 +113,7 @@ describe("AutoUpdaterService", () => {
     delete process.env.PORTABLE_EXECUTABLE_FILE;
     delete process.env.APPIMAGE;
     Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
-    delete (process as NodeJS.Process & { windowsStore?: boolean }).windowsStore;
+    Object.defineProperty(process, "windowsStore", { value: undefined, configurable: true });
     Object.defineProperty(process, "resourcesPath", {
       value: "/mock/resources",
       configurable: true,
@@ -148,7 +149,7 @@ describe("AutoUpdaterService", () => {
       configurable: true,
     });
     if (originalWindowsStore === undefined) {
-      delete (process as NodeJS.Process & { windowsStore?: boolean }).windowsStore;
+      Object.defineProperty(process, "windowsStore", { value: undefined, configurable: true });
     } else {
       Object.defineProperty(process, "windowsStore", {
         value: originalWindowsStore,
@@ -621,7 +622,7 @@ describe("AutoUpdaterService", () => {
 
     it("does NOT suppress the updater on non-Store Windows builds (NSIS/Squirrel)", () => {
       Object.defineProperty(process, "platform", { value: "win32", configurable: true });
-      delete (process as NodeJS.Process & { windowsStore?: boolean }).windowsStore;
+      Object.defineProperty(process, "windowsStore", { value: undefined, configurable: true });
 
       autoUpdaterService.initialize();
 

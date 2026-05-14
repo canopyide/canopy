@@ -28,8 +28,10 @@ export function isWindowsStoreBuild(override?: boolean): boolean {
   }
 
   if (typeof window !== "undefined") {
-    return (window as { electron?: { isWindowsStoreBuild?: boolean } }).electron
-      ?.isWindowsStoreBuild === true;
+    return (
+      (window as { electron?: { isWindowsStoreBuild?: boolean } }).electron?.isWindowsStoreBuild ===
+      true
+    );
   }
 
   if (typeof process !== "undefined") {

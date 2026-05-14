@@ -1,21 +1,17 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { getRuntimePlatform, isWindowsStoreBuild } from "../distribution.js";
 
-type WindowsStoreProcess = NodeJS.Process & { windowsStore?: boolean };
+type WindowsStoreProcess = Partial<NodeJS.Process & { windowsStore?: boolean }>;
 
 describe("distribution config", () => {
   describe("isWindowsStoreBuild", () => {
     const originalWindowsStore = (process as WindowsStoreProcess).windowsStore;
 
     afterEach(() => {
-      if (originalWindowsStore === undefined) {
-        delete (process as WindowsStoreProcess).windowsStore;
-      } else {
-        Object.defineProperty(process, "windowsStore", {
-          value: originalWindowsStore,
-          configurable: true,
-        });
-      }
+      Object.defineProperty(process, "windowsStore", {
+        value: originalWindowsStore,
+        configurable: true,
+      });
     });
 
     it("returns the explicit override when provided", () => {
@@ -29,7 +25,10 @@ describe("distribution config", () => {
     });
 
     it("returns false when process.windowsStore is undefined (NSIS/Squirrel build)", () => {
-      delete (process as WindowsStoreProcess).windowsStore;
+      Object.defineProperty(process, "windowsStore", {
+        value: undefined,
+        configurable: true,
+      });
       expect(isWindowsStoreBuild()).toBe(false);
     });
 
@@ -43,11 +42,7 @@ describe("distribution config", () => {
     const originalWindow = (globalThis as { window?: unknown }).window;
 
     afterEach(() => {
-      if (originalWindow === undefined) {
-        delete (globalThis as { window?: unknown }).window;
-      } else {
-        (globalThis as { window?: unknown }).window = originalWindow;
-      }
+      (globalThis as { window?: unknown }).window = originalWindow;
     });
 
     it("reads window.electron.isWindowsStoreBuild when window is defined", () => {
@@ -74,7 +69,10 @@ describe("distribution config", () => {
       try {
         expect(isWindowsStoreBuild()).toBe(false);
       } finally {
-        delete (process as WindowsStoreProcess).windowsStore;
+        Object.defineProperty(process, "windowsStore", {
+          value: undefined,
+          configurable: true,
+        });
       }
     });
   });
