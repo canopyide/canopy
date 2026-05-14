@@ -1126,9 +1126,7 @@ describe("inferWorktreeIdFromCwd", () => {
 
   it("returns the worktree id unchanged when it differs from the path", () => {
     const worktrees = [{ id: "worktree-uuid-123", path: "C:/repo/wt-a" }];
-    expect(inferWorktreeIdFromCwd("C:\\repo\\wt-a\\src\\lib", worktrees)).toBe(
-      "worktree-uuid-123"
-    );
+    expect(inferWorktreeIdFromCwd("C:\\repo\\wt-a\\src\\lib", worktrees)).toBe("worktree-uuid-123");
   });
 
   it("ignores trailing separators on either side", () => {
