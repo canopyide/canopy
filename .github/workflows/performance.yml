@@ -1,8 +1,6 @@
 name: Performance
 
 on:
-  push:
-    branches: [develop]
   schedule:
     - cron: "0 7 * * *"
   workflow_dispatch:
@@ -16,7 +14,6 @@ concurrency:
 
 jobs:
   perf-ci:
-    if: github.event_name == 'push'
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
@@ -43,7 +40,6 @@ jobs:
           path: .tmp/perf-results/
 
   perf-nightly:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     steps:
