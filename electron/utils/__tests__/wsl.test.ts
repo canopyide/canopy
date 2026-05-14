@@ -195,7 +195,7 @@ describe("getDefaultWslDistro", () => {
     expect(await getDefaultWslDistro()).toBeNull();
   });
 
-  it("invokes wsl.exe with --list --verbose (not --quiet)", async () => {
+  it("invokes wsl.exe with --list --verbose and the decode-critical options", async () => {
     Object.defineProperty(process, "platform", { value: "win32", writable: true });
     execFileMock.mockImplementation((_file, _args, _opts, cb: ExecFileCallback) =>
       cb(null, utf8("  NAME  STATE  VERSION\r\n* Ubuntu  Running  2\r\n"))
@@ -205,8 +205,47 @@ describe("getDefaultWslDistro", () => {
     await getDefaultWslDistro();
 
     expect(execFileMock).toHaveBeenCalledOnce();
-    const [file, args] = execFileMock.mock.calls[0];
+    const [file, args, opts] = execFileMock.mock.calls[0];
     expect(file).toBe("wsl.exe");
     expect(args).toEqual(["--list", "--verbose"]);
+    // These options are load-bearing: `encoding: "buffer"` is what lets the
+    // UTF-16LE heuristic run; without it Node decodes stdout as UTF-8 and the
+    // pre-WSL_UTF8 path silently mangles distro names.
+    expect(opts).toMatchObject({
+      encoding: "buffer",
+      windowsHide: true,
+      timeout: 5_000,
+    });
+    expect(opts.env.WSL_UTF8).toBe("1");
+  });
+
+  it("decodes UTF-16LE without BOM via the null-byte heuristic", async () => {
+    Object.defineProperty(process, "platform", { value: "win32", writable: true });
+    // No BOM; rely on the >1/3-null-bytes heuristic to pick UTF-16LE.
+    const stdout =
+      "  NAME            STATE           VERSION\r\n" + "* Fedora          Running         2\r\n";
+    const buf = Buffer.from(stdout, "utf16le");
+    execFileMock.mockImplementation((_file, _args, _opts, cb: ExecFileCallback) => cb(null, buf));
+
+    const { getDefaultWslDistro } = await import("../wsl.js");
+    expect(await getDefaultWslDistro()).toBe("Fedora");
+  });
+
+  it("ignores a `*`-prefixed banner line and still finds the real default", async () => {
+    Object.defineProperty(process, "platform", { value: "win32", writable: true });
+    // Some WSL builds emit advisory/banner text before the table — guard
+    // against a `*`-prefixed banner being mistaken for the default-marker row.
+    // A banner line lacks the 2+ space column gap that signals a real entry.
+    const stdout =
+      "*ImportantNotice: update WSL via Windows Update*\r\n" +
+      "  NAME            STATE           VERSION\r\n" +
+      "  Ubuntu          Stopped         2\r\n" +
+      "* Debian          Running         2\r\n";
+    execFileMock.mockImplementation((_file, _args, _opts, cb: ExecFileCallback) =>
+      cb(null, utf8(stdout))
+    );
+
+    const { getDefaultWslDistro } = await import("../wsl.js");
+    expect(await getDefaultWslDistro()).toBe("Debian");
   });
 });
