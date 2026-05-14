@@ -112,7 +112,6 @@ export function initPerWindowServices(
     }
 
     ptyClient = new PtyClient({
-      maxRestartAttempts: 3,
       healthCheckIntervalMs: 5000,
       showCrashDialog: false,
     });
