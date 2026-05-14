@@ -6,7 +6,7 @@ import { isActiveVoiceSession } from "@shared/types";
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { VOICE_INPUT_SETTINGS_CHANGED_EVENT } from "@/lib/voiceInputSettingsEvents";
-import { logDebug, logWarn, logError } from "@/utils/logger";
+import { logDebug, logInfo, logWarn, logError } from "@/utils/logger";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
 
 const LOG_PREFIX = "[VoiceRecording]";
@@ -47,6 +47,11 @@ class VoiceRecordingService {
   private stopPromise: Promise<void> | null = null;
   private levelRaf: number | null = null;
   private pendingLevel = 0;
+  // Session-wide audio-level stats, logged on stop so a captured log can show
+  // whether the mic actually picked up speech during the recording.
+  private sessionPeakRms = 0;
+  private sessionRmsSum = 0;
+  private sessionChunkCount = 0;
 
   initialize(): void {
     if (this.initialized) return;
@@ -374,9 +379,6 @@ class VoiceRecordingService {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      logDebug(`${LOG_PREFIX} Microphone access granted`, {
-        tracks: stream.getAudioTracks().length,
-      });
     } catch (error) {
       const message =
         error instanceof DOMException && error.name === "NotAllowedError"
@@ -389,6 +391,36 @@ class VoiceRecordingService {
       useVoiceRecordingStore.getState().setError(message);
       useVoiceRecordingStore.getState().announce(message);
       return;
+    }
+
+    // Log which mic and capture settings the OS handed us — a wrong/dead device
+    // or unexpected sample rate is a real failure mode. Kept out of the
+    // getUserMedia try block and fully guarded: diagnostics must never be able
+    // to abort start().
+    try {
+      const audioTracks = stream.getAudioTracks();
+      logInfo(`${LOG_PREFIX} Microphone access granted`, {
+        trackCount: audioTracks.length,
+        devices: audioTracks.map((track) => {
+          const settings = typeof track.getSettings === "function" ? track.getSettings() : {};
+          return {
+            label: track.label || "(no label)",
+            enabled: track.enabled,
+            muted: track.muted,
+            readyState: track.readyState,
+            // `deviceId` is load-bearing for this subsystem — it's how we tell
+            // "system default" from a specific device (see issue #7902).
+            deviceId: settings.deviceId,
+            sampleRate: settings.sampleRate,
+            channelCount: settings.channelCount,
+            echoCancellation: settings.echoCancellation,
+            noiseSuppression: settings.noiseSuppression,
+            autoGainControl: settings.autoGainControl,
+          };
+        }),
+      });
+    } catch (err) {
+      logDebug(`${LOG_PREFIX} Could not read microphone track settings`, { err });
     }
 
     if (this.isStartRequestStale(startRequestId)) {
@@ -425,6 +457,12 @@ class VoiceRecordingService {
     logDebug(`${LOG_PREFIX} Creating AudioContext (24kHz) — eager capture`);
     const audioContext = new AudioContext({ sampleRate: 24000 });
     this.audioContext = audioContext;
+    logInfo(`${LOG_PREFIX} AudioContext created`, {
+      requestedSampleRate: 24000,
+      actualSampleRate: audioContext.sampleRate,
+      state: audioContext.state,
+      baseLatency: audioContext.baseLatency,
+    });
     const captureResources: {
       keepAliveOscillator?: OscillatorNode | null;
       keepAliveGain?: GainNode | null;
@@ -491,13 +529,13 @@ class VoiceRecordingService {
     captureResources.workletNode = workletNode;
     this.workletNode = workletNode;
 
-    let chunkCount = 0;
+    this.sessionPeakRms = 0;
+    this.sessionRmsSum = 0;
+    this.sessionChunkCount = 0;
     workletNode.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
       if (this.generation !== generation) return;
-      chunkCount++;
-      if (chunkCount <= 3 || chunkCount % 100 === 0) {
-        logDebug(`${LOG_PREFIX} Audio chunk #${chunkCount}`, { bytes: event.data.byteLength });
-      }
+      this.sessionChunkCount++;
+      const chunkCount = this.sessionChunkCount;
 
       // Compute RMS audio level from PCM16 samples for the UI glow.
       const samples = new Int16Array(event.data);
@@ -507,7 +545,21 @@ class VoiceRecordingService {
         sumSq += n * n;
       }
       const rms = Math.sqrt(sumSq / samples.length);
+      this.sessionPeakRms = Math.max(this.sessionPeakRms, rms);
+      this.sessionRmsSum += rms;
       this.pendingLevel = Math.min(1, rms * 6);
+
+      if (chunkCount <= 3 || chunkCount % 100 === 0) {
+        // Include RMS stats so a captured log can distinguish "mic was silent"
+        // (peak/avg near 0) from "user spoke but no transcription came back".
+        logDebug(`${LOG_PREFIX} Audio chunk #${chunkCount}`, {
+          bytes: event.data.byteLength,
+          rms: Number(rms.toFixed(4)),
+          peakRms: Number(this.sessionPeakRms.toFixed(4)),
+          avgRms: Number((this.sessionRmsSum / chunkCount).toFixed(4)),
+        });
+      }
+
       if (this.levelRaf === null) {
         this.levelRaf = requestAnimationFrame(() => {
           this.levelRaf = null;
@@ -609,6 +661,19 @@ class VoiceRecordingService {
         currentStatus: storeState.status,
         hasActiveTarget: !!storeState.activeTarget,
       });
+
+      // Session audio summary — a near-zero peak means the mic captured no
+      // speech, which explains an empty transcript without it being a bug.
+      if (this.sessionChunkCount > 0) {
+        logInfo(`${LOG_PREFIX} Session audio summary`, {
+          chunks: this.sessionChunkCount,
+          peakRms: Number(this.sessionPeakRms.toFixed(4)),
+          avgRms: Number((this.sessionRmsSum / this.sessionChunkCount).toFixed(4)),
+          likelySilent: this.sessionPeakRms < 0.01,
+        });
+      } else {
+        logWarn(`${LOG_PREFIX} Session produced zero audio chunks`);
+      }
 
       // Stop audio capture immediately — no new audio after this point.
       // DON'T increment generation yet so in-flight worklet messages still

@@ -150,6 +150,15 @@ async function bringSessionReady(
   return { socket, result };
 }
 
+/**
+ * Feed enough uncommitted audio that the next `input_audio_buffer.commit` clears
+ * the MIN_COMMIT_BYTES floor — otherwise the service skips the commit to avoid
+ * OpenAI's "undersized buffer" error.
+ */
+function feedCommittableAudio(service: VoiceTranscriptionServiceInstance): void {
+  service.sendAudioChunk(new Uint8Array(5_000).buffer);
+}
+
 describe("VoiceTranscriptionService", () => {
   beforeEach(() => {
     instances.length = 0;
@@ -206,6 +215,10 @@ describe("VoiceTranscriptionService", () => {
       format: { type: "audio/pcm", rate: 24000 },
       transcription: { model: "gpt-realtime-whisper", language: "en" },
     });
+    // `turn_detection` must be EXPLICITLY null for gpt-realtime-whisper — see
+    // the session.update comment in VoiceTranscriptionService. Omitting it
+    // makes the server silently emit no transcription items.
+    expect(sessionUpdate.session.audio.input.turn_detection).toBeNull();
 
     // Still not ready — start() must wait for session.updated
     expect(statuses).toEqual(["connecting"]);
@@ -350,6 +363,48 @@ describe("VoiceTranscriptionService", () => {
     expect(completes).toEqual([]);
   });
 
+  it("emits complete from a conversation.item.done event (intent=transcription endpoint)", async () => {
+    const service = new VoiceTranscriptionService();
+    const events: VoiceTranscriptionEvent[] = [];
+    service.onEvent((e) => events.push(e));
+
+    const { socket } = await bringSessionReady(service);
+    // The `?intent=transcription` endpoint reports each committed segment via
+    // conversation.item.done; the transcript lives on the input_audio part.
+    socket.simulateMessage("conversation.item.added", {
+      item: { content: [{ type: "input_audio" }] },
+    });
+    socket.simulateMessage("conversation.item.done", {
+      item: {
+        content: [{ type: "input_audio", transcript: "hello from done" }],
+      },
+    });
+
+    const complete = events.find((e) => e.type === "complete");
+    expect(complete).toEqual({
+      type: "complete",
+      text: "hello from done",
+      confidence: { minConfidence: 1.0, wordCount: 0, uncertainWords: [], words: [] },
+    });
+  });
+
+  it("ignores a conversation.item.done with no input_audio transcript", async () => {
+    const service = new VoiceTranscriptionService();
+    const completes: string[] = [];
+    service.onEvent((e) => {
+      if (e.type === "complete") completes.push(e.text);
+    });
+
+    const { socket } = await bringSessionReady(service);
+    socket.simulateMessage("conversation.item.done", { item: { content: [] } });
+    socket.simulateMessage("conversation.item.done", {
+      item: { content: [{ type: "input_audio", transcript: "   " }] },
+    });
+    socket.simulateMessage("conversation.item.done", {});
+
+    expect(completes).toEqual([]);
+  });
+
   // ── Audio chunk handling ─────────────────────────────────────────────────
 
   it("sends audio chunks as base64 input_audio_buffer.append after session.updated", async () => {
@@ -418,16 +473,59 @@ describe("VoiceTranscriptionService", () => {
     const service = new VoiceTranscriptionService();
     const { socket } = await bringSessionReady(service);
 
+    // Feed enough audio that stop sends a real final commit and genuinely drains.
+    feedCommittableAudio(service);
     const drainPromise = service.stopGracefully();
     const sentAtStartOfDrain = socket.sent.length;
     service.sendAudioChunk(new Uint8Array([99]).buffer);
     expect(socket.sent.length).toBe(sentAtStartOfDrain);
 
-    socket.simulateMessage("conversation.item.input_audio_transcription.completed", {
-      transcript: "done",
+    socket.simulateMessage("conversation.item.done", {
+      item: { content: [{ type: "input_audio", transcript: "done" }] },
     });
-    vi.advanceTimersByTime(100);
     await drainPromise;
+  });
+
+  // ── Interval commit ──────────────────────────────────────────────────────
+  // gpt-realtime-whisper has no server VAD, so the service commits the input
+  // buffer on a timer to drive segmentation; without commits no transcription
+  // events ever arrive.
+
+  it("commits the audio buffer on the interval timer once enough audio has streamed", async () => {
+    const service = new VoiceTranscriptionService();
+    const { socket } = await bringSessionReady(service);
+
+    feedCommittableAudio(service);
+    expect(socket.sentJson().filter((p) => p.type === "input_audio_buffer.commit")).toHaveLength(0);
+
+    vi.advanceTimersByTime(2_000);
+    expect(socket.sentJson().filter((p) => p.type === "input_audio_buffer.commit")).toHaveLength(1);
+
+    service.stop();
+  });
+
+  it("skips the interval commit when too little audio has streamed since the last commit", async () => {
+    const service = new VoiceTranscriptionService();
+    const { socket } = await bringSessionReady(service);
+
+    // A tiny chunk, well under MIN_COMMIT_BYTES — committing it would draw a
+    // fatal "undersized buffer" error from OpenAI, so the timer must skip it.
+    service.sendAudioChunk(new Uint8Array(10).buffer);
+    vi.advanceTimersByTime(2_000);
+    expect(socket.sentJson().filter((p) => p.type === "input_audio_buffer.commit")).toHaveLength(0);
+
+    service.stop();
+  });
+
+  it("commitParagraphBoundary flushes the current segment when enough audio has streamed", async () => {
+    const service = new VoiceTranscriptionService();
+    const { socket } = await bringSessionReady(service);
+
+    feedCommittableAudio(service);
+    service.commitParagraphBoundary();
+    expect(socket.sentJson().filter((p) => p.type === "input_audio_buffer.commit")).toHaveLength(1);
+
+    service.stop();
   });
 
   // ── Graceful stop / drain ────────────────────────────────────────────────
@@ -440,23 +538,21 @@ describe("VoiceTranscriptionService", () => {
     });
 
     const { socket } = await bringSessionReady(service);
+    feedCommittableAudio(service);
     const drainPromise = service.stopGracefully();
     expect(statuses).toContain("finishing");
 
     const commitPayloads = socket.sentJson().filter((p) => p.type === "input_audio_buffer.commit");
     expect(commitPayloads).toHaveLength(1);
 
-    socket.simulateMessage("conversation.item.input_audio_transcription.completed", {
-      transcript: "final",
+    socket.simulateMessage("conversation.item.done", {
+      item: { content: [{ type: "input_audio", transcript: "final" }] },
     });
-    // The grace timer fires 100ms after the first `completed` to give late
-    // arrivals (e.g. server_vad mid-utterance commits) a chance to join.
-    vi.advanceTimersByTime(100);
     await drainPromise;
     expect(statuses.at(-1)).toBe("idle");
   });
 
-  it("drain grace period absorbs a late completed event without losing its transcript", async () => {
+  it("drain waits for every outstanding commit's transcript, not just the first", async () => {
     const service = new VoiceTranscriptionService();
     const completes: string[] = [];
     service.onEvent((e) => {
@@ -464,34 +560,156 @@ describe("VoiceTranscriptionService", () => {
     });
 
     const { socket } = await bringSessionReady(service);
+    // An interval commit goes out (segment A), then more audio accumulates and
+    // stop sends a final commit (segment B) — two transcripts now outstanding.
+    feedCommittableAudio(service);
+    vi.advanceTimersByTime(2_000);
+    feedCommittableAudio(service);
     const drainPromise = service.stopGracefully();
+    expect(socket.sentJson().filter((p) => p.type === "input_audio_buffer.commit")).toHaveLength(2);
 
-    // server_vad auto-committed item A mid-utterance; its completed arrives
-    // first, then item B's completed for our explicit commit arrives ~50ms later.
-    socket.simulateMessage("conversation.item.input_audio_transcription.completed", {
-      transcript: "first half",
+    let settled = false;
+    void drainPromise.then(() => {
+      settled = true;
     });
-    vi.advanceTimersByTime(50);
-    socket.simulateMessage("conversation.item.input_audio_transcription.completed", {
-      transcript: "second half",
+
+    // Segment A completes first — drain must NOT settle, B is still in flight.
+    socket.simulateMessage("conversation.item.done", {
+      item: { content: [{ type: "input_audio", transcript: "first half" }] },
     });
-    vi.advanceTimersByTime(100);
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    // Segment B completes — every outstanding commit has now reported back.
+    socket.simulateMessage("conversation.item.done", {
+      item: { content: [{ type: "input_audio", transcript: "second half" }] },
+    });
     await drainPromise;
     expect(completes).toEqual(["first half", "second half"]);
   });
 
-  it("drain resolves after the timeout if no completed event arrives", async () => {
+  it("drain resolves after the timeout if no completion arrives", async () => {
     const service = new VoiceTranscriptionService();
     await bringSessionReady(service);
+    feedCommittableAudio(service);
 
     const drainPromise = service.stopGracefully();
     vi.advanceTimersByTime(3_000);
     await expect(drainPromise).resolves.toBeUndefined();
   });
 
+  it("stop with a sub-threshold buffer and nothing outstanding resolves immediately", async () => {
+    const service = new VoiceTranscriptionService();
+    const { socket } = await bringSessionReady(service);
+
+    // No audio since the last commit and no commits in flight — nothing to
+    // transcribe, so stop closes without sending a commit or arming a timer.
+    const drainPromise = service.stopGracefully();
+    await expect(drainPromise).resolves.toBeUndefined();
+    expect(socket.sentJson().filter((p) => p.type === "input_audio_buffer.commit")).toHaveLength(0);
+  });
+
+  it("stop with a sub-threshold buffer still drains for an in-flight interval commit", async () => {
+    const service = new VoiceTranscriptionService();
+    const completes: string[] = [];
+    service.onEvent((e) => {
+      if (e.type === "complete") completes.push(e.text);
+    });
+
+    const { socket } = await bringSessionReady(service);
+    // An interval commit went out; its transcript hasn't come back yet.
+    feedCommittableAudio(service);
+    vi.advanceTimersByTime(2_000);
+    expect(socket.sentJson().filter((p) => p.type === "input_audio_buffer.commit")).toHaveLength(1);
+
+    // Stop with nothing new buffered — no final commit, but the drain must
+    // still wait for the outstanding interval commit's transcript.
+    const drainPromise = service.stopGracefully();
+    expect(socket.sentJson().filter((p) => p.type === "input_audio_buffer.commit")).toHaveLength(1);
+
+    let settled = false;
+    void drainPromise.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    socket.simulateMessage("conversation.item.done", {
+      item: { content: [{ type: "input_audio", transcript: "tail" }] },
+    });
+    await drainPromise;
+    expect(completes).toEqual(["tail"]);
+  });
+
+  it("ignores a duplicate conversation.item.done for the same item during drain", async () => {
+    const service = new VoiceTranscriptionService();
+    const completes: string[] = [];
+    service.onEvent((e) => {
+      if (e.type === "complete") completes.push(e.text);
+    });
+
+    const { socket } = await bringSessionReady(service);
+    // Two outstanding commits: an interval commit, then a final commit on stop.
+    feedCommittableAudio(service);
+    vi.advanceTimersByTime(2_000);
+    feedCommittableAudio(service);
+    const drainPromise = service.stopGracefully();
+
+    let settled = false;
+    void drainPromise.then(() => {
+      settled = true;
+    });
+
+    // Segment A completes, then a DUPLICATE of A arrives — the duplicate must
+    // not be counted again (which would settle the drain while B is still in
+    // flight) and must not re-emit A's transcript.
+    const itemADone = {
+      item: { id: "item-A", content: [{ type: "input_audio", transcript: "alpha" }] },
+    };
+    socket.simulateMessage("conversation.item.done", itemADone);
+    socket.simulateMessage("conversation.item.done", itemADone);
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(completes).toEqual(["alpha"]);
+
+    // Segment B completes — now every outstanding commit has reported back.
+    socket.simulateMessage("conversation.item.done", {
+      item: { id: "item-B", content: [{ type: "input_audio", transcript: "beta" }] },
+    });
+    await drainPromise;
+    expect(completes).toEqual(["alpha", "beta"]);
+  });
+
+  it("does not let a conversation.item.done without an input_audio part settle the drain", async () => {
+    const service = new VoiceTranscriptionService();
+    const { socket } = await bringSessionReady(service);
+
+    feedCommittableAudio(service);
+    const drainPromise = service.stopGracefully(); // one outstanding commit
+
+    let settled = false;
+    void drainPromise.then(() => {
+      settled = true;
+    });
+
+    // A `done` with no input_audio content part — not a transcription segment,
+    // so it must not be counted against the outstanding commit.
+    socket.simulateMessage("conversation.item.done", {
+      item: { id: "item-noaudio", content: [{ type: "text" }] },
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    socket.simulateMessage("conversation.item.done", {
+      item: { id: "item-real", content: [{ type: "input_audio", transcript: "real" }] },
+    });
+    await drainPromise;
+  });
+
   it("repeated stopGracefully calls share a single in-flight drain", async () => {
     const service = new VoiceTranscriptionService();
     const { socket } = await bringSessionReady(service);
+    feedCommittableAudio(service);
 
     const first = service.stopGracefully();
     const second = service.stopGracefully();
@@ -500,10 +718,9 @@ describe("VoiceTranscriptionService", () => {
     const commits = socket.sentJson().filter((p) => p.type === "input_audio_buffer.commit");
     expect(commits).toHaveLength(1);
 
-    socket.simulateMessage("conversation.item.input_audio_transcription.completed", {
-      transcript: "ok",
+    socket.simulateMessage("conversation.item.done", {
+      item: { content: [{ type: "input_audio", transcript: "ok" }] },
     });
-    vi.advanceTimersByTime(100);
     await Promise.all([first, second]);
   });
 
@@ -526,8 +743,9 @@ describe("VoiceTranscriptionService", () => {
     });
 
     const { socket: firstSocket } = await bringSessionReady(service);
+    feedCommittableAudio(service);
     const drainPromise = service.stopGracefully();
-    // Don't simulate completed — drain is still in flight when start() runs.
+    // Don't simulate completion — drain is still in flight when start() runs.
 
     const secondStart = service.start(BASE_SETTINGS);
     await Promise.resolve();

@@ -218,6 +218,7 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
       if (!win || win.isDestroyed()) return;
 
       if (voiceEvent.type === "delta") {
+        logDebug("[VoiceInput] → renderer delta", { length: voiceEvent.text.length });
         getAppWebContents(win).send(CHANNELS.VOICE_INPUT_TRANSCRIPTION_DELTA, voiceEvent.text);
       } else if (voiceEvent.type === "complete") {
         const rawText = voiceEvent.text.trim();
@@ -240,6 +241,13 @@ export function registerVoiceInputHandlers(deps: HandlerDependencies): () => voi
           .split(/\n\n+/)
           .map((p) => p.trim())
           .filter(Boolean);
+        // Lengths only — dictated text is user content, kept out of logs.
+        logDebug("[VoiceInput] complete event → renderer", {
+          rawLength: rawText.length,
+          processedLength: processedText.length,
+          paragraphingStrategy: settings.paragraphingStrategy,
+          partCount: parts.length,
+        });
         for (let i = 0; i < parts.length; i++) {
           getAppWebContents(win).send(CHANNELS.VOICE_INPUT_TRANSCRIPTION_COMPLETE, {
             text: parts[i],

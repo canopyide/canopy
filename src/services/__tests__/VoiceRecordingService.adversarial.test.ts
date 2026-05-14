@@ -334,6 +334,7 @@ vi.mock("@/store/worktreeStore", () => {
 
 vi.mock("@/utils/logger", () => ({
   logDebug: vi.fn(),
+  logInfo: vi.fn(),
   logWarn: vi.fn(),
   logError: vi.fn(),
 }));
