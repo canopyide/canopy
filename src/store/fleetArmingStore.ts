@@ -117,6 +117,31 @@ export function computeArmByStateIds(
   return ids;
 }
 
+/**
+ * Pure collector: arm-eligible terminal ids whose worktree is in `worktreeIds`,
+ * in panelIds (sidebar) order. Shared by `armMatchingFilter` (the store
+ * mutation) and the sidebar's arm-matching affordance, which needs the same
+ * set to decide whether anything is still unarmed. Takes `panelIds`/`panelsById`
+ * explicitly so callers can pass reactive selector values rather than reaching
+ * into `usePanelStore.getState()`.
+ */
+export function collectFilterArmEligibleIds(
+  worktreeIds: readonly string[],
+  panelIds: readonly string[],
+  panelsById: Record<string, TerminalInstance>
+): string[] {
+  if (worktreeIds.length === 0) return [];
+  const worktreeIdSet = new Set(worktreeIds);
+  const ids: string[] = [];
+  for (const id of panelIds) {
+    const t = panelsById[id];
+    if (!isFleetArmEligible(t)) continue;
+    if (!t.worktreeId || !worktreeIdSet.has(t.worktreeId)) continue;
+    ids.push(id);
+  }
+  return ids;
+}
+
 export const useFleetArmingStore = create<FleetArmingState>()((set, get) => ({
   armedIds: new Set<string>(),
   armOrder: [],
@@ -248,19 +273,15 @@ export const useFleetArmingStore = create<FleetArmingState>()((set, get) => ({
   },
 
   armMatchingFilter: (worktreeIds) => {
-    if (worktreeIds.length === 0) return;
-    const worktreeIdSet = new Set(worktreeIds);
-    const state = usePanelStore.getState();
-    const ids: string[] = [];
-    for (const id of state.panelIds) {
-      const t = state.panelsById[id];
-      if (!isFleetArmEligible(t)) continue;
-      if (!t.worktreeId || !worktreeIdSet.has(t.worktreeId)) continue;
-      ids.push(id);
-    }
+    const panelState = usePanelStore.getState();
+    const ids = collectFilterArmEligibleIds(
+      worktreeIds,
+      panelState.panelIds,
+      panelState.panelsById
+    );
     // No eligible terminals — leave the existing armed set alone rather than
-    // silently clearing it. The button is still visible whenever any
-    // worktrees match the filter; clicking it must not destroy the user's
+    // silently clearing it. The affordance stays present whenever any
+    // worktrees match the filter; triggering it must not destroy the user's
     // prior selection when the filtered subset has no arm-eligible terminals.
     if (ids.length === 0) return;
     if (get().armedIds.size === 0) {

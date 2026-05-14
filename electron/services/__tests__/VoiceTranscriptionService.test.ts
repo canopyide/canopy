@@ -177,9 +177,8 @@ describe("VoiceTranscriptionService", () => {
     void service.start({ ...BASE_SETTINGS, openaiApiKey: "sk-abc" });
     await Promise.resolve();
     const socket = latestInstance();
-    expect(socket.url).toBe("wss://api.openai.com/v1/realtime?model=gpt-realtime-whisper");
+    expect(socket.url).toBe("wss://api.openai.com/v1/realtime?intent=transcription");
     expect(socket.options.headers.Authorization).toBe("Bearer sk-abc");
-    expect(socket.options.headers["OpenAI-Beta"]).toBe("realtime=v1");
     service.stop();
   });
 
@@ -206,7 +205,6 @@ describe("VoiceTranscriptionService", () => {
     expect(sessionUpdate.session.audio.input).toMatchObject({
       format: { type: "audio/pcm", rate: 24000 },
       transcription: { model: "gpt-realtime-whisper", language: "en" },
-      turn_detection: { type: "server_vad" },
     });
 
     // Still not ready — start() must wait for session.updated

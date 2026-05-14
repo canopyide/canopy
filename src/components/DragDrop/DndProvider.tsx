@@ -39,7 +39,7 @@ import {
   type TerminalInstance,
 } from "@/store";
 
-import { TerminalDragPreview } from "./TerminalDragPreview";
+import { TerminalDragPreview, TERMINAL_DRAG_PREVIEW_WIDTH } from "./TerminalDragPreview";
 import { WorktreeDragPreview } from "./WorktreeDragPreview";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { parseAccordionDragId } from "./SortableWorktreeTerminal";
@@ -323,9 +323,11 @@ function DragOverlayWithCursorTracking({
       return transform;
     }
 
+    // overlayNodeRect.width is the dragged *panel's* width, not the preview's.
+    // Center on the preview's fixed width so the ghost tracks the cursor.
     return {
       ...transform,
-      x: cursor.x - overlayNodeRect.left - overlayNodeRect.width / 2,
+      x: cursor.x - overlayNodeRect.left - TERMINAL_DRAG_PREVIEW_WIDTH / 2,
       y: cursor.y - overlayNodeRect.top - TITLE_BAR_CURSOR_OFFSET,
     };
   }, []);

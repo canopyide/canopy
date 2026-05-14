@@ -9,6 +9,12 @@ interface TerminalDragPreviewProps {
   groupTabCount?: number;
 }
 
+// Fixed dimensions of the drag ghost. Exported so the DragOverlay cursor
+// modifier can center on the preview's real size — the overlay wrapper rect
+// reflects the dragged panel's (much larger) dimensions, not this box.
+export const TERMINAL_DRAG_PREVIEW_WIDTH = 240;
+export const TERMINAL_DRAG_PREVIEW_HEIGHT = 140;
+
 export function TerminalDragPreview({ terminal, groupTabCount }: TerminalDragPreviewProps) {
   // Drag visual color mirrors the same chrome descriptor used by tabs/panels.
   const chrome = deriveTerminalChrome(terminal);
@@ -19,8 +25,8 @@ export function TerminalDragPreview({ terminal, groupTabCount }: TerminalDragPre
   return (
     <div
       style={{
-        width: 240,
-        height: 140,
+        width: TERMINAL_DRAG_PREVIEW_WIDTH,
+        height: TERMINAL_DRAG_PREVIEW_HEIGHT,
         backgroundColor: "var(--color-daintree-sidebar)",
         border: "1px solid var(--color-daintree-border)",
         borderRadius: "var(--radius-lg)",

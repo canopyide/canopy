@@ -5,9 +5,11 @@ import { logDebug, logInfo, logWarn, logError } from "../utils/logger.js";
 
 const P = "[VoiceTranscription]";
 
+// `gpt-realtime-whisper` is a transcription model — it must be passed as
+// `transcription.model`, NOT as the realtime session `model` query param.
+// The session connects via `?intent=transcription` instead.
 const OPENAI_REALTIME_URL =
-  process.env.DAINTREE_REALTIME_WS_URL ??
-  "wss://api.openai.com/v1/realtime?model=gpt-realtime-whisper";
+  process.env.DAINTREE_REALTIME_WS_URL ?? "wss://api.openai.com/v1/realtime?intent=transcription";
 const OPENAI_TRANSCRIPTION_MODEL = "gpt-realtime-whisper";
 const CONNECT_TIMEOUT_MS = 10_000;
 const DRAIN_TIMEOUT_MS = 3_000;
@@ -138,7 +140,6 @@ export class VoiceTranscriptionService {
         connection = new WebSocket(OPENAI_REALTIME_URL, {
           headers: {
             Authorization: `Bearer ${settings.openaiApiKey}`,
-            "OpenAI-Beta": "realtime=v1",
           },
         });
       } catch (err) {
@@ -184,6 +185,9 @@ export class VoiceTranscriptionService {
         }
         logInfo(`${P} WebSocket opened, sending session.update`);
         // TODO: pass `transcription.prompt` from settings once #7832 lands.
+        // `gpt-realtime-whisper` does its own segmentation — an explicit
+        // `turn_detection` block is rejected ("Turn detection is not supported
+        // for this transcription model").
         const sessionUpdate = {
           type: "session.update",
           session: {
@@ -194,12 +198,6 @@ export class VoiceTranscriptionService {
                 transcription: {
                   model: OPENAI_TRANSCRIPTION_MODEL,
                   language: settings.language || "en",
-                },
-                turn_detection: {
-                  type: "server_vad",
-                  threshold: 0.5,
-                  prefix_padding_ms: 300,
-                  silence_duration_ms: 500,
                 },
               },
             },

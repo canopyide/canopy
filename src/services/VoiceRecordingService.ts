@@ -404,6 +404,7 @@ class VoiceRecordingService {
         preserveLiveText: true,
         announce: false,
         preservePendingStart: true,
+        skipCorrection: true,
       });
       if (this.isStartRequestStale(startRequestId)) {
         for (const track of stream.getTracks()) {
@@ -574,6 +575,8 @@ class VoiceRecordingService {
       nextStatus?: "idle" | "error";
       announce?: boolean;
       preservePendingStart?: boolean;
+      /** Skip the post-stop whole-passage AI cleanup pass (e.g. when stopping to start a new session). */
+      skipCorrection?: boolean;
     } = {}
   ): Promise<void> {
     if (this.stopPromise) {
@@ -593,6 +596,10 @@ class VoiceRecordingService {
       const storeState = useVoiceRecordingStore.getState();
       const hasSession =
         storeState.activeTarget !== null || isActiveVoiceSession(storeState.status);
+      // Captured before finishSession() clears activeTarget — used to kick off
+      // the post-stop correction pass once the session has wound down.
+      const stoppedTarget = storeState.activeTarget;
+      const correctionEnabled = storeState.correctionEnabled;
 
       logDebug(`${LOG_PREFIX} stop() called`, {
         announcement,
@@ -609,6 +616,7 @@ class VoiceRecordingService {
       this.clearTimers();
       await this.cleanupAudioCapture();
       this.generation++;
+      const stopGeneration = this.generation;
 
       if (!skipRemoteStop) {
         // Graceful stop: the IPC handler drains pending transcriptions and flushes
@@ -644,6 +652,19 @@ class VoiceRecordingService {
       }
 
       this.isStoppingSession = false;
+
+      // Whole-passage AI cleanup runs after a deliberate, graceful stop only —
+      // not on error, cancel-to-restart, or backend-driven teardown. Fire and
+      // forget: the decoration shows progress, and stop() returns immediately.
+      if (
+        !skipRemoteStop &&
+        nextStatus === "idle" &&
+        !options.skipCorrection &&
+        correctionEnabled &&
+        stoppedTarget
+      ) {
+        void this.runCorrection(stoppedTarget, stopGeneration);
+      }
     })();
 
     try {
@@ -651,6 +672,84 @@ class VoiceRecordingService {
     } finally {
       this.stopPromise = null;
     }
+  }
+
+  /**
+   * Whole-passage AI cleanup pass. Runs once after a graceful stop: marks the
+   * dictated range with the `cm-voice-pending-ai` decoration, sends the full
+   * dictated text to gpt-5-mini, and swaps in the cleaned result if the region
+   * is still where we left it. Best-effort — any failure leaves the raw text.
+   */
+  private async runCorrection(target: VoiceRecordingTarget, stopGeneration: number): Promise<void> {
+    const { panelId, projectId } = target;
+    const buffer = useVoiceRecordingStore.getState().panelBuffers[panelId];
+    const sessionStart = buffer?.sessionDraftStart ?? -1;
+    if (sessionStart < 0) return;
+
+    const inputStore = useTerminalInputStore.getState();
+    const draftBefore = inputStore.getDraftInput(panelId, projectId);
+    const rawText = draftBefore.slice(sessionStart);
+    if (!rawText.trim()) return;
+
+    logDebug(`${LOG_PREFIX} Running whole-passage correction`, {
+      panelId,
+      rawLength: rawText.length,
+    });
+
+    // Show the dotted-underline "correcting" decoration over the dictated range.
+    useVoiceRecordingStore
+      .getState()
+      .setCorrectionRange(panelId, { from: sessionStart, to: draftBefore.length });
+    inputStore.bumpVoiceDraftRevision();
+
+    let correctedText = rawText;
+    try {
+      const result = await window.electron.voiceInput.correct({ rawText });
+      if (result.action === "replace" && result.correctedText.trim()) {
+        correctedText = result.correctedText;
+      }
+    } catch (error) {
+      logWarn(`${LOG_PREFIX} Correction request failed, keeping raw text`, { error });
+    } finally {
+      useVoiceRecordingStore.getState().setCorrectionRange(panelId, null);
+    }
+
+    // A new session started for this panel while correction was in flight —
+    // don't clobber it.
+    if (this.generation !== stopGeneration) {
+      logDebug(`${LOG_PREFIX} Correction result stale (new session), discarding`);
+      inputStore.bumpVoiceDraftRevision();
+      return;
+    }
+
+    if (correctedText !== rawText) {
+      const draftNow = inputStore.getDraftInput(panelId, projectId);
+      // Apply only if the dictated region is still intact and unambiguous —
+      // skip rather than guess if the user edited it mid-correction.
+      let start = -1;
+      if (draftNow.slice(sessionStart, sessionStart + rawText.length) === rawText) {
+        start = sessionStart;
+      } else {
+        const lastIdx = draftNow.lastIndexOf(rawText);
+        if (lastIdx >= 0 && draftNow.indexOf(rawText) === lastIdx) {
+          start = lastIdx;
+        }
+      }
+      if (start >= 0) {
+        const before = draftNow.slice(0, start);
+        const after = draftNow.slice(start + rawText.length);
+        inputStore.setDraftInput(panelId, before + correctedText + after, projectId);
+        logDebug(`${LOG_PREFIX} Applied correction`, {
+          panelId,
+          rawLength: rawText.length,
+          correctedLength: correctedText.length,
+        });
+      } else {
+        logDebug(`${LOG_PREFIX} Skipping correction — dictated text changed during cleanup`);
+      }
+    }
+
+    inputStore.bumpVoiceDraftRevision();
   }
 
   async toggleFocusedPanel(): Promise<void> {

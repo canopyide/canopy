@@ -151,66 +151,6 @@ vi.mock("@/components/ui/button", () => ({
   ),
 }));
 
-vi.mock("@/components/ui/split-button", () => ({
-  SplitButton: ({
-    primaryLabel,
-    primaryIcon,
-    onPrimaryClick,
-    menuItems,
-    ariaDisabled,
-    disabledReason,
-    isBusy,
-  }: {
-    primaryLabel: string;
-    primaryIcon?: ReactNode;
-    onPrimaryClick: () => void;
-    menuItems: { label: string; icon?: ReactNode; shortcut?: string; onClick: () => void }[];
-    ariaDisabled?: boolean;
-    disabledReason?: ReactNode;
-    isBusy?: boolean;
-    variant?: string;
-    size?: string;
-    className?: string;
-  }) => (
-    <div data-testid="split-button">
-      <button
-        type="button"
-        onClick={onPrimaryClick}
-        aria-disabled={ariaDisabled}
-        data-testid="split-button-primary"
-      >
-        {primaryIcon}
-        {primaryLabel}
-      </button>
-      <button
-        type="button"
-        aria-label="More commit actions"
-        aria-disabled={ariaDisabled}
-        data-testid="split-button-chevron"
-      >
-        v
-      </button>
-      {disabledReason && ariaDisabled && (
-        <div data-testid="split-button-tooltip">{disabledReason}</div>
-      )}
-      <div data-testid="split-button-menu">
-        {menuItems.map((item) => (
-          <button
-            type="button"
-            key={item.label}
-            onClick={item.onClick}
-            disabled={ariaDisabled || isBusy}
-            data-testid={`split-button-menu-item-${item.label}`}
-          >
-            {item.label}
-            {item.shortcut && <span>{item.shortcut}</span>}
-          </button>
-        ))}
-      </div>
-    </div>
-  ),
-}));
-
 vi.mock("@/components/ui/ConfirmDialog", () => ({
   ConfirmDialog: ({
     isOpen,

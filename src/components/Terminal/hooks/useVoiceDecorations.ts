@@ -20,6 +20,9 @@ export function useVoiceDecorations({
   const liveSegmentStart = useVoiceRecordingStore(
     (s) => s.panelBuffers[terminalId]?.draftLengthAtSegmentStart ?? -1
   );
+  const correctionRange = useVoiceRecordingStore(
+    (s) => s.panelBuffers[terminalId]?.correctionRange ?? null
+  );
 
   useEffect(() => {
     const view = editorViewRef.current;
@@ -31,8 +34,18 @@ export function useVoiceDecorations({
         ? { from: liveSegmentStart, to: docLen }
         : null;
 
+    // The whole-passage AI cleanup pass marks its range with a dotted underline
+    // (`cm-voice-pending-ai`) so the user sees correction is in flight.
+    const pendingRanges =
+      correctionRange &&
+      correctionRange.from >= 0 &&
+      correctionRange.to <= docLen &&
+      correctionRange.from < correctionRange.to
+        ? [correctionRange]
+        : [];
+
     view.dispatch({
-      effects: [setInterimRange.of(interimRange), setPendingAIRanges.of([])],
+      effects: [setInterimRange.of(interimRange), setPendingAIRanges.of(pendingRanges)],
     });
-  }, [transcriptPhase, voiceDraftRevision, liveSegmentStart, editorViewRef]);
+  }, [transcriptPhase, voiceDraftRevision, liveSegmentStart, correctionRange, editorViewRef]);
 }

@@ -40,15 +40,28 @@ describe("SidebarContent header reveal — issue #6964", () => {
     expect(source).not.toMatch(/transition-\[opacity,visibility\][^"]*\bdelay-0\b/);
   });
 
+  // Slice the header region so assertions about the four header icon buttons
+  // aren't perturbed by unrelated buttons elsewhere in the file (e.g. the
+  // arm-matching affordance, which carries the same focus-visible treatment).
+  function headerSlice(src: string): string {
+    const start = src.indexOf("group/header");
+    const end = src.indexOf("Inline search bar", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    return src.slice(start, end);
+  }
+
   it("renders focus-visible outlines on all four header icon buttons — issue #7602", () => {
-    const focusVisibleCount = (source.match(/focus-visible:outline-daintree-accent/g) ?? []).length;
+    const header = headerSlice(source);
+    const focusVisibleCount = (header.match(/focus-visible:outline-daintree-accent/g) ?? []).length;
     expect(focusVisibleCount).toBe(4);
-    expect(source).toContain("focus-visible:outline focus-visible:outline-2");
+    expect(header).toContain("focus-visible:outline focus-visible:outline-2");
   });
 
   it("lifts the always-visible create button to text-daintree-text/60 while siblings stay at /40 — issue #7602", () => {
-    expect(source).toContain("text-daintree-text/60");
-    const fortyCount = (source.match(/text-daintree-text\/40/g) ?? []).length;
+    const header = headerSlice(source);
+    expect(header).toContain("text-daintree-text/60");
+    const fortyCount = (header.match(/text-daintree-text\/40/g) ?? []).length;
     expect(fortyCount).toBe(4);
   });
 

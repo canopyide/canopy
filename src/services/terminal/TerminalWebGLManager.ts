@@ -56,6 +56,7 @@ interface WebGLEntry {
   addon: WebglAddonType;
   contextLossDisposable: IDisposable;
   captureDisposable: (() => void) | null;
+  atlasResyncDisposable: IDisposable | null;
 }
 
 export class TerminalWebGLManager {
@@ -95,6 +96,23 @@ export class TerminalWebGLManager {
   // under a test shim that invokes the callback inline).
   private pendingDrainScheduled = false;
   private pendingEnsureRafId: number | null = null;
+  // xterm shares one module-global TextureAtlas across every terminal with a
+  // matching font/theme config. A page-merge (TextureAtlas._mergePages) splices
+  // pages and rewrites glyph texturePage indices, but a WebGL context's GPU
+  // texture cache (GlyphRenderer._atlasTextures) is only invalidated by
+  // setAtlas() at attach — so co-owning renderers keep a stale page->texture
+  // mapping and paint the wrong glyph image (right cell, wrong picture; worst
+  // on late-rasterized colored glyphs). The atlas fires onRemoveTextureAtlasCanvas
+  // only on a merge, forwarded to every co-owning renderer, so the set of ids
+  // that fire is exactly the co-owners of the merged atlas — terminals on a
+  // different config own a different atlas and stay untouched. clearTextureAtlas()
+  // is the only public lever: it drops the model and re-rasterizes, which churns
+  // page versions enough that the version-gated GPU re-upload fires (not a hard
+  // _atlasTextures reset, but reliable in practice). Coalesced through one rAF
+  // because a single merge fires the event once per merged-away page, per
+  // co-owner.
+  private atlasResyncPending = new Set<string>();
+  private atlasResyncRafId: number | null = null;
 
   setHardwareAvailable(available: boolean): void {
     this.hardwareAvailable = available;
@@ -152,6 +170,11 @@ export class TerminalWebGLManager {
       } catch {
         // ignore
       }
+      try {
+        entry.atlasResyncDisposable?.dispose();
+      } catch {
+        // ignore
+      }
       // terminal.dispose() handles addon cleanup, so we skip addon.dispose()
       // here — but we still need to force the synchronous GPU-slot release so
       // a hibernation-then-bulk-recreate cycle does not stall on the 16-slot
@@ -173,6 +196,15 @@ export class TerminalWebGLManager {
     this.pendingEnsureRafId = null;
     this.pendingDrainScheduled = false;
     this.pendingEnsures.clear();
+    if (this.atlasResyncRafId !== null) {
+      try {
+        cancelAnimationFrame(this.atlasResyncRafId);
+      } catch {
+        // ignore
+      }
+    }
+    this.atlasResyncRafId = null;
+    this.atlasResyncPending.clear();
     for (const id of [...this.pool.keys()]) {
       this.doRelease(id);
     }
@@ -213,6 +245,36 @@ export class TerminalWebGLManager {
     }
   };
 
+  // Coalesce a burst of onRemoveTextureAtlasCanvas events (one per merged-away
+  // page, per co-owner) into a single resync on the next frame.
+  private scheduleAtlasResync(id: string): void {
+    this.atlasResyncPending.add(id);
+    if (this.atlasResyncRafId !== null) return;
+    const rafId = requestAnimationFrame(this.runAtlasResync);
+    // If runAtlasResync ran synchronously (test shim), the pending set is
+    // already drained and there is no rAF handle to retain.
+    if (this.atlasResyncPending.size > 0) {
+      this.atlasResyncRafId = rafId;
+    }
+  }
+
+  // Resync every renderer that co-owns the merged atlas (the ids whose merge
+  // event fired). clearTextureAtlas() drops a renderer's model and re-rasterizes
+  // from the corrected atlas; clearing only one co-owner would wipe the shared
+  // CPU pages and strand the rest, so the whole fired set must be cleared.
+  private runAtlasResync = (): void => {
+    this.atlasResyncRafId = null;
+    const ids = [...this.atlasResyncPending];
+    this.atlasResyncPending.clear();
+    for (const id of ids) {
+      try {
+        this.pool.get(id)?.addon.clearTextureAtlas();
+      } catch {
+        // ignore — renderer may be mid-teardown or its context lost
+      }
+    }
+  };
+
   private attachWithLoadedAddon(
     id: string,
     managed: ManagedTerminal,
@@ -233,6 +295,7 @@ export class TerminalWebGLManager {
     let addon: WebglAddonType | null = null;
     let clDisposable: IDisposable | null = null;
     let captureDisposable: (() => void) | null = null;
+    let atlasResyncDisposable: IDisposable | null = null;
     try {
       addon = new AddonClass();
       const ownAddon = addon;
@@ -244,6 +307,20 @@ export class TerminalWebGLManager {
         }
       });
       managed.terminal.loadAddon(addon);
+
+      // Watch the shared TextureAtlas for page merges. The pinned addon always
+      // exposes this event (its typings declare it); the guard + catch only
+      // keep test mocks that omit it from failing the whole attach.
+      if (typeof addon.onRemoveTextureAtlasCanvas === "function") {
+        try {
+          atlasResyncDisposable = addon.onRemoveTextureAtlasCanvas(() => {
+            this.scheduleAtlasResync(id);
+          });
+        } catch {
+          // ignore — resync stays best-effort if the event is unavailable
+        }
+      }
+
       // Capture-phase listener on the terminal element fires before xterm's
       // own webglcontextlost handler (which would otherwise sit on a 3s
       // restore timer before notifying us). Pre-empting that timer eliminates
@@ -267,11 +344,21 @@ export class TerminalWebGLManager {
           element.removeEventListener("webglcontextlost", captureHandler, { capture: true });
         };
       }
-      this.pool.set(id, { addon, contextLossDisposable: clDisposable, captureDisposable });
+      this.pool.set(id, {
+        addon,
+        contextLossDisposable: clDisposable,
+        captureDisposable,
+        atlasResyncDisposable,
+      });
       this.lruOrder.push(id);
     } catch {
       try {
         clDisposable?.dispose();
+      } catch {
+        // ignore
+      }
+      try {
+        atlasResyncDisposable?.dispose();
       } catch {
         // ignore
       }
@@ -305,6 +392,11 @@ export class TerminalWebGLManager {
     }
     try {
       entry.captureDisposable?.();
+    } catch {
+      // ignore
+    }
+    try {
+      entry.atlasResyncDisposable?.dispose();
     } catch {
       // ignore
     }

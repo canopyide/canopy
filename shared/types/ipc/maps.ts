@@ -1644,6 +1644,10 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
     args: [apiKey: string];
     result: { valid: boolean; error?: string };
   };
+  "voice-input:correct": {
+    args: [request: { rawText: string; recentContext?: string[] }];
+    result: { action: "no_change" | "replace"; correctedText: string };
+  };
 
   // Crash Recovery channels
   "crash-recovery:get-pending": {

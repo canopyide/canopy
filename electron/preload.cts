@@ -2350,6 +2350,8 @@ const api: ElectronAPI = {
     openMicSettings: () => _unwrappingInvoke(CHANNELS.VOICE_INPUT_OPEN_MIC_SETTINGS),
     validateApiKey: (apiKey: string) =>
       _unwrappingInvoke(CHANNELS.VOICE_INPUT_VALIDATE_API_KEY, apiKey),
+    correct: (request: { rawText: string; recentContext?: string[] }) =>
+      _unwrappingInvoke(CHANNELS.VOICE_INPUT_CORRECT, request),
     onFileTokenResolved: (
       callback: (payload: { description: string; replacement: string; resolved: boolean }) => void
     ) => _typedOn(CHANNELS.VOICE_INPUT_FILE_TOKEN_RESOLVED, callback),
