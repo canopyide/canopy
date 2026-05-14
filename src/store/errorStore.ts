@@ -123,10 +123,10 @@ const createErrorStore: StateCreator<ErrorStore> = (set, get) => ({
                 recoveryHint: e.recoveryHint ?? error.recoveryHint,
                 correlationId: e.correlationId ?? error.correlationId,
                 promotedToDock: e.promotedToDock,
-                // Always overwrite recurrence tracking from the incoming
-                // record — the main process owns these counters (persisted
-                // fingerprint store) and a stale dedup-cached value would
-                // mask escalation across the RECURRENCE_THRESHOLD gate.
+                // Recurrence tracking is owned by the main process (persisted
+                // fingerprint store) — prefer the incoming value so a stale
+                // dedup-cached counter never masks escalation across the
+                // RECURRENCE_THRESHOLD gate.
                 retryExhausted: error.retryExhausted ?? e.retryExhausted,
                 occurrenceCount: error.occurrenceCount ?? e.occurrenceCount,
               }

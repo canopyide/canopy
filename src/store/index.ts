@@ -10,7 +10,7 @@ export type { WorktreeViewStoreApi } from "./createWorktreeStore";
 export { useLogsStore, filterLogs, collapseConsecutiveDuplicates } from "./logsStore";
 export type { DisplayEntry } from "./logsStore";
 
-export { useErrorStore } from "./errorStore";
+export { useErrorStore, RECURRENCE_THRESHOLD } from "./errorStore";
 export type { ErrorRecord, ErrorType, RetryAction } from "./errorStore";
 
 export { useEventStore } from "./eventStore";
