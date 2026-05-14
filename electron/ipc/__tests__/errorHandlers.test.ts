@@ -23,7 +23,7 @@ const loggerMock = vi.hoisted(() => ({
 
 const storeMock = vi.hoisted(() => ({
   store: {
-    get: vi.fn((): unknown[] => []),
+    get: vi.fn((_key?: string): unknown[] => []),
     set: vi.fn(),
   },
 }));
@@ -1775,7 +1775,6 @@ describe("errorHandlers", () => {
     });
 
     it("persists fingerprint to store after recording", async () => {
-      const CHANNELS = await getChannels();
       createMockWindow();
       storeMock.store.get.mockImplementation((key: string) => {
         if (key === "errorFingerprints") return {};
@@ -1802,7 +1801,6 @@ describe("errorHandlers", () => {
     });
 
     it("caps fingerprint entries at 200 with LRU eviction", async () => {
-      const CHANNELS = await getChannels();
       createMockWindow();
 
       const entries: Record<string, { count: number; firstSeen: number; lastSeen: number }> = {};
