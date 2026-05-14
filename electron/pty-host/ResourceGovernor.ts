@@ -370,12 +370,17 @@ export class ResourceGovernor {
     for (const id of ids) {
       const coordinator = this.deps.getPauseCoordinator(id);
       if (coordinator) {
-        coordinator.resume("resource-governor");
-        resumedCount++;
+        if (coordinator.hasToken("resource-governor")) {
+          coordinator.resume("resource-governor");
+          resumedCount++;
+        }
       }
-      // Emit "running" only if no other pause tokens remain
       if (!coordinator?.isPaused) {
         this.deps.emitTerminalStatus(id, "running", undefined, duration);
+      } else if (coordinator.hasToken("backpressure")) {
+        // Restore backpressure status — the governor's pause
+        // overwrote it in the dedup map during engage.
+        this.deps.emitTerminalStatus(id, "paused-backpressure", undefined, duration);
       }
     }
     this.pausedTerminalIds.clear();

@@ -162,6 +162,25 @@ export function initPerWindowServices(
           utilizationPercent: payload.utilizationPercent,
         });
       }
+      // Broadcast to all windows so renderer can surface the warning
+      if (windowRegistry) {
+        for (const wCtx of windowRegistry.all()) {
+          const w = wCtx.browserWindow;
+          if (!w.isDestroyed()) {
+            try {
+              sendToRenderer(w, CHANNELS.EVENTS_PUSH, {
+                name: "window:memory-warning",
+                payload: {
+                  isWarning: payload.isWarning,
+                  utilizationPercent: payload.utilizationPercent,
+                },
+              });
+            } catch {
+              /* non-critical */
+            }
+          }
+        }
+      }
     });
     ptyClient.on("host-throttled", (payload) => {
       if (!payload.isThrottled) {
