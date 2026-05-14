@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.10.2] - 2026-05-14
+
+Patch release: stability and polish updates addressing WebGL terminal rendering, voice transcription, and UI sizing.
+
+### Bug Fixes
+
+- Resolved WebGL glyph corruption that occurred during atlas merge and agent terminal switching
+- Fixed voice transcription flow to align with the `?intent=transcription` protocol
+- Corrected dock terminal focus outline positioning to stay within item bounds
+
+### Style & UI
+
+- Bumped filter bar icon and label sizes in worktree view for better visual hierarchy
+- Tightened overall icon and filter bar sizing across the UI
+
+### Other Changes
+
+- Lifted GitHub issue selection into a keyed Zustand store for improved performance
+- Updated agent skill configuration (renamed fix-release-nightly to fix-workflow)
+
 ## [0.10.1] - 2026-05-14
 
 Patch release: a whole-passage AI cleanup pass for voice dictation, plus fixes for terminal split layout, WebGL atlas rendering, and worktree filter bar tooltips.
