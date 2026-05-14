@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeForDedup } from "../normalizeErrorMessage";
+import { normalizeForDedup } from "../normalizeErrorMessage.js";
 
 describe("normalizeForDedup", () => {
   it("strips UUIDs", () => {
