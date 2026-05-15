@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useState } from "react";
 import { GitPullRequest } from "lucide-react";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import { ReviewHubContent } from "@/components/Worktree/ReviewHub/ReviewHubContent";
@@ -12,10 +12,15 @@ export interface ReviewPaneProps {
 const noop = () => {};
 
 export function ReviewPane({ worktreeId }: ReviewPaneProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  // Callback ref via useState so React re-renders once the container element
+  // commits to the DOM. A plain useRef would freeze `current` at `null` for
+  // the lifetime of the first render and `keyboardScope` would never receive
+  // the element — `ReviewHubContent` would fall back to a document-scoped
+  // Escape listener that swallows the key across the whole app.
+  const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
 
   // Resolve worktree path fresh from the worktree store so renames/moves are
-  // reflected without restarting the panel. `null` worktreeId yields an empty
+  // reflected without restarting the panel. Missing worktreeId yields an empty
   // state instead of an IPC call with an empty path.
   const worktreePath = useWorktreeStore(
     useCallback(
@@ -26,7 +31,7 @@ export function ReviewPane({ worktreeId }: ReviewPaneProps) {
 
   if (!worktreePath) {
     return (
-      <div ref={containerRef} className="flex h-full w-full items-center justify-center">
+      <div ref={setContainerEl} className="flex h-full w-full items-center justify-center">
         <EmptyState
           variant="zero-data"
           scale="canvas"
@@ -39,12 +44,12 @@ export function ReviewPane({ worktreeId }: ReviewPaneProps) {
   }
 
   return (
-    <div ref={containerRef} className="flex h-full w-full flex-col bg-daintree-bg">
+    <div ref={setContainerEl} className="flex h-full w-full flex-col bg-daintree-bg">
       <ReviewHubContent
         isOpen={true}
         worktreePath={worktreePath}
         onClose={noop}
-        keyboardScope={containerRef.current ?? undefined}
+        keyboardScope={containerEl ?? undefined}
       />
     </div>
   );

@@ -499,6 +499,10 @@ export function TerminalContextMenu({
             <Trash2 className={ICON_CLASS} aria-hidden="true" />
             Close Review
           </ContextMenuItem>
+          <ContextMenuItem destructive onSelect={() => handleAction("kill")}>
+            <OctagonX className={ICON_CLASS} aria-hidden="true" />
+            Remove Review
+          </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
     );
