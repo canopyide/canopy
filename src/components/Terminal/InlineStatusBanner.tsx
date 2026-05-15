@@ -19,22 +19,27 @@ export interface BannerAction {
   disabled?: boolean;
 }
 
+export type InlineStatusBannerSeverity = "error" | "warning" | "info" | "success";
+
 export interface InlineStatusBannerProps {
   icon: React.ComponentType<{ className?: string; style?: CSSProperties }>;
   title: React.ReactNode;
   description?: React.ReactNode;
   contextLine?: string;
-  severity?: "error" | "warning";
+  severity?: InlineStatusBannerSeverity;
   animated?: boolean;
   className?: string;
   actions: BannerAction[];
   role?: "alert" | "status";
+  ariaLive?: "off" | "polite" | "assertive";
   onClose?: () => void;
 }
 
-const SEVERITY_VAR: Record<"error" | "warning", string> = {
+const SEVERITY_VAR: Record<InlineStatusBannerSeverity, string> = {
   error: "--color-status-error",
   warning: "--color-status-warning",
+  info: "--color-status-info",
+  success: "--color-status-success",
 };
 
 function getButtonClasses(variant: ButtonVariant): string {
@@ -79,6 +84,7 @@ export function InlineStatusBanner({
   className,
   actions,
   role = "alert",
+  ariaLive,
   onClose,
 }: InlineStatusBannerProps) {
   const prefersReducedMotion =
@@ -113,7 +119,7 @@ export function InlineStatusBanner({
         hasDescription
           ? "flex flex-col gap-2 px-3 py-2 shrink-0"
           : "flex items-center justify-between gap-3 px-3 py-2 shrink-0",
-        shouldAnimate && "transition duration-150",
+        shouldAnimate && "transition duration-250",
         shouldAnimate && (isVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"),
         className
       )}
@@ -122,6 +128,8 @@ export function InlineStatusBanner({
         borderBottom: `1px solid color-mix(in oklab, var(${colorVar}) 20%, transparent)`,
       }}
       role={role}
+      aria-live={ariaLive}
+      aria-atomic={ariaLive ? "true" : undefined}
     >
       <div className={cn("flex", hasDescription ? "items-start" : "items-center", "gap-2 min-w-0")}>
         <IconComponent
