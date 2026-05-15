@@ -19,6 +19,8 @@ import type { TrashedTerminal, TrashedTerminalGroupMetadata } from "@/store/slic
 import { TrashBinItem } from "./TrashBinItem";
 import { TrashGroupItem } from "./TrashGroupItem";
 
+const MOVED_HINT_MAX_SHOWS = 3;
+
 interface TrashContainerProps {
   trashedTerminals: Array<{
     terminal: TerminalInstance;
@@ -43,6 +45,7 @@ interface GroupedTrashGroup {
     trashedInfo: TrashedTerminal;
   }>;
   earliestExpiry: number;
+  latestExpiry: number;
   sortKey: number;
 }
 
@@ -53,6 +56,7 @@ export function TrashContainer({ trashedTerminals, compact = false }: TrashConta
   const [isTrashPulsing, setIsTrashPulsing] = useState(false);
   const [showMovedHint, setShowMovedHint] = useState(false);
   const prevLengthRef = useRef(trashedTerminals.length);
+  const hintShowCountRef = useRef(0);
   const { worktreeMap } = useWorktrees();
   // Only show the ghost pill for panel drags — worktree-card sort drags also flip
   // isDragging but cannot drop on trash, and a phantom drop target is misleading.
@@ -69,7 +73,12 @@ export function TrashContainer({ trashedTerminals, compact = false }: TrashConta
       return;
     }
     setIsTrashPulsing(true);
-    setShowMovedHint(true);
+    // Cap the visual coachmark; aria-live still fires below on every close.
+    // Session-scoped — restart gives a fresh teaching window without persistence.
+    if (hintShowCountRef.current < MOVED_HINT_MAX_SHOWS) {
+      hintShowCountRef.current += 1;
+      setShowMovedHint(true);
+    }
     const shortcut = isMac() ? "Cmd+Shift+T" : "Ctrl+Shift+T";
     useAnnouncerStore.getState().announce(`Panel closed — press ${shortcut} to restore`);
   }, [trashedTerminals.length]);
@@ -102,6 +111,7 @@ export function TrashContainer({ trashedTerminals, compact = false }: TrashConta
         metadata: TrashedTerminalGroupMetadata | undefined;
         terminals: Array<{ terminal: TerminalInstance; trashedInfo: TrashedTerminal }>;
         earliestExpiry: number;
+        latestExpiry: number;
       }
     >();
     const singles: Array<{ terminal: TerminalInstance; trashedInfo: TrashedTerminal }> = [];
@@ -113,6 +123,7 @@ export function TrashContainer({ trashedTerminals, compact = false }: TrashConta
         if (existing) {
           existing.terminals.push(item);
           existing.earliestExpiry = Math.min(existing.earliestExpiry, trashedInfo.expiresAt);
+          existing.latestExpiry = Math.max(existing.latestExpiry, trashedInfo.expiresAt);
           if (trashedInfo.groupMetadata) {
             existing.metadata = trashedInfo.groupMetadata;
           }
@@ -121,6 +132,7 @@ export function TrashContainer({ trashedTerminals, compact = false }: TrashConta
             metadata: trashedInfo.groupMetadata,
             terminals: [item],
             earliestExpiry: trashedInfo.expiresAt,
+            latestExpiry: trashedInfo.expiresAt,
           });
         }
       } else {
@@ -140,7 +152,10 @@ export function TrashContainer({ trashedTerminals, compact = false }: TrashConta
           groupMetadata: group.metadata,
           terminals: group.terminals,
           earliestExpiry: group.earliestExpiry,
-          sortKey: group.earliestExpiry,
+          latestExpiry: group.latestExpiry,
+          // earliestExpiry drives the displayed countdown; sortKey uses
+          // latestExpiry so LIFO order reflects most-recent trash time.
+          sortKey: group.latestExpiry,
         });
       } else {
         // Show as individual items if no metadata or single panel
@@ -165,8 +180,8 @@ export function TrashContainer({ trashedTerminals, compact = false }: TrashConta
       });
     }
 
-    // Sort by earliest expiry
-    return items.sort((a, b) => a.sortKey - b.sortKey);
+    // LIFO: newest-trashed item first.
+    return items.sort((a, b) => b.sortKey - a.sortKey);
   }, [trashedTerminals]);
 
   if (trashedTerminals.length === 0 && !isPanelDragging) return null;

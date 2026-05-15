@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, act } from "@testing-library/react";
 import { TrashContainer } from "../TrashContainer";
 import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
+import { UI_TRANSIENT_HINT_DWELL_MS } from "@/lib/animationUtils";
 import type { TerminalInstance } from "@/store";
 import type { TrashedTerminal } from "@/store/slices";
 
@@ -41,7 +42,17 @@ vi.mock("@/components/ui/button", () => ({
 }));
 
 vi.mock("@/components/ui/tooltip", () => ({
-  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  // Only the controlled (open-prop-driven) Tooltip — i.e. the trash hint —
+  // gets a testable wrapper. Uncontrolled Tooltips inside child components
+  // (TrashBinItem actions) stay transparent.
+  Tooltip: ({ children, open }: { children: React.ReactNode; open?: boolean }) =>
+    open !== undefined ? (
+      <div data-testid="trash-hint-tooltip" data-open={open ? "true" : "false"}>
+        {children}
+      </div>
+    ) : (
+      <>{children}</>
+    ),
   TooltipContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   TooltipProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   TooltipTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -57,7 +68,10 @@ vi.mock("@/components/DragDrop", () => ({
   TRASH_DROPPABLE_ID: "__trash-droppable__",
 }));
 
-function makeTrashedItem(id: string): {
+function makeTrashedItem(
+  id: string,
+  expiresAt: number = Date.now() + 10_000
+): {
   terminal: TerminalInstance;
   trashedInfo: TrashedTerminal;
 } {
@@ -65,7 +79,7 @@ function makeTrashedItem(id: string): {
     terminal: { id, title: `Terminal ${id}` } as TerminalInstance,
     trashedInfo: {
       id,
-      expiresAt: Date.now() + 10_000,
+      expiresAt,
       originalLocation: "grid",
     },
   };
@@ -227,5 +241,65 @@ describe("TrashContainer", () => {
       vi.advanceTimersByTime(300);
     });
     expect(container.querySelector(".animate-trash-pulse")).toBeNull();
+  });
+
+  it("caps the 'Moved to trash' hint after three shows", () => {
+    const items = [makeTrashedItem("1")];
+    const { getByTestId, rerender } = render(<TrashContainer trashedTerminals={items} />);
+
+    // Closes 1, 2, 3: hint shows each time. Advance past dwell between closes
+    // so the previous hint clears and we can assert a fresh open=true.
+    const next = [...items];
+    for (let i = 2; i <= 4; i++) {
+      next.push(makeTrashedItem(String(i)));
+      rerender(<TrashContainer trashedTerminals={next} />);
+      expect(getByTestId("trash-hint-tooltip").getAttribute("data-open")).toBe("true");
+      act(() => {
+        vi.advanceTimersByTime(UI_TRANSIENT_HINT_DWELL_MS + 10);
+      });
+      expect(getByTestId("trash-hint-tooltip").getAttribute("data-open")).toBe("false");
+    }
+
+    // Close 4: cap reached, hint must not re-open.
+    next.push(makeTrashedItem("5"));
+    rerender(<TrashContainer trashedTerminals={next} />);
+    expect(getByTestId("trash-hint-tooltip").getAttribute("data-open")).toBe("false");
+  });
+
+  it("continues announcing on every close after the hint cap is reached", () => {
+    const items = [makeTrashedItem("1")];
+    const { rerender } = render(<TrashContainer trashedTerminals={items} />);
+
+    // Burn through the cap (3 closes), advancing dwell between each.
+    const next = [...items];
+    for (let i = 2; i <= 4; i++) {
+      next.push(makeTrashedItem(String(i)));
+      rerender(<TrashContainer trashedTerminals={next} />);
+      act(() => {
+        vi.advanceTimersByTime(UI_TRANSIENT_HINT_DWELL_MS + 10);
+      });
+    }
+
+    // Clear announcer and trigger a post-cap close — aria-live must still fire.
+    useAnnouncerStore.setState({ polite: null });
+    next.push(makeTrashedItem("post-cap"));
+    rerender(<TrashContainer trashedTerminals={next} />);
+
+    const { polite } = useAnnouncerStore.getState();
+    expect(polite).not.toBeNull();
+    expect(polite!.msg).toMatch(/Panel closed/);
+  });
+
+  it("renders items in LIFO order (newest-trashed first)", () => {
+    const older = makeTrashedItem("older", 1_000);
+    const newer = makeTrashedItem("newer", 5_000);
+    const { container } = render(<TrashContainer trashedTerminals={[older, newer]} />);
+
+    const text = container.textContent ?? "";
+    const newerIdx = text.indexOf("Terminal newer");
+    const olderIdx = text.indexOf("Terminal older");
+    expect(newerIdx).toBeGreaterThanOrEqual(0);
+    expect(olderIdx).toBeGreaterThanOrEqual(0);
+    expect(newerIdx).toBeLessThan(olderIdx);
   });
 });
