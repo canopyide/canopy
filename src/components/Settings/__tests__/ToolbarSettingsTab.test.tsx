@@ -243,7 +243,7 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
     const { getByTestId } = render(<ToolbarSettingsTab />);
     // Left side: agent-tray (visible), claude (pinned, visible),
     // gemini (unpinned, not visible), terminal (not hidden, visible) => 3 / 4.
-    const leftSection = getByTestId("section-Left Side Buttons");
+    const leftSection = getByTestId("section-Left side buttons");
     expect(leftSection.getAttribute("data-description")).toContain("3 of 4 visible");
   });
 
