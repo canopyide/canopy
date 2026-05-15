@@ -58,6 +58,28 @@ describe("DragOverlay dropAnimation config", () => {
     });
   });
 
+  describe("Escape cancellation", () => {
+    // handleDragCancel sets isCancelDrop=true so Escape gets the same
+    // snap-back settle as cancelDrop-rejected drops (issue #8019).
+    it("uses Tier 3 snap-back when Escape sets isCancelDrop", () => {
+      const isCancelDrop = true; // handleDragCancel → setIsCancelDrop(true)
+      expect(dropAnimation(isCancelDrop)).toEqual({
+        duration: PANEL_RESTORE_DURATION,
+        easing: EASE_OUT_EXPO,
+        sideEffects: null,
+      });
+    });
+
+    it("restores snappy tier on the next drag after handleDragStart resets the flag", () => {
+      const afterReset = false; // handleDragStart → setIsCancelDrop(false)
+      expect(dropAnimation(afterReset)).toEqual({
+        duration: UI_ANIMATION_DURATION,
+        easing: EASE_SNAPPY,
+        sideEffects: null,
+      });
+    });
+  });
+
   it("returns a non-null config with duration 0 in performance mode", () => {
     document.body.dataset.performanceMode = "true";
     const result = dropAnimation(false);
