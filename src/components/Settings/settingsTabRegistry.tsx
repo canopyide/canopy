@@ -414,22 +414,22 @@ export const SETTINGS_REGISTRY = [
     sections: [
       {
         id: "keyboard-shortcuts",
-        section: "Keyboard Shortcuts",
-        title: "Keyboard Shortcuts",
+        section: "Keyboard shortcuts",
+        title: "Keyboard shortcuts",
         description:
           "View and customize keyboard bindings for all actions. Search and override shortcuts.",
         keywords: ["keybindings", "shortcuts", "hotkeys", "bindings", "key", "remap"],
       },
       {
         id: "keyboard-profiles",
-        section: "Keyboard Shortcuts",
+        section: "Keyboard shortcuts",
         title: "Shortcut profiles",
         description: "Import and export shortcut profile configurations",
         keywords: ["profile", "import", "export", "backup", "keybindings"],
       },
       {
         id: "keyboard-reset",
-        section: "Keyboard Shortcuts",
+        section: "Keyboard shortcuts",
         title: "Reset all shortcuts",
         description: "Reset all keyboard shortcuts to their default bindings",
         keywords: ["reset", "default", "shortcuts", "restore", "keybindings"],
@@ -774,7 +774,7 @@ export const SETTINGS_REGISTRY = [
       },
       {
         id: "toolbar-reset",
-        section: "Toolbar Customization",
+        section: "Toolbar customization",
         title: "Reset toolbar to defaults",
         description: "Reset all toolbar button positions and visibility to defaults",
         keywords: ["reset", "default", "toolbar", "restore"],

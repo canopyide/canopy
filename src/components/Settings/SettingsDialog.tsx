@@ -75,6 +75,14 @@ let rememberedProjectTab: SettingsTab = "project:general";
 // attention after the user has oriented.
 const SETTINGS_HIGHLIGHT_DECAY_MS = 1500;
 
+// Lowercase the first letter so the label reads naturally mid-sentence
+// ("Requires voice input"), unless it starts with an initialism like
+// MCP / AI / API — those stay uppercase.
+function midSentenceLabel(label: string): string {
+  if (/^[A-Z]{2,}/.test(label)) return label;
+  return label.charAt(0).toLowerCase() + label.slice(1);
+}
+
 export interface SettingsNavTarget {
   tab: SettingsTab;
   subtab?: string;
@@ -681,7 +689,7 @@ function SettingsDialogInner({
                             }
                           }}
                         >
-                          {hiddenSettingBanner.label}
+                          {midSentenceLabel(hiddenSettingBanner.label)}
                         </button>{" "}
                         is enabled.
                       </span>
@@ -1248,7 +1256,7 @@ function SearchResults({
                 {result.requiresEnabled && (
                   <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-status-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-status-warning shrink-0">
                     <AlertTriangle className="w-3 h-3" />
-                    Requires {result.requiresEnabled.label}
+                    Requires {midSentenceLabel(result.requiresEnabled.label)}
                   </span>
                 )}
               </div>
