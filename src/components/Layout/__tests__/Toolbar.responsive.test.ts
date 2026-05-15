@@ -120,13 +120,18 @@ describe("Toolbar responsive design — issue #4133", () => {
 
   describe("toolbar button visual states — issue #7973", () => {
     it("focus-visible relies on outline alone — no hover background paint", () => {
-      // Block-scan the :focus-visible rule(s) to assert no `background:`
-      // declaration leaks back in (which would make keyboard focus
-      // indistinguishable from mouse hover apart from the ring).
-      const focusBlock = css.match(/\.toolbar-icon-button:focus-visible[\s\S]*?\{[\s\S]*?\}/)?.[0];
-      expect(focusBlock).toBeDefined();
-      expect(focusBlock).toContain("outline: 2px solid var(--theme-accent-primary)");
-      expect(focusBlock).not.toMatch(/\bbackground\b\s*:/);
+      // Adversarial scan: walk every :focus-visible rule that targets a
+      // toolbar button and assert none of them re-introduce a `background`
+      // declaration (which would make keyboard focus indistinguishable from
+      // mouse hover apart from the ring).
+      const focusBlocks = Array.from(
+        css.matchAll(/\.toolbar-(?:icon|agent)-button[^{]*?:focus-visible[^{]*?\{[^}]*?\}/g)
+      ).map((m) => m[0]);
+      expect(focusBlocks.length).toBeGreaterThan(0);
+      for (const block of focusBlocks) {
+        expect(block).toContain("outline: 2px solid var(--theme-accent-primary)");
+        expect(block).not.toMatch(/\bbackground\b\s*:/);
+      }
     });
 
     it("armed selectors carry an inset shadow on top of the emphasis background", () => {
@@ -181,7 +186,10 @@ describe("Toolbar responsive design — issue #4133", () => {
       );
       expect(badgeMatch).toBeDefined();
       expect(badgeMatch![0]).not.toContain("rounded-full");
-      expect(badgeMatch![0]).not.toMatch(/\bring-\d/);
+      // Adversarial: catches both numeric (`ring-1`) and named (`ring-daintree-bg/60`)
+      // forms — a future contributor re-adding either would re-introduce a
+      // round ring that contradicts the CSS shape rules.
+      expect(badgeMatch![0]).not.toContain("ring-");
     });
   });
 
