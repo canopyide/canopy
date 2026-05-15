@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
-import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
+import { act, render, screen } from "@testing-library/react";
+import { AlertTriangle, CheckCircle2, FileEdit, Info, XCircle } from "lucide-react";
 import { InlineStatusBanner } from "../InlineStatusBanner";
 
 vi.mock("@/components/ui/tooltip", () => ({
@@ -109,6 +109,147 @@ describe("InlineStatusBanner", () => {
     );
     expect(screen.getByRole("status")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("renders neutral severity without leaking a status-color var into inline styles", () => {
+    const { container } = render(
+      <InlineStatusBanner
+        icon={FileEdit}
+        title="Files changed"
+        severity="neutral"
+        animated={false}
+        role="status"
+        actions={[]}
+      />
+    );
+    const root = container.firstElementChild as HTMLElement;
+    // No inline color-mix surface: neutral uses the overlay-subtle token class.
+    expect(root.style.backgroundColor).toBe("");
+    expect(root.style.borderBottom).toBe("");
+    expect(root.className).toContain("bg-overlay-subtle");
+    expect(root.outerHTML).not.toContain("var(undefined)");
+  });
+
+  it("renders trailingSlot before the dismiss button in DOM order", () => {
+    const onClose = vi.fn();
+    render(
+      <InlineStatusBanner
+        icon={Info}
+        title="With slot"
+        severity="info"
+        animated={false}
+        trailingSlot={<button type="button">Show details</button>}
+        actions={[]}
+        onClose={onClose}
+      />
+    );
+    const slot = screen.getByRole("button", { name: "Show details" });
+    const dismiss = screen.getByRole("button", { name: "Dismiss" });
+    expect(slot).toBeTruthy();
+    expect(slot.compareDocumentPosition(dismiss) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("renders descriptionExtras as a sibling, never inside the description paragraph", () => {
+    const { container } = render(
+      <InlineStatusBanner
+        icon={AlertTriangle}
+        title="Lots open"
+        description="Consider closing idle panels."
+        descriptionExtras={
+          <button type="button" className="extras-btn">
+            Close completed
+          </button>
+        }
+        severity="warning"
+        animated={false}
+        actions={[]}
+      />
+    );
+    const extras = container.querySelector(".extras-btn") as HTMLElement;
+    expect(extras).toBeTruthy();
+    expect(extras.closest("p")).toBeNull();
+  });
+
+  it("uses a custom closeAriaLabel for the dismiss button", () => {
+    render(
+      <InlineStatusBanner
+        icon={Info}
+        title="Custom"
+        severity="info"
+        animated={false}
+        actions={[]}
+        onClose={() => {}}
+        closeAriaLabel="Dismiss recovery confirmation"
+      />
+    );
+    expect(screen.getByRole("button", { name: "Dismiss recovery confirmation" })).toBeTruthy();
+  });
+
+  it("fires onClose after autoDismissAfter elapses and clears the timer on unmount", () => {
+    vi.useFakeTimers();
+    try {
+      const onClose = vi.fn();
+      const { unmount, rerender } = render(
+        <InlineStatusBanner
+          icon={Info}
+          title="Auto"
+          severity="info"
+          animated={false}
+          actions={[]}
+          onClose={onClose}
+          autoDismissAfter={10_000}
+        />
+      );
+      act(() => {
+        vi.advanceTimersByTime(9_999);
+      });
+      expect(onClose).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(onClose).toHaveBeenCalledTimes(1);
+
+      // Re-mounting then unmounting must not fire onClose again.
+      rerender(
+        <InlineStatusBanner
+          icon={Info}
+          title="Auto"
+          severity="info"
+          animated={false}
+          actions={[]}
+          onClose={onClose}
+          autoDismissAfter={10_000}
+        />
+      );
+      unmount();
+      act(() => {
+        vi.advanceTimersByTime(20_000);
+      });
+      expect(onClose).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not schedule an auto-dismiss when onClose is absent", () => {
+    vi.useFakeTimers();
+    try {
+      const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+      render(
+        <InlineStatusBanner
+          icon={Info}
+          title="No close"
+          severity="info"
+          animated={false}
+          actions={[]}
+          autoDismissAfter={5_000}
+        />
+      );
+      const scheduledAutoDismiss = setTimeoutSpy.mock.calls.some(([, delay]) => delay === 5_000);
+      expect(scheduledAutoDismiss).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("uses the 250ms entrance duration class when animated", () => {

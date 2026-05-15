@@ -1,5 +1,6 @@
 import { AlertTriangle } from "lucide-react";
 import { useGitHubTokenHealthStore } from "@/store/githubTokenHealthStore";
+import { InlineStatusBanner } from "@/components/Terminal/InlineStatusBanner";
 
 export function GitHubTokenBanner() {
   const isUnhealthy = useGitHubTokenHealthStore((s) => s.isUnhealthy);
@@ -13,22 +14,20 @@ export function GitHubTokenBanner() {
   };
 
   return (
-    <div
+    <InlineStatusBanner
+      icon={AlertTriangle}
+      title="GitHub token expired"
+      description="Reconnect to restore issue, PR, and repository data."
+      severity="warning"
       role="status"
-      className="flex items-center gap-3 px-4 py-2 bg-[var(--color-status-warning)]/15 border-b border-[var(--color-status-warning)]/30 text-[var(--color-status-warning)] text-sm shrink-0"
-    >
-      <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
-      <div className="flex-1 flex flex-col gap-0.5">
-        <p className="font-medium">GitHub token expired</p>
-        <p>Reconnect to restore issue, PR, and repository data.</p>
-      </div>
-      <button
-        type="button"
-        onClick={handleReconnect}
-        className="text-xs px-2 py-1 rounded border border-[var(--color-status-warning)]/30 hover:bg-[var(--color-status-warning)]/10 transition-colors shrink-0"
-      >
-        Reconnect to GitHub
-      </button>
-    </div>
+      actions={[
+        {
+          id: "reconnect",
+          label: "Reconnect to GitHub",
+          variant: "primary",
+          onClick: handleReconnect,
+        },
+      ]}
+    />
   );
 }

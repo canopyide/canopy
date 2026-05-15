@@ -19,7 +19,7 @@ export interface BannerAction {
   disabled?: boolean;
 }
 
-export type InlineStatusBannerSeverity = "error" | "warning" | "info" | "success";
+export type InlineStatusBannerSeverity = "error" | "warning" | "info" | "success" | "neutral";
 
 export interface InlineStatusBannerProps {
   icon: React.ComponentType<{ className?: string; style?: CSSProperties }>;
@@ -33,9 +33,29 @@ export interface InlineStatusBannerProps {
   role?: "alert" | "status";
   ariaLive?: "off" | "polite" | "assertive";
   onClose?: () => void;
+  /** Accessible label for the dismiss button. Defaults to "Dismiss". */
+  closeAriaLabel?: string;
+  /**
+   * Non-button control rendered alongside the actions (e.g. a Popover
+   * trigger). Sits before the dismiss button so the reading order stays
+   * content → secondary control → primary actions → dismiss.
+   */
+  trailingSlot?: React.ReactNode;
+  /**
+   * Interactive content rendered as a sibling after the description
+   * paragraph. Use this instead of nesting buttons/links inside
+   * `description` (which would produce invalid `<p>` markup).
+   */
+  descriptionExtras?: React.ReactNode;
+  /**
+   * Fire `onClose` automatically after this many milliseconds. The timer
+   * clears on unmount and resets if the value or `onClose` changes. Pass
+   * `undefined` to disable (callers gate their own conditions this way).
+   */
+  autoDismissAfter?: number;
 }
 
-const SEVERITY_VAR: Record<InlineStatusBannerSeverity, string> = {
+const SEVERITY_VAR: Record<Exclude<InlineStatusBannerSeverity, "neutral">, string> = {
   error: "--color-status-error",
   warning: "--color-status-warning",
   info: "--color-status-info",
@@ -86,6 +106,10 @@ export function InlineStatusBanner({
   role = "alert",
   ariaLive,
   onClose,
+  closeAriaLabel = "Dismiss",
+  trailingSlot,
+  descriptionExtras,
+  autoDismissAfter,
 }: InlineStatusBannerProps) {
   const prefersReducedMotion =
     typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -93,7 +117,14 @@ export function InlineStatusBanner({
 
   const [isVisible, setIsVisible] = useState(!shouldAnimate);
   const rafRef = useRef<number | null>(null);
-  const colorVar = SEVERITY_VAR[severity];
+  const isNeutral = severity === "neutral";
+  const colorVar = isNeutral ? undefined : SEVERITY_VAR[severity];
+
+  useEffect(() => {
+    if (!autoDismissAfter || !onClose) return;
+    const timer = setTimeout(onClose, autoDismissAfter);
+    return () => clearTimeout(timer);
+  }, [autoDismissAfter, onClose]);
 
   useEffect(() => {
     if (!shouldAnimate) return;
@@ -121,53 +152,81 @@ export function InlineStatusBanner({
           : "flex items-center justify-between gap-3 px-3 py-2 shrink-0",
         shouldAnimate && "transition duration-250",
         shouldAnimate && (isVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"),
+        isNeutral && "bg-overlay-subtle",
         className
       )}
-      style={{
-        backgroundColor: `color-mix(in oklab, var(${colorVar}) 10%, transparent)`,
-        borderBottom: `1px solid color-mix(in oklab, var(${colorVar}) 20%, transparent)`,
-      }}
+      style={
+        isNeutral
+          ? undefined
+          : {
+              backgroundColor: `color-mix(in oklab, var(${colorVar}) 10%, transparent)`,
+              borderBottom: `1px solid color-mix(in oklab, var(${colorVar}) 20%, transparent)`,
+            }
+      }
       role={role}
       aria-live={ariaLive}
       aria-atomic={ariaLive && ariaLive !== "off" ? "true" : undefined}
     >
       <div className={cn("flex", hasDescription ? "items-start" : "items-center", "gap-2 min-w-0")}>
         <IconComponent
-          className={cn("w-4 h-4 shrink-0", hasDescription && "mt-0.5")}
-          style={{ color: `var(${colorVar})` }}
+          className={cn(
+            "w-4 h-4 shrink-0",
+            hasDescription && "mt-0.5",
+            isNeutral && "text-daintree-text/60"
+          )}
+          style={isNeutral ? undefined : { color: `var(${colorVar})` }}
           aria-hidden="true"
         />
         {hasDescription ? (
           <div className="flex-1 min-w-0">
-            <span className="text-sm font-medium" style={{ color: `var(${colorVar})` }}>
+            <span
+              className={cn("text-sm font-medium", isNeutral && "text-daintree-text")}
+              style={isNeutral ? undefined : { color: `var(${colorVar})` }}
+            >
               {title}
             </span>
             {description && (
               <p
-                className="text-xs mt-0.5 break-words"
-                style={{ color: `color-mix(in oklab, var(${colorVar}) 80%, transparent)` }}
+                className={cn("text-xs mt-0.5 break-words", isNeutral && "text-daintree-text/70")}
+                style={
+                  isNeutral
+                    ? undefined
+                    : { color: `color-mix(in oklab, var(${colorVar}) 80%, transparent)` }
+                }
               >
                 {description}
               </p>
             )}
             {contextLine && (
               <p
-                className="text-xs font-mono mt-1 truncate"
-                style={{ color: `color-mix(in oklab, var(${colorVar}) 60%, transparent)` }}
+                className={cn(
+                  "text-xs font-mono mt-1 truncate",
+                  isNeutral && "text-daintree-text/60"
+                )}
+                style={
+                  isNeutral
+                    ? undefined
+                    : { color: `color-mix(in oklab, var(${colorVar}) 60%, transparent)` }
+                }
                 title={contextLine}
               >
                 {contextLine}
               </p>
             )}
+            {descriptionExtras}
           </div>
         ) : (
-          <span className="text-sm" style={{ color: `var(${colorVar})` }}>
+          <span
+            className={cn("text-sm", isNeutral && "text-daintree-text")}
+            style={isNeutral ? undefined : { color: `var(${colorVar})` }}
+          >
             {title}
           </span>
         )}
       </div>
 
       <div className={cn("flex items-center shrink-0", hasDescription ? "gap-2 ml-6" : "gap-1")}>
+        {trailingSlot}
         {onClose && (
           <button
             type="button"
@@ -175,8 +234,8 @@ export function InlineStatusBanner({
               e.stopPropagation();
               onClose();
             }}
-            aria-label="Dismiss"
-            className="p-1 rounded text-daintree-text/60 hover:text-daintree-text hover:bg-daintree-border/50 outline-hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-daintree-accent"
+            aria-label={closeAriaLabel}
+            className="p-1 rounded text-daintree-text/60 hover:text-daintree-text hover:bg-daintree-border/50 transition-colors outline-hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-daintree-accent"
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
@@ -184,7 +243,7 @@ export function InlineStatusBanner({
         {actions.map((action) => {
           const variant = action.variant ?? "primary";
           const variantClasses = getButtonClasses(variant);
-          const variantStyle = getButtonStyle(variant, colorVar);
+          const variantStyle = colorVar ? getButtonStyle(variant, colorVar) : undefined;
           const isDisabled = action.disabled || action.loading;
           const iconClasses = action.iconOnly ? "w-3.5 h-3.5" : "w-3 h-3";
           const spinnerSize = action.iconOnly ? "sm" : "xs";
@@ -201,7 +260,7 @@ export function InlineStatusBanner({
               }}
               className={cn(
                 action.iconOnly ? "p-1" : "flex items-center gap-1.5 px-2 py-1 text-xs font-medium",
-                "outline-hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-daintree-accent",
+                "transition-colors outline-hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-daintree-accent",
                 variantClasses,
                 (variant === "danger" || variant === "dangerFilled") &&
                   "hover:[color:var(--hover-color)] hover:[background:var(--hover-bg)]",
