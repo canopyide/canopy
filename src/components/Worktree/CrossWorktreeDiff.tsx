@@ -279,7 +279,7 @@ export function CrossWorktreeDiff({ isOpen, onClose, initialWorktreeId }: CrossW
             <div className="p-4 space-y-3">
               <Skeleton label="Loading diff">
                 <SkeletonBone className="h-7 w-3/4" />
-                <SkeletonText lines={8} className="mt-3" />
+                <SkeletonText lines={8} />
               </Skeleton>
             </div>
           )}

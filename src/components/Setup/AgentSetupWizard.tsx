@@ -826,7 +826,7 @@ function SelectionStep({
         </p>
         {isLoading ? (
           <Skeleton label="Loading agents" className="space-y-2">
-            {Array.from({ length: 3 }).map((_, i) => (
+            {Array.from({ length: 5 }).map((_, i) => (
               <div
                 key={i}
                 className="flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg/30"

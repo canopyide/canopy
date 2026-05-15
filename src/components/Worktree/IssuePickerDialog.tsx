@@ -2,8 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { Button } from "@/components/ui/button";
 import { CircleDot, Search, Link, Unlink, CircleCheck } from "lucide-react";
-import { Skeleton } from "@/components/ui/Skeleton";
-import { GitHubResourceRowsSkeleton } from "@/components/GitHub/GitHubDropdownSkeletons";
+import { Skeleton, SkeletonBone } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/utils";
 import { githubClient } from "@/clients";
 import type { GitHubIssue } from "@shared/types/github";
@@ -218,8 +217,19 @@ export function IssuePickerDialog({
 
       <div className="flex-1 overflow-y-auto min-h-0 px-6 pb-4">
         {isLoading && issues.length === 0 ? (
-          <Skeleton label="Loading issues">
-            <GitHubResourceRowsSkeleton count={6} />
+          <Skeleton label="Loading issues" className="space-y-1">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="px-3 py-2.5 rounded-[var(--radius-md)] flex items-start gap-3"
+              >
+                <SkeletonBone className="w-4 h-4 rounded-full shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <SkeletonBone className={cn("h-4", i % 2 === 0 ? "w-3/4" : "w-1/2")} />
+                  <SkeletonBone className="h-3 w-12" />
+                </div>
+              </div>
+            ))}
           </Skeleton>
         ) : error ? (
           <div className="text-center py-8 text-sm text-status-error">{error}</div>
