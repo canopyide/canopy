@@ -44,7 +44,12 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
     !isProtectedBranch && !isDetachedHead && worktree.isMainWorktree === false;
 
   const confirmTarget = worktree.branch || worktree.name;
-  const isHighTier = force && (isProtectedBranch || worktree.isMainWorktree === true);
+  const highTierPreamble =
+    isProtectedBranch || worktree.isMainWorktree === true
+      ? "Force-deleting this protected worktree is irreversible."
+      : "Force-deleting this worktree discards uncommitted tracked changes — this is irreversible.";
+  const isHighTier =
+    force && (isProtectedBranch || worktree.isMainWorktree === true || hasTrackedChanges);
   const isConfirmMatched = confirmInput === confirmTarget;
   const canSubmit = !isDeleting && (!isHighTier || isConfirmMatched);
 
@@ -278,7 +283,7 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
                 value={confirmInput}
                 onChange={setConfirmInput}
                 onMatchSubmit={() => void handleDelete()}
-                preamble="Force-deleting this protected worktree is irreversible."
+                preamble={highTierPreamble}
                 data-testid="delete-worktree-confirm-input"
               />
             )}

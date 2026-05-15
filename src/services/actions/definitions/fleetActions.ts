@@ -459,7 +459,7 @@ export function registerFleetActions(actions: ActionRegistry): void {
     description: "Remove a saved fleet by id. Idempotent — unknown ids are silently ignored.",
     category: "terminal",
     kind: "command",
-    danger: "safe",
+    danger: "confirm",
     scope: "renderer",
     argsSchema: idArgSchema,
     run: async (args: unknown) => {

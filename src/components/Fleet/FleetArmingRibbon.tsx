@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import { MoreHorizontal, X } from "lucide-react";
 import { AnimatePresence, m, useReducedMotion } from "framer-motion";
+import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { isMac } from "@/lib/platform";
 import { useEscapeStack } from "@/hooks";
@@ -31,7 +32,9 @@ import { useFleetBroadcastProgressStore } from "@/store/fleetBroadcastProgressSt
 import { useFleetPendingActionStore } from "@/store/fleetPendingActionStore";
 import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
 import { usePanelStore } from "@/store/panelStore";
+import { useProjectSettingsStore } from "@/store/projectSettingsStore";
 import { actionService } from "@/services/ActionService";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,6 +63,14 @@ export function FleetArmingRibbon(): ReactElement | null {
   const progressActive = useFleetBroadcastProgressStore((s) => s.isActive);
 
   const [popoverOpen, setPopoverOpen] = useState(false);
+  // The selection menu is controlled so a fleet-delete request can close it
+  // before the confirm dialog opens — keeping the modal dropdown layer from
+  // colliding with the dialog's focus trap (#8023, lesson #2828).
+  const [selectionMenuOpen, setSelectionMenuOpen] = useState(false);
+  const [pendingDeleteFleetId, setPendingDeleteFleetId] = useState<string | null>(null);
+  const savedScopes = useProjectSettingsStore(
+    useShallow((s) => s.settings?.fleetSavedScopes ?? [])
+  );
   const pasteCancelRef = useRef<HTMLButtonElement | null>(null);
   const ribbonRef = useRef<HTMLDivElement | null>(null);
   const reduceMotion = useReducedMotion();
@@ -199,6 +210,18 @@ export function FleetArmingRibbon(): ReactElement | null {
     resolveFleetBroadcastConfirmation();
   }, [pendingBroadcast]);
 
+  const handleRequestDeleteFleet = useCallback((id: string) => {
+    // Close the selection menu first so its modal layer tears down before
+    // the confirm dialog mounts; React 19 batches both state updates.
+    setSelectionMenuOpen(false);
+    setPendingDeleteFleetId(id);
+  }, []);
+
+  const pendingDeleteScope =
+    pendingDeleteFleetId !== null
+      ? (savedScopes.find((s) => s.id === pendingDeleteFleetId) ?? null)
+      : null;
+
   const setPreviewArmedIds = useFleetArmingStore((s) => s.setPreviewArmedIds);
   const clearPreviewArmedIds = useFleetArmingStore((s) => s.clearPreviewArmedIds);
 
@@ -300,7 +323,7 @@ export function FleetArmingRibbon(): ReactElement | null {
           </DropdownMenuItem>
         </>
       ) : null}
-      <SavedFleetsSection />
+      <SavedFleetsSection onRequestDelete={handleRequestDeleteFleet} />
     </>
   );
 
@@ -401,6 +424,24 @@ export function FleetArmingRibbon(): ReactElement | null {
 
   return (
     <div data-testid="fleet-arming-ribbon-group">
+      <ConfirmDialog
+        isOpen={pendingDeleteFleetId !== null}
+        variant="destructive"
+        title={`Delete '${pendingDeleteScope?.name ?? "fleet"}'?`}
+        description="This removes the saved fleet. The terminals it points to are not affected."
+        confirmLabel="Delete fleet"
+        onConfirm={() => {
+          if (pendingDeleteFleetId !== null) {
+            void actionService.dispatch(
+              "fleet.deleteNamedFleet",
+              { id: pendingDeleteFleetId },
+              { source: "user" }
+            );
+          }
+          setPendingDeleteFleetId(null);
+        }}
+        onClose={() => setPendingDeleteFleetId(null)}
+      />
       <AnimatePresence initial={false}>
         <m.div
           ref={ribbonRef}
@@ -466,7 +507,9 @@ export function FleetArmingRibbon(): ReactElement | null {
             </button>
           )}
           <DropdownMenu
+            open={selectionMenuOpen}
             onOpenChange={(open) => {
+              setSelectionMenuOpen(open);
               if (!open) clearPreviewArmedIds();
             }}
           >

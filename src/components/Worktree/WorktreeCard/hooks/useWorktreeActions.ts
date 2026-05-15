@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { createElement, useCallback, useState, type ReactNode } from "react";
 import type { WorktreeState } from "@/types";
 import { logError } from "@/utils/logger";
 import { actionService } from "@/services/ActionService";
@@ -15,6 +15,7 @@ export type ConfirmDialogState =
       confirmLabel: string;
       variant: "default" | "destructive" | "info";
       onConfirm: () => void;
+      children?: ReactNode;
     };
 
 export interface UseWorktreeActionsResult {
@@ -38,14 +39,17 @@ export interface UseWorktreeActionsResult {
   handleSelectWorkingAgents: () => void;
   handleCloseAll: () => void;
   handleTerminateAll: () => void;
+  handleResourceTeardown: () => void;
 }
 
 export function useWorktreeActions({
   worktree,
   onCopyTree,
+  teardownCommands,
 }: {
   worktree: WorktreeState;
   onCopyTree: () => Promise<string | undefined> | void;
+  teardownCommands: string[];
 }): UseWorktreeActionsResult {
   const runRecipe = useRecipeStore((state) => state.runRecipe);
 
@@ -147,6 +151,54 @@ export function useWorktreeActions({
     });
   }, [worktree.id, worktree.issueTitle, worktree.branch]);
 
+  const handleResourceTeardown = useCallback(() => {
+    const label = worktree.issueTitle ?? worktree.branch ?? worktree.name;
+    const hasCommands = teardownCommands.length > 0;
+    const preview = createElement(
+      "div",
+      { className: "space-y-1.5" },
+      createElement(
+        "span",
+        {
+          className:
+            "text-[11px] font-semibold uppercase tracking-wider text-daintree-text/60",
+        },
+        hasCommands ? "Commands that will run" : "Teardown commands"
+      ),
+      createElement(
+        "pre",
+        {
+          className:
+            "text-xs text-daintree-text/80 bg-daintree-bg/50 p-3 rounded border border-daintree-border font-mono whitespace-pre-wrap break-all",
+        },
+        hasCommands ? teardownCommands.join("\n") : "No teardown commands found."
+      )
+    );
+    setConfirmDialog({
+      isOpen: true,
+      title: `Teardown resource for '${label}'?`,
+      description:
+        "This runs the project's resource-teardown commands for this worktree. Tearing down a remote or shared environment may require manual steps to recreate.",
+      confirmLabel: "Teardown resource",
+      variant: "destructive",
+      children: preview,
+      onConfirm: () => {
+        void actionService.dispatch(
+          "worktree.resource.teardown",
+          { worktreeId: worktree.id },
+          { source: "context-menu" }
+        );
+        setConfirmDialog({ isOpen: false });
+      },
+    });
+  }, [
+    worktree.id,
+    worktree.issueTitle,
+    worktree.branch,
+    worktree.name,
+    teardownCommands,
+  ]);
+
   const handleCopyTree = useCallback(async () => {
     await onCopyTree();
   }, [onCopyTree]);
@@ -164,6 +216,7 @@ export function useWorktreeActions({
     handleMaximizeAll,
     handleCloseAll,
     handleTerminateAll,
+    handleResourceTeardown,
     handleSelectAllAgents,
     handleSelectWaitingAgents,
     handleSelectWorkingAgents,

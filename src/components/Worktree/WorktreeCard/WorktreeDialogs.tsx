@@ -52,7 +52,9 @@ export function WorktreeDialogs({
         variant={confirmDialog.isOpen ? confirmDialog.variant : "default"}
         onConfirm={confirmDialog.isOpen ? confirmDialog.onConfirm : () => {}}
         onClose={onCloseConfirm}
-      />
+      >
+        {confirmDialog.isOpen ? confirmDialog.children : undefined}
+      </ConfirmDialog>
 
       <WorktreeDeleteDialog
         isOpen={showDeleteDialog}

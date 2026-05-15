@@ -82,7 +82,7 @@ export function registerPortalActions(actions: ActionRegistry, _callbacks: Actio
     description: "Remove a portal link by ID",
     category: "portal",
     kind: "command",
-    danger: "safe",
+    danger: "confirm",
     scope: "renderer",
     argsSchema: z.object({ id: z.string() }),
     run: async (args: unknown) => {
