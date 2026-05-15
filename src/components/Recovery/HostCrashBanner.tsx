@@ -1,11 +1,23 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import type { CrashType } from "@shared/types/pty-host";
+import { cn } from "@/lib/utils";
 import { usePanelStore } from "@/store/panelStore";
 import { actionService } from "@/services/ActionService";
+import { InlineStatusBanner } from "@/components/Terminal/InlineStatusBanner";
 import { logError } from "@/utils/logger";
 import { useDeferredLoading } from "@/hooks/useDeferredLoading";
 import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
+
+function SpinnerIcon({ className, style }: { className?: string; style?: CSSProperties }) {
+  return (
+    <Loader2
+      className={cn("animate-spin motion-reduce:animate-none", className)}
+      style={style}
+      aria-hidden="true"
+    />
+  );
+}
 
 interface CrashCopy {
   title: string;
@@ -55,16 +67,15 @@ export function HostCrashBanner() {
     if (!recoveringShown) return null;
 
     return (
-      <div
+      <InlineStatusBanner
+        icon={SpinnerIcon}
+        title="Terminal service restarting"
+        description="The terminal backend stopped and is restarting automatically."
+        severity="warning"
         role="alert"
-        className="flex items-start gap-3 px-4 py-2 bg-[var(--color-status-warning)]/10 border-b border-[var(--color-status-warning)]/25 text-[var(--color-status-warning)] text-sm shrink-0"
-      >
-        <Loader2 className="w-4 h-4 shrink-0 mt-0.5 animate-spin" aria-hidden="true" />
-        <div className="flex-1 flex flex-col gap-0.5">
-          <p className="font-medium">Terminal service restarting</p>
-          <p>The terminal backend stopped and is restarting automatically.</p>
-        </div>
-      </div>
+        animated={false}
+        actions={[]}
+      />
     );
   }
 
@@ -83,23 +94,22 @@ export function HostCrashBanner() {
   };
 
   return (
-    <div
+    <InlineStatusBanner
+      icon={AlertTriangle}
+      title={title}
+      description={body}
+      severity="error"
       role="alert"
-      className="flex items-start gap-3 px-4 py-2 bg-[var(--color-status-error)]/15 border-b border-[var(--color-status-error)]/30 text-[var(--color-status-error)] text-sm shrink-0"
-    >
-      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
-      <div className="flex-1 flex flex-col gap-0.5">
-        <p className="font-medium">{title}</p>
-        <p>{body}</p>
-      </div>
-      <button
-        type="button"
-        onClick={handleRestart}
-        disabled={isRestarting}
-        className="text-xs px-2 py-1 rounded border border-[var(--color-status-error)]/30 hover:bg-[var(--color-status-error)]/10 transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed mt-0.5"
-      >
-        {isRestarting ? "Restarting…" : "Restart service"}
-      </button>
-    </div>
+      animated={false}
+      actions={[
+        {
+          id: "restart",
+          label: isRestarting ? "Restarting…" : "Restart service",
+          variant: "dangerFilled",
+          onClick: handleRestart,
+          disabled: isRestarting,
+        },
+      ]}
+    />
   );
 }

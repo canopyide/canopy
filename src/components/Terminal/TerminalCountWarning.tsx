@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { X, AlertTriangle, Trash2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { AlertTriangle, Trash2 } from "lucide-react";
 import { BANNER_ENTER_DURATION } from "@/lib/animationUtils";
 import { usePanelStore } from "@/store/panelStore";
 import { useShallow } from "zustand/react/shallow";
 import { usePanelLimitStore, shouldShowSoftWarning } from "@/store/panelLimitStore";
+import { InlineStatusBanner } from "./InlineStatusBanner";
 
 interface TerminalCountWarningProps {
   className?: string;
@@ -38,29 +38,10 @@ export function TerminalCountWarning({ className, onOpenBulkActions }: TerminalC
   }, [initializeFromHardware]);
 
   const [isDismissed, setIsDismissed] = useState(false);
-  const [isVisible, setIsVisible] = useState(false);
-  const rafRef = useRef<number | null>(null);
 
   const showWarning =
     !isDismissed &&
     shouldShowSoftWarning(activeCount, softLimit, warningsDisabled, lastDismissedAt);
-
-  useEffect(() => {
-    if (!showWarning) {
-      setIsVisible(false);
-      return;
-    }
-    rafRef.current = requestAnimationFrame(() => {
-      rafRef.current = null;
-      setIsVisible(true);
-    });
-    return () => {
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
-    };
-  }, [showWarning]);
 
   useEffect(() => {
     if (
@@ -74,7 +55,6 @@ export function TerminalCountWarning({ className, onOpenBulkActions }: TerminalC
   const dismissTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleDismiss = useCallback(() => {
-    setIsVisible(false);
     if (dismissTimeoutRef.current !== null) {
       clearTimeout(dismissTimeoutRef.current);
     }
@@ -116,58 +96,30 @@ export function TerminalCountWarning({ className, onOpenBulkActions }: TerminalC
   if (!showWarning) return null;
 
   return (
-    <div
-      className={cn(
-        "flex items-center justify-between gap-4 px-4 py-3 rounded-[var(--radius-lg)]",
-        "bg-[color-mix(in_oklab,var(--color-status-warning)_12%,transparent)]",
-        "border border-status-warning/30",
-        "transition duration-250",
-        isVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2",
-        className
-      )}
+    <InlineStatusBanner
+      icon={AlertTriangle}
+      title={`${activeCount} panels open`}
+      description="Consider closing idle panels to keep the board light."
+      descriptionExtras={
+        completedCount > 0 ? (
+          <button
+            type="button"
+            onClick={handleCleanup}
+            className="mt-1 text-xs underline text-daintree-text/70 hover:text-daintree-text transition-colors inline-flex items-center gap-1 outline-hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-daintree-accent rounded-sm"
+          >
+            <Trash2 className="h-3 w-3" />
+            Close <span className="tabular-nums">{completedCount}</span> completed agent
+            {completedCount !== 1 ? "s" : ""}
+          </button>
+        ) : undefined
+      }
+      severity="warning"
       role="status"
-      aria-live="polite"
-      aria-atomic="true"
-    >
-      <div className="flex items-center gap-3">
-        <AlertTriangle className="h-5 w-5 text-status-warning shrink-0" />
-        <div>
-          <p className="text-sm font-medium tabular-nums text-status-warning">
-            {activeCount} panels open
-          </p>
-          <p className="text-xs text-daintree-text/70 mt-0.5">
-            Consider closing idle panels to keep the board light.
-            {completedCount > 0 && (
-              <>
-                {" "}
-                <button
-                  type="button"
-                  onClick={handleCleanup}
-                  className="underline hover:text-daintree-text transition-colors inline-flex items-center gap-1 outline-hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-daintree-accent rounded-sm"
-                >
-                  <Trash2 className="h-3 w-3" />
-                  Close <span className="tabular-nums">{completedCount}</span> completed agent
-                  {completedCount !== 1 ? "s" : ""}
-                </button>
-              </>
-            )}
-          </p>
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={handleDismiss}
-        className={cn(
-          "rounded-[var(--radius-sm)] p-1",
-          "text-status-warning/60 transition-colors",
-          "hover:text-status-warning hover:bg-status-warning/10",
-          "outline-hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-daintree-accent"
-        )}
-        aria-label="Dismiss warning"
-      >
-        <X className="h-4 w-4" />
-      </button>
-    </div>
+      ariaLive="polite"
+      className={className}
+      actions={[]}
+      onClose={handleDismiss}
+      closeAriaLabel="Dismiss warning"
+    />
   );
 }

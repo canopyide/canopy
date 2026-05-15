@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
 import type { CrashType } from "@shared/types/pty-host";
 
@@ -27,6 +27,22 @@ beforeEach(() => {
   mockedDispatch.mockResolvedValue({ ok: true, result: undefined } as never);
   usePanelStore.setState({ backendStatus: "connected", lastCrashType: null });
   cleanup();
+});
+
+beforeAll(() => {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
 });
 
 describe("HostCrashBanner", () => {

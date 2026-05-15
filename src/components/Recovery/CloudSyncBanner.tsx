@@ -1,4 +1,5 @@
 import { AlertTriangle } from "lucide-react";
+import { InlineStatusBanner } from "@/components/Terminal/InlineStatusBanner";
 import { useCloudSyncBannerStore } from "@/store/cloudSyncBannerStore";
 import { useProjectStore } from "@/store/projectStore";
 import { useProjectSettingsStore } from "@/store/projectSettingsStore";
@@ -46,25 +47,20 @@ export function CloudSyncBanner() {
   };
 
   return (
-    <div
+    <InlineStatusBanner
+      icon={AlertTriangle}
+      title="Project in a synced folder"
+      description={`This project is in a ${service}-synced folder, which can interfere with terminal operations and git. Consider moving it to a local folder.`}
+      severity="warning"
       role="status"
-      className="flex items-center gap-3 px-4 py-2 bg-[var(--color-status-warning)]/15 border-b border-[var(--color-status-warning)]/30 text-[var(--color-status-warning)] text-sm shrink-0"
-    >
-      <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
-      <div className="flex-1 flex flex-col gap-0.5">
-        <p className="font-medium">Project in a synced folder</p>
-        <p>
-          This project is in a {service}-synced folder, which can interfere with terminal operations
-          and git. Consider moving it to a local folder.
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={handleDismiss}
-        className="text-xs px-2 py-1 rounded border border-[var(--color-status-warning)]/30 hover:bg-[var(--color-status-warning)]/10 transition-colors shrink-0"
-      >
-        Don&rsquo;t warn for this project
-      </button>
-    </div>
+      actions={[
+        {
+          id: "dismiss",
+          label: "Don't warn for this project",
+          variant: "primary",
+          onClick: handleDismiss,
+        },
+      ]}
+    />
   );
 }
