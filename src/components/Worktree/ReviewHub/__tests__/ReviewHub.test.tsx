@@ -264,6 +264,7 @@ vi.mock("@/components/ui/EmptyState", () => ({
 
 import { ReviewHub } from "../ReviewHub";
 import { useUIStore } from "@/store/uiStore";
+import { usePreferencesStore } from "@/store/preferencesStore";
 
 const WORKTREE_PATH = "/home/user/project";
 
@@ -305,6 +306,10 @@ describe("ReviewHub", () => {
     // #7886). Existing tests assume rows are visible — expand the disclosure
     // for the canonical worktree path so suite-wide assertions keep working.
     useUIStore.getState().setReviewHubFileListExpanded(WORKTREE_PATH, true);
+
+    // #8025: reset the per-worktree push-confirm opt-out so a previous test
+    // that pre-set it can't leak into the next one.
+    usePreferencesStore.getState().setSkipPushConfirmForWorktree(WORKTREE_PATH, false);
 
     worktreeStoreData.current = new Map([
       [
@@ -1593,6 +1598,12 @@ describe("ReviewHub", () => {
 
   describe("push error banner", () => {
     async function triggerCommitAndPush() {
+      // #8025: every remote push now opens a confirm dialog. These tests
+      // target push-error handling, not the confirm UI, so pre-set the
+      // per-worktree opt-out to bypass the dialog and exercise the push
+      // path directly.
+      usePreferencesStore.getState().setSkipPushConfirmForWorktree(WORKTREE_PATH, true);
+
       getStagingStatusMock.mockResolvedValue(makeStatus({ hasRemote: true }));
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
       await waitFor(() => screen.getByPlaceholderText("Commit message…"));
@@ -1932,6 +1943,9 @@ describe("ReviewHub", () => {
         })
       );
 
+      // #8025: bypass the per-push confirm dialog for this push-error test.
+      usePreferencesStore.getState().setSkipPushConfirmForWorktree(WORKTREE_PATH, true);
+
       getStagingStatusMock.mockResolvedValue(makeStatus({ hasRemote: true }));
       const { rerender } = render(
         <ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />
@@ -1956,6 +1970,9 @@ describe("ReviewHub", () => {
     it("does not call push when commit itself fails", async () => {
       commitMock.mockRejectedValueOnce(new Error("nothing to commit"));
       getStagingStatusMock.mockResolvedValue(makeStatus({ hasRemote: true }));
+
+      // #8025: bypass the per-push confirm dialog for this push-error test.
+      usePreferencesStore.getState().setSkipPushConfirmForWorktree(WORKTREE_PATH, true);
 
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
       await waitFor(() => screen.getByPlaceholderText("Commit message…"));
