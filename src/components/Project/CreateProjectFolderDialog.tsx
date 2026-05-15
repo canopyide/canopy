@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useId, useMemo } from "react";
-import path from "path-browserify";
+import { join } from "@shared/utils/path";
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { FolderPlus, FolderOpen } from "lucide-react";
@@ -108,7 +108,7 @@ export function CreateProjectFolderDialog({ isOpen, onClose }: CreateProjectFold
   const previewPath = useMemo(() => {
     const trimmed = folderName.trim();
     if (!parentPath || !trimmed) return null;
-    return path.join(parentPath, trimmed);
+    return join(parentPath, trimmed);
   }, [parentPath, folderName]);
 
   return (

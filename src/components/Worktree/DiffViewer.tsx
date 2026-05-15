@@ -13,7 +13,7 @@ import tsx from "refractor/tsx";
 import typescript from "refractor/typescript";
 import "react-diff-view/style/index.css";
 import { AlertCircle, ChevronRight, ExternalLink } from "lucide-react";
-import path from "path-browserify";
+import { join } from "@shared/utils/path";
 import { getLanguageForFile } from "@/components/FileViewer/languageUtils";
 import { actionService } from "@/services/ActionService";
 import { TruncatedTooltip } from "@/components/ui/TruncatedTooltip";
@@ -258,9 +258,7 @@ function FileDiff({ file, viewType, rootPath }: FileDiffProps) {
   }, [file.hunks]);
 
   const absolutePath =
-    rootPath && relPath && !relPath.startsWith("/")
-      ? path.join(rootPath, relPath)
-      : relPath || null;
+    rootPath && relPath && !relPath.startsWith("/") ? join(rootPath, relPath) : relPath || null;
 
   const firstHunkLine = file.hunks?.[0]?.newStart;
 
