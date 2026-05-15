@@ -605,17 +605,33 @@ describe("ErrorBanner", () => {
     });
 
     it("renders recovery button with correct label in compact variant", () => {
-      render(<ErrorBanner error={makeError({ retryability: "user-gated", recoveryAction })} onDismiss={onDismiss} compact />);
+      render(
+        <ErrorBanner
+          error={makeError({ retryability: "user-gated", recoveryAction })}
+          onDismiss={onDismiss}
+          compact
+        />
+      );
       expect(screen.getByRole("button", { name: "Pull and rebase" })).toBeTruthy();
     });
 
     it("renders recovery button with correct label in full variant", () => {
-      render(<ErrorBanner error={makeError({ retryability: "user-gated", recoveryAction })} onDismiss={onDismiss} />);
+      render(
+        <ErrorBanner
+          error={makeError({ retryability: "user-gated", recoveryAction })}
+          onDismiss={onDismiss}
+        />
+      );
       expect(screen.getByRole("button", { name: "Pull and rebase" })).toBeTruthy();
     });
 
     it("dispatches via actionService with correct args on click", async () => {
-      render(<ErrorBanner error={makeError({ retryability: "user-gated", recoveryAction })} onDismiss={onDismiss} />);
+      render(
+        <ErrorBanner
+          error={makeError({ retryability: "user-gated", recoveryAction })}
+          onDismiss={onDismiss}
+        />
+      );
       await act(async () => {
         fireEvent.click(screen.getByRole("button", { name: "Pull and rebase" }));
       });
@@ -647,12 +663,23 @@ describe("ErrorBanner", () => {
     });
 
     it("hides 'View errors' when recovery action is present in compact variant", () => {
-      render(<ErrorBanner error={makeError({ retryability: "user-gated", recoveryAction })} onDismiss={onDismiss} compact />);
+      render(
+        <ErrorBanner
+          error={makeError({ retryability: "user-gated", recoveryAction })}
+          onDismiss={onDismiss}
+          compact
+        />
+      );
       expect(screen.queryByRole("button", { name: "View errors" })).toBeNull();
     });
 
     it("hides 'View errors' when recovery action is present in full variant", () => {
-      render(<ErrorBanner error={makeError({ retryability: "user-gated", recoveryAction })} onDismiss={onDismiss} />);
+      render(
+        <ErrorBanner
+          error={makeError({ retryability: "user-gated", recoveryAction })}
+          onDismiss={onDismiss}
+        />
+      );
       expect(screen.queryByRole("button", { name: "View errors" })).toBeNull();
     });
 
