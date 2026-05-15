@@ -157,20 +157,13 @@ export const usePreferencesStore = create<PreferencesState>()(
             // value (e.g. hand-edited array or string) is normalised. A
             // truthy string would otherwise bypass the confirm gate.
             const current = state.skipPushConfirmByWorktreePath;
-            if (
-              current === undefined ||
-              current === null ||
-              typeof current !== "object" ||
-              Array.isArray(current)
-            ) {
-              state.skipPushConfirmByWorktreePath = {};
-            } else {
-              const validated: Record<string, boolean> = {};
-              for (const [key, value] of Object.entries(current as Record<string, unknown>)) {
+            const validated: Record<string, boolean> = {};
+            if (current !== null && typeof current === "object" && !Array.isArray(current)) {
+              for (const [key, value] of Object.entries(current)) {
                 if (typeof value === "boolean") validated[key] = value;
               }
-              state.skipPushConfirmByWorktreePath = validated;
             }
+            state.skipPushConfirmByWorktreePath = validated;
           }
         }
         return persisted as PreferencesState;

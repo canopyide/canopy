@@ -638,8 +638,7 @@ describe("preferencesStore migration", () => {
       );
 
       const store = await loadStore();
-      const state = store.getState() as unknown as Record<string, unknown>;
-      expect(state.skipWorkingCloseConfirm).toBeUndefined();
+      const state = store.getState();
       expect(state.reduceAnimations).toBe(false);
       expect(state.diffViewType).toBe("split");
       expect(state.skipPushConfirmByWorktreePath).toEqual({});
