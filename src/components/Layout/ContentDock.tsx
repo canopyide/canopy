@@ -11,6 +11,7 @@ import {
   useWorktreeSelectionStore,
   type TerminalInstance,
 } from "@/store";
+import type { TrashedTerminal } from "@/store/slices";
 import { DockedTerminalItem } from "./DockedTerminalItem";
 import { DockedTabGroup } from "./DockedTabGroup";
 import { TrashContainer } from "./TrashContainer";
@@ -207,10 +208,10 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
       terminal: panelsById[trashed.id],
       trashedInfo: trashed,
     }))
-    .filter((item) => item.terminal !== undefined) as {
-    terminal: TerminalInstance;
-    trashedInfo: typeof trashedTerminals extends Map<string, infer V> ? V : never;
-  }[];
+    .filter(
+      (item): item is { terminal: TerminalInstance; trashedInfo: TrashedTerminal } =>
+        item.terminal !== undefined
+    );
 
   const dockItems = useMemo<DockRenderItem[]>(() => {
     return buildDockRenderItems(
