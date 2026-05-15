@@ -194,6 +194,23 @@ describe("generateWorktreePath", () => {
     const result = generateWorktreePath("\\\\server\\share\\dir", "main");
     expect(result).toBe("//server/share/dir-worktrees/main");
   });
+
+  it("anchors the path at the share when the root path IS the bare UNC share", () => {
+    // \\server\share resolves to base-folder="" and parent-dir="//server/share",
+    // so the default pattern produces a path immediately under the share root —
+    // the share itself is the unescapable floor.
+    const result = generateWorktreePath("\\\\server\\share", "main");
+    expect(result).toBe("//server/share/-worktrees/main");
+  });
+
+  it("preserves the UNC prefix when using a custom pattern with UNC-derived variables", () => {
+    const result = generateWorktreePath(
+      "\\\\server\\share\\dir",
+      "feature/foo",
+      "{parent-dir}/{branch-slug}"
+    );
+    expect(result).toBe("//server/share/feature-foo");
+  });
 });
 
 describe("validatePathPattern", () => {
