@@ -1,6 +1,7 @@
 import { useCallback, useMemo, type ReactElement } from "react";
 import * as Checkbox from "@radix-ui/react-checkbox";
 import { CheckIcon, MinusIcon, Search } from "lucide-react";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Kbd } from "@/components/ui/Kbd";
 import { isMac } from "@/lib/platform";
 import { cn } from "@/lib/utils";
@@ -161,15 +162,17 @@ export function FleetPickerContent({
       >
         {eligibleTerminals.length === 0 ? (
           <EmptyState
+            variant="zero-data"
+            scale="popover"
             title="No terminals available"
-            hint="Open or focus a terminal to add it to the fleet."
-            testId={`${testIdPrefix}-empty`}
+            className="h-full min-h-[120px]"
           />
         ) : visibleTerminals.length === 0 ? (
           <EmptyState
+            variant="filtered-empty"
+            scale="popover"
             title="No terminals match"
-            hint="Adjust the search to see more terminals."
-            testId={`${testIdPrefix}-empty`}
+            className="h-full min-h-[120px]"
           />
         ) : (
           groupedVisible.map((group) => (
@@ -293,24 +296,6 @@ function deriveGroupCheckedState(
   if (selected === 0) return false;
   if (selected === groupIds.length) return true;
   return "indeterminate";
-}
-
-interface EmptyStateProps {
-  title: string;
-  hint: string;
-  testId: string;
-}
-
-function EmptyState({ title, hint, testId }: EmptyStateProps): ReactElement {
-  return (
-    <div
-      className="flex h-full min-h-[120px] flex-col items-center justify-center gap-1 px-6 text-center"
-      data-testid={testId}
-    >
-      <div className="text-[13px] font-medium text-daintree-text">{title}</div>
-      <div className="text-[12px] text-daintree-text/60">{hint}</div>
-    </div>
-  );
 }
 
 interface WorktreeGroupSectionProps {
