@@ -11,6 +11,7 @@ import {
   useWorktreeSelectionStore,
   type TerminalInstance,
 } from "@/store";
+import type { TrashedTerminal } from "@/store/slices";
 import { DockedTerminalItem } from "./DockedTerminalItem";
 import { DockedTabGroup } from "./DockedTabGroup";
 import { TrashContainer } from "./TrashContainer";
@@ -41,7 +42,12 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuLabel,
+  ContextMenuRadioGroup,
+  ContextMenuRadioItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 
@@ -49,7 +55,13 @@ import { getAgentConfig, getAgentIds } from "@/config/agents";
 import { isAgentInstalled, isAgentLaunchable } from "@shared/utils/agentAvailability";
 import { useHelpPanelStore } from "@/store/helpPanelStore";
 import { buildDockRenderItems, type DockRenderItem } from "./dockRenderItems";
-import type { DockDensity } from "@/store/preferencesStore";
+import { usePreferencesStore, type DockDensity } from "@/store/preferencesStore";
+
+const DOCK_DENSITY_OPTIONS = [
+  { value: "compact", label: "Compact" },
+  { value: "normal", label: "Normal" },
+  { value: "comfortable", label: "Comfortable" },
+] satisfies ReadonlyArray<{ value: DockDensity; label: string }>;
 
 const CONTEXT_MENU_COMPONENTS: DockLaunchMenuComponents = {
   Item: ContextMenuItem,
@@ -75,6 +87,7 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
   const helpTerminalId = useHelpPanelStore((s) => s.terminalId);
   const agentSettings = useAgentSettingsStore((s) => s.settings);
   const agentAvailability = useCliAvailabilityStore((s) => s.availability);
+  const setDockDensity = usePreferencesStore((s) => s.setDockDensity);
   const { settings: projectSettings } = useProjectSettings();
   const hasDevPreview = Boolean(projectSettings?.devServerCommand?.trim());
 
@@ -195,10 +208,10 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
       terminal: panelsById[trashed.id],
       trashedInfo: trashed,
     }))
-    .filter((item) => item.terminal !== undefined) as {
-    terminal: TerminalInstance;
-    trashedInfo: typeof trashedTerminals extends Map<string, infer V> ? V : never;
-  }[];
+    .filter(
+      (item): item is { terminal: TerminalInstance; trashedInfo: TrashedTerminal } =>
+        item.terminal !== undefined
+    );
 
   const dockItems = useMemo<DockRenderItem[]>(() => {
     return buildDockRenderItems(
@@ -365,6 +378,23 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
           recipeContext={recipeContext}
           onLaunchAgent={(agentId) => void handleAddTerminal(agentId, "context-menu")}
         />
+        <ContextMenuSeparator />
+        <ContextMenuSub>
+          <ContextMenuSubTrigger>Dock density</ContextMenuSubTrigger>
+          <ContextMenuSubContent>
+            <ContextMenuRadioGroup value={density}>
+              {DOCK_DENSITY_OPTIONS.map(({ value, label }) => (
+                <ContextMenuRadioItem
+                  key={value}
+                  value={value}
+                  onSelect={() => setDockDensity(value)}
+                >
+                  {label}
+                </ContextMenuRadioItem>
+              ))}
+            </ContextMenuRadioGroup>
+          </ContextMenuSubContent>
+        </ContextMenuSub>
       </ContextMenuContent>
     </ContextMenu>
   );

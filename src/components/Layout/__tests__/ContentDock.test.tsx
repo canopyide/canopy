@@ -75,6 +75,46 @@ describe("ContentDock regression test", () => {
     expect(content).not.toContain("openDockTerminal(newPanelId)");
   });
 
+  // Issue #7979 — dock context menu must surface a "Dock density" submenu
+  // wired to the same preference store the Settings dialog uses, so users
+  // can switch density in place without leaving the dock.
+  it("renders a Dock density submenu wired to setDockDensity", () => {
+    const content = readFileSync(resolve(__dirname, "../ContentDock.tsx"), "utf-8");
+
+    expect(content).toContain("ContextMenuSub");
+    expect(content).toContain("ContextMenuSubTrigger");
+    expect(content).toContain("ContextMenuSubContent");
+    expect(content).toContain("ContextMenuRadioGroup");
+    expect(content).toContain("ContextMenuRadioItem");
+    expect(content).toContain("Dock density");
+  });
+
+  it("subscribes to setDockDensity from usePreferencesStore", () => {
+    const content = readFileSync(resolve(__dirname, "../ContentDock.tsx"), "utf-8");
+
+    expect(content).toMatch(/usePreferencesStore\(\(s\)\s*=>\s*s\.setDockDensity\)/);
+  });
+
+  it("offers the three density options compact, normal, and comfortable", () => {
+    const content = readFileSync(resolve(__dirname, "../ContentDock.tsx"), "utf-8");
+
+    expect(content).toContain('value: "compact"');
+    expect(content).toContain('value: "normal"');
+    expect(content).toContain('value: "comfortable"');
+  });
+
+  it("places the density submenu after DockLaunchMenuItems with a separator", () => {
+    const content = readFileSync(resolve(__dirname, "../ContentDock.tsx"), "utf-8");
+
+    const launchIdx = content.indexOf("<DockLaunchMenuItems");
+    const separatorIdx = content.indexOf("<ContextMenuSeparator />", launchIdx);
+    const subIdx = content.indexOf("<ContextMenuSub>", launchIdx);
+
+    expect(launchIdx).toBeGreaterThan(0);
+    expect(separatorIdx).toBeGreaterThan(launchIdx);
+    expect(subIdx).toBeGreaterThan(separatorIdx);
+  });
+
   // Issue #7278 — the watchdog effect in DockPanelOffscreenContainer must
   // check panelsById before firing closeDockTerminal, so that a panel that
   // exists in canonical storage but hasn't landed in the filtered
