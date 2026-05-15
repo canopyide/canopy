@@ -232,7 +232,9 @@ export function TrashContainer({ trashedTerminals, compact = false }: TrashConta
                 className={cn(
                   compact ? "px-1.5 min-w-0" : "px-3",
                   isOpen && "bg-overlay-emphasis border-border-default",
-                  isOver && "cursor-copy bg-overlay-soft ring-2 ring-inset ring-border-default"
+                  isOver &&
+                    isPanelDragging &&
+                    "cursor-copy bg-overlay-soft ring-2 ring-inset ring-border-default"
                 )}
                 aria-haspopup="dialog"
                 aria-expanded={isOpen}

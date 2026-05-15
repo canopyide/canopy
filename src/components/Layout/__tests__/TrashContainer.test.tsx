@@ -205,6 +205,17 @@ describe("TrashContainer", () => {
     expect(container.innerHTML).toBe("");
   });
 
+  it("does not apply armed classes on populated pill during worktree-sort drags", () => {
+    dndMocks.isDragging = true;
+    dndMocks.isWorktreeSortDragging = true;
+    dndMocks.isOver = true;
+    const { getByTestId } = render(<TrashContainer trashedTerminals={[makeTrashedItem("1")]} />);
+    const pill = getByTestId("trash-container");
+    expect(pill.className).not.toContain("cursor-copy");
+    expect(pill.className).not.toContain("bg-overlay-soft");
+    expect(pill.className).not.toContain("ring-border-default");
+  });
+
   it("does not pulse on initial mount", () => {
     const { container } = render(<TrashContainer trashedTerminals={[makeTrashedItem("1")]} />);
     expect(container.querySelector(".animate-trash-pulse")).toBeNull();
