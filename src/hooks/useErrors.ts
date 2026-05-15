@@ -66,8 +66,8 @@ function routeError(error: ErrorRecord): void {
     fromPreviousSession: error.fromPreviousSession,
     correlationId: error.correlationId,
     recoveryHint: error.recoveryHint,
-    gitReason: error.gitReason,
     recoveryAction: error.recoveryAction,
+    gitReason: error.gitReason,
   });
 
   const { title, body } = humanizeAppError(error);

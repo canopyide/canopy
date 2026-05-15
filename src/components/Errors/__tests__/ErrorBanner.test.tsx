@@ -6,6 +6,13 @@ import type { ErrorRecord } from "@/store/errorStore";
 import { useErrorStore } from "@/store/errorStore";
 import { useDiagnosticsStore } from "@/store/diagnosticsStore";
 
+const mockDispatch = vi.fn().mockResolvedValue({ ok: true });
+vi.mock("@/services/ActionService", () => ({
+  actionService: {
+    dispatch: (...args: unknown[]) => mockDispatch(...args),
+  },
+}));
+
 vi.mock("@/lib/utils", () => ({
   cn: (...args: unknown[]) => args.filter(Boolean).join(" "),
 }));
@@ -495,6 +502,90 @@ describe("ErrorBanner", () => {
       const storeErrors = useErrorStore.getState().errors;
       const promoted = storeErrors.find((e) => e.id === id);
       expect(promoted?.promotedToDock).toBe(true);
+    });
+  });
+
+  describe("recovery action CTA", () => {
+    const recoveryAction = {
+      label: "Pull and rebase",
+      actionId: "git.pullRebase",
+    };
+
+    beforeEach(() => {
+      mockDispatch.mockClear();
+    });
+
+    it("renders recovery button with correct label in compact variant", () => {
+      render(<ErrorBanner error={makeError({ retryability: "user-gated", recoveryAction })} onDismiss={onDismiss} compact />);
+      expect(screen.getByRole("button", { name: "Pull and rebase" })).toBeTruthy();
+    });
+
+    it("renders recovery button with correct label in full variant", () => {
+      render(<ErrorBanner error={makeError({ retryability: "user-gated", recoveryAction })} onDismiss={onDismiss} />);
+      expect(screen.getByRole("button", { name: "Pull and rebase" })).toBeTruthy();
+    });
+
+    it("dispatches via actionService with correct args on click", async () => {
+      render(<ErrorBanner error={makeError({ retryability: "user-gated", recoveryAction })} onDismiss={onDismiss} />);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Pull and rebase" }));
+      });
+      expect(mockDispatch).toHaveBeenCalledWith("git.pullRebase", undefined, {
+        source: "user",
+      });
+    });
+
+    it("dispatches with recoveryAction.args when present", async () => {
+      const actionWithArgs = {
+        label: "Sign in with GitHub",
+        actionId: "app.settings.openTab",
+        args: { tab: "github" },
+      };
+      render(
+        <ErrorBanner
+          error={makeError({ retryability: "user-gated", recoveryAction: actionWithArgs })}
+          onDismiss={onDismiss}
+        />
+      );
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Sign in with GitHub" }));
+      });
+      expect(mockDispatch).toHaveBeenCalledWith(
+        "app.settings.openTab",
+        { tab: "github" },
+        { source: "user" }
+      );
+    });
+
+    it("hides 'View errors' when recovery action is present in compact variant", () => {
+      render(<ErrorBanner error={makeError({ retryability: "user-gated", recoveryAction })} onDismiss={onDismiss} compact />);
+      expect(screen.queryByRole("button", { name: "View errors" })).toBeNull();
+    });
+
+    it("hides 'View errors' when recovery action is present in full variant", () => {
+      render(<ErrorBanner error={makeError({ retryability: "user-gated", recoveryAction })} onDismiss={onDismiss} />);
+      expect(screen.queryByRole("button", { name: "View errors" })).toBeNull();
+    });
+
+    it("hides recovery button while retry is in progress", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            retryability: "user-gated",
+            recoveryAction,
+            retryProgress: { attempt: 1, maxAttempts: 3 },
+          })}
+          onDismiss={onDismiss}
+          onCancelRetry={vi.fn()}
+        />
+      );
+      expect(screen.queryByRole("button", { name: "Pull and rebase" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+    });
+
+    it("does not throw when recovery action is absent", () => {
+      const { container } = render(<ErrorBanner error={makeError()} onDismiss={onDismiss} />);
+      expect(container).toBeTruthy();
     });
   });
 });

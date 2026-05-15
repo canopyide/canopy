@@ -148,11 +148,16 @@ export function ErrorBanner({
   const canRetry = action === "retry";
   const showRecovery = action === "recovery";
 
-  const handleRecovery = useCallback(() => {
+  const handleRecovery = useCallback(async () => {
     if (!error.recoveryAction) return;
-    void actionService.dispatch(error.recoveryAction.actionId, error.recoveryAction.args, {
-      source: "user",
-    });
+    const result = await actionService.dispatch(
+      error.recoveryAction.actionId,
+      error.recoveryAction.args,
+      { source: "user" }
+    );
+    if (!result.ok) {
+      console.warn("Recovery action dispatch failed:", result.error);
+    }
   }, [error.recoveryAction]);
 
   const retryLabel = error.retryProgress
