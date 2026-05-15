@@ -21,6 +21,22 @@ import { useOverlayClaim, useImageError } from "@/hooks";
 const PANEL_WIDTH = 380;
 const EMPTY_WARNINGS: AppThemeValidationWarning[] = [];
 
+// Mirrors `computeGridPageSize` in `useWorktreeGridRovingFocus.ts` — sample a
+// live row to measure row height, divide viewport height. Fall back to 10 when
+// sizes aren't measurable yet (initial layout, jsdom).
+const PAGE_SIZE_FALLBACK = 10;
+function computeListPageSize(
+  container: HTMLElement | null,
+  sampleItem: HTMLElement | null
+): number {
+  if (!container || !sampleItem) return PAGE_SIZE_FALLBACK;
+  const viewportHeight = container.clientHeight;
+  if (viewportHeight <= 0) return PAGE_SIZE_FALLBACK;
+  const sampleHeight = sampleItem.getBoundingClientRect().height;
+  if (sampleHeight <= 0) return PAGE_SIZE_FALLBACK;
+  return Math.max(1, Math.floor(viewportHeight / sampleHeight));
+}
+
 function ThemeRow({
   scheme,
   isCommitted,
@@ -348,6 +364,32 @@ export function ThemeBrowser() {
           handlePreview(scheme.id, true);
           focusRow(scheme.id);
         }
+      } else if (e.key === "PageDown") {
+        e.preventDefault();
+        const sampleItem = rowRefs.current.values().next().value ?? null;
+        const pageSize = computeListPageSize(listRef.current, sampleItem);
+        const next = Math.min(keyboardIndex + pageSize, filteredThemes.length - 1);
+        if (next !== keyboardIndex) {
+          setKeyboardIndex(next);
+          const scheme = filteredThemes[next];
+          if (scheme && scheme.id !== activeSchemeId) {
+            handlePreview(scheme.id, true);
+            focusRow(scheme.id);
+          }
+        }
+      } else if (e.key === "PageUp") {
+        e.preventDefault();
+        const sampleItem = rowRefs.current.values().next().value ?? null;
+        const pageSize = computeListPageSize(listRef.current, sampleItem);
+        const next = Math.max(keyboardIndex - pageSize, 0);
+        if (next !== keyboardIndex) {
+          setKeyboardIndex(next);
+          const scheme = filteredThemes[next];
+          if (scheme && scheme.id !== activeSchemeId) {
+            handlePreview(scheme.id, true);
+            focusRow(scheme.id);
+          }
+        }
       } else if (e.key === "Enter") {
         e.preventDefault();
         void handleCommit();
@@ -364,7 +406,13 @@ export function ThemeBrowser() {
         setQuery("");
         return;
       }
-      if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter") {
+      if (
+        e.key === "ArrowDown" ||
+        e.key === "ArrowUp" ||
+        e.key === "PageDown" ||
+        e.key === "PageUp" ||
+        e.key === "Enter"
+      ) {
         handleListKeyDown(e as unknown as React.KeyboardEvent<HTMLDivElement>);
       }
     },

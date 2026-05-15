@@ -161,8 +161,17 @@ export function BrowserToolbar({
       }
 
       if (nextIndex !== currentIndex && nextIndex >= 0 && nextIndex < buttons.length) {
-        buttons[nextIndex]?.focus();
+        const nextButton = buttons[nextIndex];
+        nextButton?.focus();
         setChipFocusedIndex(nextIndex);
+        // APG radiogroup contract: selection follows focus. Activate the newly
+        // focused chip immediately rather than requiring Space/Enter.
+        const presetId = nextButton?.getAttribute(
+          "data-viewport-preset-id"
+        ) as ViewportPresetId | null;
+        if (presetId && nextButton?.getAttribute("aria-checked") !== "true") {
+          onViewportPresetChange?.(presetId);
+        }
       }
     };
 
