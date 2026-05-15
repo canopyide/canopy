@@ -7,6 +7,9 @@ export interface ShellArgsOptions {
 
 const MACOS_INTERACTIVE_SHELL_STARTUP_DELAY_SECONDS = "0.05";
 
+const WINDOWS_PS_UTF8_BOOTSTRAP =
+  "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); $OutputEncoding = [System.Text.UTF8Encoding]::new($false)";
+
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
@@ -49,16 +52,25 @@ export function getDefaultShell(): string {
 export function getDefaultShellArgs(shell: string, _options?: ShellArgsOptions): string[] {
   const shellName = shell.toLowerCase();
 
-  if (process.platform !== "win32") {
-    if (shellName.includes("zsh") || shellName.includes("bash")) {
-      if (process.platform === "darwin") {
-        return [
-          "-c",
-          `sleep ${MACOS_INTERACTIVE_SHELL_STARTUP_DELAY_SECONDS}\nexec ${shellQuote(shell)} -l`,
-        ];
-      }
-      return ["-l"];
+  if (process.platform === "win32") {
+    const basename = shellName.split(/[\\/]/).pop() ?? "";
+    if (basename === "cmd.exe") {
+      return ["/K", "chcp 65001 >NUL"];
     }
+    if (basename === "powershell.exe") {
+      return ["-NoLogo", "-NoExit", "-Command", WINDOWS_PS_UTF8_BOOTSTRAP];
+    }
+    return [];
+  }
+
+  if (shellName.includes("zsh") || shellName.includes("bash")) {
+    if (process.platform === "darwin") {
+      return [
+        "-c",
+        `sleep ${MACOS_INTERACTIVE_SHELL_STARTUP_DELAY_SECONDS}\nexec ${shellQuote(shell)} -l`,
+      ];
+    }
+    return ["-l"];
   }
 
   return [];
