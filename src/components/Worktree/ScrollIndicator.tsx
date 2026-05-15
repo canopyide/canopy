@@ -1,6 +1,7 @@
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useAnimatedPresence } from "../../hooks/useAnimatedPresence";
+import { ScrollPill } from "@/components/ui/ScrollPill";
 
 interface ScrollIndicatorProps {
   direction: "above" | "below";
@@ -31,8 +32,9 @@ export function ScrollIndicator({
         direction === "above" ? "top-0 pt-2" : "bottom-0 pb-2"
       )}
     >
-      <button
-        type="button"
+      <ScrollPill
+        isVisible={isVisible}
+        translateDirection={direction === "above" ? "up" : "down"}
         onClick={onClick}
         onPointerDown={(e) => e.stopPropagation()}
         tabIndex={tabIndex}
@@ -41,25 +43,12 @@ export function ScrollIndicator({
             ? `Scroll up, ${count} more above`
             : `Scroll down, ${count} more below`
         }
-        className={cn(
-          "pointer-events-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full",
-          "bg-daintree-bg/90 border border-daintree-border/40 text-daintree-text shadow-[var(--theme-shadow-floating)]",
-          "text-xs font-medium cursor-pointer",
-          "hover:bg-daintree-bg hover:border-daintree-border/60",
-          "transition-[opacity,transform] duration-150",
-          "motion-reduce:transition-none motion-reduce:duration-0 motion-reduce:transform-none",
-          "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1",
-          isVisible
-            ? "opacity-100 translate-y-0"
-            : direction === "above"
-              ? "opacity-0 -translate-y-2"
-              : "opacity-0 translate-y-2"
-        )}
+        className="flex items-center gap-1.5 px-2.5 py-1"
       >
         <Icon className="h-3 w-3" />
         <span className="font-medium tabular-nums">{count}</span>
         <span>more {direction}</span>
-      </button>
+      </ScrollPill>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { ChevronDown } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { useAnimatedPresence } from "@/hooks/useAnimatedPresence";
+import { ScrollPill } from "@/components/ui/ScrollPill";
 import { useUnseenOutput } from "@/hooks/useUnseenOutput";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 
@@ -27,24 +27,17 @@ export function TerminalScrollIndicator({ terminalId }: TerminalScrollIndicatorP
 
   return (
     <div className="absolute inset-0 z-30 pointer-events-none flex items-end justify-end pb-1.5 pr-[14px]">
-      <button
-        type="button"
-        className={cn(
-          "pointer-events-auto flex items-center gap-1 px-2 py-0.5 rounded-full",
-          "bg-daintree-bg/90 border border-daintree-border/40 text-daintree-text shadow-[var(--theme-shadow-floating)]",
-          "text-xs font-medium cursor-pointer",
-          "hover:bg-daintree-bg hover:border-daintree-border/60",
-          "transition duration-150",
-          "motion-reduce:transition-none motion-reduce:duration-0 motion-reduce:transform-none",
-          isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
-        )}
+      <ScrollPill
+        isVisible={isVisible}
+        translateDirection="down"
+        className="flex items-center gap-1 px-2 py-0.5"
         onClick={handleClick}
         onPointerDown={(e) => e.stopPropagation()}
         aria-label="Scroll to latest output"
       >
         <ChevronDown className="h-3 w-3" />
         New output below
-      </button>
+      </ScrollPill>
     </div>
   );
 }
