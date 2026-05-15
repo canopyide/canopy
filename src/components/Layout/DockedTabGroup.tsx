@@ -9,6 +9,7 @@ import {
   PointerSensor,
   TouchSensor,
   type DragEndEvent,
+  type UniqueIdentifier,
 } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
@@ -54,6 +55,7 @@ import {
   isGroupDeprioritized,
 } from "./useDockBlockedState";
 import { SortableTabButton } from "@/components/Panel/SortableTabButton";
+import { makeSortableAnnouncements } from "@/components/DragDrop/sortableAnnouncements";
 import type { TabGroup } from "@/types";
 import { buildPanelDuplicateOptions } from "@/services/terminal/panelDuplicationService";
 import { handleDockInteractOutside, handleDockEscapeKeyDown } from "./dockPopoverGuard";
@@ -290,6 +292,30 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
       }
     },
     [panels, group.id, reorderPanelsInGroup]
+  );
+
+  // Surface-specific ARIA announcements for the dock tab strip. Without this
+  // dnd-kit reads the generic English defaults ("Picked up draggable item"),
+  // which obscures which tab the user grabbed when multiple groups are docked.
+  const getPanelTabLabel = useCallback(
+    (id: UniqueIdentifier) => {
+      const panel = panels.find((p) => p.id === id);
+      return panel ? getBaseTitle(panel.title) : null;
+    },
+    [panels]
+  );
+  const tabAnnouncements = useMemo(
+    () => makeSortableAnnouncements(getPanelTabLabel, "panel tab"),
+    [getPanelTabLabel]
+  );
+
+  // Restrict dnd-kit's autoscroller to the horizontal tab strip itself. The
+  // DndContext lives inside a Radix Popover portaled to document.body, so its
+  // scrollable-ancestor walk would otherwise reach `body`/`html` and scroll
+  // the page when the user drags a tab near the popover edge.
+  const tabAutoScroll = useMemo(
+    () => ({ canScroll: (el: Element) => el === tabListEl }),
+    [tabListEl]
   );
 
   const handleTabRename = useCallback(
@@ -554,13 +580,15 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
           collisionDetection={closestCenter}
           onDragEnd={handleTabDragEnd}
           modifiers={[restrictToHorizontalAxis, restrictToParentElement]}
+          autoScroll={tabAutoScroll}
+          accessibility={{ announcements: tabAnnouncements }}
         >
           <SortableContext items={tabIds} strategy={horizontalListSortingStrategy}>
             <LayoutGroup id={`dock-tabs-${group.id}`}>
               <div className="flex items-stretch border-b border-divider bg-daintree-sidebar shrink-0">
                 <div
                   ref={setTabListEl}
-                  className="flex items-center min-w-0 flex-1 overflow-x-auto scrollbar-none"
+                  className="flex items-center min-w-0 flex-1 overflow-x-auto overscroll-x-none scrollbar-none"
                   role="tablist"
                   aria-label="Dock panel tabs"
                   onKeyDown={handleTabListKeyDown}

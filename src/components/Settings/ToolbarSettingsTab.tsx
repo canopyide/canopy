@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import {
   DndContext,
   closestCenter,
@@ -7,6 +7,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type UniqueIdentifier,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -32,6 +33,7 @@ import { usePluginToolbarButtons } from "@/hooks/usePluginToolbarButtons";
 import { McpServerIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { DRAG_GHOST_OPACITY } from "@/lib/animationUtils";
+import { makeSortableAnnouncements } from "@/components/DragDrop/sortableAnnouncements";
 import { SettingsSection } from "./SettingsSection";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
 
@@ -142,6 +144,18 @@ export function ToolbarSettingsTab() {
     return { ...TOOLBAR_BUTTON_METADATA, ...pluginMeta };
   }, [pluginButtonIds, pluginConfigs]);
 
+  const getToolbarButtonLabel = useCallback(
+    (id: UniqueIdentifier) => {
+      const meta = allMetadata as Partial<Record<AnyToolbarButtonId, ToolbarButtonMetadata>>;
+      return meta[id as AnyToolbarButtonId]?.label;
+    },
+    [allMetadata]
+  );
+  const toolbarButtonAnnouncements = useMemo(
+    () => makeSortableAnnouncements(getToolbarButtonLabel, "toolbar button"),
+    [getToolbarButtonLabel]
+  );
+
   const handleLeftDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -212,6 +226,7 @@ export function ToolbarSettingsTab() {
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={handleLeftDragEnd}
+          accessibility={{ announcements: toolbarButtonAnnouncements }}
         >
           <SortableContext items={layout.leftButtons} strategy={verticalListSortingStrategy}>
             <div className="space-y-2">
@@ -243,6 +258,7 @@ export function ToolbarSettingsTab() {
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={handleRightDragEnd}
+          accessibility={{ announcements: toolbarButtonAnnouncements }}
         >
           <SortableContext items={layout.rightButtons} strategy={verticalListSortingStrategy}>
             <div className="space-y-2">
