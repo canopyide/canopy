@@ -248,14 +248,16 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
 vi.mock("@/components/ui/EmptyState", () => ({
   EmptyState: ({
     variant,
+    scale,
     title,
     action,
   }: {
     variant: string;
+    scale?: string;
     title: string;
     action?: ReactNode;
   }) => (
-    <div data-testid={`empty-state-${variant}`}>
+    <div data-testid={`empty-state-${variant}`} data-scale={scale}>
       <p>{title}</p>
       {action && <div>{action}</div>}
     </div>
@@ -1194,8 +1196,10 @@ describe("ReviewHub", () => {
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
 
       await waitFor(() => screen.getByTestId("conflict-panel"));
-      expect(screen.getByText("All conflicts resolved")).toBeTruthy();
-      expect(screen.getAllByTestId("empty-state-user-cleared").length).toBeGreaterThan(0);
+      const resolvedTitle = screen.getByText("All conflicts resolved");
+      const resolvedEmpty = resolvedTitle.closest('[data-testid="empty-state-user-cleared"]');
+      expect(resolvedEmpty).not.toBeNull();
+      expect(resolvedEmpty?.getAttribute("data-scale")).toBe("sidebar");
     });
 
     it("stages a file when Mark resolved is clicked", async () => {
@@ -2502,8 +2506,10 @@ describe("ReviewHub", () => {
 
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
 
-      await waitFor(() => screen.getByText("All changes staged"));
-      expect(screen.getAllByTestId("empty-state-user-cleared").length).toBeGreaterThan(0);
+      const allStagedTitle = await screen.findByText("All changes staged");
+      const allStagedEmpty = allStagedTitle.closest('[data-testid="empty-state-user-cleared"]');
+      expect(allStagedEmpty).not.toBeNull();
+      expect(allStagedEmpty?.getAttribute("data-scale")).toBe("sidebar");
       // Stage all button (for Changes section) should be hidden when there are no unstaged files
       expect(screen.queryByTestId("review-hub-stage-section-button")).toBeNull();
       // Unstage all button (for Staged section) should be visible with 1 file
@@ -2540,7 +2546,12 @@ describe("ReviewHub", () => {
         screen.getByText("Nothing staged");
         screen.getByText("b.ts");
       });
-      expect(screen.getAllByTestId("empty-state-user-cleared").length).toBeGreaterThan(0);
+      const nothingStagedTitle = screen.getByText("Nothing staged");
+      const nothingStagedEmpty = nothingStagedTitle.closest(
+        '[data-testid="empty-state-user-cleared"]'
+      );
+      expect(nothingStagedEmpty).not.toBeNull();
+      expect(nothingStagedEmpty?.getAttribute("data-scale")).toBe("sidebar");
     });
 
     it("renders files sorted by path ascending by default", async () => {
