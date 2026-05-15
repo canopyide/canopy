@@ -101,7 +101,7 @@ export function QuickStateFilterBar({
                     aria-hidden="true"
                     className={cn(
                       "text-xs tabular-nums",
-                      isActive ? "text-daintree-text/70" : "text-daintree-text/50"
+                      isActive ? "text-daintree-text" : "text-daintree-text/50"
                     )}
                   >
                     {rawCount}
