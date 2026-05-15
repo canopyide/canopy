@@ -192,6 +192,7 @@ describe("useMcpBridge", () => {
     const pending = useMcpConfirmStore.getState().current;
     expect(pending).not.toBeNull();
     expect(pending?.actionTitle).toBe("Delete Worktree");
+    expect(pending?.danger).toBe("confirm");
     expect(pending?.argsSummary).toContain("wt-1");
     expect(mocks.dispatch).not.toHaveBeenCalled();
 

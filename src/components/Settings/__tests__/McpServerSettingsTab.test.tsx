@@ -199,7 +199,16 @@ describe("McpServerSettingsTab", () => {
     });
     expect(window.electron.mcpServer.rotateApiKey).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: /^rotate key$/i }));
+    const confirmButton = screen.getByRole("button", {
+      name: /^rotate key$/i,
+    }) as HTMLButtonElement;
+    expect(confirmButton.disabled).toBe(true);
+
+    const typedInput = screen.getByLabelText(/^Type .* to confirm$/i) as HTMLInputElement;
+    fireEvent.change(typedInput, { target: { value: "c123" } });
+    expect(confirmButton.disabled).toBe(false);
+
+    fireEvent.click(confirmButton);
 
     await waitFor(() => {
       expect(window.electron.mcpServer.rotateApiKey).toHaveBeenCalledTimes(1);
@@ -252,6 +261,9 @@ describe("McpServerSettingsTab", () => {
       expect(screen.getByRole("heading", { name: /rotate api key\?/i })).toBeTruthy();
     });
 
+    fireEvent.change(screen.getByLabelText(/^Type .* to confirm$/i), {
+      target: { value: "c123" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /^rotate key$/i }));
 
     await waitFor(() => {
@@ -281,6 +293,9 @@ describe("McpServerSettingsTab", () => {
       expect(screen.getByRole("heading", { name: /rotate api key\?/i })).toBeTruthy();
     });
 
+    fireEvent.change(screen.getByLabelText(/^Type .* to confirm$/i), {
+      target: { value: "c123" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /^rotate key$/i }));
 
     await waitForContent(container, "rotate failed");
