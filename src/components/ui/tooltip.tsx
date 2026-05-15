@@ -30,8 +30,17 @@ const Tooltip = ({ children, open, ...props }: TooltipRootProps) => {
   const effectiveOpen = dropdownVisible ? open : false;
   if (!radix) return <>{children}</>;
   const Root = radix.TooltipPrimitive.Root;
+  // Key on visibility so the Radix Root remounts on each hidden/visible
+  // transition. Without this, a tooltip that was uncontrolled-open when
+  // the dropdown hid would leave Radix's internal `uncontrolledProp` stuck
+  // at `true` — the controlled-close path only fires `onOpenChange` and
+  // never resets the uncontrolled state. On reopen, releasing back to
+  // `open={undefined}` would then read that stale `true` and re-open the
+  // tooltip with no user hover. Remounting clears it; the hidden tree has
+  // no user-visible state worth preserving since the prop-forced close
+  // already invalidated it.
   return (
-    <Root {...props} open={effectiveOpen}>
+    <Root key={dropdownVisible ? "visible" : "hidden"} {...props} open={effectiveOpen}>
       {children}
     </Root>
   );
