@@ -167,7 +167,25 @@ describe("WindowsStoreNotifierService", () => {
         version: "1.2.0",
         storeUrl: MS_STORE_FALLBACK_URL,
       });
-      expect(storeMock.set).toHaveBeenCalledWith("storeNotifierEtag", '"abc"');
+      // Critical: ETag must NOT be persisted on the 200-OK path — only after
+      // the renderer confirms via DISMISS. A mid-flight crash before dismiss
+      // would otherwise let the next launch's 304 suppress the version forever.
+      expect(storeMock.set).not.toHaveBeenCalledWith("storeNotifierEtag", '"abc"');
+    });
+
+    it("does not broadcast when the toggle flips off during the fetch", async () => {
+      let enabled = true;
+      storeMock.get.mockImplementation((key: string) => {
+        if (key === "storeUpdateNotificationsEnabled") return enabled;
+        return undefined;
+      });
+      netMock.fetch.mockImplementation(async () => {
+        enabled = false;
+        return makeResponse({ body: "version: 9.9.9\n", etag: null });
+      });
+      windowsStoreNotifierService.initialize();
+      await windowsStoreNotifierService._checkNowForTest();
+      expect(broadcastMock).not.toHaveBeenCalled();
     });
 
     it("does not broadcast when remote version is equal or older", async () => {
@@ -249,6 +267,38 @@ describe("WindowsStoreNotifierService", () => {
       const handler = dismissCall![1];
       handler({ senderFrame: { url: "app://daintree/index.html" } }, "1.2.3");
       expect(storeMock.set).toHaveBeenCalledWith("lastNotifiedStoreVersion", "1.2.3");
+    });
+
+    it("commits the pending ETag together with lastNotifiedStoreVersion", async () => {
+      netMock.fetch.mockResolvedValueOnce(
+        makeResponse({ body: "version: 1.2.0\n", etag: '"v1.2.0-etag"' })
+      );
+      windowsStoreNotifierService.initialize();
+      await windowsStoreNotifierService._checkNowForTest();
+      // ETag isn't persisted yet — pre-dismiss.
+      expect(storeMock.set).not.toHaveBeenCalledWith("storeNotifierEtag", expect.any(String));
+      const dismissCall = ipcMainMock.handle.mock.calls.find(
+        ([ch]) => ch === CHANNELS.STORE_UPDATE_DISMISS
+      );
+      const handler = dismissCall![1];
+      handler({ senderFrame: { url: "app://daintree/index.html" } }, "1.2.0");
+      expect(storeMock.set).toHaveBeenCalledWith("lastNotifiedStoreVersion", "1.2.0");
+      expect(storeMock.set).toHaveBeenCalledWith("storeNotifierEtag", '"v1.2.0-etag"');
+    });
+
+    it("does not commit a pending ETag when dismiss is for a different version", async () => {
+      netMock.fetch.mockResolvedValueOnce(
+        makeResponse({ body: "version: 1.2.0\n", etag: '"v1.2.0-etag"' })
+      );
+      windowsStoreNotifierService.initialize();
+      await windowsStoreNotifierService._checkNowForTest();
+      const dismissCall = ipcMainMock.handle.mock.calls.find(
+        ([ch]) => ch === CHANNELS.STORE_UPDATE_DISMISS
+      );
+      const handler = dismissCall![1];
+      handler({ senderFrame: { url: "app://daintree/index.html" } }, "9.9.9");
+      expect(storeMock.set).toHaveBeenCalledWith("lastNotifiedStoreVersion", "9.9.9");
+      expect(storeMock.set).not.toHaveBeenCalledWith("storeNotifierEtag", expect.any(String));
     });
 
     it("rejects untrusted senders", () => {

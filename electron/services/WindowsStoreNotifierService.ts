@@ -90,6 +90,12 @@ class WindowsStoreNotifierService {
   private handlersRegistered = false;
   private lastDetected: DetectedStoreUpdate | null = null;
   private activeFeedUrl: string | null = null;
+  // Holds the ETag from a 200 response until the renderer confirms the user
+  // has seen the notification (via DISMISS). If the app crashes before that
+  // confirmation, we WANT the next launch to re-fetch the full body — storing
+  // the ETag eagerly would let a future 304 silently suppress the version
+  // forever (no broadcast, no lastNotifiedStoreVersion write).
+  private pendingEtag: { version: string; etag: string } | null = null;
 
   private clearRetryTimeout(): void {
     if (this.retryTimeout) {
@@ -183,14 +189,10 @@ class WindowsStoreNotifierService {
     if (!VERSION_ALLOWLIST.test(trimmed)) return null;
     if (!semver.valid(trimmed)) return null;
     const etag = res.headers.get("etag");
-    if (etag) {
-      try {
-        store.set("storeNotifierEtag", etag);
-      } catch {
-        // Persistence is best-effort — a write failure means we re-fetch
-        // the full body next tick, but the version compare still works.
-      }
-    }
+    // Don't persist the ETag yet — see `pendingEtag` field comment. We pair
+    // the version + ETag in memory so the DISMISS handler can commit them
+    // together after the user has actually been shown the notification.
+    this.pendingEtag = etag ? { version: trimmed, etag } : null;
     return trimmed;
   }
 
@@ -218,6 +220,13 @@ class WindowsStoreNotifierService {
       this.resetRetryState();
       if (remoteVersion === null) return;
       if (!this.shouldNotify(remoteVersion)) return;
+      // Re-check the toggle after the fetch resolves — a user who flipped the
+      // switch off during the network round-trip shouldn't still see a toast.
+      const stillEnabled = store.get("storeUpdateNotificationsEnabled") ?? true;
+      if (!stillEnabled) {
+        this.pendingEtag = null;
+        return;
+      }
       const detected: DetectedStoreUpdate = {
         version: remoteVersion,
         storeUrl: buildStoreUrl(),
@@ -271,6 +280,7 @@ class WindowsStoreNotifierService {
           // immediately fire a stale notification.
           this.resetRetryState();
           this.lastDetected = null;
+          this.pendingEtag = null;
         }
         return { enabled: validated };
       });
@@ -288,6 +298,19 @@ class WindowsStoreNotifierService {
         if (!VERSION_ALLOWLIST.test(trimmed)) return;
         if (!semver.valid(trimmed)) return;
         store.set("lastNotifiedStoreVersion", trimmed);
+        // Commit the paired ETag now that the user has been notified. If a
+        // mid-flight crash had wiped this in-memory state, we'd have re-
+        // fetched the full body on next launch instead of being suppressed
+        // forever by a stored ETag for an un-dismissed version.
+        if (this.pendingEtag && this.pendingEtag.version === trimmed) {
+          try {
+            store.set("storeNotifierEtag", this.pendingEtag.etag);
+          } catch {
+            // Best-effort — a write failure means we re-fetch the body next
+            // tick. Version compare still works via lastNotifiedStoreVersion.
+          }
+          this.pendingEtag = null;
+        }
       });
 
       this.handlersRegistered = true;
@@ -400,6 +423,7 @@ class WindowsStoreNotifierService {
     this.handlersRegistered = false;
     this.lastDetected = null;
     this.activeFeedUrl = null;
+    this.pendingEtag = null;
     this.initialized = false;
   }
 }

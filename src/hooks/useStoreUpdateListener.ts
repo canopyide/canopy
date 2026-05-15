@@ -17,9 +17,16 @@ function showStoreUpdateNotification(info: { version: string; storeUrl: string }
     message: `Version ${info.version} is available in the Microsoft Store.`,
     correlationId: STORE_UPDATE_CORRELATION_ID,
     duration: 0,
+    // actionId + actionArgs (not bare onClick) so the button survives the
+    // inbox-history filter in notify.ts (~line 476) — actions without an
+    // actionId are silently dropped, which on the priority:"low" path means
+    // the user would only see text with no way to act on it.
     action: {
       label: "Open Microsoft Store",
+      actionId: "system.openExternal",
+      actionArgs: { url: info.storeUrl },
       onClick: () => {
+        // Toast-path fallback for the rare case priority routing changes.
         const promise = window.electron?.system?.openExternal(info.storeUrl);
         if (promise) {
           safeFireAndForget(promise, { context: "Open Microsoft Store for update" });
