@@ -1,6 +1,7 @@
+import { isWindows } from "@/lib/platform";
 import type { KeybindingConfig } from "./keybindingUtils";
 
-export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
+const CORE_KEYBINDINGS: KeybindingConfig[] = [
   {
     actionId: "terminal.close",
     combo: "Cmd+W",
@@ -1005,6 +1006,14 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     description: "Open focused panel context menu",
     category: "Panels",
   },
+  {
+    actionId: "terminal.contextMenu",
+    combo: "ContextMenu",
+    scope: "global",
+    priority: 0,
+    description: "Open focused panel context menu",
+    category: "Panels",
+  },
   // Git write operations (Cmd+K chord prefix)
   {
     actionId: "git.stageAll",
@@ -1055,4 +1064,30 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     description: "Reset renderers for all sessions in active worktree",
     category: "Worktree Sessions",
   },
+];
+
+const WINDOWS_KEYBINDINGS: KeybindingConfig[] = isWindows()
+  ? [
+      {
+        actionId: "terminal.close",
+        combo: "Ctrl+F4",
+        scope: "global",
+        priority: 10,
+        description: "Close focused terminal",
+        category: "Terminal",
+      },
+      {
+        actionId: "portal.closeTab",
+        combo: "Ctrl+F4",
+        scope: "portal",
+        priority: 20,
+        description: "Close active portal tab",
+        category: "Portal",
+      },
+    ]
+  : [];
+
+export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
+  ...CORE_KEYBINDINGS,
+  ...WINDOWS_KEYBINDINGS,
 ];

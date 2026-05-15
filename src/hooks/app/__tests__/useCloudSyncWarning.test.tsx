@@ -5,6 +5,7 @@ import { renderHook } from "@testing-library/react";
 vi.mock("@/lib/platform", () => ({
   isMac: () => true,
   isLinux: () => false,
+  isWindows: () => false,
 }));
 
 import { useCloudSyncWarning } from "../useCloudSyncWarning";

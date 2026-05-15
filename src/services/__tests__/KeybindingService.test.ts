@@ -1213,4 +1213,88 @@ describe("KeybindingService", () => {
       expect(match?.actionId).toBe("window.zoomIn");
     });
   });
+
+  describe("Windows shortcut conventions — issue #7943", () => {
+    it("registers both Shift+F10 and ContextMenu as defaults for terminal.contextMenu", () => {
+      const combos = DEFAULT_KEYBINDINGS.filter((b) => b.actionId === "terminal.contextMenu").map(
+        (b) => b.combo
+      );
+      expect(combos).toEqual(expect.arrayContaining(["Shift+F10", "ContextMenu"]));
+      expect(combos).toHaveLength(2);
+    });
+
+    it("resolves the ContextMenu key to terminal.contextMenu at runtime", () => {
+      setPlatform("Win32");
+      const service = new KeybindingService();
+      const match = service.findMatchingAction(
+        createKeyboardEvent({ key: "ContextMenu", code: "ContextMenu" })
+      );
+      expect(match?.actionId).toBe("terminal.contextMenu");
+    });
+
+    it("includes Ctrl+F4 entries in DEFAULT_KEYBINDINGS on Win32", async () => {
+      setPlatform("Win32");
+      vi.resetModules();
+      const { DEFAULT_KEYBINDINGS: WIN_BINDINGS } = await import("../defaultKeybindings");
+
+      const closeEntry = WIN_BINDINGS.find(
+        (b) => b.actionId === "terminal.close" && b.combo === "Ctrl+F4"
+      );
+      const portalEntry = WIN_BINDINGS.find(
+        (b) => b.actionId === "portal.closeTab" && b.combo === "Ctrl+F4"
+      );
+
+      expect(closeEntry?.scope).toBe("global");
+      expect(closeEntry?.priority).toBe(10);
+      expect(portalEntry?.scope).toBe("portal");
+      expect(portalEntry?.priority).toBe(20);
+    });
+
+    it("omits Ctrl+F4 entries from DEFAULT_KEYBINDINGS on macOS", async () => {
+      setPlatform("MacIntel");
+      vi.resetModules();
+      const { DEFAULT_KEYBINDINGS: MAC_BINDINGS } = await import("../defaultKeybindings");
+
+      const ctrlF4Entries = MAC_BINDINGS.filter((b) => b.combo === "Ctrl+F4");
+      expect(ctrlF4Entries).toEqual([]);
+    });
+
+    it("resolves Ctrl+F4 to terminal.close in global scope on Win32", async () => {
+      setPlatform("Win32");
+      vi.resetModules();
+      const { KeybindingService: WinKeybindingService } = await import("../KeybindingService");
+
+      const service = new WinKeybindingService();
+      const match = service.findMatchingAction(
+        createKeyboardEvent({ key: "F4", code: "F4", ctrlKey: true })
+      );
+      expect(match?.actionId).toBe("terminal.close");
+    });
+
+    it("resolves Ctrl+F4 to portal.closeTab (priority 20) over terminal.close (priority 10) in portal scope on Win32", async () => {
+      setPlatform("Win32");
+      vi.resetModules();
+      const { KeybindingService: WinKeybindingService } = await import("../KeybindingService");
+
+      const service = new WinKeybindingService();
+      service.setScope("portal");
+      const match = service.findMatchingAction(
+        createKeyboardEvent({ key: "F4", code: "F4", ctrlKey: true })
+      );
+      expect(match?.actionId).toBe("portal.closeTab");
+      expect(match?.priority).toBe(20);
+    });
+
+    it("does NOT resolve Ctrl+F4 to any action on macOS", async () => {
+      setPlatform("MacIntel");
+      vi.resetModules();
+      const { KeybindingService: MacKeybindingService } = await import("../KeybindingService");
+
+      const service = new MacKeybindingService();
+      const match = service.findMatchingAction(
+        createKeyboardEvent({ key: "F4", code: "F4", ctrlKey: true })
+      );
+      expect(match).toBeUndefined();
+    });
+  });
 });
