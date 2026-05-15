@@ -148,9 +148,9 @@ export function NotificationCenterToolbarButton({
 
     if (evictedToInboxCount > prev && !isDndActive) {
       // Leading-edge throttle: drop bumps that arrive inside the previous
-      // animation window so rapid-fire evictions don't strobe the bell. DND
-      // suppression skips updating the ref so the first post-DND notification
-      // still animates immediately.
+      // animation window so rapid-fire evictions don't strobe the bell. The
+      // ref is only advanced when a blip actually fires, so DND-suppressed
+      // increments don't consume the throttle window.
       const now = Date.now();
       if (now - lastBellBumpTimeRef.current < DURATION_250) return;
       lastBellBumpTimeRef.current = now;
