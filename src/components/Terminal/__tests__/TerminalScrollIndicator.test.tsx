@@ -11,11 +11,12 @@ vi.mock("@/hooks/useUnseenOutput", () => ({
   }),
 }));
 
+const { mockUseAnimatedPresence } = vi.hoisted(() => ({
+  mockUseAnimatedPresence: vi.fn(),
+}));
+
 vi.mock("@/hooks/useAnimatedPresence", () => ({
-  useAnimatedPresence: ({ isOpen }: { isOpen: boolean }) => ({
-    isVisible: isOpen,
-    shouldRender: isOpen,
-  }),
+  useAnimatedPresence: mockUseAnimatedPresence,
 }));
 
 vi.mock("@/services/TerminalInstanceService", () => ({
@@ -32,6 +33,18 @@ describe("TerminalScrollIndicator", () => {
   beforeEach(() => {
     mockHasUnseenOutput = false;
     vi.clearAllMocks();
+    mockUseAnimatedPresence.mockImplementation(({ isOpen }: { isOpen: boolean }) => ({
+      isVisible: isOpen,
+      shouldRender: isOpen,
+    }));
+  });
+
+  it("requests instant-hide via animationDuration: 0", () => {
+    mockHasUnseenOutput = true;
+    render(<TerminalScrollIndicator terminalId="t1" />);
+    expect(mockUseAnimatedPresence).toHaveBeenCalledWith(
+      expect.objectContaining({ animationDuration: 0 })
+    );
   });
 
   it("does not render when hasUnseenOutput is false", () => {

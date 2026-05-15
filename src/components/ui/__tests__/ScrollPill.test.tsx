@@ -17,6 +17,16 @@ describe("ScrollPill", () => {
     expect(button.getAttribute("type")).toBe("button");
   });
 
+  it("forces type=button even if a caller passes type=submit", () => {
+    const extra = { type: "submit" } as Record<string, unknown>;
+    render(
+      <ScrollPill isVisible translateDirection="down" {...extra}>
+        hi
+      </ScrollPill>
+    );
+    expect(screen.getByRole("button").getAttribute("type")).toBe("button");
+  });
+
   it("applies the shared chrome classes", () => {
     render(
       <ScrollPill isVisible translateDirection="down">

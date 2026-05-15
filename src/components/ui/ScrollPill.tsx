@@ -1,7 +1,7 @@
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
-export interface ScrollPillProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+export interface ScrollPillProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type"> {
   /** Whether the pill is in its shown state (drives opacity + resting transform). */
   isVisible: boolean;
   /** Direction the pill slides toward when hidden. "none" hides without vertical movement. */
@@ -15,9 +15,16 @@ export interface ScrollPillProps extends ButtonHTMLAttributes<HTMLButtonElement>
  * (via their own `useAnimatedPresence`) and keep `pointer-events-none` on the
  * overlay wrapper — `pointer-events-auto` is baked in here so the button stays
  * clickable through the wrapper.
+ *
+ * The primitive owns its `opacity-*` / `translate-y-*` / `transform-*` and
+ * `transition-*` utilities — callers must not pass conflicting variants via
+ * `className` (Tailwind v4 resolves conflicts by stylesheet order, not class
+ * string order, so the winner would be undefined). Pass only layout/spacing
+ * utilities (flex, gap, padding). `type` is always `button` and cannot be
+ * overridden — scroll chrome must never submit a form.
  */
 export const ScrollPill = forwardRef<HTMLButtonElement, ScrollPillProps>(
-  ({ isVisible, translateDirection, className, type, ...rest }, ref) => {
+  ({ isVisible, translateDirection, className, ...rest }, ref) => {
     const hiddenTransform =
       translateDirection === "up"
         ? "opacity-0 -translate-y-2"
@@ -28,7 +35,6 @@ export const ScrollPill = forwardRef<HTMLButtonElement, ScrollPillProps>(
     return (
       <button
         ref={ref}
-        type={type ?? "button"}
         className={cn(
           "pointer-events-auto rounded-full",
           "bg-daintree-bg/90 border border-daintree-border/40 text-daintree-text shadow-[var(--theme-shadow-floating)]",
@@ -41,6 +47,7 @@ export const ScrollPill = forwardRef<HTMLButtonElement, ScrollPillProps>(
           className
         )}
         {...rest}
+        type="button"
       />
     );
   }
