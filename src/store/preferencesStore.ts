@@ -31,6 +31,8 @@ interface PreferencesState {
     projectId: string,
     id: string | null | undefined
   ) => void;
+  skipPushConfirmByWorktreePath: Record<string, boolean>;
+  setSkipPushConfirmForWorktree: (worktreePath: string, value: boolean) => void;
 }
 
 export const usePreferencesStore = create<PreferencesState>()(
@@ -60,11 +62,19 @@ export const usePreferencesStore = create<PreferencesState>()(
             [projectId]: id,
           },
         })),
+      skipPushConfirmByWorktreePath: {},
+      setSkipPushConfirmForWorktree: (worktreePath, value) =>
+        set((state) => ({
+          skipPushConfirmByWorktreePath: {
+            ...state.skipPushConfirmByWorktreePath,
+            [worktreePath]: value,
+          },
+        })),
     }),
     {
       name: "daintree-preferences",
       storage: createSafeJSONStorage(),
-      version: 8,
+      version: 9,
       migrate: (persisted, version) => {
         if (version === 0 || version === undefined) {
           if (persisted && typeof persisted === "object") {
@@ -129,6 +139,12 @@ export const usePreferencesStore = create<PreferencesState>()(
             }
           }
         }
+        if (version < 9) {
+          if (persisted && typeof persisted === "object") {
+            const state = persisted as Record<string, unknown>;
+            state.skipPushConfirmByWorktreePath ??= {};
+          }
+        }
         return persisted as PreferencesState;
       },
     }
@@ -139,5 +155,5 @@ registerPersistedStore({
   storeId: "preferencesStore",
   store: usePreferencesStore,
   persistedStateType:
-    "{ showProjectPulse: boolean; showDeveloperTools: boolean; showGridAgentHighlights: boolean; showDockAgentHighlights: boolean; dockDensity: DockDensity; assignWorktreeToSelf: boolean; reduceAnimations: boolean; diffViewType: DiffViewType; lastSelectedWorktreeRecipeIdByProject: Record<string, string | null | undefined> }",
+    "{ showProjectPulse: boolean; showDeveloperTools: boolean; showGridAgentHighlights: boolean; showDockAgentHighlights: boolean; dockDensity: DockDensity; assignWorktreeToSelf: boolean; reduceAnimations: boolean; diffViewType: DiffViewType; lastSelectedWorktreeRecipeIdByProject: Record<string, string | null | undefined>; skipPushConfirmByWorktreePath: Record<string, boolean> }",
 });

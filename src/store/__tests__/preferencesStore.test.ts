@@ -482,4 +482,98 @@ describe("preferencesStore migration", () => {
       expect(store.getState().dockDensity).toBe("comfortable");
     });
   });
+
+  // Issue #8025 — every remote push now opens a confirm dialog, gated by a
+  // per-worktree opt-out. The persisted store gains a new keyed record.
+  describe("skipPushConfirmByWorktreePath (v9 migration)", () => {
+    it("defaults to an empty record on a fresh install", async () => {
+      const store = await loadStore();
+      expect(store.getState().skipPushConfirmByWorktreePath).toEqual({});
+    });
+
+    it("setSkipPushConfirmForWorktree merges into the existing record", async () => {
+      const store = await loadStore();
+      store.getState().setSkipPushConfirmForWorktree("/repo/a", true);
+      store.getState().setSkipPushConfirmForWorktree("/repo/b", false);
+      expect(store.getState().skipPushConfirmByWorktreePath).toEqual({
+        "/repo/a": true,
+        "/repo/b": false,
+      });
+    });
+
+    it("persists the record to localStorage", async () => {
+      const store = await loadStore();
+      store.getState().setSkipPushConfirmForWorktree("/repo/a", true);
+      await vi.waitFor(() => {
+        const persisted = storageMock.getItem(STORAGE_KEY);
+        expect(persisted).not.toBeNull();
+        const parsed = JSON.parse(persisted!);
+        expect(parsed.state.skipPushConfirmByWorktreePath).toEqual({ "/repo/a": true });
+      });
+    });
+
+    it("migrates v8 state (pre-skipPushConfirm) to v9 with an empty record", async () => {
+      setStoredState(
+        {
+          diffViewType: "split",
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          reduceAnimations: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+        },
+        8
+      );
+
+      const store = await loadStore();
+      expect(store.getState().skipPushConfirmByWorktreePath).toEqual({});
+    });
+
+    it("preserves an explicitly persisted record across v9 migration", async () => {
+      setStoredState(
+        {
+          diffViewType: "split",
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          reduceAnimations: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+          skipPushConfirmByWorktreePath: { "/repo/x": true },
+        },
+        8
+      );
+
+      const store = await loadStore();
+      expect(store.getState().skipPushConfirmByWorktreePath).toEqual({ "/repo/x": true });
+    });
+
+    it("migrates cumulatively from v3 through v9", async () => {
+      setStoredState(
+        {
+          skipWorkingCloseConfirm: true,
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+        },
+        3
+      );
+
+      const store = await loadStore();
+      const state = store.getState() as unknown as Record<string, unknown>;
+      expect(state.skipWorkingCloseConfirm).toBeUndefined();
+      expect(state.reduceAnimations).toBe(false);
+      expect(state.diffViewType).toBe("split");
+      expect(state.skipPushConfirmByWorktreePath).toEqual({});
+    });
+  });
 });
