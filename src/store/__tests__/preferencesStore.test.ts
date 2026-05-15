@@ -409,4 +409,77 @@ describe("preferencesStore migration", () => {
       expect(state.diffViewType).toBe("split");
     });
   });
+
+  // Issue #7979 — dockDensity is now visible in the dock context menu's
+  // radio group, so a corrupt persisted value would leave the radio
+  // unchecked. Validate the v8 migration normalises the value.
+  describe("dockDensity validation (v8 migration)", () => {
+    it("preserves a valid persisted dockDensity across v8 migration", async () => {
+      setStoredState(
+        {
+          diffViewType: "split",
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "comfortable",
+          assignWorktreeToSelf: false,
+          reduceAnimations: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+        },
+        7
+      );
+
+      const store = await loadStore();
+      expect(store.getState().dockDensity).toBe("comfortable");
+    });
+
+    it("normalises a corrupt persisted dockDensity to 'normal'", async () => {
+      setStoredState(
+        {
+          diffViewType: "split",
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "dense",
+          assignWorktreeToSelf: false,
+          reduceAnimations: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+        },
+        7
+      );
+
+      const store = await loadStore();
+      expect(store.getState().dockDensity).toBe("normal");
+    });
+
+    it("normalises a non-string dockDensity (null) to 'normal'", async () => {
+      setStoredState(
+        {
+          diffViewType: "split",
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: null,
+          assignWorktreeToSelf: false,
+          reduceAnimations: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+        },
+        7
+      );
+
+      const store = await loadStore();
+      expect(store.getState().dockDensity).toBe("normal");
+    });
+
+    it("setDockDensity continues to update the value", async () => {
+      const store = await loadStore();
+      store.getState().setDockDensity("compact");
+      expect(store.getState().dockDensity).toBe("compact");
+      store.getState().setDockDensity("comfortable");
+      expect(store.getState().dockDensity).toBe("comfortable");
+    });
+  });
 });

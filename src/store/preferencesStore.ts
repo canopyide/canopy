@@ -64,7 +64,7 @@ export const usePreferencesStore = create<PreferencesState>()(
     {
       name: "daintree-preferences",
       storage: createSafeJSONStorage(),
-      version: 7,
+      version: 8,
       migrate: (persisted, version) => {
         if (version === 0 || version === undefined) {
           if (persisted && typeof persisted === "object") {
@@ -110,6 +110,22 @@ export const usePreferencesStore = create<PreferencesState>()(
             // value (e.g. hand-edited `"side-by-side"`) is normalised.
             if (state.diffViewType !== "split" && state.diffViewType !== "unified") {
               state.diffViewType = "split";
+            }
+          }
+        }
+        if (version < 8) {
+          // Issue #7979 — dockDensity is now exposed in the dock context menu's
+          // radio group, so a corrupt persisted value (e.g. hand-edited
+          // "dense") would leave the radio with no checked item and apply an
+          // unknown CSS data attribute. Validate against the closed set.
+          if (persisted && typeof persisted === "object") {
+            const state = persisted as Record<string, unknown>;
+            if (
+              state.dockDensity !== "compact" &&
+              state.dockDensity !== "normal" &&
+              state.dockDensity !== "comfortable"
+            ) {
+              state.dockDensity = "normal";
             }
           }
         }
