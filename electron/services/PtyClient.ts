@@ -109,8 +109,6 @@ interface TerminalInfoResponse {
 }
 
 export interface PtyClientConfig {
-  /** Maximum restart attempts before giving up */
-  maxRestartAttempts?: number;
   /** Health check interval in milliseconds */
   healthCheckIntervalMs?: number;
   /** Whether to show dialog on crash */
@@ -120,7 +118,6 @@ export interface PtyClientConfig {
 }
 
 const DEFAULT_CONFIG: Required<PtyClientConfig> = {
-  maxRestartAttempts: 3,
   // 5s heartbeat. Watchdog checks the missed-pong count before incrementing,
   // so SIGKILL fires on the tick after 3 consecutive missed pongs — ~20s
   // worst-case detection. Was 30s (~90s detection), which left users staring
@@ -249,7 +246,6 @@ export class PtyClient extends EventEmitter {
 
     this.lifecycle = new PtyHostLifecycle(
       {
-        maxRestartAttempts: this.config.maxRestartAttempts,
         memoryLimitMb: this.config.memoryLimitMb,
         electronDir,
       },
