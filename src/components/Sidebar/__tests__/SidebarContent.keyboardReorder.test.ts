@@ -54,9 +54,11 @@ describe("SidebarContent keyboard reorder announcement — issue #8013", () => {
 
     it("defers setKeyboardReorderAnnouncement behind a 150ms trailing timeout", () => {
       // 150ms == Tier 1 motion timing; absorbs ~30Hz OS key-repeat so
-      // NVDA/JAWS never queue intermediate positions.
+      // NVDA/JAWS never queue intermediate positions. The constant name documents
+      // the intent at the call site.
+      expect(source).toMatch(/const\s+KEYBOARD_REORDER_ANNOUNCEMENT_DEBOUNCE_MS\s*=\s*150/);
       expect(source).toMatch(
-        /reorderAnnouncementTimerRef\.current\s*=\s*setTimeout\(\(\)\s*=>\s*\{[\s\S]*?reorderAnnouncementTimerRef\.current\s*=\s*null;[\s\S]*?setKeyboardReorderAnnouncement\(message\);[\s\S]*?\},\s*150\)/
+        /reorderAnnouncementTimerRef\.current\s*=\s*setTimeout\(\(\)\s*=>\s*\{[\s\S]*?reorderAnnouncementTimerRef\.current\s*=\s*null;[\s\S]*?setKeyboardReorderAnnouncement\(message\);[\s\S]*?\},\s*KEYBOARD_REORDER_ANNOUNCEMENT_DEBOUNCE_MS\)/
       );
     });
 

@@ -84,6 +84,8 @@ const QUICK_STATE_LABELS: Record<"working" | "waiting" | "finished", string> = {
   finished: "Finished",
 };
 
+const KEYBOARD_REORDER_ANNOUNCEMENT_DEBOUNCE_MS = 150;
+
 function truncateSearchQuery(trimmedQuery: string) {
   const codepoints = Array.from(trimmedQuery);
   return codepoints.length > NO_MATCH_QUERY_MAX
@@ -147,7 +149,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     reorderAnnouncementTimerRef.current = setTimeout(() => {
       reorderAnnouncementTimerRef.current = null;
       setKeyboardReorderAnnouncement(message);
-    }, 150);
+    }, KEYBOARD_REORDER_ANNOUNCEMENT_DEBOUNCE_MS);
   }, []);
   const { gridRef, handleGridKeyDown, handleGridFocusCapture } = useWorktreeGridRovingFocus(
     scrollContainerRef,
