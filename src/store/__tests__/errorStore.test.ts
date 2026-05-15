@@ -17,7 +17,7 @@ describe("errorStore", () => {
       type: "process",
       message: "Process crashed",
       source: "pty",
-      isTransient: true,
+      retryability: "auto",
       context: { terminalId: "term-1" },
     });
 
@@ -26,7 +26,7 @@ describe("errorStore", () => {
       type: "process",
       message: "Process crashed",
       source: "pty",
-      isTransient: true,
+      retryability: "auto",
       context: { terminalId: "term-1" },
     });
 
@@ -42,7 +42,7 @@ describe("errorStore", () => {
       type: "network",
       message: "Timeout",
       source: "fetcher",
-      isTransient: true,
+      retryability: "auto",
     });
 
     vi.setSystemTime(new Date("2026-01-01T00:00:00.600Z"));
@@ -50,7 +50,7 @@ describe("errorStore", () => {
       type: "network",
       message: "Timeout",
       source: "fetcher",
-      isTransient: true,
+      retryability: "auto",
     });
 
     expect(useErrorStore.getState().errors).toHaveLength(2);
@@ -62,7 +62,7 @@ describe("errorStore", () => {
         type: "unknown",
         message: `error-${index}`,
         source: "test",
-        isTransient: false,
+        retryability: "none",
       });
       vi.advanceTimersByTime(600);
     }
@@ -78,7 +78,7 @@ describe("errorStore", () => {
       type: "git",
       message: "push rejected",
       source: "git",
-      isTransient: false,
+      retryability: "none",
       correlationId: "test-corr-1234",
     });
 
@@ -92,7 +92,7 @@ describe("errorStore", () => {
       type: "git",
       message: "push rejected",
       source: "git",
-      isTransient: false,
+      retryability: "none",
       correlationId: "original-corr-id",
     });
 
@@ -101,7 +101,7 @@ describe("errorStore", () => {
       type: "git",
       message: "push rejected",
       source: "git",
-      isTransient: false,
+      retryability: "none",
       correlationId: "new-corr-id",
     });
 
@@ -115,7 +115,7 @@ describe("errorStore", () => {
       type: "filesystem",
       message: "EACCES: permission denied",
       source: "fs",
-      isTransient: false,
+      retryability: "none",
       recoveryHint: "Check file permissions or run with elevated privileges.",
     });
 
@@ -129,7 +129,7 @@ describe("errorStore", () => {
       type: "network",
       message: "Timeout",
       source: "fetcher",
-      isTransient: true,
+      retryability: "auto",
       recoveryHint: "Check your network connection and try again.",
     });
 
@@ -138,7 +138,7 @@ describe("errorStore", () => {
       type: "network",
       message: "Timeout",
       source: "fetcher",
-      isTransient: true,
+      retryability: "auto",
       recoveryHint: "Different hint text.",
     });
 
@@ -153,7 +153,7 @@ describe("errorStore", () => {
         type: "process",
         message: "spawn failed",
         source: "pty",
-        isTransient: true,
+        retryability: "auto",
       });
 
       useErrorStore.getState().updateRetryProgress(id, 2, 3);
@@ -167,7 +167,7 @@ describe("errorStore", () => {
         type: "process",
         message: "spawn failed",
         source: "pty",
-        isTransient: true,
+        retryability: "auto",
       });
 
       useErrorStore.getState().updateRetryProgress(id, 1, 3);
@@ -182,7 +182,7 @@ describe("errorStore", () => {
         type: "process",
         message: "spawn failed",
         source: "pty",
-        isTransient: true,
+        retryability: "auto",
       });
 
       useErrorStore.getState().updateRetryProgress(id, 1, 3);
@@ -192,13 +192,63 @@ describe("errorStore", () => {
     });
   });
 
+  it("propagates recoveryAction and gitReason on dedup when classification upgrades", () => {
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const firstId = useErrorStore.getState().addError({
+      type: "git",
+      message: "Push failed",
+      source: "git",
+      retryability: "auto",
+      context: { worktreeId: "w-1" },
+    });
+
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.200Z"));
+    useErrorStore.getState().addError({
+      type: "git",
+      message: "Push failed",
+      source: "git",
+      retryability: "user-gated",
+      gitReason: "auth-failed",
+      recoveryAction: { label: "Reconnect", actionId: "github.connect" },
+      context: { worktreeId: "w-1" },
+    });
+
+    const stored = useErrorStore.getState().errors.find((e) => e.id === firstId);
+    expect(stored?.retryability).toBe("user-gated");
+    expect(stored?.recoveryAction?.actionId).toBe("github.connect");
+    expect(stored?.gitReason).toBe("auth-failed");
+  });
+
+  it("overwrites retryability on dedup so 'exhausted' transitions are visible", () => {
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const firstId = useErrorStore.getState().addError({
+      type: "process",
+      message: "Process crashed",
+      source: "pty",
+      retryability: "auto",
+      context: { terminalId: "term-1" },
+    });
+
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.200Z"));
+    useErrorStore.getState().addError({
+      type: "process",
+      message: "Process crashed",
+      source: "pty",
+      retryability: "exhausted",
+      context: { terminalId: "term-1" },
+    });
+
+    const stored = useErrorStore.getState().errors.find((e) => e.id === firstId);
+    expect(stored?.retryability).toBe("exhausted");
+  });
+
   it("reset fully clears error panel state", () => {
     useErrorStore.getState().setPanelOpen(true);
     useErrorStore.getState().addError({
       type: "git",
       message: "Bad HEAD",
       source: "git",
-      isTransient: false,
+      retryability: "none",
     });
 
     const before = useErrorStore.getState();

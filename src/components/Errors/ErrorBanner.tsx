@@ -13,6 +13,27 @@ import {
 } from "lucide-react";
 import type { ErrorRecord, RetryAction } from "@/store/errorStore";
 import { useDiagnosticsStore } from "@/store/diagnosticsStore";
+import { actionService } from "@/services/ActionService";
+
+/**
+ * Decide which CTA the banner should render. Pure function of `retryability`
+ * plus the optional wiring (`retryAction`, `recoveryAction`, `onRetry` prop):
+ *
+ *   - `"auto"` + retryAction + onRetry → Retry
+ *   - `"user-gated"` + recoveryAction  → run the structured recovery action
+ *   - everything else                  → View errors
+ */
+type BannerAction = "retry" | "recovery" | "view-errors";
+
+function bannerActionFor(error: ErrorRecord, hasOnRetry: boolean): BannerAction {
+  if (error.retryability === "auto" && error.retryAction && hasOnRetry) {
+    return "retry";
+  }
+  if (error.retryability === "user-gated" && error.recoveryAction) {
+    return "recovery";
+  }
+  return "view-errors";
+}
 
 export interface ErrorBannerProps {
   error: ErrorRecord;
@@ -115,7 +136,16 @@ export function ErrorBanner({
 
   const typeLabel = ERROR_TYPE_LABELS[error.type] || "Error";
   const TypeIcon = ERROR_TYPE_ICONS[error.type] ?? XCircle;
-  const canRetry = error.isTransient && error.retryAction && onRetry;
+  const action = bannerActionFor(error, Boolean(onRetry));
+  const canRetry = action === "retry";
+  const showRecovery = action === "recovery";
+
+  const handleRecovery = useCallback(() => {
+    if (!error.recoveryAction) return;
+    void actionService.dispatch(error.recoveryAction.actionId, error.recoveryAction.args, {
+      source: "user",
+    });
+  }, [error.recoveryAction]);
 
   const retryLabel = error.retryProgress
     ? `Retrying ${error.retryProgress.attempt}/${error.retryProgress.maxAttempts}...`
@@ -149,7 +179,12 @@ export function ErrorBanner({
             Retry
           </Button>
         )}
-        {!isRetrying && !canRetry && (
+        {!isRetrying && showRecovery && error.recoveryAction && (
+          <Button variant="ghost-danger" size="xs" onClick={handleRecovery}>
+            {error.recoveryAction.label}
+          </Button>
+        )}
+        {!isRetrying && !canRetry && !showRecovery && (
           <Button variant="ghost-danger" size="xs" onClick={handleViewErrors}>
             View errors
           </Button>
@@ -226,7 +261,12 @@ export function ErrorBanner({
               Retry
             </Button>
           )}
-          {!isRetrying && !canRetry && !error.details && (
+          {!isRetrying && showRecovery && error.recoveryAction && (
+            <Button variant="ghost-danger" size="xs" onClick={handleRecovery}>
+              {error.recoveryAction.label}
+            </Button>
+          )}
+          {!isRetrying && !canRetry && !showRecovery && !error.details && (
             <Button variant="ghost-danger" size="xs" onClick={handleViewErrors}>
               View errors
             </Button>

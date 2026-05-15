@@ -1,16 +1,13 @@
 import { create, type StateCreator } from "zustand";
-import type { GitOperationReason } from "@shared/types/ipc/errors";
+import type {
+  ErrorRetryability,
+  ErrorType,
+  GitOperationReason,
+  RecoveryAction,
+  RetryAction,
+} from "@shared/types/ipc/errors";
 
-export type ErrorType =
-  | "git"
-  | "process"
-  | "filesystem"
-  | "network"
-  | "config"
-  | "validation"
-  | "unknown";
-
-export type RetryAction = "terminal" | "git" | "worktree";
+export type { ErrorRetryability, ErrorType, RetryAction } from "@shared/types/ipc/errors";
 
 export interface ErrorRecord {
   id: string;
@@ -25,7 +22,7 @@ export interface ErrorRecord {
     filePath?: string;
     command?: string;
   };
-  isTransient: boolean;
+  retryability: ErrorRetryability;
   dismissed: boolean;
   retryAction?: RetryAction;
   retryArgs?: Record<string, unknown>;
@@ -35,6 +32,8 @@ export interface ErrorRecord {
   retryProgress?: { attempt: number; maxAttempts: number };
   /** Classified reason when this error originated from a git operation */
   gitReason?: GitOperationReason;
+  /** Structured CTA the renderer can surface alongside the error */
+  recoveryAction?: RecoveryAction;
 }
 
 interface ErrorStore {
@@ -90,6 +89,18 @@ const createErrorStore: StateCreator<ErrorStore> = (set, get) => ({
             ? {
                 ...e,
                 timestamp: now,
+                // Overwrite retryability from the incoming record so state
+                // transitions (e.g. an auto-retrying error landing as
+                // "exhausted" after the retry loop gives up, or upgrading
+                // from "auto" to "user-gated" once the classifier sees a
+                // gitReason) become visible even when the duplicate-
+                // suppression window collapses the two records into one.
+                // recoveryAction and gitReason are part of that state — a
+                // banner that ends up "user-gated" without its CTA would
+                // silently fall back to "View errors".
+                retryability: error.retryability,
+                recoveryAction: error.recoveryAction ?? e.recoveryAction,
+                gitReason: error.gitReason ?? e.gitReason,
                 retryAction: error.retryAction ?? e.retryAction,
                 retryArgs: error.retryArgs ?? e.retryArgs,
                 recoveryHint: e.recoveryHint ?? error.recoveryHint,

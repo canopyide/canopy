@@ -78,7 +78,7 @@ describe("reactRootErrorCallbacks", () => {
         message: "fatal render crash",
         details: componentStack,
         source: "React Uncaught Render Error",
-        isTransient: false,
+        retryability: "none",
       });
 
       expect(mockedLogError).toHaveBeenCalledOnce();

@@ -4,7 +4,7 @@ import { logError } from "@/utils/logger";
 import {
   getErrorMessage,
   classifyError,
-  isTransientError,
+  getRetryabilityFromError,
   type ErrorCategory,
 } from "@/utils/errorContext";
 
@@ -63,7 +63,7 @@ export function reportRendererGlobalError(
       metadata.message || getErrorMessage(rawError) || `Unhandled ${kind} (no reason provided)`;
     const category = classifyError(rawError);
     const storeType = mapCategoryToStoreType(category);
-    const transient = isTransientError(rawError);
+    const retryability = getRetryabilityFromError(rawError);
     const stack = getStack(rawError);
     const correlationId = crypto.randomUUID();
 
@@ -86,7 +86,7 @@ export function reportRendererGlobalError(
         details: details || undefined,
         source,
         context: metadata.filename ? { filePath: metadata.filename } : undefined,
-        isTransient: transient,
+        retryability,
         correlationId,
       });
     } catch (storeError) {

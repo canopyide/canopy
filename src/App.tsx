@@ -303,7 +303,7 @@ function App() {
       useErrorStore.getState().addError({
         type: "unknown",
         message,
-        isTransient: false,
+        retryability: "none",
         source: "e2e-test",
       });
     };

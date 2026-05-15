@@ -27,7 +27,7 @@ function buildFatalErrorRecord(kind: string, error: unknown): ErrorRecord {
     message: `[${kind}] ${message}`,
     details: error instanceof Error ? error.stack : undefined,
     source: "main-process",
-    isTransient: false,
+    retryability: "none",
     dismissed: false,
     recoveryHint:
       kind === "UNCAUGHT_EXCEPTION"

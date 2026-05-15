@@ -8,9 +8,9 @@ import type { NotificationAction, NotificationPriority } from "@/store/notificat
 import { humanizeAppError } from "@shared/utils/errorMessage";
 
 export function getErrorPriority(
-  error: Pick<ErrorRecord, "type" | "isTransient">
+  error: Pick<ErrorRecord, "type" | "retryability">
 ): NotificationPriority {
-  if (error.isTransient) return "low";
+  if (error.retryability === "auto") return "low";
   return "high";
 }
 
@@ -60,13 +60,14 @@ function routeError(error: ErrorRecord): void {
     details: error.details,
     source: error.source,
     context: error.context,
-    isTransient: error.isTransient,
+    retryability: error.retryability,
     retryAction: error.retryAction,
     retryArgs: error.retryArgs,
     fromPreviousSession: error.fromPreviousSession,
     correlationId: error.correlationId,
     recoveryHint: error.recoveryHint,
     gitReason: error.gitReason,
+    recoveryAction: error.recoveryAction,
   });
 
   const { title, body } = humanizeAppError(error);
@@ -77,7 +78,11 @@ function routeError(error: ErrorRecord): void {
   const copyAction = priority === "low" ? undefined : buildCopyDetailsAction(error);
 
   let retryNotificationAction: NotificationAction | undefined;
-  if (error.retryAction) {
+  // Match ErrorBanner's gate: a stored retryAction without "auto"
+  // retryability means the retry loop already exhausted (or the failure was
+  // never auto-retryable) — surfacing a Retry button would re-run the same
+  // failed loop. "user-gated" surfaces its own recovery CTA elsewhere.
+  if (error.retryAction && error.retryability === "auto") {
     retryNotificationAction = {
       label: "Retry",
       successLabel: "Retried",

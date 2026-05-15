@@ -25,7 +25,7 @@ interface ErrorPayload {
   details?: string;
   source?: string;
   context?: Record<string, unknown>;
-  isTransient: boolean;
+  retryability: "auto" | "user-gated" | "exhausted" | "none";
   dismissed: boolean;
   retryAction?: string;
   retryArgs?: Record<string, unknown>;
@@ -43,7 +43,7 @@ function buildError(overrides: Partial<ErrorPayload> = {}): ErrorPayload {
     timestamp: Date.now(),
     type: "unknown",
     message: "E2E retry test error",
-    isTransient: false,
+    retryability: "none",
     dismissed: false,
     ...overrides,
   };
@@ -125,7 +125,7 @@ test.describe.serial("Core: Error Retry & Cancellation", () => {
       type: "git",
       message: msg,
       source: "ProgressTest",
-      isTransient: true,
+      retryability: "auto",
       retryAction: "terminal",
     });
 
@@ -154,7 +154,7 @@ test.describe.serial("Core: Error Retry & Cancellation", () => {
       type: "git",
       message: msg,
       source: "SuccessTest",
-      isTransient: true,
+      retryability: "auto",
       retryAction: "terminal",
     });
 
@@ -178,7 +178,7 @@ test.describe.serial("Core: Error Retry & Cancellation", () => {
       type: "git",
       message: msg,
       source: "CancelTest",
-      isTransient: true,
+      retryability: "auto",
       retryAction: "terminal",
     });
 
@@ -253,7 +253,7 @@ test.describe.serial("Core: Error Persistence Across Restart", () => {
       type: "config",
       message: "Critical config error from previous session",
       source: "ConfigService",
-      isTransient: false,
+      retryability: "none",
       fromPreviousSession: true,
     });
 

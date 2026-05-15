@@ -13,6 +13,7 @@ import {
   ConfigError,
   getUserMessage,
   getErrorDetails,
+  getRetryability,
   isTransientError,
 } from "../utils/errorTypes.js";
 import { getGitRecoveryAction, getGitRecoveryHint } from "../../shared/utils/gitOperationErrors.js";
@@ -21,7 +22,12 @@ import { appendPendingError, MAX_PENDING_ERRORS } from "./pendingErrorsStore.js"
 import { FAULT_MODE_ENABLED } from "./faultRegistry.js";
 import type { PtyClient } from "../services/PtyClient.js";
 import type { WorkspaceClient } from "../services/WorkspaceClient.js";
-import type { ErrorRecord, ErrorType, RetryAction } from "../../shared/types/ipc/errors.js";
+import type {
+  ErrorRecord,
+  ErrorRetryability,
+  ErrorType,
+  RetryAction,
+} from "../../shared/types/ipc/errors.js";
 import type { SpawnResult } from "../../shared/types/pty-host.js";
 
 interface RetryPayload {
@@ -227,6 +233,12 @@ function createErrorRecord(
     context?: ErrorRecord["context"];
     retryAction?: RetryAction;
     retryArgs?: Record<string, unknown>;
+    /**
+     * Explicit override for the retryability classification. Callers use this
+     * to mark a record as `"exhausted"` from the retry loop's final catch —
+     * exhaustion is loop state, not an intrinsic of the error itself.
+     */
+    retryability?: ErrorRetryability;
   } = {}
 ): ErrorRecord {
   const details = getErrorDetails(error);
@@ -243,7 +255,7 @@ function createErrorRecord(
     details: details.stack as string | undefined,
     source: options.source,
     context: options.context,
-    isTransient: isTransientError(error),
+    retryability: options.retryability ?? getRetryability(error, gitReason),
     dismissed: false,
     retryAction: options.retryAction,
     retryArgs: options.retryArgs,
@@ -256,6 +268,32 @@ function createErrorRecord(
 
 function isCriticalErrorType(type: ErrorType): boolean {
   return type === "config" || type === "filesystem";
+}
+
+const VALID_RETRYABILITY: ReadonlySet<ErrorRetryability> = new Set([
+  "auto",
+  "user-gated",
+  "exhausted",
+  "none",
+]);
+
+/**
+ * Read-time migration for records persisted by older builds that wrote the
+ * legacy `isTransient: boolean` field. Maps `true → "auto"` and `false → "none"`
+ * and strips the legacy key so subsequent writes use the new shape. An invalid
+ * retryability string (corrupted store, dev-time write) is rejected and falls
+ * back to the same `isTransient`-based default so we never surface an
+ * unrecognised discriminant to the renderer.
+ */
+function migrateLegacyPersistedError(entry: unknown): ErrorRecord {
+  const record = (entry ?? {}) as Partial<ErrorRecord> & { isTransient?: boolean };
+  let { retryability } = record;
+  if (!retryability || !VALID_RETRYABILITY.has(retryability)) {
+    retryability = record.isTransient === true ? "auto" : "none";
+  }
+  const { isTransient: _legacy, ...rest } = record;
+  void _legacy;
+  return { ...(rest as ErrorRecord), retryability, fromPreviousSession: true };
 }
 
 function isAbortError(error: unknown): boolean {
@@ -286,7 +324,7 @@ class ErrorService {
       this.pendingQueue.shift();
     }
 
-    if (isCriticalErrorType(error.type) && !error.isTransient) {
+    if (isCriticalErrorType(error.type) && error.retryability !== "auto") {
       this.persistError(error);
     }
   }
@@ -350,9 +388,9 @@ class ErrorService {
 
   getPendingPersistedErrors(): ErrorRecord[] {
     try {
-      const persisted = (store.get("pendingErrors") as ErrorRecord[] | undefined) ?? [];
+      const persisted = (store.get("pendingErrors") as unknown[] | undefined) ?? [];
       this.clearPersistedErrors();
-      return persisted.map((e) => ({ ...e, fromPreviousSession: true }));
+      return persisted.map((entry) => migrateLegacyPersistedError(entry));
     } catch {
       return [];
     }
@@ -587,10 +625,18 @@ export function registerErrorHandlers(
       if (isAbortError(error)) {
         throw error;
       }
+      // Only label as "exhausted" when the loop actually used up its retry
+      // budget — that requires the error to have been intrinsically auto-
+      // retryable in the first place. A first-attempt throw of a non-
+      // transient error (e.g. GitOperationError("auth-failed")) needs to
+      // keep its intrinsic classification so the renderer can still surface
+      // the recovery CTA.
+      const intrinsic = getRetryability(error);
       errorService.notifyError(error, {
         source: `retry-${actionForError ?? "unknown"}`,
         retryAction: actionForError,
         retryArgs: argsForError,
+        retryability: intrinsic === "auto" ? "exhausted" : intrinsic,
       });
       throw error;
     }

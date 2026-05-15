@@ -12,7 +12,7 @@ interface ErrorPayload {
   timestamp: number;
   type: string;
   message: string;
-  isTransient: boolean;
+  retryability: "auto" | "user-gated" | "exhausted" | "none";
   dismissed: boolean;
 }
 
@@ -23,7 +23,7 @@ function buildError(overrides: Partial<ErrorPayload> = {}): ErrorPayload {
     timestamp: Date.now(),
     type: "unknown",
     message: `E2E buffered error ${errorSeq}`,
-    isTransient: false,
+    retryability: "none",
     dismissed: false,
     ...overrides,
   };

@@ -377,7 +377,7 @@ export function useContextInjection(targetTerminalId?: string): UseContextInject
             worktreeId,
             terminalId: activeTerminal,
           },
-          isTransient: true,
+          retryability: "auto",
           correlationId: crypto.randomUUID(),
         });
 

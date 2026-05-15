@@ -352,6 +352,61 @@ describe("errorHandlers", () => {
       expect(sleepMock).not.toHaveBeenCalled();
     });
 
+    it("emits retryability='exhausted' when an auto-retryable error uses up its budget", async () => {
+      const CHANNELS = await getChannels();
+      const mockWindow = createMockWindow();
+      const spawn = vi.fn(() => {
+        throw createTransientError("EBUSY");
+      });
+
+      registerErrorHandlers(null, createPtyClientMock(spawn));
+      const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
+
+      await expect(
+        retryHandler(
+          {} as never,
+          {
+            errorId: "e-exh-1",
+            action: "terminal",
+            args: { id: "t-exh-1", cwd: "/tmp" },
+          } as never
+        )
+      ).rejects.toThrow("EBUSY");
+
+      const notifyCall = mockWindow.webContents.send.mock.calls.find(
+        ([channel]: string[]) => channel === CHANNELS.ERROR_NOTIFY
+      );
+      expect(notifyCall?.[1]?.retryability).toBe("exhausted");
+    });
+
+    it("preserves intrinsic retryability when the loop bails on a non-transient error", async () => {
+      const CHANNELS = await getChannels();
+      const mockWindow = createMockWindow();
+      const { GitOperationError } = await import("../../utils/errorTypes.js");
+      const spawn = vi.fn(() => {
+        throw new GitOperationError("auth-failed", "auth required");
+      });
+
+      registerErrorHandlers(null, createPtyClientMock(spawn));
+      const retryHandler = getInvokeHandler(CHANNELS.ERROR_RETRY);
+
+      await expect(
+        retryHandler(
+          {} as never,
+          {
+            errorId: "e-auth-1",
+            action: "terminal",
+            args: { id: "t-auth-1", cwd: "/tmp" },
+          } as never
+        )
+      ).rejects.toThrow("auth required");
+
+      const notifyCall = mockWindow.webContents.send.mock.calls.find(
+        ([channel]: string[]) => channel === CHANNELS.ERROR_NOTIFY
+      );
+      expect(notifyCall?.[1]?.retryability).toBe("user-gated");
+    });
+
     it("stops retrying when a transient error becomes non-transient mid-loop", async () => {
       const CHANNELS = await getChannels();
       createMockWindow();
@@ -730,7 +785,7 @@ describe("errorHandlers", () => {
         message: `seeded ${i}`,
         timestamp: i,
         source: "main-process",
-        isTransient: false,
+        retryability: "none",
         dismissed: false,
       }));
       storeMock.store.get.mockReturnValue(seeded);
@@ -1480,7 +1535,7 @@ describe("errorHandlers", () => {
           timestamp: Date.now() - 60000,
           type: "config" as const,
           message: "Config error from last session",
-          isTransient: false,
+          retryability: "none" as const,
           dismissed: false,
           correlationId: "aabbccdd-1111-2222-3333-444455556666",
         },
@@ -1501,6 +1556,71 @@ describe("errorHandlers", () => {
       ]);
     });
 
+    it("migrates legacy isTransient field on persisted errors", async () => {
+      const CHANNELS = await getChannels();
+      // Pre-#7912 persisted shape with the boolean field.
+      storeMock.store.get.mockReturnValue([
+        {
+          id: "error-legacy-transient",
+          timestamp: 1,
+          type: "filesystem",
+          message: "EBUSY: legacy persisted",
+          isTransient: true,
+          dismissed: false,
+        },
+        {
+          id: "error-legacy-permanent",
+          timestamp: 2,
+          type: "config",
+          message: "config corrupt",
+          isTransient: false,
+          dismissed: false,
+        },
+      ]);
+
+      registerErrorHandlers(null, null);
+      const handler = getInvokeHandler(CHANNELS.ERROR_GET_PENDING);
+      const result = (await handler({} as never)) as Array<Record<string, unknown>>;
+
+      expect(result[0]).toMatchObject({
+        id: "error-legacy-transient",
+        retryability: "auto",
+        fromPreviousSession: true,
+      });
+      expect(result[0].isTransient).toBeUndefined();
+      expect(result[1]).toMatchObject({
+        id: "error-legacy-permanent",
+        retryability: "none",
+        fromPreviousSession: true,
+      });
+      expect(result[1].isTransient).toBeUndefined();
+    });
+
+    it("rejects an invalid retryability value from the persisted store", async () => {
+      const CHANNELS = await getChannels();
+      // Corrupted/dev store with an unrecognised retryability string. We fall
+      // back to the same isTransient-based default rather than surfacing the
+      // bogus value to the renderer.
+      storeMock.store.get.mockReturnValue([
+        {
+          id: "error-bogus",
+          timestamp: 1,
+          type: "filesystem",
+          message: "bogus retryability",
+          retryability: "transient",
+          isTransient: true,
+          dismissed: false,
+        },
+      ]);
+
+      registerErrorHandlers(null, null);
+      const handler = getInvokeHandler(CHANNELS.ERROR_GET_PENDING);
+      const result = (await handler({} as never)) as Array<Record<string, unknown>>;
+
+      expect(result[0].retryability).toBe("auto");
+      expect(result[0].isTransient).toBeUndefined();
+    });
+
     it("clears persisted errors after retrieval", async () => {
       const CHANNELS = await getChannels();
       storeMock.store.get.mockReturnValue([
@@ -1509,7 +1629,7 @@ describe("errorHandlers", () => {
           timestamp: Date.now(),
           type: "filesystem",
           message: "test",
-          isTransient: false,
+          retryability: "none",
           dismissed: false,
         },
       ]);

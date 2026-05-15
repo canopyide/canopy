@@ -38,7 +38,7 @@ export function onUncaughtError(error: unknown, errorInfo: { componentStack?: st
         message: getErrorMessage(error),
         details: errorInfo.componentStack,
         source: "React Uncaught Render Error",
-        isTransient: false,
+        retryability: "none",
       });
     } catch (storeError) {
       // Last-resort sink: the error store has already failed.

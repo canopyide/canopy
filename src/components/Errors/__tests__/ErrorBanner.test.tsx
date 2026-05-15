@@ -15,7 +15,7 @@ function makeError(overrides: Partial<ErrorRecord> = {}): ErrorRecord {
     timestamp: Date.now(),
     type: "unknown",
     message: "Something failed",
-    isTransient: false,
+    retryability: "none",
     dismissed: false,
     ...overrides,
   };
@@ -117,7 +117,7 @@ describe("ErrorBanner", () => {
     it("does not render 'View errors' when retry is available", () => {
       render(
         <ErrorBanner
-          error={makeError({ isTransient: true, retryAction: "git" })}
+          error={makeError({ retryability: "auto", retryAction: "git" })}
           onDismiss={onDismiss}
           onRetry={vi.fn()}
           compact
@@ -127,10 +127,10 @@ describe("ErrorBanner", () => {
       expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     });
 
-    it("renders 'View errors' when isTransient is true but onRetry is missing", () => {
+    it("renders 'View errors' when retryability is 'auto' but onRetry is missing", () => {
       render(
         <ErrorBanner
-          error={makeError({ isTransient: true, retryAction: "git" })}
+          error={makeError({ retryability: "auto", retryAction: "git" })}
           onDismiss={onDismiss}
           compact
         />
@@ -178,7 +178,7 @@ describe("ErrorBanner", () => {
     it("does not render 'View errors' when retry is available", () => {
       render(
         <ErrorBanner
-          error={makeError({ isTransient: true, retryAction: "git" })}
+          error={makeError({ retryability: "auto", retryAction: "git" })}
           onDismiss={onDismiss}
           onRetry={vi.fn()}
         />
@@ -209,10 +209,10 @@ describe("ErrorBanner", () => {
       expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
     });
 
-    it("renders 'View errors' when isTransient is true but onRetry is missing", () => {
+    it("renders 'View errors' when retryability is 'auto' but onRetry is missing", () => {
       render(
         <ErrorBanner
-          error={makeError({ isTransient: true, retryAction: "git" })}
+          error={makeError({ retryability: "auto", retryAction: "git" })}
           onDismiss={onDismiss}
         />
       );
@@ -221,11 +221,62 @@ describe("ErrorBanner", () => {
     });
   });
 
+  describe("retryability-driven action slot", () => {
+    afterEach(() => {
+      useDiagnosticsStore.getState().reset();
+    });
+
+    it("renders Retry for 'auto' + retryAction + onRetry", () => {
+      render(
+        <ErrorBanner
+          error={makeError({ retryability: "auto", retryAction: "git" })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+        />
+      );
+      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "View errors" })).toBeNull();
+    });
+
+    it("renders 'View errors' for 'exhausted' even when retryAction is wired", () => {
+      render(
+        <ErrorBanner
+          error={makeError({ retryability: "exhausted", retryAction: "git" })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+        />
+      );
+      expect(screen.getByRole("button", { name: "View errors" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    });
+
+    it("renders the recovery CTA for 'user-gated' + recoveryAction", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            retryability: "user-gated",
+            recoveryAction: { label: "Reconnect", actionId: "github.connect" },
+          })}
+          onDismiss={onDismiss}
+        />
+      );
+      expect(screen.getByRole("button", { name: "Reconnect" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "View errors" })).toBeNull();
+    });
+
+    it("falls back to 'View errors' for 'user-gated' without recoveryAction", () => {
+      render(
+        <ErrorBanner error={makeError({ retryability: "user-gated" })} onDismiss={onDismiss} />
+      );
+      expect(screen.getByRole("button", { name: "View errors" })).toBeTruthy();
+    });
+  });
+
   describe("retry button styling", () => {
     it("does not use success-green classes on the compact retry button", () => {
       render(
         <ErrorBanner
-          error={makeError({ isTransient: true, retryAction: "git" })}
+          error={makeError({ retryability: "auto", retryAction: "git" })}
           onDismiss={onDismiss}
           onRetry={vi.fn()}
           compact
@@ -239,7 +290,7 @@ describe("ErrorBanner", () => {
     it("does not use success-green classes on the full retry button", () => {
       render(
         <ErrorBanner
-          error={makeError({ isTransient: true, retryAction: "git" })}
+          error={makeError({ retryability: "auto", retryAction: "git" })}
           onDismiss={onDismiss}
           onRetry={vi.fn()}
         />
