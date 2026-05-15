@@ -489,8 +489,9 @@ export function McpServerSettingsTab() {
                   </button>
                   <button
                     onClick={() => setShowRotateConfirm(true)}
-                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-[var(--radius-md)] border border-daintree-border text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft transition-colors"
-                    title="Rotate API key"
+                    disabled={!apiKeySuffix}
+                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-[var(--radius-md)] border border-daintree-border text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-daintree-text/70"
+                    title={apiKeySuffix ? "Rotate API key" : "Waiting for the MCP key to load…"}
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     Rotate API key

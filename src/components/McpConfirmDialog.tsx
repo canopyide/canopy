@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import type { McpConfirmationDecision } from "@shared/types/ipc/mcpServer";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useMcpConfirmStore } from "@/store/mcpConfirmStore";
@@ -23,19 +24,36 @@ export function McpConfirmDialog() {
   const resolveCurrent = useMcpConfirmStore((state) => state.resolveCurrent);
   const resetKey = current?.requestId ?? "null";
 
+  // `resolveCurrent` is synchronous: it resolves the promise and advances the
+  // queue so `current` becomes the next item before React re-renders. A rapid
+  // double-click would otherwise fire a second `resolveCurrent("approved")`
+  // that lands on the freshly-promoted queued item — silently approving a
+  // destructive action the user never saw. Gate every resolution on the
+  // requestId we've already handled so a given dialog can resolve exactly once.
+  const handledRequestIdRef = useRef<string | null>(null);
+  const resolveOnce = useCallback(
+    (requestId: string, decision: McpConfirmationDecision) => {
+      if (handledRequestIdRef.current === requestId) return;
+      handledRequestIdRef.current = requestId;
+      resolveCurrent(decision);
+    },
+    [resolveCurrent]
+  );
+
   useEffect(() => {
     if (current === null) return;
+    const { requestId, enqueuedAt } = current;
     // Subtract time the request already spent queued behind a prior modal so
     // every dispatch races against the same wall-clock budget; otherwise a
     // queued item could outlive main's 30s deadline and degrade to a generic
     // timeout error instead of `CONFIRMATION_TIMEOUT`.
-    const elapsed = Date.now() - current.enqueuedAt;
+    const elapsed = Date.now() - enqueuedAt;
     const remaining = Math.max(500, CONFIRMATION_TIMEOUT_MS - elapsed);
     const timer = setTimeout(() => {
-      resolveCurrent("timeout");
+      resolveOnce(requestId, "timeout");
     }, remaining);
     return () => clearTimeout(timer);
-  }, [current, resolveCurrent]);
+  }, [current, resolveOnce]);
 
   if (current === null) {
     return (
@@ -60,12 +78,12 @@ export function McpConfirmDialog() {
     <ErrorBoundary variant="component" componentName="McpConfirmDialog" resetKeys={[resetKey]}>
       <ConfirmDialog
         isOpen={true}
-        onClose={() => resolveCurrent("rejected")}
+        onClose={() => resolveOnce(current.requestId, "rejected")}
         title={`Run '${current.actionTitle}'?`}
         description={current.actionDescription}
         confirmLabel={current.actionTitle}
         cancelLabel="Cancel"
-        onConfirm={() => resolveCurrent("approved")}
+        onConfirm={() => resolveOnce(current.requestId, "approved")}
         variant={variant}
       >
         <div className="space-y-2">
