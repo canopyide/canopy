@@ -86,7 +86,7 @@ export function XtermAdapter({
   // Store the latest getRefreshTier in a ref to prevent stale closures.
   // This ensures the service always calls the current version of the callback.
   const getRefreshTierRef = useRef(getRefreshTier);
-  useEffect(() => {
+  useLayoutEffect(() => {
     getRefreshTierRef.current = getRefreshTier;
   }, [getRefreshTier]);
 
@@ -467,11 +467,11 @@ export function XtermAdapter({
     terminalInstanceService.setInputLocked(terminalId, !!isInputLocked);
   }, [terminalId, isInputLocked]);
 
-  // Resolve current tier for dependency tracking
-  const currentTier = useMemo(
-    () => (getRefreshTier ? getRefreshTier() : TerminalRefreshTier.FOCUSED),
-    [getRefreshTier]
-  );
+  // Resolve current tier on every render. The provider identity is intentionally
+  // stable, while the store state it reads changes as activity/runtime status
+  // updates; memoizing by provider identity left stale BACKGROUND policies in
+  // place until a focus click changed the callback.
+  const currentTier = getRefreshTier ? getRefreshTier() : TerminalRefreshTier.FOCUSED;
 
   useLayoutEffect(() => {
     // Use the stable proxy to avoid stale closures in the service

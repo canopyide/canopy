@@ -121,13 +121,15 @@ describe("getTerminalRefreshTier - runtime agent identity", () => {
     expect(getTerminalRefreshTier(undefined, false)).toBe(TerminalRefreshTier.VISIBLE);
   });
 
-  it("drops a plain non-agent terminal to BACKGROUND when unfocused", () => {
+  it("keeps a live plain non-agent terminal VISIBLE when unfocused", () => {
     const terminal = makeTerminal({
       kind: "terminal",
       detectedAgentId: undefined,
       agentState: "idle",
+      hasPty: true,
+      runtimeStatus: "running",
     });
-    expect(getTerminalRefreshTier(terminal, false)).toBe(TerminalRefreshTier.BACKGROUND);
+    expect(getTerminalRefreshTier(terminal, false)).toBe(TerminalRefreshTier.VISIBLE);
   });
 
   it("keeps a working non-agent terminal VISIBLE when unfocused", () => {
@@ -205,7 +207,7 @@ describe("getTerminalRefreshTier - runtime agent identity", () => {
     expect(getTerminalRefreshTier(terminal, false)).toBe(TerminalRefreshTier.BACKGROUND);
   });
 
-  it("drops a non-agent terminal at the prompt to BACKGROUND (activityStatus: waiting)", () => {
+  it("keeps a live non-agent terminal VISIBLE even when activityStatus is waiting", () => {
     const terminal = makeTerminal({
       kind: "terminal",
       detectedAgentId: undefined,
@@ -213,6 +215,19 @@ describe("getTerminalRefreshTier - runtime agent identity", () => {
       hasPty: true,
       runtimeStatus: "running",
       activityStatus: "waiting",
+    });
+    expect(getTerminalRefreshTier(terminal, false)).toBe(TerminalRefreshTier.VISIBLE);
+  });
+
+  it("drops an offscreen live terminal to BACKGROUND", () => {
+    const terminal = makeTerminal({
+      kind: "terminal",
+      detectedAgentId: undefined,
+      agentState: "idle",
+      hasPty: true,
+      isVisible: false,
+      runtimeStatus: "background",
+      activityStatus: "working",
     });
     expect(getTerminalRefreshTier(terminal, false)).toBe(TerminalRefreshTier.BACKGROUND);
   });

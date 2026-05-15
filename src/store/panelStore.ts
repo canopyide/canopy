@@ -44,6 +44,17 @@ export type { TerminalMruSlice, WatchedPanelsSlice };
 
 const PROJECT_SWITCH_RESIZE_SUPPRESSION_MS = 10_000;
 
+function isVisibleLivePtyTerminal(terminal: TerminalInstance): boolean {
+  const location = terminal.location ?? "grid";
+  if (location === "trash" || location === "background" || location === "dock") return false;
+  if (terminal.isVisible === false) return false;
+  if (terminal.hasPty === false) return false;
+  if (terminal.runtimeStatus === "exited" || terminal.runtimeStatus === "error") return false;
+  if (terminal.runtimeStatus === "background") return false;
+  if (terminal.agentState === "completed" || terminal.agentState === "exited") return false;
+  return true;
+}
+
 export function getTerminalRefreshTier(
   terminal: TerminalInstance | undefined,
   isFocused: boolean,
@@ -88,31 +99,17 @@ export function getTerminalRefreshTier(
     return TerminalRefreshTierEnum.VISIBLE;
   }
 
-  // A non-agent terminal actively producing output must keep streaming even
-  // when unfocused — dropping it to BACKGROUND would freeze long-running
-  // commands (builds, watchers, dev servers) until the user re-focuses it.
-  // ActivityMonitor's 1500ms hold debounces transitions to prevent flicker.
-  // Excludes any terminal with agent affinity so a completed or exited agent
-  // shell with a stale "working" activityStatus can still hibernate — once
-  // the agent reports an exit, `isRuntimeAgentTerminal` flips to false, so we
-  // gate on `launchAgentId`/`detectedAgentId` directly to cover that window.
-  if (
-    !isRuntimeAgentTerminal(terminal) &&
-    !terminal.launchAgentId &&
-    !terminal.detectedAgentId &&
-    terminal.hasPty !== false &&
-    terminal.activityStatus === "working" &&
-    terminal.runtimeStatus !== "exited" &&
-    terminal.runtimeStatus !== "error" &&
-    terminal.location !== "trash" &&
-    terminal.location !== "background" &&
-    terminal.location !== "dock"
-  ) {
+  // Visible live PTYs must keep streaming even when they are not focused.
+  // The previous "working" guard was too dependent on activity heuristics:
+  // if a long-running process was still classified as waiting/idle, the
+  // renderer moved to BACKGROUND and output stopped until focus/wake.
+  if (isVisibleLivePtyTerminal(terminal)) {
     return TerminalRefreshTierEnum.VISIBLE;
   }
 
-  // Non-agent, non-focused terminals drop to BACKGROUND so idle instances
-  // can be hibernated (xterm.js disposed) to free memory.
+  // Only explicitly hidden, completed/exited, errored, or PTY-less terminals
+  // reach BACKGROUND now. Visible live terminals stay connected to the active
+  // streaming path even when another pane has focus.
   return TerminalRefreshTierEnum.BACKGROUND;
 }
 
