@@ -122,7 +122,10 @@ export function InlineStatusBanner({
   const colorVar = isNeutral ? undefined : SEVERITY_VAR[severity];
 
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!autoDismissAfter || !onCloseRef.current) return;

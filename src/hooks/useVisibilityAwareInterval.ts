@@ -14,7 +14,10 @@ export function useVisibilityAwareInterval(
   enabled = true
 ): void {
   const savedCallback = useRef(callback);
-  savedCallback.current = callback;
+
+  useEffect(() => {
+    savedCallback.current = callback;
+  }, [callback]);
 
   useEffect(() => {
     if (!enabled) return;
