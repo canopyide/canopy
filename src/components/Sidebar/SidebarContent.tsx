@@ -51,6 +51,7 @@ import { computeChipState } from "@/components/Worktree/utils/computeChipState";
 import { parseExactNumber } from "@/lib/parseExactNumber";
 import type { WorktreeState } from "@/types";
 import { actionService } from "@/services/ActionService";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SidebarWorktreeRow } from "./SidebarWorktreeRow";
 import { StaticWorktreeRow } from "./StaticWorktreeRow";
 import { useScrollIndicator } from "./useScrollIndicator";
@@ -130,8 +131,12 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   }, [createDialog.isOpen]);
 
   const [isFleetPickerOpen, setIsFleetPickerOpen] = useState(false);
+  const [isRestartConfirmOpen, setIsRestartConfirmOpen] = useState(false);
   const openFleetPicker = useCallback(() => setIsFleetPickerOpen(true), []);
   const closeFleetPicker = useCallback(() => setIsFleetPickerOpen(false), []);
+  useEffect(() => {
+    if (!error) setIsRestartConfirmOpen(false);
+  }, [error]);
   const armedIds = useFleetArmingStore((s) => s.armedIds);
   const armedSize = armedIds.size;
 
@@ -614,13 +619,23 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         <div className="px-4 py-4">
           <div className="text-[var(--color-status-error)] text-sm mb-2">{error}</div>
           <button
-            onClick={() => {
-              void actionService.dispatch("worktree.restartService", undefined, { source: "user" });
-            }}
+            onClick={() => setIsRestartConfirmOpen(true)}
             className="text-xs px-2 py-1 border border-divider rounded hover:bg-tint/[0.06] text-daintree-text"
           >
             Restart Service
           </button>
+          <ConfirmDialog
+            isOpen={isRestartConfirmOpen}
+            onClose={() => setIsRestartConfirmOpen(false)}
+            title="Restart workspace service?"
+            description="Restarts the workspace monitoring process. Git status and worktree data will be temporarily unavailable."
+            confirmLabel="Restart service"
+            variant="destructive"
+            onConfirm={() => {
+              void actionService.dispatch("worktree.restartService", undefined, { source: "user" });
+              setIsRestartConfirmOpen(false);
+            }}
+          />
         </div>
       </div>
     );
