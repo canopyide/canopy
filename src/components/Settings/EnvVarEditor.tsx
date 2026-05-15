@@ -383,6 +383,10 @@ function EnvVarKeyCell({
   );
 }
 
+// Auto-clear duration for the "Pasted text normalized" inline indicator.
+// Long enough to read at a glance; short enough to feel ephemeral.
+const NORMALIZED_INDICATOR_TTL_MS = 2000;
+
 export function EnvVarEditor({
   env,
   onChange,
@@ -591,7 +595,7 @@ export function EnvVarEditor({
         next.delete(rowId);
         return next;
       });
-    }, 2000);
+    }, NORMALIZED_INDICATOR_TTL_MS);
     normalizeTimers.current.set(rowId, timer);
   };
 
