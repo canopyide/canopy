@@ -16,7 +16,7 @@ export function makeSortableAnnouncements(
 ): Announcements {
   const resolve = (id: UniqueIdentifier): string => {
     const label = getLabel(id);
-    return label != null && label !== "" ? label : `${itemNoun} ${String(id)}`;
+    return label != null && label.trim() !== "" ? label : `${itemNoun} ${String(id)}`;
   };
 
   return {

@@ -253,6 +253,39 @@ describe("makeSortableAnnouncements — nested DndContext factory", () => {
       expect(result).not.toContain("undefined");
       expect(result).toBe("Picked up panel tab panel-x");
     });
+
+    it("treats whitespace-only labels as missing and falls back to noun + id", () => {
+      const blankLabels = makeSortableAnnouncements(() => "   \n\t", "panel tab");
+      expect(blankLabels.onDragStart({ active: active("panel-blank") })).toBe(
+        "Picked up panel tab panel-blank"
+      );
+    });
+
+    it("applies fallback to over slot when over label is missing", () => {
+      // Active resolves to "Claude Agent" (panel-1); over uses an unknown id.
+      expect(
+        announcements.onDragOver({ active: active("panel-1"), over: over("panel-mystery") })
+      ).toBe("Claude Agent is over panel tab panel-mystery");
+    });
+
+    it("uses fallbacks across all lifecycle methods when label is null", () => {
+      const nullLabels = makeSortableAnnouncements(() => null, "panel tab");
+      const a = active("panel-x");
+      const o = over("panel-y");
+      expect(nullLabels.onDragOver({ active: a, over: o })).toBe(
+        "panel tab panel-x is over panel tab panel-y"
+      );
+      expect(nullLabels.onDragOver({ active: a, over: null })).toBe(
+        "panel tab panel-x is no longer over a droppable area"
+      );
+      expect(nullLabels.onDragEnd({ active: a, over: o })).toBe("Dropped panel tab panel-x");
+      expect(nullLabels.onDragEnd({ active: a, over: null })).toBe(
+        "panel tab panel-x returned to its original position"
+      );
+      expect(nullLabels.onDragCancel({ active: a, over: null })).toBe(
+        "Drag cancelled. panel tab panel-x returned to its original position"
+      );
+    });
   });
 
   describe("toolbar button surface", () => {
