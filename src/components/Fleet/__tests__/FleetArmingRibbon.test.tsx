@@ -1139,9 +1139,7 @@ describe("FleetArmingRibbon — saved fleet delete confirm (#8023)", () => {
     });
 
     // No immediate dispatch — the confirm must gate the deletion.
-    expect(
-      dispatchSpy.mock.calls.some((c) => c[0] === "fleet.deleteNamedFleet")
-    ).toBe(false);
+    expect(dispatchSpy.mock.calls.some((c) => c[0] === "fleet.deleteNamedFleet")).toBe(false);
     expect(screen.getByText("Delete 'My fleet'?")).toBeTruthy();
 
     dispatchSpy.mockRestore();
@@ -1188,9 +1186,7 @@ describe("FleetArmingRibbon — saved fleet delete confirm (#8023)", () => {
       fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     });
 
-    expect(
-      dispatchSpy.mock.calls.some((c) => c[0] === "fleet.deleteNamedFleet")
-    ).toBe(false);
+    expect(dispatchSpy.mock.calls.some((c) => c[0] === "fleet.deleteNamedFleet")).toBe(false);
     expect(screen.queryByText("Delete 'My fleet'?")).toBeNull();
 
     dispatchSpy.mockRestore();

@@ -160,8 +160,7 @@ export function useWorktreeActions({
       createElement(
         "span",
         {
-          className:
-            "text-[11px] font-semibold uppercase tracking-wider text-daintree-text/60",
+          className: "text-[11px] font-semibold uppercase tracking-wider text-daintree-text/60",
         },
         hasCommands ? "Commands that will run" : "Teardown commands"
       ),
@@ -191,13 +190,7 @@ export function useWorktreeActions({
         setConfirmDialog({ isOpen: false });
       },
     });
-  }, [
-    worktree.id,
-    worktree.issueTitle,
-    worktree.branch,
-    worktree.name,
-    teardownCommands,
-  ]);
+  }, [worktree.id, worktree.issueTitle, worktree.branch, worktree.name, teardownCommands]);
 
   const handleCopyTree = useCallback(async () => {
     await onCopyTree();
