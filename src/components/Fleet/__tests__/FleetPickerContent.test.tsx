@@ -443,5 +443,25 @@ describe("FleetPickerContent + useFleetPicker", () => {
       await act(async () => {});
       expect(screen.getByRole("status").textContent).toContain("No terminals available");
     });
+
+    it("renders 'No terminals match' when the search filters out all eligibles", async () => {
+      seedTerminals([
+        makeTerminal("t1", { title: "alpha" }),
+        makeTerminal("t2", { title: "beta" }),
+      ]);
+      useWorktreeSelectionStore.setState({ activeWorktreeId: null });
+      renderHarness([makeWorktreeSnap("wt-1", "main")], {
+        mode: "cold-start",
+        onCommit: () => {},
+      });
+      await act(async () => {});
+      const search = screen.getByTestId("fp-search") as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(search, { target: { value: "zzz-no-match" } });
+      });
+      await act(async () => {});
+      expect(screen.getByRole("status").textContent).toContain("No terminals match");
+      expect(screen.queryAllByRole("option")).toHaveLength(0);
+    });
   });
 });

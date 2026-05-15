@@ -165,14 +165,14 @@ export function FleetPickerContent({
             variant="zero-data"
             scale="popover"
             title="No terminals available"
-            className="min-h-[120px]"
+            className="h-full min-h-[120px]"
           />
         ) : visibleTerminals.length === 0 ? (
           <EmptyState
             variant="filtered-empty"
             scale="popover"
             title="No terminals match"
-            className="min-h-[120px]"
+            className="h-full min-h-[120px]"
           />
         ) : (
           groupedVisible.map((group) => (
