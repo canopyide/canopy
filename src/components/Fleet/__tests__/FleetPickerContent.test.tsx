@@ -441,7 +441,7 @@ describe("FleetPickerContent + useFleetPicker", () => {
       useWorktreeSelectionStore.setState({ activeWorktreeId: null });
       renderHarness([], { mode: "cold-start", onCommit: () => {} });
       await act(async () => {});
-      expect(screen.getByTestId("fp-empty").textContent).toContain("No terminals available");
+      expect(screen.getByRole("status").textContent).toContain("No terminals available");
     });
   });
 });

@@ -1,6 +1,7 @@
 import { type ReactElement } from "react";
 import { RadioTower, ChevronDown, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useFleetResolutionPreviewStore } from "@/store/fleetResolutionPreviewStore";
 import { useEscapeStack } from "@/hooks/useEscapeStack";
@@ -64,7 +65,12 @@ export function FleetDraftingPill(): ReactElement | null {
             Fleet broadcast preview
           </div>
           {previews.length === 0 ? (
-            <div className="px-2 py-1 text-[12px] text-daintree-text/60">No armed terminals</div>
+            <EmptyState
+              variant="zero-data"
+              scale="popover"
+              title="No armed terminals"
+              className="py-3"
+            />
           ) : (
             <ul className="flex flex-col gap-0.5">
               {previews.map((p) => (
