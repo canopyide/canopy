@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { useGlobalSecondTicker } from "@/hooks/useGlobalSecondTicker";
+import { useEffect, useState } from "react";
+import { scheduleFlip } from "@/utils/flipScheduler";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -7,6 +7,17 @@ interface LiveTimeAgoProps {
   timestamp?: number | null;
   className?: string;
 }
+
+// Coarsest update cadence when the app is in performance mode — even a fast
+// "Xs" label may lag by up to a minute rather than waking a timer per second.
+const PERFORMANCE_MODE_FLOOR = 60_000;
+
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+const WEEK = 7 * DAY;
+const MONTH = 30 * DAY;
+const YEAR = 365 * DAY;
 
 function formatTimeAgo(diffMs: number): { label: string; fullLabel: string } {
   const seconds = Math.floor(diffMs / 1000);
@@ -49,35 +60,58 @@ function formatTimeAgo(diffMs: number): { label: string; fullLabel: string } {
   return { label, fullLabel };
 }
 
+/**
+ * Milliseconds until the formatted label can next change. Mirrors the bucket
+ * boundaries in `formatTimeAgo` so an hours/days/weeks-old timestamp schedules
+ * a single far-future wake instead of ticking every second.
+ */
+function msUntilNextFlip(diffMs: number, now: number): number {
+  const seconds = Math.floor(diffMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (seconds < 5) return 5000 - diffMs;
+  if (seconds < 60) return 1000 - (now % 1000);
+  if (minutes < 60) return MINUTE - (now % MINUTE);
+  if (hours < 24) return HOUR - (now % HOUR);
+  if (days < 7) return DAY - (now % DAY);
+  if (days < 30) return WEEK - (now % WEEK);
+  if (days < 365) return MONTH - (now % MONTH);
+  return YEAR - (now % YEAR);
+}
+
 export function LiveTimeAgo({ timestamp, className }: LiveTimeAgoProps) {
-  const globalTick = useGlobalSecondTicker();
+  const [tick, setTick] = useState(0);
 
-  const timeData = useMemo(() => {
-    void globalTick;
+  useEffect(() => {
+    if (timestamp == null) return;
 
-    if (timestamp == null) {
-      return null;
+    const now = Date.now();
+    let delay = msUntilNextFlip(now - timestamp, now);
+    if (document.body.dataset.performanceMode === "true") {
+      delay = Math.max(delay, PERFORMANCE_MODE_FLOOR);
     }
 
-    const diffMs = Date.now() - timestamp;
-    const { label, fullLabel } = formatTimeAgo(diffMs);
-    const formattedDate = new Date(timestamp).toLocaleString();
+    return scheduleFlip(delay, () => setTick((n) => n + 1));
+  }, [timestamp, tick]);
 
-    return { label, fullLabel, formattedDate };
-  }, [timestamp, globalTick]);
-
-  if (!timeData) {
+  if (timestamp == null) {
     return null;
   }
+
+  void tick;
+  const { label, fullLabel } = formatTimeAgo(Date.now() - timestamp);
+  const formattedDate = new Date(timestamp).toLocaleString();
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className={cn("tabular-nums", className)} aria-label={timeData.fullLabel}>
-          {timeData.label}
+        <span className={cn("tabular-nums", className)} aria-label={fullLabel}>
+          {label}
         </span>
       </TooltipTrigger>
-      <TooltipContent side="bottom">{`${timeData.fullLabel} (${timeData.formattedDate})`}</TooltipContent>
+      <TooltipContent side="bottom">{`${fullLabel} (${formattedDate})`}</TooltipContent>
     </Tooltip>
   );
 }
