@@ -22,6 +22,7 @@ const BACKUP_DIR = "backups";
 const BACKUP_FILENAME = "session-state.json";
 const BACKUP_INTERVAL_MS = 60_000;
 const DEBOUNCE_BACKUP_MS = 1_500;
+const BLUR_BACKUP_DEBOUNCE_MS = 100;
 const SUSPECT_WINDOW_MS = 30_000;
 
 export class CrashRecoveryService {
@@ -35,6 +36,9 @@ export class CrashRecoveryService {
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private removeSuspendListener: (() => void) | null = null;
   private removeWakeListener: (() => void) | null = null;
+  private blurDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private removeBlurListener: (() => void) | null = null;
+  private removeFocusListener: (() => void) | null = null;
   private crashRecorded = false;
   private pendingPanelFilter: string[] | null = null;
   private cachedBackupSnapshot: SessionSnapshot | null = null;
@@ -102,6 +106,7 @@ export class CrashRecoveryService {
       this.takeBackup();
     }, BACKUP_INTERVAL_MS);
     this.registerSleepListeners();
+    this.registerBlurListener();
   }
 
   stopBackupTimer(): void {
@@ -114,6 +119,7 @@ export class CrashRecoveryService {
       this.debounceTimer = null;
     }
     this.unregisterSleepListeners();
+    this.unregisterBlurListener();
   }
 
   private registerSleepListeners(): void {
@@ -145,6 +151,54 @@ export class CrashRecoveryService {
     if (this.removeWakeListener) {
       this.removeWakeListener();
       this.removeWakeListener = null;
+    }
+  }
+
+  private registerBlurListener(): void {
+    this.unregisterBlurListener();
+
+    const onBlur = () => {
+      if (this.blurDebounceTimer) {
+        clearTimeout(this.blurDebounceTimer);
+      }
+      this.blurDebounceTimer = setTimeout(() => {
+        this.blurDebounceTimer = null;
+        if (!BrowserWindow.getFocusedWindow()) {
+          this.takeBackup();
+        }
+      }, BLUR_BACKUP_DEBOUNCE_MS);
+    };
+
+    const onFocus = () => {
+      if (this.blurDebounceTimer) {
+        clearTimeout(this.blurDebounceTimer);
+        this.blurDebounceTimer = null;
+      }
+    };
+
+    app.on("browser-window-blur", onBlur);
+    app.on("browser-window-focus", onFocus);
+
+    this.removeBlurListener = () => {
+      app.removeListener("browser-window-blur", onBlur);
+    };
+    this.removeFocusListener = () => {
+      app.removeListener("browser-window-focus", onFocus);
+    };
+  }
+
+  private unregisterBlurListener(): void {
+    if (this.removeBlurListener) {
+      this.removeBlurListener();
+      this.removeBlurListener = null;
+    }
+    if (this.removeFocusListener) {
+      this.removeFocusListener();
+      this.removeFocusListener = null;
+    }
+    if (this.blurDebounceTimer) {
+      clearTimeout(this.blurDebounceTimer);
+      this.blurDebounceTimer = null;
     }
   }
 

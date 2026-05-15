@@ -13,11 +13,21 @@ const windowStatesStoreMock = vi.hoisted(() => ({
   set: vi.fn(),
 }));
 
-const appMock = vi.hoisted(() => ({
-  getPath: vi.fn(() => "/fake/userData"),
-  getVersion: vi.fn(() => "1.0.0"),
-  isPackaged: false as boolean,
-}));
+const appMock = vi.hoisted(() => {
+  const handlers = new Map<string, (...args: unknown[]) => void>();
+  return {
+    getPath: vi.fn(() => "/fake/userData"),
+    getVersion: vi.fn(() => "1.0.0"),
+    isPackaged: false as boolean,
+    on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+      handlers.set(event, handler);
+    }),
+    removeListener: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+      if (handlers.get(event) === handler) handlers.delete(event);
+    }),
+    _handlers: handlers,
+  };
+});
 
 const utilsMock = vi.hoisted(() => ({
   resilientAtomicWriteFileSync: vi.fn(),
@@ -32,6 +42,7 @@ vi.mock("../../store.js", () => ({
 
 const browserWindowMock = vi.hoisted(() => ({
   getAllWindows: vi.fn(() => [{}]),
+  getFocusedWindow: vi.fn(() => null),
 }));
 
 vi.mock("electron", () => ({
@@ -51,6 +62,14 @@ vi.mock("../ActionBreadcrumbService.js", () => ({
   }),
 }));
 
+vi.mock("../SystemSleepService.js", () => ({
+  getSystemSleepService: () => ({
+    onSuspend: vi.fn(() => vi.fn()),
+    onWake: vi.fn(() => vi.fn()),
+  }),
+}));
+
+import { BrowserWindow } from "electron";
 import { CrashRecoveryService } from "../CrashRecoveryService.js";
 
 function makeService(): CrashRecoveryService {
@@ -1055,6 +1074,157 @@ describe("CrashRecoveryService", () => {
         expect.any(String),
         "utf-8"
       );
+    });
+  });
+
+  describe("blur backup", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      storeMock.get.mockImplementation((key: string) => {
+        if (key === "appState") return { sidebarWidth: 400, terminals: [] };
+        return { autoRestoreOnCrash: false };
+      });
+      windowStatesStoreMock.get.mockReturnValue({});
+      appMock._handlers.clear();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    function getBlurHandler(): () => void {
+      const h = appMock._handlers.get("browser-window-blur");
+      if (!h) throw new Error("browser-window-blur handler not registered");
+      return h as () => void;
+    }
+
+    function getFocusHandler(): () => void {
+      const h = appMock._handlers.get("browser-window-focus");
+      if (!h) throw new Error("browser-window-focus handler not registered");
+      return h as () => void;
+    }
+
+    it("registers blur and focus listeners on startBackupTimer", () => {
+      const svc = makeService();
+      svc.initialize();
+      svc.startBackupTimer();
+
+      expect(appMock.on).toHaveBeenCalledWith("browser-window-blur", expect.any(Function));
+      expect(appMock.on).toHaveBeenCalledWith("browser-window-focus", expect.any(Function));
+    });
+
+    it("unregisters blur and focus listeners on stopBackupTimer", () => {
+      const svc = makeService();
+      svc.initialize();
+      svc.startBackupTimer();
+
+      svc.stopBackupTimer();
+
+      expect(appMock.removeListener).toHaveBeenCalledWith(
+        "browser-window-blur",
+        expect.any(Function)
+      );
+      expect(appMock.removeListener).toHaveBeenCalledWith(
+        "browser-window-focus",
+        expect.any(Function)
+      );
+    });
+
+    it("calls takeBackup after 100ms debounce when no window is focused", () => {
+      const svc = makeService();
+      svc.initialize();
+      svc.startBackupTimer();
+
+      const spy = vi.spyOn(svc, "takeBackup");
+      (BrowserWindow.getFocusedWindow as ReturnType<typeof vi.fn>).mockReturnValue(null);
+
+      getBlurHandler()();
+      expect(spy).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(100);
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not call takeBackup when another window is focused after blur", () => {
+      const svc = makeService();
+      svc.initialize();
+      svc.startBackupTimer();
+
+      const spy = vi.spyOn(svc, "takeBackup");
+      (BrowserWindow.getFocusedWindow as ReturnType<typeof vi.fn>).mockReturnValue(
+        {} as Electron.BrowserWindow
+      );
+
+      getBlurHandler()();
+      vi.advanceTimersByTime(100);
+
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it("cancels blur backup when focus arrives within debounce window", () => {
+      const svc = makeService();
+      svc.initialize();
+      svc.startBackupTimer();
+
+      const spy = vi.spyOn(svc, "takeBackup");
+      (BrowserWindow.getFocusedWindow as ReturnType<typeof vi.fn>).mockReturnValue(null);
+
+      getBlurHandler()();
+      vi.advanceTimersByTime(50);
+
+      (BrowserWindow.getFocusedWindow as ReturnType<typeof vi.fn>).mockReturnValue(
+        {} as Electron.BrowserWindow
+      );
+      getFocusHandler()();
+
+      vi.advanceTimersByTime(100);
+
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it("deduplicates rapid blur events (debounce reset)", () => {
+      const svc = makeService();
+      svc.initialize();
+      svc.startBackupTimer();
+
+      const spy = vi.spyOn(svc, "takeBackup");
+      (BrowserWindow.getFocusedWindow as ReturnType<typeof vi.fn>).mockReturnValue(null);
+
+      getBlurHandler()();
+      vi.advanceTimersByTime(50);
+      getBlurHandler()();
+      vi.advanceTimersByTime(50);
+
+      expect(spy).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(100);
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it("startBackupTimer is idempotent for blur listeners", () => {
+      const svc = makeService();
+      svc.initialize();
+
+      svc.startBackupTimer();
+      const onCallCount = appMock.on.mock.calls.length;
+
+      svc.startBackupTimer();
+      expect(appMock.on.mock.calls.length).toBe(onCallCount);
+    });
+
+    it("stopBackupTimer clears pending blur debounce", () => {
+      const svc = makeService();
+      svc.initialize();
+      svc.startBackupTimer();
+
+      const spy = vi.spyOn(svc, "takeBackup");
+      (BrowserWindow.getFocusedWindow as ReturnType<typeof vi.fn>).mockReturnValue(null);
+
+      getBlurHandler()();
+      svc.stopBackupTimer();
+
+      vi.advanceTimersByTime(200);
+      expect(spy).not.toHaveBeenCalled();
     });
   });
 });
