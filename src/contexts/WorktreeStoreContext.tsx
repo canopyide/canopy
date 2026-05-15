@@ -198,6 +198,7 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
 
     cleanups.push(
       worktreePort.onEvent("pr-detected", (data) => {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         const event = data as PRDetectedEvent;
         const { worktrees } = store.getState();
         const existing = worktrees.get(event.worktreeId);
