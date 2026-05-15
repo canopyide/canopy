@@ -22,9 +22,11 @@ export function WorktreeSidebarSearchBar({ inputRef, chipCounts }: WorktreeSideb
   const query = useWorktreeFilterStore((state) => state.query);
   const setQuery = useWorktreeFilterStore((state) => state.setQuery);
   const clearAll = useWorktreeFilterStore((state) => state.clearAll);
-  const hasActiveFilters = useWorktreeFilterStore((state) => state.hasActiveFilters());
+  const quickStateFilter = useWorktreeFilterStore((state) => state.quickStateFilter);
+  const hasFacetFilters = useWorktreeFilterStore((state) => state.hasFacetFilters());
 
   const [localQuery, setLocalQuery] = useState("");
+  const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const internalRef = useRef<HTMLInputElement | null>(null);
 
@@ -57,7 +59,16 @@ export function WorktreeSidebarSearchBar({ inputRef, chipCounts }: WorktreeSideb
     [setQuery]
   );
 
-  const handleClear = useCallback(() => {
+  const handleClearSearch = useCallback(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    setLocalQuery("");
+    setQuery("");
+  }, [setQuery]);
+
+  const handleClearAll = useCallback(() => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
@@ -68,16 +79,21 @@ export function WorktreeSidebarSearchBar({ inputRef, chipCounts }: WorktreeSideb
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key !== "Escape") return;
+      // ARIA APG combobox sequence: close popup → clear text → blur.
+      if (isPopoverOpen) {
         e.stopPropagation();
-        if (localQuery || useWorktreeFilterStore.getState().hasActiveFilters()) {
-          handleClear();
-        } else {
-          internalRef.current?.blur();
-        }
+        setIsPopoverOpen(false);
+        return;
       }
+      if (localQuery) {
+        e.stopPropagation();
+        handleClearSearch();
+        return;
+      }
+      internalRef.current?.blur();
     },
-    [localQuery, handleClear]
+    [isPopoverOpen, localQuery, handleClearSearch]
   );
 
   const setRefs = useCallback(
@@ -88,7 +104,10 @@ export function WorktreeSidebarSearchBar({ inputRef, chipCounts }: WorktreeSideb
     [inputRef]
   );
 
-  const showClear = localQuery || hasActiveFilters;
+  const showClear = !!localQuery;
+  const activeAxisCount =
+    (localQuery ? 1 : 0) + (quickStateFilter !== "all" ? 1 : 0) + (hasFacetFilters ? 1 : 0);
+  const showClearAll = activeAxisCount >= 2;
 
   return (
     <div className="px-3 py-2 border-b border-divider shrink-0">
@@ -118,16 +137,32 @@ export function WorktreeSidebarSearchBar({ inputRef, chipCounts }: WorktreeSideb
           {showClear && (
             <button
               type="button"
-              onClick={handleClear}
+              onClick={handleClearSearch}
               className="flex items-center justify-center w-5 h-5 rounded text-daintree-text/40 hover:text-daintree-text"
-              aria-label="Clear search and filters"
+              aria-label="Clear search"
             >
               <X className="w-3 h-3" />
             </button>
           )}
-          <WorktreeFilterPopover hideSearchInput chipCounts={chipCounts} />
+          <WorktreeFilterPopover
+            hideSearchInput
+            chipCounts={chipCounts}
+            open={isPopoverOpen}
+            onOpenChange={setIsPopoverOpen}
+          />
         </div>
       </div>
+      {showClearAll && (
+        <div className="flex justify-end pt-1">
+          <button
+            type="button"
+            onClick={handleClearAll}
+            className="text-[11px] text-daintree-text/50 hover:text-daintree-text transition-colors"
+          >
+            Clear all
+          </button>
+        </div>
+      )}
     </div>
   );
 }

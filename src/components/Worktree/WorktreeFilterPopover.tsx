@@ -135,13 +135,19 @@ const ORDER_OPTIONS: { value: OrderBy; label: string }[] = [
 interface WorktreeFilterPopoverProps {
   hideSearchInput?: boolean;
   chipCounts?: ChipCounts;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function WorktreeFilterPopover({
   hideSearchInput = false,
   chipCounts,
+  open,
+  onOpenChange,
 }: WorktreeFilterPopoverProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = open ?? internalOpen;
+  const setIsOpen = onOpenChange ?? setInternalOpen;
   const [localQuery, setLocalQuery] = useState("");
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
