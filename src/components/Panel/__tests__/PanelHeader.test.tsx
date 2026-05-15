@@ -754,4 +754,30 @@ describe("PanelHeader", () => {
       expect(tooltipContent).toBeDefined();
     });
   });
+
+  describe("title edit input styling (#7926)", () => {
+    const getRenameInput = () => screen.getByLabelText("Edit terminal title") as HTMLInputElement;
+
+    it("matches the static label font size (text-xs)", () => {
+      render(<PanelHeader {...makeProps({ isEditingTitle: true, editingValue: "Test" })} />);
+      expect(getRenameInput().className).toContain("text-xs");
+      expect(getRenameInput().className).not.toContain("text-sm");
+    });
+
+    it("uses a transparent border and subtle background lift instead of a heavy chrome", () => {
+      render(<PanelHeader {...makeProps({ isEditingTitle: true, editingValue: "Test" })} />);
+      const cls = getRenameInput().className;
+      expect(cls).toContain("border-transparent");
+      expect(cls).toContain("bg-overlay-soft");
+      expect(cls).not.toContain("border-border-strong");
+      expect(cls).not.toContain("bg-daintree-bg/60");
+    });
+
+    it("does not use the accent color for any focus indicator", () => {
+      render(<PanelHeader {...makeProps({ isEditingTitle: true, editingValue: "Test" })} />);
+      const cls = getRenameInput().className;
+      expect(cls).not.toMatch(/(outline|ring|border)-daintree-accent/);
+      expect(cls).toContain("focus:outline-hidden");
+    });
+  });
 });

@@ -528,6 +528,36 @@ describe("TabButton", () => {
     });
   });
 
+  describe("rename input feels inline (#7926)", () => {
+    it("uses a transparent border and subtle background lift instead of chrome", () => {
+      render(<TabButton {...defaultProps} onRename={vi.fn()} />);
+      fireEvent.doubleClick(screen.getByText("Test Agent"));
+      const input = screen.getByTestId("motion-input") as HTMLInputElement;
+      expect(input.className).toContain("border-transparent");
+      expect(input.className).toContain("bg-overlay-soft");
+      expect(input.className).not.toContain("border-border-strong");
+      expect(input.className).not.toContain("bg-daintree-bg/80");
+    });
+
+    it("does not use the accent color for any focus indicator", () => {
+      render(<TabButton {...defaultProps} onRename={vi.fn()} />);
+      fireEvent.doubleClick(screen.getByText("Test Agent"));
+      const input = screen.getByTestId("motion-input") as HTMLInputElement;
+      expect(input.className).not.toMatch(/(outline|ring|border)-daintree-accent/);
+      expect(input.className).toContain("focus:outline-hidden");
+    });
+
+    it("preserves the status-error border in the validation-failure state", () => {
+      render(<TabButton {...defaultProps} onRename={vi.fn()} />);
+      fireEvent.doubleClick(screen.getByText("Test Agent"));
+      const input = screen.getByTestId("motion-input") as HTMLInputElement;
+      fireEvent.change(input, { target: { value: "" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(input.className).toContain("border-status-error");
+      expect(input.className).not.toContain("border-transparent");
+    });
+  });
+
   // The state indicator must rise and fall with the agent chrome, plus stay
   // visible during the identity-boot window where state can arrive before the
   // chrome commits (#6650). Once chrome is live, the indicator never silently
