@@ -268,6 +268,14 @@ export interface StoreSchema {
   dismissedUpdateAt?: number;
   lastUpdateCheck?: number | null;
   /**
+   * Windows Store notifier state. All fields are optional and read with `??`
+   * fallbacks at the call site so an absent value behaves like a default —
+   * no migration entry required (mirrors `dismissedUpdateVersion` pattern).
+   */
+  storeUpdateNotificationsEnabled?: boolean;
+  lastNotifiedStoreVersion?: string;
+  storeNotifierEtag?: string;
+  /**
    * Per-logger level overrides keyed by stable `"<process>:Module"` names (or
    * `"*"` / `"<process>:*"` wildcards). Values are `"debug" | "info" | "warn"
    * | "error" | "off"`. Persisted so support sessions can reproduce boot-time

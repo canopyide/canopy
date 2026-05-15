@@ -1,6 +1,11 @@
 import { shell } from "electron";
 
-const ALLOWED_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
+const ALLOWED_PROTOCOLS = new Set([
+  "http:",
+  "https:",
+  "mailto:",
+  "ms-windows-store:",
+]);
 
 export function canOpenExternalUrl(url: string): boolean {
   try {

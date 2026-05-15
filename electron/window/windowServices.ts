@@ -75,6 +75,8 @@ import {
   setCcrConfigService,
   getAutoUpdaterServiceRef,
   setAutoUpdaterServiceRef,
+  getWindowsStoreNotifierServiceRef,
+  setWindowsStoreNotifierServiceRef,
   getAgentNotificationServiceRef,
   setAgentNotificationServiceRef,
   getProcessArgvCliHandled,
@@ -648,6 +650,11 @@ export async function setupWindowServices(
     if (aus) {
       aus.dispose();
       setAutoUpdaterServiceRef(null);
+    }
+    const wsns = getWindowsStoreNotifierServiceRef();
+    if (wsns) {
+      wsns.dispose();
+      setWindowsStoreNotifierServiceRef(null);
     }
   });
 }

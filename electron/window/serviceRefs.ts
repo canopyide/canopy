@@ -15,6 +15,7 @@ import type { WorktreePortBroker } from "../services/WorktreePortBroker.js";
 import type { CcrConfigService } from "../services/CcrConfigService.js";
 import type { autoUpdaterService as AutoUpdaterServiceType } from "../services/AutoUpdaterService.js";
 import type { agentNotificationService as AgentNotificationServiceType } from "../services/AgentNotificationService.js";
+import type { windowsStoreNotifierService as WindowsStoreNotifierServiceType } from "../services/WindowsStoreNotifierService.js";
 
 // Guard: process.argv CLI path should only be consumed by the first window
 let processArgvCliHandled = false;
@@ -47,6 +48,7 @@ let ccrConfigService: CcrConfigService | null = null;
 // (early shutdown), these stay null and the dispose path no-ops.
 let autoUpdaterServiceRef: typeof AutoUpdaterServiceType | null = null;
 let agentNotificationServiceRef: typeof AgentNotificationServiceType | null = null;
+let windowsStoreNotifierServiceRef: typeof WindowsStoreNotifierServiceType | null = null;
 
 // ── Public getters/setters (consumed by main.ts, menu.ts, shutdown.ts) ──
 export function getPtyClient(): PtyClient | null {
@@ -172,4 +174,12 @@ export function setAgentNotificationServiceRef(
   v: typeof AgentNotificationServiceType | null
 ): void {
   agentNotificationServiceRef = v;
+}
+export function getWindowsStoreNotifierServiceRef(): typeof WindowsStoreNotifierServiceType | null {
+  return windowsStoreNotifierServiceRef;
+}
+export function setWindowsStoreNotifierServiceRef(
+  v: typeof WindowsStoreNotifierServiceType | null
+): void {
+  windowsStoreNotifierServiceRef = v;
 }
