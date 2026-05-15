@@ -6,6 +6,7 @@ import type {
   RecoveryAction,
   RetryAction,
 } from "@shared/types/ipc/errors";
+import { normalizeForDedup } from "@shared/utils/normalizeErrorMessage";
 
 export type { ErrorRetryability, ErrorType, RetryAction } from "@shared/types/ipc/errors";
 
@@ -34,6 +35,8 @@ export interface ErrorRecord {
   gitReason?: GitOperationReason;
   /** Structured CTA the renderer can surface alongside the error */
   recoveryAction?: RecoveryAction;
+  /** Set when the error has been promoted to the diagnostics dock (auto-open or user click) */
+  promotedToDock?: boolean;
 }
 
 interface ErrorStore {
@@ -41,7 +44,9 @@ interface ErrorStore {
   isPanelOpen: boolean;
   lastErrorTime: number;
 
-  addError: (error: Omit<ErrorRecord, "id" | "timestamp" | "dismissed">) => string;
+  addError: (
+    error: Omit<ErrorRecord, "id" | "timestamp" | "dismissed" | "promotedToDock">
+  ) => string;
   dismissError: (id: string) => void;
   removeError: (id: string) => void;
   togglePanel: () => void;
@@ -51,6 +56,7 @@ interface ErrorStore {
   getActiveErrors: () => ErrorRecord[];
   updateRetryProgress: (id: string, attempt: number, maxAttempts: number) => void;
   clearRetryProgress: (id: string) => void;
+  promoteErrors: (ids?: string[]) => void;
   reset: () => void;
 }
 
@@ -70,12 +76,15 @@ const createErrorStore: StateCreator<ErrorStore> = (set, get) => ({
     const now = Date.now();
     const state = get();
 
-    // Deduplicate rapid-fire errors with same type/message/context to avoid UI flooding
+    // Deduplicate rapid-fire errors with same normalized type/message/context to avoid UI flooding.
+    // Messages are normalized to strip volatile suffixes (UUIDs, timestamps, ports, PIDs)
+    // so variant-suffix errors collapse into a single record.
+    const normMsg = normalizeForDedup(error.message);
     const recentDuplicate = state.errors.find(
       (e) =>
         !e.dismissed &&
         e.type === error.type &&
-        e.message === error.message &&
+        normalizeForDedup(e.message) === normMsg &&
         e.source === error.source &&
         e.context?.terminalId === error.context?.terminalId &&
         e.context?.worktreeId === error.context?.worktreeId &&
@@ -105,6 +114,7 @@ const createErrorStore: StateCreator<ErrorStore> = (set, get) => ({
                 retryArgs: error.retryArgs ?? e.retryArgs,
                 recoveryHint: e.recoveryHint ?? error.recoveryHint,
                 correlationId: e.correlationId ?? error.correlationId,
+                promotedToDock: e.promotedToDock,
               }
             : e
         ),
@@ -175,6 +185,20 @@ const createErrorStore: StateCreator<ErrorStore> = (set, get) => ({
     set((state) => ({
       errors: state.errors.map((e) => (e.id === id ? { ...e, retryProgress: undefined } : e)),
     }));
+  },
+
+  promoteErrors: (ids) => {
+    set((state) => {
+      if (ids && ids.length === 0) return state;
+      const targetIds = ids ? new Set(ids) : null;
+      return {
+        errors: state.errors.map((e) => {
+          if (e.dismissed || e.promotedToDock) return e;
+          if (targetIds && !targetIds.has(e.id)) return e;
+          return { ...e, promotedToDock: true };
+        }),
+      };
+    });
   },
 
   reset: () =>
