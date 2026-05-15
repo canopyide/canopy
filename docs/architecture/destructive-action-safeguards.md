@@ -45,9 +45,7 @@ Columns:
 | `git.push` (action) | **confirm** (updated #7881) | none in palette/keybinding path | shared-state (force-push to undo) | one branch on origin | D2 | Add commit-and-push confirmation when invoked outside ReviewHub | TBD |
 | `git.snapshotRevert` | confirm | none at `WorktreeCard.tsx:183` direct IPC call | local-irreversible (wipes working tree to snapshot) | one worktree | D1 | Wire `ConfirmDialog` at the WorktreeMenu call site | TBD |
 | `git.snapshotDelete` | **confirm** (updated #7881) | none — call site not yet identified | local-irreversible (no recovery once deleted) | one worktree | D1 | Wire `ConfirmDialog` wherever the action is invoked | TBD |
-| `WorktreeCard.tsx:488-517` `handleCommitAndPush` | (bypass — chains `stageAll` + `commit` + `push`) | none, silent fallback message | shared-state | one branch on origin | **D2** | **#7880 pattern still present** — split into preview + edit + confirm; remove silent fallback | TBD (highest priority) |
-| `ReviewHubContent.tsx:858-872` `handleCommitAndPush(message)` | (bypass — chains `commit` + `runPush`) | message is authored in panel; no separate push confirm | shared-state | one branch on origin | D2 | Add explicit "Commit and push to `<branch>`" confirm naming both ops; current authored-message flow is acceptable for the commit phase | TBD |
-| `ReviewHubContent.tsx:833` `runPush` (standalone push button) | (bypass) | none | shared-state | one branch on origin | D2 | Add confirm + show diverging-commits summary before push | TBD |
+| `ReviewHubContent.tsx` `handleCommitAndPush(message)` | (bypass — chains `commit` + `runPush`) | yes (`CommitPanel` push confirm — every remote push gates on `ConfirmDialog` with branch pill + commit message preview + per-worktree opt-out, #8025) | shared-state | one branch on origin | D2 | Leave — wired model for bundled commit-and-push | — |
 | `ForcePushConfirmDialog.tsx` `forcePushWithLease` | (bypass, but **dialog already wired**) | yes (`ForcePushConfirmDialog`) | shared-state, recoverable only by lease check | one branch on origin | D2 | Leave — current implementation is the model for D2 confirms | — |
 | `ReviewHubContent.tsx:896` `pullRebase` | (bypass) | none | local-irreversible until pushed (rebase can clobber) | one worktree | D1 | Add confirm + show divergence preview before rebase | TBD |
 | `ReviewHubContent.tsx:733` `abortRepositoryOperation` | (bypass) | none | local-undo (abort is the recovery) | one worktree | D0 | Leave (abort _is_ the recovery path) | — |
@@ -155,16 +153,14 @@ The current GitHub action set is read-only (`openIssues`, `listPullRequests`, et
 
 Direct `window.electron.*` IPC calls that skip `ActionService`. These are the highest-risk locations because the action's `danger` rating cannot gate them — the confirmation must live in the component itself.
 
-| File | Line | Operation | Has UI confirm? |
-| --- | --- | --- | --- |
-| `src/components/Worktree/WorktreeCard.tsx` | 183 | `git.snapshotRevert` | **No** — context menu invokes directly |
-| `src/components/Worktree/WorktreeCard.tsx` | 488–517 | `stageAll` + `commit` (silent fallback msg) + `push` | **No — #7880 pattern still present** |
-| `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | 656–719 | `stageAll`, `unstageAll`, `stageFile`, `commit` | Authored-message gate on commit; no top-level dialog |
-| `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | 833 | `push` (standalone) | **No** |
-| `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | 858–872 | `commit` + `push` (bundled) | Authored-message gate only |
-| `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | 896 | `pullRebase` | **No** |
-| `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | 778 | `checkoutOursTheirs` | **No** |
-| `src/components/Worktree/ReviewHub/ForcePushConfirmDialog.tsx` | 92 | `forcePushWithLease` | **Yes** — model implementation |
+| File | Operation | Has UI confirm? |
+| --- | --- | --- |
+| `src/components/Worktree/WorktreeCard.tsx` | `git.snapshotRevert` (context menu) | **No** — context menu invokes directly |
+| `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | `stageAll`, `unstageAll`, `stageFile`, `commit` block | Authored-message gate on commit; no top-level dialog |
+| `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | `handleCommitAndPush` (bundled `commit` + `push`) | **Yes** — `CommitPanel` push confirm with branch pill + commit message preview + per-worktree opt-out (#8025); only user-initiated remote push path |
+| `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | `pullRebase` | **No** |
+| `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | `checkoutOursTheirs` | **No** |
+| `src/components/Worktree/ReviewHub/ForcePushConfirmDialog.tsx` | `forcePushWithLease` | **Yes** — model implementation |
 
 ## Maintenance
 

@@ -482,4 +482,166 @@ describe("preferencesStore migration", () => {
       expect(store.getState().dockDensity).toBe("comfortable");
     });
   });
+
+  // Issue #8025 — every remote push now opens a confirm dialog, gated by a
+  // per-worktree opt-out. The persisted store gains a new keyed record.
+  describe("skipPushConfirmByWorktreePath (v9 migration)", () => {
+    it("defaults to an empty record on a fresh install", async () => {
+      const store = await loadStore();
+      expect(store.getState().skipPushConfirmByWorktreePath).toEqual({});
+    });
+
+    it("setSkipPushConfirmForWorktree stores true entries and drops keys on false", async () => {
+      const store = await loadStore();
+      store.getState().setSkipPushConfirmForWorktree("/repo/a", true);
+      store.getState().setSkipPushConfirmForWorktree("/repo/b", true);
+      expect(store.getState().skipPushConfirmByWorktreePath).toEqual({
+        "/repo/a": true,
+        "/repo/b": true,
+      });
+      // Setting false clears the existing entry rather than persisting `false`.
+      store.getState().setSkipPushConfirmForWorktree("/repo/a", false);
+      expect(store.getState().skipPushConfirmByWorktreePath).toEqual({ "/repo/b": true });
+      // Setting false on a key that's not present is a no-op.
+      store.getState().setSkipPushConfirmForWorktree("/repo/c", false);
+      expect(store.getState().skipPushConfirmByWorktreePath).toEqual({ "/repo/b": true });
+    });
+
+    it("persists the record to localStorage", async () => {
+      const store = await loadStore();
+      store.getState().setSkipPushConfirmForWorktree("/repo/a", true);
+      await vi.waitFor(() => {
+        const persisted = storageMock.getItem(STORAGE_KEY);
+        expect(persisted).not.toBeNull();
+        const parsed = JSON.parse(persisted!);
+        expect(parsed.state.skipPushConfirmByWorktreePath).toEqual({ "/repo/a": true });
+      });
+    });
+
+    it("migrates v8 state (pre-skipPushConfirm) to v9 with an empty record", async () => {
+      setStoredState(
+        {
+          diffViewType: "split",
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          reduceAnimations: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+        },
+        8
+      );
+
+      const store = await loadStore();
+      expect(store.getState().skipPushConfirmByWorktreePath).toEqual({});
+    });
+
+    it("preserves an explicitly persisted record across v9 migration", async () => {
+      setStoredState(
+        {
+          diffViewType: "split",
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          reduceAnimations: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+          skipPushConfirmByWorktreePath: { "/repo/x": true },
+        },
+        8
+      );
+
+      const store = await loadStore();
+      expect(store.getState().skipPushConfirmByWorktreePath).toEqual({ "/repo/x": true });
+    });
+
+    it("normalises a corrupt persisted value (string instead of object) to {}", async () => {
+      setStoredState(
+        {
+          diffViewType: "split",
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          reduceAnimations: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+          skipPushConfirmByWorktreePath: "yes",
+        },
+        8
+      );
+
+      const store = await loadStore();
+      expect(store.getState().skipPushConfirmByWorktreePath).toEqual({});
+    });
+
+    it("strips non-boolean entries from a partially corrupt persisted record", async () => {
+      setStoredState(
+        {
+          diffViewType: "split",
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          reduceAnimations: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+          skipPushConfirmByWorktreePath: { "/repo/a": true, "/repo/b": "yes", "/repo/c": 1 },
+        },
+        8
+      );
+
+      const store = await loadStore();
+      expect(store.getState().skipPushConfirmByWorktreePath).toEqual({ "/repo/a": true });
+    });
+
+    it("normalises an array value to {}", async () => {
+      setStoredState(
+        {
+          diffViewType: "split",
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          reduceAnimations: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+          skipPushConfirmByWorktreePath: ["/repo/a"],
+        },
+        8
+      );
+
+      const store = await loadStore();
+      expect(store.getState().skipPushConfirmByWorktreePath).toEqual({});
+    });
+
+    it("migrates cumulatively from v3 through v9", async () => {
+      setStoredState(
+        {
+          skipWorkingCloseConfirm: true,
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+        },
+        3
+      );
+
+      const store = await loadStore();
+      const state = store.getState();
+      expect(state.reduceAnimations).toBe(false);
+      expect(state.diffViewType).toBe("split");
+      expect(state.skipPushConfirmByWorktreePath).toEqual({});
+    });
+  });
 });

@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { isProtectedBranch } from "@shared/utils/gitConstants";
 import { useUIStore } from "@/store/uiStore";
+import { usePreferencesStore } from "@/store/preferencesStore";
 import { getPRCIStatusVisual } from "@/components/GitHub/prCIStatus";
 import { Spinner } from "@/components/ui/Spinner";
 import { FileStageRow, type FileStageRowSection } from "./FileStageRow";
@@ -265,6 +266,11 @@ export function ReviewHubContent({
 
   const fileListExpanded = useUIStore((s) => s.reviewHubFileListExpanded[worktreePath] ?? false);
   const setFileListExpanded = useUIStore((s) => s.setReviewHubFileListExpanded);
+
+  const skipPushConfirm = usePreferencesStore(
+    (s) => s.skipPushConfirmByWorktreePath[worktreePath] ?? false
+  );
+  const setSkipPushConfirmForWorktree = usePreferencesStore((s) => s.setSkipPushConfirmForWorktree);
 
   const [stagedView, setStagedView] = useState<SectionViewState>(DEFAULT_SECTION_STATE);
   const [changesView, setChangesView] = useState<SectionViewState>(DEFAULT_SECTION_STATE);
@@ -2025,6 +2031,8 @@ export function ReviewHubContent({
               isPushing={isPushing}
               pushProgress={pushProgress}
               pushTargetBranch={pushTargetBranch}
+              skipPushConfirm={skipPushConfirm}
+              onSetSkipPushConfirm={(value) => setSkipPushConfirmForWorktree(worktreePath, value)}
             />
           )}
       </div>
