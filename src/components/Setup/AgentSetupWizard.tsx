@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/Spinner";
+import { Skeleton, SkeletonBone } from "@/components/ui/Skeleton";
 import { AgentCliStep } from "./AgentCliStep";
 import { SystemRequirementsSection } from "./SystemRequirementsSection";
 import { AGENT_REGISTRY } from "@/config/agents";
@@ -825,9 +825,22 @@ function SelectionStep({
           <span className="text-daintree-text/80">Settings &gt; Agents</span>.
         </p>
         {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Spinner size="lg" className="text-daintree-text/40" />
-          </div>
+          <Skeleton label="Loading agents" className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg/30"
+              >
+                <SkeletonBone className="w-4 h-4 shrink-0" />
+                <SkeletonBone className="w-8 h-8 rounded-[var(--radius-sm)] shrink-0" />
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <SkeletonBone className="h-4 w-28" />
+                  <SkeletonBone className="h-3 w-48" />
+                </div>
+                <SkeletonBone className="h-3 w-16 shrink-0" />
+              </div>
+            ))}
+          </Skeleton>
         ) : (
           <div className="space-y-2">
             {featuredAgents.map((agentId) => (

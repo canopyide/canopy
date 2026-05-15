@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { GitCompare, FileIcon, AlertCircle } from "lucide-react";
-import { Spinner } from "@/components/ui/Spinner";
+import { Skeleton, SkeletonBone, SkeletonText } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/utils";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import { AppDialog } from "@/components/ui/AppDialog";
@@ -233,10 +233,15 @@ export function CrossWorktreeDiff({ isOpen, onClose, initialWorktreeId }: CrossW
           </div>
           <div className="flex-1 overflow-y-auto">
             {loading && (
-              <div className="flex items-center justify-center gap-2 p-6 text-text-muted text-sm">
-                <Spinner size="md" />
-                Comparing…
-              </div>
+              <Skeleton label="Comparing files" className="py-1">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-2 px-3 py-1.5">
+                    <SkeletonBone className="w-3 h-3 shrink-0" />
+                    <SkeletonBone className="w-3 h-3 shrink-0" />
+                    <SkeletonBone className={cn("h-3", i % 2 === 0 ? "w-32" : "w-24")} />
+                  </div>
+                ))}
+              </Skeleton>
             )}
             {error && (
               <div className="flex items-start gap-2 p-4 text-status-error text-xs">
@@ -271,9 +276,11 @@ export function CrossWorktreeDiff({ isOpen, onClose, initialWorktreeId }: CrossW
             </div>
           )}
           {selectedFile && fileDiffLoading && (
-            <div className="flex items-center justify-center gap-2 h-full text-text-muted text-sm">
-              <Spinner size="md" />
-              Loading diff…
+            <div className="p-4 space-y-3">
+              <Skeleton label="Loading diff">
+                <SkeletonBone className="h-7 w-3/4" />
+                <SkeletonText lines={8} className="mt-3" />
+              </Skeleton>
             </div>
           )}
           {selectedFile && !fileDiffLoading && fileDiffError && (
