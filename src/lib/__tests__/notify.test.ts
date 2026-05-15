@@ -1963,7 +1963,7 @@ describe("shouldEscalateTransientError", () => {
       shouldEscalateTransientError({
         type: "process",
         message: "spawn failed",
-        retryability: "none",
+        retryability: "none" as const,
       })
     ).toBe(false);
   });
@@ -1973,7 +1973,7 @@ describe("shouldEscalateTransientError", () => {
       shouldEscalateTransientError({
         type: "filesystem",
         message: "EBUSY: resource locked",
-        retryability: "auto",
+        retryability: "auto" as const,
       })
     ).toBe(false);
   });
@@ -2105,13 +2105,13 @@ describe("shouldEscalateTransientError", () => {
       type: "process" as const,
       message: "listen EADDRINUSE: address already in use :::3000",
       source: "http",
-      retryability: "auto",
+      retryability: "auto" as const,
     };
     const error2 = {
       type: "process" as const,
       message: "listen EADDRINUSE: address already in use :::4000",
       source: "http",
-      retryability: "auto",
+      retryability: "auto" as const,
     };
 
     // Same normalized key — grouped together
@@ -2125,13 +2125,13 @@ describe("shouldEscalateTransientError", () => {
       type: "network" as const,
       message: "Timeout abc12345-6789-4abc-def0-123456789abc for request",
       source: "fetcher",
-      retryability: "auto",
+      retryability: "auto" as const,
     };
     const error2 = {
       type: "network" as const,
       message: "Timeout deadbeef-1111-4abc-def0-222222222222 for request",
       source: "fetcher",
-      retryability: "auto",
+      retryability: "auto" as const,
     };
 
     shouldEscalateTransientError(error1);
@@ -2149,7 +2149,7 @@ describe("shouldEscalateTransientError", () => {
         shouldEscalateTransientError({
           type: "network",
           message: `error-${i}`,
-          retryability: "auto",
+          retryability: "auto" as const,
         })
       ).not.toThrow();
     }
