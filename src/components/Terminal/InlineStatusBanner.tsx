@@ -37,14 +37,15 @@ export interface InlineStatusBannerProps {
   closeAriaLabel?: string;
   /**
    * Non-button control rendered alongside the actions (e.g. a Popover
-   * trigger). Sits before the dismiss button so the reading order stays
-   * content → secondary control → primary actions → dismiss.
+   * trigger). Rendered first in the controls row, before the dismiss
+   * button and the primary action buttons.
    */
   trailingSlot?: React.ReactNode;
   /**
    * Interactive content rendered as a sibling after the description
    * paragraph. Use this instead of nesting buttons/links inside
-   * `description` (which would produce invalid `<p>` markup).
+   * `description` (which would produce invalid `<p>` markup). Passing
+   * this forces the multi-line layout even without a `description`.
    */
   descriptionExtras?: React.ReactNode;
   /**
@@ -120,11 +121,14 @@ export function InlineStatusBanner({
   const isNeutral = severity === "neutral";
   const colorVar = isNeutral ? undefined : SEVERITY_VAR[severity];
 
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
-    if (!autoDismissAfter || !onClose) return;
-    const timer = setTimeout(onClose, autoDismissAfter);
+    if (!autoDismissAfter || !onCloseRef.current) return;
+    const timer = setTimeout(() => onCloseRef.current?.(), autoDismissAfter);
     return () => clearTimeout(timer);
-  }, [autoDismissAfter, onClose]);
+  }, [autoDismissAfter]);
 
   useEffect(() => {
     if (!shouldAnimate) return;
@@ -142,7 +146,7 @@ export function InlineStatusBanner({
     };
   }, [shouldAnimate]);
 
-  const hasDescription = description || contextLine;
+  const hasDescription = description || contextLine || descriptionExtras;
 
   return (
     <div

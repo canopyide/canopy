@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { useEffect, useState } from "react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import { AlertTriangle, CheckCircle2, FileEdit, Info, XCircle } from "lucide-react";
@@ -168,6 +169,58 @@ describe("InlineStatusBanner", () => {
     const extras = container.querySelector(".extras-btn") as HTMLElement;
     expect(extras).toBeTruthy();
     expect(extras.closest("p")).toBeNull();
+  });
+
+  it("still renders descriptionExtras when no description or contextLine is set", () => {
+    const { container } = render(
+      <InlineStatusBanner
+        icon={AlertTriangle}
+        title="Title only"
+        descriptionExtras={
+          <button type="button" className="extras-only-btn">
+            Extra
+          </button>
+        }
+        severity="warning"
+        animated={false}
+        actions={[]}
+      />
+    );
+    const extras = container.querySelector(".extras-only-btn") as HTMLElement;
+    expect(extras).toBeTruthy();
+    expect(extras.closest("p")).toBeNull();
+  });
+
+  it("does not reset the auto-dismiss timer when onClose is an unstable reference", () => {
+    vi.useFakeTimers();
+    try {
+      const spy = vi.fn();
+      function Wrapper() {
+        const [, setTick] = useState(0);
+        useEffect(() => {
+          const id = setInterval(() => setTick((t) => t + 1), 100);
+          return () => clearInterval(id);
+        }, []);
+        return (
+          <InlineStatusBanner
+            icon={Info}
+            title="Unstable onClose"
+            severity="info"
+            animated={false}
+            actions={[]}
+            onClose={() => spy()}
+            autoDismissAfter={1_000}
+          />
+        );
+      }
+      render(<Wrapper />);
+      act(() => {
+        vi.advanceTimersByTime(2_000);
+      });
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("uses a custom closeAriaLabel for the dismiss button", () => {
