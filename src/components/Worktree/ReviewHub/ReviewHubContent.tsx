@@ -1782,9 +1782,11 @@ export function ReviewHubContent({
                             }
                           />
                         ) : (
-                          <div className="px-4 py-3 text-xs text-daintree-text/40 italic">
-                            No staged files
-                          </div>
+                          <EmptyState
+                            variant="user-cleared"
+                            scale="sidebar"
+                            title="Nothing staged"
+                          />
                         )}
                       </div>
 
@@ -1987,9 +1989,11 @@ export function ReviewHubContent({
                             }
                           />
                         ) : (
-                          <div className="px-4 py-3 text-xs text-daintree-text/40 italic">
-                            No unstaged changes
-                          </div>
+                          <EmptyState
+                            variant="user-cleared"
+                            scale="sidebar"
+                            title="All changes staged"
+                          />
                         )}
                       </div>
                     </div>

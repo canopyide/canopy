@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
 import { TruncatedTooltip } from "@/components/ui/TruncatedTooltip";
 
@@ -584,7 +585,7 @@ export function ConflictPanel({
             })}
           </ul>
         ) : (
-          <div className="px-4 py-3 text-xs text-daintree-text/60">No conflicted files remain.</div>
+          <EmptyState variant="user-cleared" scale="sidebar" title="All conflicts resolved" />
         )}
 
         {/* Resolved disclosure — recedes when conflicts remain, collapsed by default. */}
