@@ -139,6 +139,30 @@ describe("ActivityLight", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("flips to idle at the decay boundary even under performance mode", () => {
+    document.body.setAttribute("data-performance-mode", "true");
+    try {
+      const now = Date.now();
+      vi.setSystemTime(now);
+      const { container } = render(
+        <ActivityLight lastActivityTimestamp={now - (DECAY_DURATION - 1)} />
+      );
+
+      // Active at mount (1ms before the boundary).
+      expect(getDot(container).className).not.toMatch(/\bborder\b/);
+
+      // The perf-mode 60s floor must NOT delay the idle transition past the
+      // 90s window — the delay is clamped to the remaining decay time.
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(getDot(container).className).toMatch(/\bborder\b/);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      document.body.removeAttribute("data-performance-mode");
+    }
+  });
+
   it("re-arms scheduling when lastActivityTimestamp changes (new activity)", () => {
     const now = Date.now();
     vi.setSystemTime(now);

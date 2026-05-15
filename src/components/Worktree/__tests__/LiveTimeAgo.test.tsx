@@ -112,6 +112,34 @@ describe("LiveTimeAgo", () => {
     expect(container.textContent).toContain("1m");
   });
 
+  it("pauses while hidden, then catches up on restore", () => {
+    let visibilityState: DocumentVisibilityState = "visible";
+    Object.defineProperty(document, "hidden", {
+      get: () => visibilityState === "hidden",
+      configurable: true,
+    });
+    const setVisibility = (s: DocumentVisibilityState) => {
+      visibilityState = s;
+      document.dispatchEvent(new Event("visibilitychange"));
+    };
+
+    const now = 1_700_000_000_000;
+    vi.setSystemTime(now);
+    const { container } = renderTimeAgo({ timestamp: now - 10_000 });
+    expect(container.textContent).toContain("10s");
+
+    // Hidden: the pending flip is cancelled and never fires.
+    act(() => setVisibility("hidden"));
+    act(() => vi.advanceTimersByTime(120_000));
+    expect(container.textContent).toContain("10s");
+
+    // Restored: snaps to the correct wall-clock value immediately.
+    act(() => setVisibility("visible"));
+    expect(container.textContent).toContain("2m");
+
+    Object.defineProperty(document, "hidden", { value: false, configurable: true });
+  });
+
   it("snaps to the current value on visibility restore", () => {
     const now = 1_700_000_000_000;
     vi.setSystemTime(now);

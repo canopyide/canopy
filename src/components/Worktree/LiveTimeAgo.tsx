@@ -85,7 +85,7 @@ export function LiveTimeAgo({ timestamp, className }: LiveTimeAgoProps) {
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    if (timestamp == null) return;
+    if (timestamp == null || !Number.isFinite(timestamp)) return;
 
     const now = Date.now();
     let delay = msUntilNextFlip(now - timestamp, now);
@@ -96,7 +96,7 @@ export function LiveTimeAgo({ timestamp, className }: LiveTimeAgoProps) {
     return scheduleFlip(delay, () => setTick((n) => n + 1));
   }, [timestamp, tick]);
 
-  if (timestamp == null) {
+  if (timestamp == null || !Number.isFinite(timestamp)) {
     return null;
   }
 

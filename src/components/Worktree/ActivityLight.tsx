@@ -35,8 +35,12 @@ export function ActivityLight({ lastActivityTimestamp, className }: ActivityLigh
     const elapsed = Date.now() - lastActivityTimestamp;
     if (elapsed >= DECAY_DURATION) return;
 
-    const delay =
+    const baseDelay =
       document.body.dataset.performanceMode === "true" ? PERFORMANCE_MODE_FLOOR : 1000;
+    // Never sleep past the decay boundary — otherwise (e.g. at 89s in
+    // performance mode) the dot would stay visually "active" for nearly a
+    // minute past the 90s window.
+    const delay = Math.min(baseDelay, DECAY_DURATION - elapsed);
 
     return scheduleFlip(delay, () => setTick((n) => n + 1));
   }, [lastActivityTimestamp, tick]);

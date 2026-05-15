@@ -10,6 +10,11 @@
  */
 
 const MIN_FLIP_DELAY = 50;
+// setTimeout stores the delay as a signed 32-bit int; anything larger
+// overflows negative, clamps to 0, and fires immediately — which would turn
+// a month/year-old label into a busy re-render loop. Cap at the max and let
+// the consumer wake (label unchanged), recompute, and re-arm.
+const MAX_TIMEOUT_DELAY = 2_147_483_647;
 
 export function scheduleFlip(delayMs: number, onFlip: () => void): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -23,7 +28,8 @@ export function scheduleFlip(delayMs: number, onFlip: () => void): () => void {
 
   const arm = () => {
     clear();
-    timer = setTimeout(onFlip, Math.max(MIN_FLIP_DELAY, delayMs));
+    const safeDelay = Math.min(Math.max(MIN_FLIP_DELAY, delayMs), MAX_TIMEOUT_DELAY);
+    timer = setTimeout(onFlip, safeDelay);
   };
 
   const handleVisibility = () => {
