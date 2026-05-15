@@ -224,7 +224,7 @@ export function NotificationSettingsTab() {
       <div className={cn("space-y-6", !settings.enabled && "opacity-50 pointer-events-none")}>
         <SettingsSection
           icon={Bell}
-          title="Agent Notifications"
+          title="Agent notifications"
           description="OS notifications are off by default. Enable individual event types below to receive native alerts for agent activity. Notifications are suppressed when you are already viewing the relevant worktree."
         >
           <div className="contents">
@@ -333,7 +333,7 @@ export function NotificationSettingsTab() {
 
         <SettingsSection
           icon={Moon}
-          title="Quiet Hours"
+          title="Quiet hours"
           description="Suppress in-app toasts and OS notifications during a daily time window. History still records everything, and agents waiting for input always page through."
         >
           <div className="contents">
@@ -412,7 +412,7 @@ export function NotificationSettingsTab() {
 
         <SettingsSection
           icon={AudioLines}
-          title="UI Feedback Sounds"
+          title="UI feedback sounds"
           description="Play subtle audio cues for git operations, worktree lifecycle, agent spawning, and context injection. These sounds are independent of agent notification sounds above."
         >
           <SettingsSwitchCard

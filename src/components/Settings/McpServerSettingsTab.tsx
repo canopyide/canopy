@@ -315,7 +315,7 @@ export function McpServerSettingsTab() {
     <div className="space-y-6">
       <SettingsSwitchCard
         icon={McpServerIcon}
-        title="MCP Server"
+        title="MCP server"
         subtitle="Start a local Model Context Protocol server so AI agents can discover and invoke Daintree actions directly."
         isEnabled={status.enabled}
         onChange={handleToggle}

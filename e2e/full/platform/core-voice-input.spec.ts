@@ -275,7 +275,7 @@ test.describe.serial("E2E: Voice Input — Settings UI", () => {
     const toggle = window.locator('[aria-label="Toggle voice input"]');
     await expect(toggle).toBeVisible({ timeout: T_SHORT });
 
-    await expect(window.getByText("Speech-to-Text", { exact: true })).toBeVisible();
+    await expect(window.getByText("Speech-to-text", { exact: true })).toBeVisible();
     await expect(
       window.getByText("Real-time transcription. Requires an OpenAI API key and microphone access.")
     ).toBeVisible();

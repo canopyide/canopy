@@ -117,7 +117,7 @@ export function ImageViewerTab() {
     <div className="space-y-6">
       <SettingsSection
         icon={Image}
-        title="Image Viewer"
+        title="Image viewer"
         description="Choose the application that opens when you click 'Open in Image Viewer' in the file viewer."
       >
         <div className="space-y-4">

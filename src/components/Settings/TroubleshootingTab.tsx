@@ -47,7 +47,7 @@ function SystemHealthSection() {
   return (
     <SettingsSection
       icon={ShieldCheck}
-      title="System Health Check"
+      title="System health check"
       description="Verify that required tools (Git, Node.js, npm) are installed and available."
     >
       <Button
@@ -138,7 +138,7 @@ function DownloadDiagnosticsSection() {
   return (
     <SettingsSection
       icon={Download}
-      title="Download Diagnostics"
+      title="Download diagnostics"
       description="Export a detailed snapshot of your system environment, app state, and recent logs for troubleshooting."
     >
       <Button
@@ -185,12 +185,12 @@ function HardwareAccelerationSection() {
   return (
     <SettingsSection
       icon={Monitor}
-      title="Hardware Acceleration"
+      title="Hardware acceleration"
       description="GPU hardware acceleration improves rendering performance. Disable if you experience blank panels or repeated GPU crashes."
     >
       <SettingsSwitchCard
         icon={Monitor}
-        title="Hardware Acceleration"
+        title="Hardware acceleration"
         subtitle="Uses GPU to improve rendering performance. Disable if you experience blank panels or rendering issues. App restarts on change."
         isEnabled={!disabled}
         onChange={handleToggle}
@@ -396,7 +396,7 @@ export function TroubleshootingTab() {
 
       <SettingsSection
         icon={FileText}
-        title="Application Logs"
+        title="Application logs"
         description="View internal application logs for debugging purposes."
       >
         <div className="flex gap-3">
@@ -425,12 +425,12 @@ export function TroubleshootingTab() {
 
       <SettingsSection
         icon={Bug}
-        title="Developer Mode"
+        title="Developer mode"
         description="Enable enhanced debugging features for development and troubleshooting."
       >
         <SettingsSwitchCard
           icon={Bug}
-          title="Developer Mode"
+          title="Developer mode"
           subtitle="Activates all debugging features below"
           isEnabled={developerMode}
           onChange={handleToggleDeveloperMode}
@@ -440,7 +440,7 @@ export function TroubleshootingTab() {
         <div className="ml-4 space-y-3 border-l-2 border-daintree-border pl-4">
           <SettingsSwitchCard
             variant="compact"
-            title="Auto-Open Diagnostics Dock"
+            title="Auto-open diagnostics dock"
             subtitle="Automatically open diagnostics panel on app startup"
             isEnabled={autoOpenDiagnostics}
             onChange={handleToggleAutoOpenDiagnostics}
@@ -451,7 +451,7 @@ export function TroubleshootingTab() {
           <div className="ml-4">
             <SettingsSwitchCard
               variant="compact"
-              title="Focus Events Tab"
+              title="Focus events tab"
               subtitle="Default to Events tab when diagnostics opens"
               isEnabled={focusEventsTab}
               onChange={handleToggleFocusEventsTab}
@@ -463,7 +463,7 @@ export function TroubleshootingTab() {
 
         <SettingsSwitchCard
           icon={AlertTriangle}
-          title="Verbose Logging"
+          title="Verbose logging"
           subtitle="Captures detailed debug output for troubleshooting. Resets on app restart."
           isEnabled={verboseLogging}
           onChange={handleToggleVerboseLogging}
@@ -495,7 +495,7 @@ export function TroubleshootingTab() {
 
       <SettingsSection
         icon={SlidersHorizontal}
-        title="Per-Module Log Levels"
+        title="Per-module log levels"
         description="Override the log level for a specific module (or a process-wide wildcard). Overrides persist across restarts."
       >
         <div className="flex gap-3">

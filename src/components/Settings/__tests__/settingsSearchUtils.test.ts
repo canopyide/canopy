@@ -669,7 +669,7 @@ describe("requiresEnabled metadata", () => {
     for (const id of ["mcp-server-config", "mcp-server-port", "mcp-server-auth"]) {
       const entry = byId(id);
       expect(entry?.requiresEnabled?.settingId).toBe("mcp-server-enable");
-      expect(entry?.requiresEnabled?.label).toBe("MCP Server");
+      expect(entry?.requiresEnabled?.label).toBe("MCP server");
     }
   });
 
@@ -685,7 +685,7 @@ describe("requiresEnabled metadata", () => {
       expect(entry?.requiresEnabled?.settingId, `${id} should require voice-enable`).toBe(
         "voice-enable"
       );
-      expect(entry?.requiresEnabled?.label).toBe("Voice Input");
+      expect(entry?.requiresEnabled?.label).toBe("Voice input");
     }
   });
 
@@ -696,7 +696,7 @@ describe("requiresEnabled metadata", () => {
         entry?.requiresEnabled?.settingId,
         `${id} should require voice-ai-correction-enable`
       ).toBe("voice-ai-correction-enable");
-      expect(entry?.requiresEnabled?.label).toBe("AI Text Correction");
+      expect(entry?.requiresEnabled?.label).toBe("AI text correction");
     }
   });
 
