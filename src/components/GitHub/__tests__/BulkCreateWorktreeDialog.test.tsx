@@ -209,10 +209,11 @@ vi.mock("@/components/ui/AppDialog", () => {
     ) : null;
   Dialog.Header = ({ children }: { children: React.ReactNode }) => <div>{children}</div>;
   Dialog.Title = ({ children }: { children: React.ReactNode }) => <div>{children}</div>;
-  Dialog.CloseButton = () => {
+  const CloseButton = () => {
     const onClose = React.useContext(DialogCloseContext);
     return <button aria-label="Close dialog" onClick={() => onClose?.()} />;
   };
+  Dialog.CloseButton = CloseButton;
   Dialog.Body = ({ children }: { children: React.ReactNode }) => <div>{children}</div>;
   Dialog.Footer = ({ children }: { children: React.ReactNode }) => <div>{children}</div>;
   return { AppDialog: Dialog };
