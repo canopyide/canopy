@@ -666,7 +666,7 @@ export function WorktreeCard({
                     "absolute w-3 h-3 z-10 cursor-default",
                     chipState === "waiting" && "bg-activity-waiting",
                     chipState === "cleanup" && "bg-github-merged",
-                    chipState === "complete" && "bg-github-open",
+                    chipState === "complete" && "bg-category-blue",
                     variant === "sidebar" ? "top-0 left-[1px]" : "top-0 left-0 rounded-tl-lg"
                   )}
                   style={{ clipPath: "polygon(0 0, 100% 0, 0 100%)" }}

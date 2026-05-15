@@ -35,6 +35,10 @@ describe("getEffectiveStateColor", () => {
   it("returns default color for non-waiting states", () => {
     expect(getEffectiveStateColor("working")).toBe(STATE_COLORS.working);
   });
+
+  it("uses slate (not info) for completed state", () => {
+    expect(STATE_COLORS.completed).toBe("text-category-slate");
+  });
 });
 
 describe("getEffectiveStateLabel", () => {
