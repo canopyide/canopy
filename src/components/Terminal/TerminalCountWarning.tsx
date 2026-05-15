@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { X, AlertTriangle, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BANNER_ENTER_DURATION } from "@/lib/animationUtils";
 import { usePanelStore } from "@/store/panelStore";
 import { useShallow } from "zustand/react/shallow";
 import { usePanelLimitStore, shouldShowSoftWarning } from "@/store/panelLimitStore";
@@ -81,7 +82,7 @@ export function TerminalCountWarning({ className, onOpenBulkActions }: TerminalC
       dismissTimeoutRef.current = null;
       dismissSoftWarning(activeCount);
       setIsDismissed(true);
-    }, 200);
+    }, BANNER_ENTER_DURATION);
   }, [activeCount, dismissSoftWarning]);
 
   useEffect(() => {
@@ -120,7 +121,7 @@ export function TerminalCountWarning({ className, onOpenBulkActions }: TerminalC
         "flex items-center justify-between gap-4 px-4 py-3 rounded-[var(--radius-lg)]",
         "bg-[color-mix(in_oklab,var(--color-status-warning)_12%,transparent)]",
         "border border-status-warning/30",
-        "transition duration-200",
+        "transition duration-250",
         isVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2",
         className
       )}
