@@ -103,41 +103,22 @@ For AI features, open **Settings** (bottom-left sidebar) and configure your GitH
 
 ## Install agent CLIs
 
-Daintree works with whatever agent you've already installed. **Settings → Agents** has a one-click installer for each platform; the commands below are the canonical recipes for reference.
+Daintree works with whatever agent you've already installed. **Settings → Agents** has a one-click installer for each platform — or follow the canonical install docs:
 
-**npm (cross-platform):**
+| Agent | Install docs |
+| --- | --- |
+| Claude Code | [code.claude.com/docs/en/setup](https://code.claude.com/docs/en/setup) |
+| Gemini CLI | [geminicli.com/docs](https://geminicli.com/docs) |
+| Codex CLI | [github.com/openai/codex](https://github.com/openai/codex) |
+| Cursor Agent | [cursor.com/cli](https://cursor.com/cli) |
+| GitHub Copilot CLI | [docs.github.com/…/install-copilot-cli](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli) |
+| Crush | [github.com/charmbracelet/crush](https://github.com/charmbracelet/crush) |
+| Amp | [ampcode.com/manual](https://ampcode.com/manual) |
+| OpenCode | [opencode.ai/install](https://opencode.ai/install) |
+| Aider | [aider.chat/docs/install.html](https://aider.chat/docs/install.html) |
+| Goose | [goose-docs.ai/docs/getting-started/installation](https://goose-docs.ai/docs/getting-started/installation) |
 
-```bash
-npm install -g @anthropic-ai/claude-code    # Claude Code
-npm install -g @google/gemini-cli           # Gemini CLI
-npm install -g @openai/codex                # Codex
-npm install -g opencode-ai@latest           # OpenCode
-npm install -g @github/copilot              # GitHub Copilot CLI
-npm install -g @qwen-code/qwen-code         # Qwen Code
-npm install -g @sourcegraph/amp             # Amp
-```
-
-**Shell installer (macOS/Linux):**
-
-```bash
-curl https://cursor.com/install -fsS | bash                                                     # Cursor Agent
-curl -fsSL https://cli.kiro.dev/install | bash                                                  # Kiro
-curl -fsSL https://opencode.ai/install | bash                                                   # OpenCode
-curl -fsSL https://ampcode.com/install.sh | bash                                                # Amp
-curl -fsSL https://github.com/block/goose/releases/download/stable/download_cli.sh | bash       # Goose
-curl -LsSf https://mistral.ai/vibe/install.sh | bash                                            # Mistral Vibe
-curl -LsSf https://aider.chat/install.sh | sh                                                   # Aider
-```
-
-**Other ecosystems:**
-
-```bash
-brew install charmbracelet/tap/crush        # Crush (Homebrew)
-go install github.com/charmbracelet/crush@latest  # Crush (Go)
-uv tool install kimi-cli                    # Kimi Code (uv)
-uv tool install open-interpreter            # Open Interpreter (uv)
-pipx install aider-chat                     # Aider (pipx)
-```
+See [Works with](#works-with) for the full list of agents Daintree can launch.
 
 ## Documentation
 
