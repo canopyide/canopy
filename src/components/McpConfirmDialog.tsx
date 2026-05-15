@@ -43,13 +43,18 @@ export function McpConfirmDialog() {
         <ConfirmDialog
           isOpen={false}
           title=""
-          confirmLabel="Run action"
+          confirmLabel="Run"
           onConfirm={() => {}}
-          variant="destructive"
+          variant="default"
         />
       </ErrorBoundary>
     );
   }
+
+  // Severity follows the action's registry classification, not the fact that
+  // an MCP client dispatched it. Provenance is already conveyed by the
+  // "Run '…'?" framing; only genuinely destructive dispatches earn red.
+  const variant = current.danger === "confirm" ? "destructive" : "default";
 
   return (
     <ErrorBoundary variant="component" componentName="McpConfirmDialog" resetKeys={[resetKey]}>
@@ -58,10 +63,10 @@ export function McpConfirmDialog() {
         onClose={() => resolveCurrent("rejected")}
         title={`Run '${current.actionTitle}'?`}
         description={current.actionDescription}
-        confirmLabel="Run action"
+        confirmLabel={current.actionTitle}
         cancelLabel="Cancel"
         onConfirm={() => resolveCurrent("approved")}
-        variant="destructive"
+        variant={variant}
       >
         <div className="space-y-2">
           <div className="text-xs text-daintree-text/60 uppercase tracking-wide">Arguments</div>

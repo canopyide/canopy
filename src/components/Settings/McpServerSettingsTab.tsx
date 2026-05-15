@@ -311,6 +311,11 @@ export function McpServerSettingsTab() {
 
   const sseUrl = status.port ? `http://127.0.0.1:${status.port}/sse` : null;
 
+  // Rotation is the revoke-all primitive — it invalidates every external
+  // client holding the current key in one shot (Tier D3). Gate it behind
+  // typing the last 4 characters, matching DaintreeAssistantSettingsTab.
+  const apiKeySuffix = status.apiKey && status.apiKey.length >= 8 ? status.apiKey.slice(-4) : "";
+
   return (
     <div className="space-y-6">
       <SettingsSwitchCard
@@ -584,13 +589,29 @@ export function McpServerSettingsTab() {
         isOpen={showRotateConfirm}
         onClose={isRotating ? undefined : handleCancelRotate}
         title="Rotate API key?"
-        description="The current key will be invalidated immediately. External clients using this key will need to update their configuration."
+        description={
+          <>
+            The current key will be invalidated immediately. External clients using this key will
+            need to update their configuration.
+            {apiKeySuffix && (
+              <>
+                {" "}
+                Type the last 4 characters of the current key (
+                <code className="font-mono text-xs bg-daintree-bg/50 px-1.5 py-0.5 rounded border border-daintree-border">
+                  {apiKeySuffix}
+                </code>
+                ) to confirm.
+              </>
+            )}
+          </>
+        }
         confirmLabel="Rotate key"
         cancelLabel="Cancel"
         onConfirm={confirmRotateApiKey}
         isConfirmLoading={isRotating}
         variant="destructive"
         zIndex="nested"
+        typedNameTarget={apiKeySuffix || undefined}
       />
 
       <ConfirmDialog
