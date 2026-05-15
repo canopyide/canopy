@@ -6,10 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FixedDropdownVisibleContext } from "../fixed-dropdown";
 import { Tooltip, TooltipTrigger, TooltipContent } from "../tooltip";
 
-const { rootSpy, mountSpy, primeOnEventSpy } = vi.hoisted(() => ({
+const { rootSpy, mountSpy, primeOnEventSpy, contentSpy } = vi.hoisted(() => ({
   rootSpy: vi.fn(),
   mountSpy: vi.fn(),
   primeOnEventSpy: vi.fn(),
+  contentSpy: vi.fn(),
 }));
 
 vi.mock("../radix-loader", () => ({
@@ -50,7 +51,10 @@ vi.mock("../radix-loader", () => ({
         </button>
       )),
       Portal: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-      Content: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+      Content: (props: { children: React.ReactNode } & Record<string, unknown>) => {
+        contentSpy(props);
+        return <div>{props.children}</div>;
+      },
     },
   }),
 }));
@@ -265,5 +269,53 @@ describe("TooltipTrigger — pointerActiveRef focus filter (issue #8008)", () =>
     expect(onPointerDown).toHaveBeenCalledTimes(1);
     expect(onPointerUp).toHaveBeenCalledTimes(1);
     expect(onFocusCapture).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("TooltipContent — collisionPadding default and override (issue #8008)", () => {
+  beforeEach(() => {
+    contentSpy.mockClear();
+  });
+
+  it("forwards collisionPadding={8} by default", () => {
+    render(
+      <FixedDropdownVisibleContext.Provider value={true}>
+        <Tooltip open>
+          <TooltipTrigger>trigger</TooltipTrigger>
+          <TooltipContent>content</TooltipContent>
+        </Tooltip>
+      </FixedDropdownVisibleContext.Provider>
+    );
+
+    const lastCall = contentSpy.mock.calls.at(-1)?.[0];
+    expect(lastCall?.collisionPadding).toBe(8);
+  });
+
+  it("forwards a caller-provided collisionPadding override", () => {
+    render(
+      <FixedDropdownVisibleContext.Provider value={true}>
+        <Tooltip open>
+          <TooltipTrigger>trigger</TooltipTrigger>
+          <TooltipContent collisionPadding={24}>content</TooltipContent>
+        </Tooltip>
+      </FixedDropdownVisibleContext.Provider>
+    );
+
+    const lastCall = contentSpy.mock.calls.at(-1)?.[0];
+    expect(lastCall?.collisionPadding).toBe(24);
+  });
+
+  it("applies the max-w-xs width cap on the rendered className", () => {
+    render(
+      <FixedDropdownVisibleContext.Provider value={true}>
+        <Tooltip open>
+          <TooltipTrigger>trigger</TooltipTrigger>
+          <TooltipContent>content</TooltipContent>
+        </Tooltip>
+      </FixedDropdownVisibleContext.Provider>
+    );
+
+    const lastCall = contentSpy.mock.calls.at(-1)?.[0];
+    expect(typeof lastCall?.className === "string" && lastCall.className).toContain("max-w-xs");
   });
 });

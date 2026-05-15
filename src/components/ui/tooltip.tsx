@@ -58,13 +58,15 @@ const TooltipTrigger = React.forwardRef<
     ref
   ) => {
     const radix = useRadixPrimitives();
-    // Track whether the most recent focus arrived via a pointer interaction.
-    // Radix opens the tooltip on focus, which produces a sticky tooltip after
-    // a click on a tooltip-armed control (the button gains focus, the tooltip
-    // shows, and stays until the next pointer move). Setting the ref on
-    // pointerdown and clearing it on the next tick after pointerup lets the
-    // focus handler distinguish keyboard focus (open) from pointer focus
-    // (suppress) — see issue #8008.
+    // Track whether the most recent focus arrived via a pointer interaction so
+    // the focus-capture handler can distinguish keyboard focus from
+    // click-induced focus. `pointerdown` sets the ref; `pointerup` schedules a
+    // next-tick clear so the same task that fires `focus` between them still
+    // sees `true`. The drag-out case (pointerdown on trigger, pointerup
+    // outside) leaves the ref `true` until the next `pointerdown` on this
+    // element — harmless here since the only suppressed work is
+    // `primeOnEvent` (already called on `pointerdown`) and the consumer's
+    // `onFocusCapture` (no current callers). See issue #8008.
     const pointerActiveRef = React.useRef(false);
 
     const handlePointerEnter: React.PointerEventHandler<HTMLButtonElement> = (event) => {
@@ -83,10 +85,10 @@ const TooltipTrigger = React.forwardRef<
       }, 0);
     };
     const handleFocusCapture: React.FocusEventHandler<HTMLButtonElement> = (event) => {
-      if (pointerActiveRef.current) {
-        event.preventDefault();
-        return;
-      }
+      // Early return is the actual suppression — skipping `primeOnEvent` and
+      // the consumer's `onFocusCapture`. The Radix Trigger's own
+      // `isPointerDownRef` blocks Radix's internal open path independently.
+      if (pointerActiveRef.current) return;
       primeOnEvent();
       onFocusCapture?.(event);
     };

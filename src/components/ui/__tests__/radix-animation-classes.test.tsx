@@ -199,9 +199,9 @@ describe("Radix overlay animation classes — wrapper source", () => {
     expect(src).toContain("pointerActiveRef");
     expect(src).toContain("onPointerDown");
     expect(src).toContain("onPointerUp");
-    // The focus-capture handler must suppress (preventDefault + early return)
-    // when the ref is set — otherwise the click-to-focus path opens the
-    // tooltip and it strands until the next pointer move.
-    expect(src).toMatch(/if \(pointerActiveRef\.current\)[\s\S]*event\.preventDefault\(\)/);
+    // The focus-capture handler must early-return when the ref is set —
+    // otherwise the click-to-focus path opens the tooltip and it strands
+    // until the next pointer move.
+    expect(src).toMatch(/if \(pointerActiveRef\.current\) return/);
   });
 });
