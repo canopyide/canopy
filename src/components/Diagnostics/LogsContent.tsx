@@ -264,7 +264,7 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
 
       <div className="flex-1 relative min-h-0">
         {displayEntries.length === 0 ? (
-          logs.length > 0 && hasActiveFilters ? (
+          logs.some((l) => l.id !== "previous-session-separator") && hasActiveFilters ? (
             <div className="flex items-center justify-center h-full">
               <EmptyState
                 variant="filtered-empty"
