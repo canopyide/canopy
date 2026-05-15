@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { X, AlertTriangle, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BANNER_ENTER_DURATION } from "@/lib/animationUtils";
 import { usePanelStore } from "@/store/panelStore";
 import { useShallow } from "zustand/react/shallow";
 import { usePanelLimitStore, shouldShowSoftWarning } from "@/store/panelLimitStore";
@@ -81,7 +82,7 @@ export function TerminalCountWarning({ className, onOpenBulkActions }: TerminalC
       dismissTimeoutRef.current = null;
       dismissSoftWarning(activeCount);
       setIsDismissed(true);
-    }, 200);
+    }, BANNER_ENTER_DURATION);
   }, [activeCount, dismissSoftWarning]);
 
   useEffect(() => {

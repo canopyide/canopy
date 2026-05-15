@@ -43,48 +43,40 @@ describe("InlineStatusBanner", () => {
     expect(region.hasAttribute("aria-atomic")).toBe(false);
   });
 
-  it("renders info severity using the info status token", () => {
+  it.each([
+    ["error", XCircle, "--color-status-error"],
+    ["warning", AlertTriangle, "--color-status-warning"],
+    ["info", Info, "--color-status-info"],
+    ["success", CheckCircle2, "--color-status-success"],
+  ] as const)("renders %s severity using its status token", (severity, icon, token) => {
+    render(
+      <InlineStatusBanner
+        icon={icon}
+        title={severity}
+        severity={severity}
+        animated={false}
+        actions={[]}
+      />
+    );
+    const region = screen.getByRole("alert");
+    expect(region.style.backgroundColor).toContain(token);
+    expect(region.style.borderBottom).toContain(token);
+  });
+
+  it("emits aria-live='off' without aria-atomic", () => {
     render(
       <InlineStatusBanner
         icon={Info}
-        title="Heads up"
+        title="Quiet"
         severity="info"
         animated={false}
+        ariaLive="off"
         actions={[]}
       />
     );
     const region = screen.getByRole("alert");
-    expect(region.style.backgroundColor).toContain("--color-status-info");
-    expect(region.style.borderBottom).toContain("--color-status-info");
-  });
-
-  it("renders success severity using the success status token", () => {
-    render(
-      <InlineStatusBanner
-        icon={CheckCircle2}
-        title="All set"
-        severity="success"
-        animated={false}
-        actions={[]}
-      />
-    );
-    const region = screen.getByRole("alert");
-    expect(region.style.backgroundColor).toContain("--color-status-success");
-    expect(region.style.borderBottom).toContain("--color-status-success");
-  });
-
-  it("renders warning severity using the warning status token", () => {
-    render(
-      <InlineStatusBanner
-        icon={AlertTriangle}
-        title="Careful"
-        severity="warning"
-        animated={false}
-        actions={[]}
-      />
-    );
-    const region = screen.getByRole("alert");
-    expect(region.style.backgroundColor).toContain("--color-status-warning");
+    expect(region.getAttribute("aria-live")).toBe("off");
+    expect(region.hasAttribute("aria-atomic")).toBe(false);
   });
 
   it("applies aria-live and aria-atomic when ariaLive is provided", () => {

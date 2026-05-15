@@ -129,7 +129,7 @@ export function InlineStatusBanner({
       }}
       role={role}
       aria-live={ariaLive}
-      aria-atomic={ariaLive ? "true" : undefined}
+      aria-atomic={ariaLive && ariaLive !== "off" ? "true" : undefined}
     >
       <div className={cn("flex", hasDescription ? "items-start" : "items-center", "gap-2 min-w-0")}>
         <IconComponent

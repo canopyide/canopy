@@ -133,6 +133,27 @@ describe("TerminalCountWarning", () => {
     expect(className).not.toMatch(/(^|\s)focus:ring-/);
   });
 
+  it("waits the full 250ms exit animation before unmounting on dismiss", () => {
+    vi.useFakeTimers();
+    try {
+      render(<TerminalCountWarning />);
+      const dismissBtn = screen.getByRole("button", { name: /dismiss warning/i });
+      act(() => {
+        fireEvent.click(dismissBtn);
+      });
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(limitState.dismissSoftWarning).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(50);
+      });
+      expect(limitState.dismissSoftWarning).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not call dismissSoftWarning if unmounted before the dismiss delay fires", () => {
     vi.useFakeTimers();
     try {
