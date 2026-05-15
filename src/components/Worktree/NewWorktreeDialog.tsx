@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { FolderGit2, Check, AlertCircle, ChevronDown } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
+import { Skeleton, SkeletonBone } from "@/components/ui/Skeleton";
 import type { BranchInfo, CreateWorktreeOptions } from "@/types/electron";
 import type { GitHubIssue, GitHubPR } from "@shared/types/github";
 import { worktreeClient, githubClient } from "@/clients";
@@ -696,10 +697,20 @@ export function NewWorktreeDialog({
 
       <AppDialog.Body>
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Spinner size="xl" className="text-daintree-accent" />
-            <span className="ml-2 text-sm text-daintree-text/60">Loading branches...</span>
-          </div>
+          <Skeleton label="Loading branches" className="space-y-4 py-2">
+            <div className="space-y-2">
+              <SkeletonBone className="h-4 w-24" />
+              <SkeletonBone className="h-9 w-full" />
+            </div>
+            <div className="space-y-2">
+              <SkeletonBone className="h-4 w-28" />
+              <SkeletonBone className="h-9 w-full" />
+            </div>
+            <div className="space-y-2">
+              <SkeletonBone className="h-4 w-20" />
+              <SkeletonBone className="h-9 w-full" />
+            </div>
+          </Skeleton>
         ) : (
           <div className="space-y-4">
             {initialPR ? (
