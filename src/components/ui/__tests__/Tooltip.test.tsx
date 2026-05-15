@@ -1,17 +1,19 @@
 // @vitest-environment jsdom
-import { render } from "@testing-library/react";
+import * as React from "react";
+import { fireEvent, render } from "@testing-library/react";
 import { useState } from "react";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FixedDropdownVisibleContext } from "../fixed-dropdown";
 import { Tooltip, TooltipTrigger, TooltipContent } from "../tooltip";
 
-const { rootSpy, mountSpy } = vi.hoisted(() => ({
+const { rootSpy, mountSpy, primeOnEventSpy } = vi.hoisted(() => ({
   rootSpy: vi.fn(),
   mountSpy: vi.fn(),
+  primeOnEventSpy: vi.fn(),
 }));
 
 vi.mock("../radix-loader", () => ({
-  primeOnEvent: vi.fn(),
+  primeOnEvent: primeOnEventSpy,
   useRadixPrimitives: () => ({
     TooltipPrimitive: {
       Provider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -33,7 +35,20 @@ vi.mock("../radix-loader", () => ({
           </span>
         );
       },
-      Trigger: ({ children }: { children: React.ReactNode }) => <button>{children}</button>,
+      // Forward all props/ref so tests can fire DOM events through the
+      // wrapper's handlers — needed for the pointerActiveRef focus filter
+      // (issue #8008).
+      Trigger: React.forwardRef<
+        HTMLButtonElement,
+        React.ButtonHTMLAttributes<HTMLButtonElement> & {
+          asChild?: boolean;
+          children: React.ReactNode;
+        }
+      >(({ asChild: _asChild, children, ...rest }, ref) => (
+        <button type="button" ref={ref} {...rest}>
+          {children}
+        </button>
+      )),
       Portal: ({ children }: { children: React.ReactNode }) => <>{children}</>,
       Content: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
     },
@@ -152,5 +167,103 @@ describe("Tooltip wrapper — FixedDropdownVisibleContext gate (issue #8001)", (
     // The reveal mount id must also differ from the initial one — both are
     // distinct mounts, just both share the "visible" key.
     expect(revealedMountId).not.toBe(initialMountId);
+  });
+});
+
+describe("TooltipTrigger — pointerActiveRef focus filter (issue #8008)", () => {
+  beforeEach(() => {
+    primeOnEventSpy.mockClear();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function harness(props: {
+    onPointerDown?: React.PointerEventHandler<HTMLButtonElement>;
+    onPointerUp?: React.PointerEventHandler<HTMLButtonElement>;
+    onPointerEnter?: React.PointerEventHandler<HTMLButtonElement>;
+    onFocusCapture?: React.FocusEventHandler<HTMLButtonElement>;
+  }) {
+    return (
+      <FixedDropdownVisibleContext.Provider value={true}>
+        <Tooltip>
+          <TooltipTrigger {...props} data-testid="trigger">
+            trigger
+          </TooltipTrigger>
+          <TooltipContent>content</TooltipContent>
+        </Tooltip>
+      </FixedDropdownVisibleContext.Provider>
+    );
+  }
+
+  it("suppresses focus opened by a pointer click", () => {
+    const onFocusCapture = vi.fn();
+    const { getByTestId } = render(harness({ onFocusCapture }));
+    const btn = getByTestId("trigger");
+
+    // Simulate the browser sequence for a click-on-button: pointerdown,
+    // focus (synchronously dispatched by the browser before pointerup),
+    // pointerup. The wrapper must skip both primeOnEvent and the consumer's
+    // onFocusCapture — the focus arrived via a pointer click, not keyboard,
+    // and opening the tooltip here is the sticky-after-click pattern.
+    fireEvent.pointerDown(btn);
+    primeOnEventSpy.mockClear(); // pointerDown legitimately primes; isolate the focus path
+    fireEvent.focus(btn);
+
+    expect(primeOnEventSpy).not.toHaveBeenCalled();
+    expect(onFocusCapture).not.toHaveBeenCalled();
+  });
+
+  it("allows keyboard focus (no preceding pointer event) to open normally", () => {
+    const onFocusCapture = vi.fn();
+    const { getByTestId } = render(harness({ onFocusCapture }));
+    const btn = getByTestId("trigger");
+
+    fireEvent.focus(btn);
+
+    expect(primeOnEventSpy).toHaveBeenCalled();
+    expect(onFocusCapture).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the pointer guard on the next tick so subsequent keyboard focus opens", () => {
+    const onFocusCapture = vi.fn();
+    const { getByTestId } = render(harness({ onFocusCapture }));
+    const btn = getByTestId("trigger");
+
+    fireEvent.pointerDown(btn);
+    fireEvent.pointerUp(btn);
+    // The setTimeout(0) inside pointerUp must clear the ref before the
+    // next discrete user interaction. Flush the timer and then fire
+    // focus — this models the user tabbing to the trigger after the
+    // click sequence settles.
+    vi.runAllTimers();
+
+    fireEvent.focus(btn);
+
+    expect(onFocusCapture).toHaveBeenCalledTimes(1);
+  });
+
+  it("forwards consumer pointer/focus handlers", () => {
+    const onPointerDown = vi.fn();
+    const onPointerUp = vi.fn();
+    const onPointerEnter = vi.fn();
+    const onFocusCapture = vi.fn();
+    const { getByTestId } = render(
+      harness({ onPointerDown, onPointerUp, onPointerEnter, onFocusCapture })
+    );
+    const btn = getByTestId("trigger");
+
+    fireEvent.pointerEnter(btn);
+    fireEvent.pointerDown(btn);
+    fireEvent.pointerUp(btn);
+    vi.runAllTimers();
+    fireEvent.focus(btn);
+
+    expect(onPointerEnter).toHaveBeenCalledTimes(1);
+    expect(onPointerDown).toHaveBeenCalledTimes(1);
+    expect(onPointerUp).toHaveBeenCalledTimes(1);
+    expect(onFocusCapture).toHaveBeenCalledTimes(1);
   });
 });

@@ -52,57 +52,91 @@ type TooltipTriggerProps = React.ComponentPropsWithoutRef<typeof TooltipPrimitiv
 const TooltipTrigger = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitiveType.Trigger>,
   TooltipTriggerProps
->(({ asChild, children, onPointerEnter, onFocusCapture, ...props }, ref) => {
-  const radix = useRadixPrimitives();
+>(
+  (
+    { asChild, children, onPointerEnter, onPointerDown, onPointerUp, onFocusCapture, ...props },
+    ref
+  ) => {
+    const radix = useRadixPrimitives();
+    // Track whether the most recent focus arrived via a pointer interaction.
+    // Radix opens the tooltip on focus, which produces a sticky tooltip after
+    // a click on a tooltip-armed control (the button gains focus, the tooltip
+    // shows, and stays until the next pointer move). Setting the ref on
+    // pointerdown and clearing it on the next tick after pointerup lets the
+    // focus handler distinguish keyboard focus (open) from pointer focus
+    // (suppress) — see issue #8008.
+    const pointerActiveRef = React.useRef(false);
 
-  const handlePointerEnter: React.PointerEventHandler<HTMLButtonElement> = (event) => {
-    primeOnEvent();
-    onPointerEnter?.(event);
-  };
-  const handleFocusCapture: React.FocusEventHandler<HTMLButtonElement> = (event) => {
-    primeOnEvent();
-    onFocusCapture?.(event);
-  };
+    const handlePointerEnter: React.PointerEventHandler<HTMLButtonElement> = (event) => {
+      primeOnEvent();
+      onPointerEnter?.(event);
+    };
+    const handlePointerDown: React.PointerEventHandler<HTMLButtonElement> = (event) => {
+      pointerActiveRef.current = true;
+      primeOnEvent();
+      onPointerDown?.(event);
+    };
+    const handlePointerUp: React.PointerEventHandler<HTMLButtonElement> = (event) => {
+      onPointerUp?.(event);
+      setTimeout(() => {
+        pointerActiveRef.current = false;
+      }, 0);
+    };
+    const handleFocusCapture: React.FocusEventHandler<HTMLButtonElement> = (event) => {
+      if (pointerActiveRef.current) {
+        event.preventDefault();
+        return;
+      }
+      primeOnEvent();
+      onFocusCapture?.(event);
+    };
 
-  if (!radix) {
-    if (asChild) {
+    if (!radix) {
+      if (asChild) {
+        return (
+          <Slot
+            ref={ref}
+            onPointerEnter={handlePointerEnter}
+            onPointerDown={handlePointerDown}
+            onPointerUp={handlePointerUp}
+            onFocusCapture={handleFocusCapture}
+            {...props}
+          >
+            {children}
+          </Slot>
+        );
+      }
       return (
-        <Slot
-          ref={ref}
+        <button
+          type="button"
+          ref={ref as React.Ref<HTMLButtonElement>}
           onPointerEnter={handlePointerEnter}
+          onPointerDown={handlePointerDown}
+          onPointerUp={handlePointerUp}
           onFocusCapture={handleFocusCapture}
-          {...props}
+          {...(props as React.ButtonHTMLAttributes<HTMLButtonElement>)}
         >
           {children}
-        </Slot>
+        </button>
       );
     }
+
+    const Trigger = radix.TooltipPrimitive.Trigger;
     return (
-      <button
-        type="button"
-        ref={ref as React.Ref<HTMLButtonElement>}
+      <Trigger
+        ref={ref}
+        asChild={asChild}
         onPointerEnter={handlePointerEnter}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
         onFocusCapture={handleFocusCapture}
-        {...(props as React.ButtonHTMLAttributes<HTMLButtonElement>)}
+        {...props}
       >
         {children}
-      </button>
+      </Trigger>
     );
   }
-
-  const Trigger = radix.TooltipPrimitive.Trigger;
-  return (
-    <Trigger
-      ref={ref}
-      asChild={asChild}
-      onPointerEnter={handlePointerEnter}
-      onFocusCapture={handleFocusCapture}
-      {...props}
-    >
-      {children}
-    </Trigger>
-  );
-});
+);
 TooltipTrigger.displayName = "TooltipTrigger";
 
 type TooltipContentProps = React.ComponentPropsWithoutRef<typeof TooltipPrimitiveType.Content>;
@@ -110,7 +144,7 @@ type TooltipContentProps = React.ComponentPropsWithoutRef<typeof TooltipPrimitiv
 const TooltipContent = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitiveType.Content>,
   TooltipContentProps
->(({ className, sideOffset = 4, style, ...props }, ref) => {
+>(({ className, sideOffset = 4, collisionPadding = 8, style, ...props }, ref) => {
   const radix = useRadixPrimitives();
   if (!radix) return null;
   const Portal = radix.TooltipPrimitive.Portal;
@@ -120,9 +154,10 @@ const TooltipContent = React.forwardRef<
       <Content
         ref={ref}
         sideOffset={sideOffset}
+        collisionPadding={collisionPadding}
         style={{ transformOrigin: "var(--radix-tooltip-content-transform-origin)", ...style }}
         className={cn(
-          "z-[var(--z-popover)] overflow-hidden rounded-[var(--radius-md)] surface-overlay shadow-overlay px-3 py-1.5 text-xs text-daintree-text",
+          "z-[var(--z-popover)] max-w-xs overflow-hidden rounded-[var(--radius-md)] surface-overlay shadow-overlay px-3 py-1.5 text-xs text-daintree-text",
           "animate-in fade-in-0 zoom-in-95 duration-150 data-[state=closed]:animate-out data-[state=closed]:duration-[100ms] data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1",
           className
         )}

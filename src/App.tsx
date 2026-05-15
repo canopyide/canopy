@@ -641,6 +641,7 @@ function App() {
             <TooltipProvider
               delayDuration={UI_TOOLTIP_DELAY_DURATION}
               skipDelayDuration={UI_TOOLTIP_SKIP_DELAY_DURATION}
+              disableHoverableContent
             >
               <DndProvider>
                 <AppLayout
@@ -667,6 +668,7 @@ function App() {
           <TooltipProvider
             delayDuration={UI_TOOLTIP_DELAY_DURATION}
             skipDelayDuration={UI_TOOLTIP_SKIP_DELAY_DURATION}
+            disableHoverableContent
           >
             <E2EFaultInjector />
             {isSafeMode && <SafeModeBanner />}
