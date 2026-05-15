@@ -88,6 +88,21 @@ export function getTerminalRefreshTier(
     return TerminalRefreshTierEnum.VISIBLE;
   }
 
+  // A non-agent terminal actively producing output must keep streaming even
+  // when unfocused — dropping it to BACKGROUND would freeze long-running
+  // commands (builds, watchers, dev servers) until the user re-focuses it.
+  // ActivityMonitor's 1500ms hold debounces transitions to prevent flicker.
+  if (
+    terminal.hasPty !== false &&
+    terminal.activityStatus === "working" &&
+    terminal.runtimeStatus !== "exited" &&
+    terminal.runtimeStatus !== "error" &&
+    terminal.location !== "trash" &&
+    terminal.location !== "background"
+  ) {
+    return TerminalRefreshTierEnum.VISIBLE;
+  }
+
   // Non-agent, non-focused terminals drop to BACKGROUND so idle instances
   // can be hibernated (xterm.js disposed) to free memory.
   return TerminalRefreshTierEnum.BACKGROUND;
