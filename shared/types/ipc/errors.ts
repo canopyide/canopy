@@ -209,6 +209,8 @@ export interface ErrorRecord {
   };
   /** Classifies whether and how this error can be recovered from. */
   retryability: ErrorRetryability;
+  /** Whether this error is critical (config or filesystem) — drives persistence policy */
+  isCritical?: boolean;
   /** Whether user has dismissed this error */
   dismissed: boolean;
   /** Action that can be retried */
