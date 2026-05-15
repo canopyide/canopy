@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { AlertTriangle, Loader2, RotateCcw } from "lucide-react";
+import { XCircle, Loader2, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InlineStatusBanner } from "./InlineStatusBanner";
 import type { RestartBannerVariant } from "./restartStatus";
@@ -45,7 +45,7 @@ export function TerminalRestartStatusBanner({
     case "exit-error":
       return (
         <InlineStatusBanner
-          icon={AlertTriangle}
+          icon={XCircle}
           title={`Session exited with code ${variant.exitCode}`}
           severity="error"
           animated={false}

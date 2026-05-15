@@ -1,4 +1,4 @@
-import { AlertTriangle, RotateCcw, FolderEdit, Trash2 } from "lucide-react";
+import { XCircle, RotateCcw, FolderEdit, Trash2 } from "lucide-react";
 import { InlineStatusBanner, type BannerAction } from "./InlineStatusBanner";
 import { sanitizeErrorText, boundedErrorText } from "@/utils/errorText";
 import type { TerminalRestartError } from "@/types";
@@ -62,7 +62,7 @@ export function TerminalErrorBanner({
 
   return (
     <InlineStatusBanner
-      icon={AlertTriangle}
+      icon={XCircle}
       title="Terminal restart failed"
       description={boundedErrorText(error.message)}
       contextLine={
