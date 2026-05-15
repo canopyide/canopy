@@ -417,7 +417,7 @@ export function isDevPreviewPanel(
 
 export function isReviewPanel(panel: PanelInstance | TerminalInstance): panel is ReviewPanelData {
   const kind = panel.kind ?? "terminal";
-  // eslint-disable-next-line no-restricted-syntax -- sanctioned panel-kind type guard
+
   return kind === "review";
 }
 
