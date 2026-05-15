@@ -1,11 +1,31 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
 import {
   escapeShellArg,
   escapeShellArgOptional,
+  escapeWindowsArg,
   hasShellMetachar,
+  isCmdShell,
+  isPowerShellShell,
   isSafeUnescaped,
   isWindows,
+  quoteCommandArg,
+  quotePowerShellArg,
 } from "../shellEscape.js";
+
+const originalPlatformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
+
+function setPlatform(platform: NodeJS.Platform): void {
+  Object.defineProperty(process, "platform", {
+    value: platform,
+    configurable: true,
+  });
+}
+
+function restorePlatform(): void {
+  if (originalPlatformDescriptor) {
+    Object.defineProperty(process, "platform", originalPlatformDescriptor);
+  }
+}
 
 describe("shellEscape", () => {
   describe("escapeShellArg - POSIX", () => {
@@ -251,6 +271,162 @@ describe("shellEscape", () => {
       const withNull = "before\0after";
       const escaped = escapeShellArg(withNull, "posix");
       expect(escaped.includes("\0")).toBe(true);
+    });
+  });
+
+  describe("quotePowerShellArg", () => {
+    it("wraps simple strings in single quotes", () => {
+      expect(quotePowerShellArg("hello")).toBe("'hello'");
+      expect(quotePowerShellArg("hello world")).toBe("'hello world'");
+    });
+
+    it("doubles embedded single quotes (PowerShell literal-string escape)", () => {
+      expect(quotePowerShellArg("it's working")).toBe("'it''s working'");
+      expect(quotePowerShellArg("O'Brien")).toBe("'O''Brien'");
+    });
+
+    it("handles paths with spaces and apostrophes", () => {
+      expect(quotePowerShellArg("C:\\Users\\O'Brien\\config.json")).toBe(
+        "'C:\\Users\\O''Brien\\config.json'"
+      );
+    });
+
+    it("leaves double quotes untouched (single-quote literal strings)", () => {
+      expect(quotePowerShellArg('say "hi"')).toBe("'say \"hi\"'");
+    });
+
+    it("handles empty strings", () => {
+      expect(quotePowerShellArg("")).toBe("''");
+    });
+
+    it("handles consecutive single quotes", () => {
+      expect(quotePowerShellArg("''")).toBe("''''''");
+    });
+
+    it("leaves $variable expansion safely literal (single-quote strings don't expand)", () => {
+      expect(quotePowerShellArg("$env:PATH")).toBe("'$env:PATH'");
+    });
+  });
+
+  describe("isPowerShellShell", () => {
+    it("matches pwsh and powershell with .exe", () => {
+      expect(isPowerShellShell("pwsh.exe")).toBe(true);
+      expect(isPowerShellShell("powershell.exe")).toBe(true);
+    });
+
+    it("matches pwsh and powershell without .exe", () => {
+      expect(isPowerShellShell("pwsh")).toBe(true);
+      expect(isPowerShellShell("powershell")).toBe(true);
+    });
+
+    it("matches with mixed case", () => {
+      expect(isPowerShellShell("PowerShell.exe")).toBe(true);
+      expect(isPowerShellShell("PWSH.EXE")).toBe(true);
+    });
+
+    it("matches full Windows paths", () => {
+      expect(isPowerShellShell("C:\\Program Files\\PowerShell\\7\\pwsh.exe")).toBe(true);
+      expect(
+        isPowerShellShell("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+      ).toBe(true);
+    });
+
+    it("uses basename-exact matching, not substring", () => {
+      // A binary named "powerwash.exe" should NOT match (substring landmine).
+      expect(isPowerShellShell("C:\\tools\\powerwash.exe")).toBe(false);
+      expect(isPowerShellShell("C:\\src\\tools\\bash.exe")).toBe(false);
+    });
+
+    it("does not match cmd or POSIX shells", () => {
+      expect(isPowerShellShell("cmd.exe")).toBe(false);
+      expect(isPowerShellShell("/bin/bash")).toBe(false);
+      expect(isPowerShellShell("/bin/zsh")).toBe(false);
+    });
+  });
+
+  describe("isCmdShell", () => {
+    it("matches cmd.exe and cmd", () => {
+      expect(isCmdShell("cmd.exe")).toBe(true);
+      expect(isCmdShell("cmd")).toBe(true);
+    });
+
+    it("matches full Windows paths", () => {
+      expect(isCmdShell("C:\\Windows\\System32\\cmd.exe")).toBe(true);
+    });
+
+    it("matches mixed case", () => {
+      expect(isCmdShell("CMD.EXE")).toBe(true);
+      expect(isCmdShell("Cmd.exe")).toBe(true);
+    });
+
+    it("uses basename-exact matching, not substring", () => {
+      // Lesson #2398: never substring-match on shell names.
+      expect(isCmdShell("C:\\tools\\cmder\\bin\\bash.exe")).toBe(false);
+      expect(isCmdShell("C:\\src\\command\\bin\\zsh.exe")).toBe(false);
+    });
+
+    it("does not match PowerShell or POSIX shells", () => {
+      expect(isCmdShell("pwsh.exe")).toBe(false);
+      expect(isCmdShell("powershell.exe")).toBe(false);
+      expect(isCmdShell("/bin/bash")).toBe(false);
+    });
+  });
+
+  describe("escapeWindowsArg (exported)", () => {
+    it("is now a public export usable from other modules", () => {
+      expect(escapeWindowsArg("hello")).toBe('"hello"');
+      expect(escapeWindowsArg('say "hi"')).toBe('"say ""hi"""');
+    });
+  });
+
+  describe("quoteCommandArg", () => {
+    afterEach(() => {
+      restorePlatform();
+    });
+
+    it("uses PowerShell single-quote escaping on Windows + pwsh", () => {
+      setPlatform("win32");
+      expect(quoteCommandArg("C:\\Users\\O'Brien\\config.json", "pwsh.exe")).toBe(
+        "'C:\\Users\\O''Brien\\config.json'"
+      );
+    });
+
+    it("uses PowerShell single-quote escaping on Windows + powershell.exe", () => {
+      setPlatform("win32");
+      expect(
+        quoteCommandArg(
+          "hello world",
+          "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+        )
+      ).toBe("'hello world'");
+    });
+
+    it("uses cmd double-quote escaping on Windows + cmd.exe", () => {
+      setPlatform("win32");
+      expect(quoteCommandArg('say "hi"', "cmd.exe")).toBe('"say ""hi"""');
+      expect(quoteCommandArg("C:\\path\\to\\file.json", "cmd.exe")).toBe(
+        '"C:\\path\\to\\file.json"'
+      );
+    });
+
+    it("falls back to POSIX escaping on Windows for unknown shells", () => {
+      setPlatform("win32");
+      // git-bash on Windows would be /usr/bin/bash — falls through to POSIX.
+      expect(quoteCommandArg("it's working", "/usr/bin/bash")).toBe("'it'\\''s working'");
+    });
+
+    it("uses POSIX escaping on macOS regardless of shell", () => {
+      setPlatform("darwin");
+      expect(quoteCommandArg("it's working", "/bin/zsh")).toBe("'it'\\''s working'");
+      // Even if a Windows-style shell is configured on POSIX (unusual but
+      // not impossible during testing), POSIX wins because process.platform
+      // gates the Windows branches.
+      expect(quoteCommandArg("hello", "pwsh.exe")).toBe("'hello'");
+    });
+
+    it("uses POSIX escaping on Linux", () => {
+      setPlatform("linux");
+      expect(quoteCommandArg("path with spaces", "/bin/bash")).toBe("'path with spaces'");
     });
   });
 

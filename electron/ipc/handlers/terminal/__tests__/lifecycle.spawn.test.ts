@@ -359,6 +359,67 @@ describe("terminal spawn handler - projectId resolution", () => {
   });
 });
 
+describe("terminal spawn handler - PTY pool eligibility (#7945 regression guard)", () => {
+  let ptyClient: {
+    spawn: ReturnType<typeof vi.fn>;
+    hasTerminal: ReturnType<typeof vi.fn>;
+    write: ReturnType<typeof vi.fn>;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ptyClient = {
+      spawn: vi.fn(),
+      hasTerminal: vi.fn(() => false),
+      write: vi.fn(),
+    };
+    mockGetCurrentProject.mockReturnValue({ id: "p1", path: "/tmp", name: "p" });
+    mockGetProjectById.mockReturnValue(null);
+    mockGetProjectSettings.mockResolvedValue({});
+  });
+
+  it("leaves shell undefined in the spawn options for plain terminals so the PTY pool can match", async () => {
+    // The PTY pool gate in `acquirePtyProcess` (terminalSpawn.ts) requires
+    // `!options.shell`. Promoting the renderer-side default into the spawn
+    // options would silently disable the pool for every plain terminal —
+    // including the cost of `where pwsh.exe` PATH probes on Windows.
+    // The renderer-side `getDefaultShell()` fallback that #7945 introduced
+    // is for quoting decisions only; it must not leak into spawnShell.
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler({} as Electron.IpcMainInvokeEvent, {
+      cwd: "/tmp",
+      cols: 80,
+      rows: 24,
+    });
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.shell).toBeUndefined();
+    expect(spawnArgs.command).toBeUndefined();
+  });
+
+  it("passes the explicit shell through to spawn options when one is set", async () => {
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cwd: "/tmp",
+        cols: 80,
+        rows: 24,
+        shell: "/bin/bash",
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.shell).toBe("/bin/bash");
+  });
+});
+
 describe("terminal spawn handler - cwd fallback (#5139: worktree is now renderer-owned)", () => {
   let ptyClient: {
     spawn: ReturnType<typeof vi.fn>;
