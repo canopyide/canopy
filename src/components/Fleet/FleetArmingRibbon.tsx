@@ -93,6 +93,18 @@ export function FleetArmingRibbon(): ReactElement | null {
     }
   }, [armedCount, popoverOpen]);
 
+  // The fleet-delete confirm renders only in the armedCount>=2 branch. If the
+  // armed set drains below 2 while it's pending, the dialog unmounts without
+  // an onClose — clear the id so it can't resurface for a stale fleet when
+  // the count climbs back. Also drop it if the scope disappears entirely
+  // (deleted from another window) so the title can't show a phantom name.
+  useEffect(() => {
+    if (pendingDeleteFleetId === null) return;
+    if (armedCount < 2 || !savedScopes.some((s) => s.id === pendingDeleteFleetId)) {
+      setPendingDeleteFleetId(null);
+    }
+  }, [armedCount, pendingDeleteFleetId, savedScopes]);
+
   // Escape stack: confirmation cancel is owned here so a pending confirm
   // absorbs bare Escape before it reaches the targets. The armed-list
   // popover gets its own entry so bare Escape closes the list without
@@ -335,12 +347,18 @@ export function FleetArmingRibbon(): ReactElement | null {
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       if (e.key !== "Escape") return;
       if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-      if (pendingBroadcast !== null || popoverOpen || pending !== null) return;
+      if (
+        pendingBroadcast !== null ||
+        popoverOpen ||
+        pending !== null ||
+        pendingDeleteFleetId !== null
+      )
+        return;
       e.preventDefault();
       e.stopPropagation();
       exitFleet();
     },
-    [exitFleet, pendingBroadcast, popoverOpen, pending]
+    [exitFleet, pendingBroadcast, popoverOpen, pending, pendingDeleteFleetId]
   );
 
   // Render confirmation before the armedCount<2 null guard so single-agent
