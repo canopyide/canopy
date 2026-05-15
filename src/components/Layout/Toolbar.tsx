@@ -884,7 +884,7 @@ export function Toolbar({
                   data-testid="toolbar-overflow-badge"
                   data-severity={severity}
                   data-visible={severity !== null}
-                  className="toolbar-overflow-badge toolbar-badge absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full ring-1 ring-daintree-bg/60 pointer-events-none"
+                  className="toolbar-overflow-badge toolbar-badge absolute top-1.5 right-1.5 h-1.5 w-1.5 pointer-events-none"
                 />
               </Button>
             </DropdownMenuTrigger>
