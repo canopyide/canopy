@@ -257,6 +257,7 @@ ipcRenderer.on("workspace-port", (event: Electron.IpcRendererEvent) => {
           prNumber: data.prNumber,
           prUrl: data.prUrl,
           prState: data.prState,
+          prCiStatus: data.prCiStatus,
           prTitle: data.prTitle,
           issueNumber: data.issueNumber,
           issueTitle: data.issueTitle,

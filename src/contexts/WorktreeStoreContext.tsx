@@ -5,11 +5,14 @@ import {
   type WorktreeViewStoreApi,
 } from "@/store/createWorktreeStore";
 import type { WorktreeSnapshot } from "@shared/types";
+import type { GitHubPR, GitHubPRCIStatus } from "@shared/types/github";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { usePanelStore } from "@/store/panelStore";
 import { usePulseStore } from "@/store/pulseStore";
+import { useProjectStore } from "@/store/projectStore";
 import { wakeActiveWorktreeTerminals } from "@/store/wakeActiveWorktreeTerminals";
 import { worktreeClient } from "@/clients/worktreeClient";
+import { mutateCacheEntries } from "@/lib/githubResourceCache";
 
 export const WorktreeStoreContext = createContext<WorktreeViewStoreApi | null>(null);
 
@@ -29,6 +32,7 @@ interface PRDetectedEvent {
   prNumber: number;
   prUrl: string;
   prState: "open" | "merged" | "closed";
+  prCiStatus?: GitHubPRCIStatus;
   prTitle?: string;
   issueNumber?: number;
   issueTitle?: string;
@@ -194,16 +198,22 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
 
     cleanups.push(
       worktreePort.onEvent("pr-detected", (data) => {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         const event = data as PRDetectedEvent;
         const { worktrees } = store.getState();
         const existing = worktrees.get(event.worktreeId);
         if (!existing) return;
+        // Full-replace semantics for prCiStatus mirror the backend
+        // (WorktreeMonitor.setPRInfo): undefined means "no checks", not
+        // "preserve prior value." Merging with ?? would let stale CI rollups
+        // linger after checks disappear.
         store.getState().applyUpdate(
           {
             ...existing,
             prNumber: event.prNumber,
             prUrl: event.prUrl,
             prState: event.prState,
+            prCiStatus: event.prCiStatus,
             prTitle: event.prTitle ?? existing.prTitle,
             issueNumber: event.issueNumber ?? existing.issueNumber,
             issueTitle: event.issueTitle ?? existing.issueTitle,
@@ -212,6 +222,25 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
           },
           store.getState().nextVersion()
         );
+
+        // Sync the GitHub PR dropdown cache so the sidebar PRBadge and the
+        // dropdown row can't drift. Read the project path at event time —
+        // capturing it in the effect closure would corrupt cache slots after
+        // a project switch (#4670).
+        const projectPath = useProjectStore.getState().currentProject?.path;
+        if (!projectPath) return;
+        mutateCacheEntries(projectPath, "pr", (entry) => {
+          let changed = false;
+          const items = entry.items.map((item) => {
+            const pr = item as GitHubPR;
+            if (pr.number !== event.prNumber) return item;
+            if (pr.ciStatus === event.prCiStatus) return item;
+            changed = true;
+            return { ...pr, ciStatus: event.prCiStatus };
+          });
+          if (!changed) return null;
+          return { ...entry, items };
+        });
       })
     );
 
