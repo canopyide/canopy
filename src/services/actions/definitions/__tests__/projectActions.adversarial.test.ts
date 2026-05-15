@@ -19,7 +19,7 @@ const projectMruMock = vi.hoisted(() => ({
 
 vi.mock("@/clients", () => ({ projectClient: projectClientMock }));
 vi.mock("@/store/projectStore", () => ({ useProjectStore: projectStoreMock }));
-vi.mock("@/lib/projectMru", () => projectMruMock);
+vi.mock("@shared/utils/projectMru", () => projectMruMock);
 vi.mock("@/lib/notify", () => ({ notify: vi.fn() }));
 
 import { registerProjectActions } from "../projectActions";

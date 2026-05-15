@@ -86,7 +86,7 @@ vi.mock("../projectQuarantineCleanup.js", () => ({
 
 import { ProjectStore } from "../ProjectStore.js";
 import { setWritesSuppressed, resetWritesSuppressedForTesting } from "../diskPressureState.js";
-import { getMruProjects } from "../../../src/lib/projectMru.js";
+import { getMruProjects } from "../../../shared/utils/projectMru.js";
 
 describe("ProjectStore.setCurrentProject MRU lastOpened bump", () => {
   let store: ProjectStore;

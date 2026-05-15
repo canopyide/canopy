@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { advanceMruIndex, getMruProjects } from "../projectMru";
-import type { Project } from "@shared/types";
+import { advanceMruIndex, getMruProjects } from "../projectMru.js";
+import type { Project } from "../../types/project.js";
 
 function make(id: string, lastOpened: number, name = id): Project {
   return { id, path: `/repo/${id}`, name, emoji: "🌲", lastOpened };

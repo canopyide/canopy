@@ -4,7 +4,7 @@ import { z } from "zod";
 import { projectClient } from "@/clients";
 import { useProjectStore } from "@/store/projectStore";
 import { useProjectSettingsStore } from "@/store/projectSettingsStore";
-import { getMruProjects } from "@/lib/projectMru";
+import { getMruProjects } from "@shared/utils/projectMru";
 import { notify, EVENT_KIND_TO_SETTING_KEY, EVENT_KIND_LABEL } from "@/lib/notify";
 import type { NotificationEventKind } from "@/lib/notify";
 import { formatErrorMessage } from "@shared/utils/errorMessage";

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { advanceMruIndex, getMruProjects } from "@/lib/projectMru";
+import { advanceMruIndex, getMruProjects } from "@shared/utils/projectMru";
 import { notify } from "@/lib/notify";
 import { useProjectStore } from "@/store/projectStore";
 import type { Project } from "@shared/types";

@@ -26,7 +26,7 @@ vi.mock("@/store/projectStore", () => ({
   useProjectStore: { getState: () => ({}) },
 }));
 
-vi.mock("@/lib/projectMru", () => ({
+vi.mock("@shared/utils/projectMru", () => ({
   getMruProjects: () => [],
 }));
 

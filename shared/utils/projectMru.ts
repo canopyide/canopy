@@ -1,4 +1,4 @@
-import type { Project } from "@shared/types";
+import type { Project } from "../types/project.js";
 
 /**
  * Return projects sorted by MRU order (most-recently-opened first), stable by name.
