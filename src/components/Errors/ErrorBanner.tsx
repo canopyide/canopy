@@ -12,7 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ErrorRecord, RetryAction } from "@/store/errorStore";
-import { useErrorStore } from "@/store/errorStore";
+import { RECURRENCE_THRESHOLD, useErrorStore } from "@/store/errorStore";
 import { useDiagnosticsStore } from "@/store/diagnosticsStore";
 import { actionService } from "@/services/ActionService";
 
@@ -31,6 +31,13 @@ function bannerActionFor(error: ErrorRecord, hasOnRetry: boolean): BannerAction 
   // recovery — flip the banner CTA to "View errors" so the user is routed
   // to the dock instead of seeing a stale Retry next to the open dock.
   if (error.promotedToDock) {
+    return "view-errors";
+  }
+  // Hard exit for runaway-retry conditions: the loop already gave up
+  // (retryExhausted) or the same fingerprint has fired ≥ RECURRENCE_THRESHOLD
+  // times across sessions. Either way, surfacing Retry would re-run a known
+  // failure path. Route to the dock instead so the user sees the full history.
+  if (error.retryExhausted || (error.occurrenceCount ?? 0) >= RECURRENCE_THRESHOLD) {
     return "view-errors";
   }
   if (error.retryability === "auto" && error.retryAction && hasOnRetry) {

@@ -232,6 +232,7 @@ export interface StoreSchema {
     auditRetention: 7 | 30 | 0;
   };
   pendingErrors: ErrorRecord[];
+  errorFingerprints: Record<string, { count: number; firstSeen: number; lastSeen: number }>;
   gpu: {
     hardwareAccelerationDisabled: boolean;
   };
@@ -383,6 +384,7 @@ const storeOptions = {
       auditRetention: 7 as const,
     },
     pendingErrors: [],
+    errorFingerprints: {},
     gpu: {
       hardwareAccelerationDisabled: false,
     },

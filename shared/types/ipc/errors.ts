@@ -229,4 +229,12 @@ export interface ErrorRecord {
   gitReason?: GitOperationReason;
   /** Structured CTA the renderer can surface alongside the error */
   recoveryAction?: RecoveryAction;
+  /** Whether retry has been exhausted (max attempts reached) */
+  retryExhausted?: boolean;
+  /**
+   * How many times this error fingerprint has been seen across all sessions.
+   * Set by the main process from persisted fingerprint counters; 1 = first
+   * occurrence including this one.
+   */
+  occurrenceCount?: number;
 }

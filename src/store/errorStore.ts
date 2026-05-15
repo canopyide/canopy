@@ -37,6 +37,14 @@ export interface ErrorRecord {
   recoveryAction?: RecoveryAction;
   /** Set when the error has been promoted to the diagnostics dock (auto-open or user click) */
   promotedToDock?: boolean;
+  /** Whether retry has been exhausted (max attempts reached) */
+  retryExhausted?: boolean;
+  /**
+   * How many times this error fingerprint has been seen across all sessions.
+   * Set by the main process from persisted fingerprint counters; 1 = first
+   * occurrence including this one.
+   */
+  occurrenceCount?: number;
 }
 
 interface ErrorStore {
@@ -115,6 +123,12 @@ const createErrorStore: StateCreator<ErrorStore> = (set, get) => ({
                 recoveryHint: e.recoveryHint ?? error.recoveryHint,
                 correlationId: e.correlationId ?? error.correlationId,
                 promotedToDock: e.promotedToDock,
+                // Recurrence tracking is owned by the main process (persisted
+                // fingerprint store) — prefer the incoming value so a stale
+                // dedup-cached counter never masks escalation across the
+                // RECURRENCE_THRESHOLD gate.
+                retryExhausted: error.retryExhausted ?? e.retryExhausted,
+                occurrenceCount: error.occurrenceCount ?? e.occurrenceCount,
               }
             : e
         ),
@@ -208,5 +222,7 @@ const createErrorStore: StateCreator<ErrorStore> = (set, get) => ({
       lastErrorTime: 0,
     }),
 });
+
+export const RECURRENCE_THRESHOLD = 5;
 
 export const useErrorStore = create<ErrorStore>()(createErrorStore);

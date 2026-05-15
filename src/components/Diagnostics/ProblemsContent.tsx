@@ -1,6 +1,6 @@
 import { useMemo, useCallback, useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { useErrorStore, type ErrorRecord, type RetryAction } from "@/store";
+import { useErrorStore, type ErrorRecord, type RetryAction, RECURRENCE_THRESHOLD } from "@/store";
 import { Copy, Check, Lightbulb } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { logError } from "@/utils/logger";
@@ -53,7 +53,12 @@ function ErrorRow({
   const typeLabel = ERROR_TYPE_LABELS[error.type] || "Error";
   const typeColor = ERROR_TYPE_COLORS[error.type] || "text-status-error";
   const isRetrying = !!error.retryProgress;
-  const canRetry = error.retryability === "auto" && error.retryAction && onRetry;
+  const canRetry =
+    error.retryability === "auto" &&
+    error.retryAction &&
+    onRetry &&
+    !error.retryExhausted &&
+    (error.occurrenceCount ?? 0) < RECURRENCE_THRESHOLD;
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 

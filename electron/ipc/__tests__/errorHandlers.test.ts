@@ -23,7 +23,7 @@ const loggerMock = vi.hoisted(() => ({
 
 const storeMock = vi.hoisted(() => ({
   store: {
-    get: vi.fn((): unknown[] => []),
+    get: vi.fn((_key?: string): unknown => []),
     set: vi.fn(),
   },
 }));
@@ -296,7 +296,7 @@ describe("errorHandlers", () => {
 
     it("exhausts max terminal attempts (3) and rethrows", async () => {
       const CHANNELS = await getChannels();
-      createMockWindow();
+      const mockWindow = createMockWindow();
       const spawn = vi.fn(() => {
         throw createTransientError("EBUSY");
       });
@@ -313,11 +313,21 @@ describe("errorHandlers", () => {
 
       expect(spawn).toHaveBeenCalledTimes(3);
       expect(sleepMock).toHaveBeenCalledTimes(2);
+
+      const notifyCalls = mockWindow.webContents.send.mock.calls.filter(
+        ([channel]: string[]) => channel === CHANNELS.ERROR_NOTIFY
+      );
+      expect(notifyCalls.length).toBe(1);
+      expect(notifyCalls[0][1]).toMatchObject({
+        retryExhausted: true,
+        source: "retry-terminal",
+        message: "EBUSY",
+      });
     });
 
     it("exhausts max worktree attempts (5) and rethrows", async () => {
       const CHANNELS = await getChannels();
-      createMockWindow();
+      const mockWindow = createMockWindow();
       const refresh = vi.fn().mockRejectedValue(createTransientError("ETIMEDOUT"));
 
       registerErrorHandlers({ refresh } as never, null);
@@ -329,6 +339,15 @@ describe("errorHandlers", () => {
 
       expect(refresh).toHaveBeenCalledTimes(5);
       expect(sleepMock).toHaveBeenCalledTimes(4);
+
+      const notifyCalls = mockWindow.webContents.send.mock.calls.filter(
+        ([channel]: string[]) => channel === CHANNELS.ERROR_NOTIFY
+      );
+      expect(notifyCalls.length).toBe(1);
+      expect(notifyCalls[0][1]).toMatchObject({
+        retryExhausted: true,
+        source: "retry-worktree",
+      });
     });
 
     it("aborts immediately on non-transient error without sleeping", async () => {
@@ -1686,6 +1705,128 @@ describe("errorHandlers", () => {
       for (const error of sentErrors) {
         expect(error.fromPreviousSession).toBeUndefined();
       }
+    });
+  });
+
+  describe("error fingerprint tracking", () => {
+    it("sets occurrenceCount to 1 on first occurrence", async () => {
+      const CHANNELS = await getChannels();
+      const mockWindow = createMockWindow();
+      storeMock.store.get.mockImplementation((key?: string) => {
+        if (key === "errorFingerprints") return {};
+        return [];
+      });
+
+      const { notifyError } = await import("../errorHandlers.js");
+      const err = new Error("test fingerprint");
+      (err as NodeJS.ErrnoException).code = "EBUSY";
+
+      notifyError(err, { source: "test" });
+
+      const sentError = mockWindow.webContents.send.mock.calls.find(
+        ([channel]: string[]) => channel === CHANNELS.ERROR_NOTIFY
+      )?.[1];
+      expect(sentError.occurrenceCount).toBe(1);
+      expect(sentError.retryExhausted).toBe(false);
+    });
+
+    it("increments occurrenceCount for repeated fingerprints", async () => {
+      const CHANNELS = await getChannels();
+      const mockWindow = createMockWindow();
+
+      const existing = { "unknown|test|spawn failed": { count: 3, firstSeen: 1, lastSeen: 1 } };
+      storeMock.store.get.mockImplementation((key?: string) => {
+        if (key === "errorFingerprints") return { ...existing };
+        return [];
+      });
+
+      const { notifyError } = await import("../errorHandlers.js");
+      const err = new Error("spawn failed");
+      (err as NodeJS.ErrnoException).code = "EBUSY";
+
+      notifyError(err, { source: "test" });
+
+      const sentError = mockWindow.webContents.send.mock.calls.find(
+        ([channel]: string[]) => channel === CHANNELS.ERROR_NOTIFY
+      )?.[1];
+      expect(sentError.occurrenceCount).toBe(4);
+    });
+
+    it("treats different type|source|message combinations as separate fingerprints", async () => {
+      const CHANNELS = await getChannels();
+      const mockWindow = createMockWindow();
+
+      const existing = { "unknown|test|error A": { count: 5, firstSeen: 1, lastSeen: 1 } };
+      storeMock.store.get.mockImplementation((key?: string) => {
+        if (key === "errorFingerprints") return { ...existing };
+        return [];
+      });
+
+      const { notifyError } = await import("../errorHandlers.js");
+      const err = new Error("error B");
+      (err as NodeJS.ErrnoException).code = "EBUSY";
+
+      notifyError(err, { source: "test" });
+
+      const sentError = mockWindow.webContents.send.mock.calls.find(
+        ([channel]: string[]) => channel === CHANNELS.ERROR_NOTIFY
+      )?.[1];
+      expect(sentError.occurrenceCount).toBe(1);
+    });
+
+    it("persists fingerprint to store after recording", async () => {
+      createMockWindow();
+      storeMock.store.get.mockImplementation((key?: string) => {
+        if (key === "errorFingerprints") return {};
+        return [];
+      });
+      storeMock.store.set.mockClear();
+
+      const { notifyError } = await import("../errorHandlers.js");
+      const err = new Error("save test");
+      (err as NodeJS.ErrnoException).code = "EBUSY";
+
+      notifyError(err, { source: "test" });
+
+      expect(storeMock.store.set).toHaveBeenCalledWith(
+        "errorFingerprints",
+        expect.objectContaining({
+          "unknown|test|save test": {
+            count: 1,
+            firstSeen: expect.any(Number),
+            lastSeen: expect.any(Number),
+          },
+        })
+      );
+    });
+
+    it("caps fingerprint entries at 200 with LRU eviction", async () => {
+      createMockWindow();
+
+      const entries: Record<string, { count: number; firstSeen: number; lastSeen: number }> = {};
+      for (let i = 0; i < 200; i++) {
+        entries[`unknown||entry-${i}`] = { count: 1, firstSeen: i, lastSeen: i };
+      }
+      storeMock.store.get.mockImplementation((key?: string) => {
+        if (key === "errorFingerprints") return { ...entries };
+        return [];
+      });
+
+      const { notifyError } = await import("../errorHandlers.js");
+      const err = new Error("new error");
+      (err as NodeJS.ErrnoException).code = "EBUSY";
+
+      notifyError(err, { source: undefined });
+
+      const setCall = (storeMock.store.set as Mock).mock.calls.find(
+        ([key]: string[]) => key === "errorFingerprints"
+      );
+      const fingerprintArg = setCall?.[1] as Record<string, unknown> | undefined;
+      const keys = fingerprintArg ? Object.keys(fingerprintArg) : [];
+      expect(keys.length).toBe(200);
+      expect(keys).toContain("unknown||new error");
+      // The oldest entry (entry-0, lastSeen=0) should be evicted
+      expect(keys).not.toContain("unknown||entry-0");
     });
   });
 });
