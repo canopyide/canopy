@@ -1,43 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 
-import { advanceMruIndex, getMruProjects } from "@shared/utils/projectMru";
-import { notify } from "@/lib/notify";
-import { useProjectStore } from "@/store/projectStore";
-import type { Project } from "@shared/types";
-import { formatErrorMessage } from "@shared/utils/errorMessage";
-import {
-  armProjectMruModifierGate,
-  clearProjectMruModifierGate,
-  isProjectMruModifierGateActive,
-} from "@/lib/projectMruSwitchGestureGate";
+import { switchProjectByMruDirection, type ProjectMruCycleDirection } from "@/lib/projectMruSwitch";
 
-import { useEscapeStack } from "./useEscapeStack";
-
-const HOLD_THRESHOLD_MS = 60;
-
-export interface UseProjectMruSwitcherReturn {
-  isVisible: boolean;
-  projects: Project[];
-  selectedIndex: number;
-}
-
-interface SessionState {
-  active: boolean;
-  holding: boolean;
-  hasTriggerKey: boolean;
-  selectedIndex: number;
-  projects: Project[];
-}
-
-function createIdleSession(): SessionState {
-  return {
-    active: false,
-    holding: false,
-    hasTriggerKey: false,
-    selectedIndex: 1,
-    projects: [],
-  };
-}
+export type UseProjectMruSwitcherReturn = void;
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -47,20 +12,9 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return false;
 }
 
-function getTriggerDirection(event: KeyboardEvent): "older" | "newer" | null {
+function getTriggerDirection(event: KeyboardEvent): ProjectMruCycleDirection | null {
   if (event.code === "Equal" || event.code === "NumpadAdd") return "older";
-  if (event.code === "Minus" || event.code === "NumpadSubtract") return "newer";
   return null;
-}
-
-function isModifierKey(event: KeyboardEvent): boolean {
-  return event.key === "Meta" || event.key === "Alt";
-}
-
-function isFreshModifierKeyDown(event: KeyboardEvent): boolean {
-  if (event.key === "Meta") return !event.altKey;
-  if (event.key === "Alt") return !event.metaKey;
-  return false;
 }
 
 function consumeEvent(event: KeyboardEvent): void {
@@ -69,18 +23,10 @@ function consumeEvent(event: KeyboardEvent): void {
   event.stopImmediatePropagation();
 }
 
-function preloadProjectMruSwitcherOverlay(): void {
-  void import("../components/Project/ProjectMruSwitcherOverlay").catch(() => {});
-}
-
 /**
- * Hold-scrub MRU project switcher.
+ * Immediate MRU project switcher.
  *
- * Tap Cmd+Alt+=/Plus: switch down/forward in MRU order.
- * Tap Cmd+Alt+-: switch up/backward in MRU order.
- * Hold Cmd+Alt+-/= briefly: show an overlay that scrubs through the MRU
- * list with each additional '=' (older/down) or '-' (newer/up) keypress. Release
- * Cmd/Alt to commit; Escape or window blur to cancel.
+ * Cmd+Alt+=/Plus switches down/forward in MRU order.
  *
  * Uses capture-phase window listeners so the event fires before xterm's
  * custom key handler and before `KeybindingService` dispatches the matching
@@ -88,84 +34,8 @@ function preloadProjectMruSwitcherOverlay(): void {
  * prevent double-dispatch.
  */
 export function useProjectMruSwitcher(): UseProjectMruSwitcherReturn {
-  const [overlay, setOverlay] = useState<{
-    visible: boolean;
-    selectedIndex: number;
-    projects: Project[];
-  }>({ visible: false, selectedIndex: 1, projects: [] });
-
-  const sessionRef = useRef<SessionState>(createIdleSession());
-  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const cancelSession = useCallback(() => {
-    if (holdTimerRef.current !== null) {
-      clearTimeout(holdTimerRef.current);
-      holdTimerRef.current = null;
-    }
-    sessionRef.current = createIdleSession();
-    setOverlay((prev) =>
-      prev.visible ? { visible: false, selectedIndex: 1, projects: [] } : prev
-    );
-  }, []);
-
-  const commitSelection = useCallback((session: SessionState) => {
-    const snapshotTarget = session.projects[session.selectedIndex];
-    if (!snapshotTarget) return;
-    const state = useProjectStore.getState();
-    const liveTarget = state.projects.find((p) => p.id === snapshotTarget.id);
-    if (!liveTarget) return;
-    if (state.currentProject?.id === liveTarget.id) return;
-    const targetId = liveTarget.id;
-    const switchFn = liveTarget.status === "background" ? state.reopenProject : state.switchProject;
-    armProjectMruModifierGate();
-    Promise.resolve(switchFn(targetId)).catch((error) => {
-      notify({
-        type: "error",
-        title: "Failed to switch project",
-        message: formatErrorMessage(error, "Failed to switch project"),
-        actions: [
-          {
-            label: "Try again",
-            variant: "primary",
-            onClick: () => {
-              const fresh = useProjectStore.getState();
-              const freshTarget = fresh.projects.find((p) => p.id === targetId);
-              if (!freshTarget || fresh.currentProject?.id === freshTarget.id) return;
-              const retryFn =
-                freshTarget.status === "background" ? fresh.reopenProject : fresh.switchProject;
-              void retryFn(freshTarget.id);
-            },
-          },
-        ],
-      });
-    });
-  }, []);
-
-  useEscapeStack(overlay.visible, cancelSession);
-
   useEffect(() => {
-    const startHoldTimer = () => {
-      if (holdTimerRef.current !== null) return;
-      holdTimerRef.current = setTimeout(() => {
-        holdTimerRef.current = null;
-        const session = sessionRef.current;
-        if (!session.active) return;
-        session.holding = true;
-        setOverlay({
-          visible: true,
-          selectedIndex: session.selectedIndex,
-          projects: session.projects,
-        });
-      }, HOLD_THRESHOLD_MS);
-    };
-
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (isModifierKey(event)) {
-        if (isFreshModifierKeyDown(event)) {
-          clearProjectMruModifierGate();
-        }
-        return;
-      }
       if (event.isComposing) return;
       if (!event.metaKey || !event.altKey) return;
       const direction = getTriggerDirection(event);
@@ -174,89 +44,14 @@ export function useProjectMruSwitcher(): UseProjectMruSwitcherReturn {
       if (isEditableTarget(event.target)) return;
 
       consumeEvent(event);
-      preloadProjectMruSwitcherOverlay();
-
-      if (isProjectMruModifierGateActive()) {
-        return;
-      }
-
-      const state = useProjectStore.getState();
-      const currentId = state.currentProject?.id ?? null;
-      if (!currentId) return;
-      const sortedAll = getMruProjects(state.projects);
-      const current = sortedAll.find((p) => p.id === currentId);
-      if (!current) return;
-      const sorted = [current, ...sortedAll.filter((p) => p.id !== currentId)];
-
-      if (sorted.length < 2) return;
-
-      const session = sessionRef.current;
-      if (!session.active) {
-        const selectedIndex = advanceMruIndex(0, direction, sorted.length);
-        sessionRef.current = {
-          active: true,
-          holding: false,
-          hasTriggerKey: true,
-          selectedIndex,
-          projects: sorted,
-        };
-        startHoldTimer();
-        return;
-      }
-
-      session.hasTriggerKey = true;
-      session.projects = sorted;
-      const newIndex = advanceMruIndex(session.selectedIndex, direction, sorted.length);
-      session.selectedIndex = newIndex;
-      if (session.holding) {
-        setOverlay({
-          visible: true,
-          selectedIndex: newIndex,
-          projects: sorted,
-        });
-      }
-    };
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      if (event.key !== "Meta" && event.key !== "Alt") return;
-      clearProjectMruModifierGate();
-      const session = sessionRef.current;
-      if (!session.active) return;
-
-      if (session.hasTriggerKey) {
-        commitSelection(session);
-      }
-      cancelSession();
-    };
-
-    const handleBlur = () => {
-      cancelSession();
-    };
-
-    const handleVisibility = () => {
-      if (document.hidden) cancelSession();
+      if (event.repeat) return;
+      void switchProjectByMruDirection(direction);
     };
 
     window.addEventListener("keydown", handleKeyDown, { capture: true });
-    window.addEventListener("keyup", handleKeyUp, { capture: true });
-    window.addEventListener("blur", handleBlur);
-    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown, { capture: true });
-      window.removeEventListener("keyup", handleKeyUp, { capture: true });
-      window.removeEventListener("blur", handleBlur);
-      document.removeEventListener("visibilitychange", handleVisibility);
-      if (holdTimerRef.current !== null) {
-        clearTimeout(holdTimerRef.current);
-        holdTimerRef.current = null;
-      }
     };
-  }, [cancelSession, commitSelection]);
-
-  return {
-    isVisible: overlay.visible,
-    projects: overlay.projects,
-    selectedIndex: overlay.selectedIndex,
-  };
+  }, []);
 }

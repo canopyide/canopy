@@ -511,12 +511,12 @@ describe("KeybindingService", () => {
     expect(service.getBinding("terminal.new")?.combo).toBe("Cmd+Alt+T");
   });
 
-  it("binds project MRU plus to down/older and minus to up/newer by default", () => {
+  it("binds project MRU plus by default and leaves minus unbound", () => {
     setPlatform("MacIntel");
     const service = new KeybindingService();
 
     expect(service.getBinding("project.mruCycleOlder")?.combo).toBe("Cmd+Alt+=");
-    expect(service.getBinding("project.mruCycleNewer")?.combo).toBe("Cmd+Alt+-");
+    expect(service.getBinding("project.mruCycleNewer")).toBeUndefined();
     expect(
       DEFAULT_KEYBINDINGS.filter((b) => b.actionId === "project.mruCycleOlder").map((b) => b.combo)
     ).toContain("Cmd+Shift+Alt+=");
@@ -544,7 +544,7 @@ describe("KeybindingService", () => {
       metaKey: true,
       altKey: true,
     });
-    expect(service.findMatchingAction(minus)?.actionId).toBe("project.mruCycleNewer");
+    expect(service.findMatchingAction(minus)).toBeUndefined();
   });
 
   it("matchesEvent returns true for Shift+F10", () => {

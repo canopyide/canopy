@@ -165,13 +165,6 @@ const LazyProjectSwitcherPalette = lazy(() =>
   preloadProjectSwitcherPalette().then((m) => ({ default: m.ProjectSwitcherPalette }))
 );
 
-function preloadProjectMruSwitcherOverlay() {
-  return import("./components/Project/ProjectMruSwitcherOverlay");
-}
-const LazyProjectMruSwitcherOverlay = lazy(() =>
-  preloadProjectMruSwitcherOverlay().then((m) => ({ default: m.ProjectMruSwitcherOverlay }))
-);
-
 function preloadGitInitDialog() {
   return import("./components/Project/GitInitDialog");
 }
@@ -362,7 +355,7 @@ function App() {
   const quickSwitcher = useQuickSwitcher();
   const sendToAgentPalette = useSendToAgentPalette();
   useDoubleShift(actionPalette.toggle);
-  const mruSwitcher = useProjectMruSwitcher();
+  useProjectMruSwitcher();
   const currentProject = useProjectStore((state) => state.currentProject);
   const gitInitDialogOpen = useProjectStore((state) => state.gitInitDialogOpen);
   const gitInitDirectoryPath = useProjectStore((state) => state.gitInitDirectoryPath);
@@ -486,7 +479,6 @@ function App() {
       void preloadSendToAgentPalette();
       void preloadQuickCreatePalette();
       void preloadLogLevelPalette();
-      void preloadProjectMruSwitcherOverlay();
       import("@fontsource/jetbrains-mono/latin-500.css").catch(() => {});
       import("@fontsource/jetbrains-mono/latin-600.css").catch(() => {});
     };
@@ -561,7 +553,7 @@ function App() {
     onOpenWorktreeOverview: openWorktreeOverview,
     onCloseWorktreeOverview: closeWorktreeOverview,
     onOpenPanelPalette: panelPalette.open,
-    onOpenProjectSwitcherPalette: projectSwitcherPalette.open,
+    onOpenProjectSwitcherPalette: projectSwitcherPalette.toggle,
     onConfirmCloseActiveProject: (projectId: string) => {
       void projectSwitcherPalette.removeProject(projectId);
     },
@@ -918,21 +910,6 @@ function App() {
                       }
                     }}
                     onClose={panelPalette.close}
-                  />
-                </Suspense>
-              )}
-            </ErrorBoundary>
-            <ErrorBoundary
-              variant="component"
-              componentName="ProjectMruSwitcherOverlay"
-              resetKeys={[Number(mruSwitcher.isVisible)]}
-            >
-              {mruSwitcher.isVisible && (
-                <Suspense fallback={null}>
-                  <LazyProjectMruSwitcherOverlay
-                    isVisible={mruSwitcher.isVisible}
-                    projects={mruSwitcher.projects}
-                    selectedIndex={mruSwitcher.selectedIndex}
                   />
                 </Suspense>
               )}

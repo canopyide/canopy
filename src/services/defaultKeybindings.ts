@@ -785,7 +785,7 @@ const CORE_KEYBINDINGS: KeybindingConfig[] = [
     combo: "Cmd+Alt+=",
     scope: "global",
     priority: 10,
-    description: "Switch project (hold to scrub down)",
+    description: "Switch project forward",
     category: "Project",
   },
   {
@@ -793,15 +793,7 @@ const CORE_KEYBINDINGS: KeybindingConfig[] = [
     combo: "Cmd+Shift+Alt+=",
     scope: "global",
     priority: 10,
-    description: "Switch project (hold to scrub down)",
-    category: "Project",
-  },
-  {
-    actionId: "project.mruCycleNewer",
-    combo: "Cmd+Alt+-",
-    scope: "global",
-    priority: 10,
-    description: "Switch project (hold to scrub up)",
+    description: "Switch project forward",
     category: "Project",
   },
   {

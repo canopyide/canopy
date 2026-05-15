@@ -16,15 +16,11 @@ const projectStoreMock = vi.hoisted(() => ({ getState: vi.fn() }));
 const projectMruMock = vi.hoisted(() => ({
   getMruProjects: vi.fn<(projects: readonly Project[]) => Project[]>(() => []),
 }));
-const projectMruGestureGateMock = vi.hoisted(() => ({
-  armProjectMruModifierGate: vi.fn(),
-}));
 
 vi.mock("@/clients", () => ({ projectClient: projectClientMock }));
 vi.mock("@/store/projectStore", () => ({ useProjectStore: projectStoreMock }));
 vi.mock("@shared/utils/projectMru", () => projectMruMock);
 vi.mock("@/lib/notify", () => ({ notify: vi.fn() }));
-vi.mock("@/lib/projectMruSwitchGestureGate", () => projectMruGestureGateMock);
 
 import { registerProjectActions } from "../projectActions";
 
@@ -82,7 +78,6 @@ describe("projectActions adversarial", () => {
       const { run } = setupActions();
       await run("project.mruCycleOlder");
 
-      expect(projectMruGestureGateMock.armProjectMruModifierGate).toHaveBeenCalledTimes(1);
       expect(switchProject).toHaveBeenCalledWith("p-recent");
       expect(reopenProject).not.toHaveBeenCalled();
     });
@@ -93,7 +88,6 @@ describe("projectActions adversarial", () => {
       const { run } = setupActions();
       await run("project.mruCycleNewer");
 
-      expect(projectMruGestureGateMock.armProjectMruModifierGate).toHaveBeenCalledTimes(1);
       expect(switchProject).toHaveBeenCalledWith("p-older");
       expect(reopenProject).not.toHaveBeenCalled();
     });

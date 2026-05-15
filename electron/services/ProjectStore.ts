@@ -560,7 +560,7 @@ export class ProjectStore {
           console.log(`[ProjectStore] Marking previous project ${previousProjectId} as background`);
           // Bump the departing project's lastOpened to just before `now` so it
           // becomes the top MRU candidate on the next switch — gives the
-          // Cmd+Alt+= / Cmd+Alt+- shortcut Alt+Tab-style toggle behavior.
+          // Cmd+Alt+= shortcut Alt+Tab-style toggle behavior.
           const previousUpdate: { status: "background"; lastOpened?: number } = {
             status: "background",
           };
