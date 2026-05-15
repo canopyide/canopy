@@ -721,7 +721,7 @@ describe("BrowserToolbar viewport presets", () => {
       expect(pixelRadio.getAttribute("tabindex")).toBe("0");
     });
 
-    it("arrow keys move focus without changing selection", () => {
+    it("ArrowRight on the focused radio activates the next preset immediately (APG automatic activation)", () => {
       renderWithViewport();
       const iphoneRadio = document.querySelector(
         '[data-viewport-preset-id="iphone"]'
@@ -729,11 +729,39 @@ describe("BrowserToolbar viewport presets", () => {
 
       iphoneRadio.focus();
       fireEvent.keyDown(iphoneRadio, { key: "ArrowRight" });
-      fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
-      fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
 
-      expect(onViewportPresetChange).not.toHaveBeenCalled();
-      expect(iphoneRadio.getAttribute("aria-checked")).toBe("true");
+      expect(onViewportPresetChange).toHaveBeenCalledWith("pixel");
+    });
+
+    it("ArrowDown also fires onViewportPresetChange (automatic activation along secondary axis)", () => {
+      renderWithViewport();
+      const iphoneRadio = document.querySelector(
+        '[data-viewport-preset-id="iphone"]'
+      )! as HTMLElement;
+
+      iphoneRadio.focus();
+      fireEvent.keyDown(iphoneRadio, { key: "ArrowDown" });
+
+      expect(onViewportPresetChange).toHaveBeenCalledWith("pixel");
+    });
+
+    it("Home/End fire onViewportPresetChange for the new endpoint", () => {
+      renderWithViewport();
+      const pixelRadio = document.querySelector(
+        '[data-viewport-preset-id="pixel"]'
+      )! as HTMLElement;
+      const galaxyRadio = document.querySelector(
+        '[data-viewport-preset-id="galaxy"]'
+      )! as HTMLElement;
+
+      pixelRadio.focus();
+      fireEvent.keyDown(pixelRadio, { key: "Home" });
+      expect(onViewportPresetChange).toHaveBeenCalledWith("galaxy");
+
+      onViewportPresetChange.mockClear();
+      galaxyRadio.focus();
+      fireEvent.keyDown(galaxyRadio, { key: "End" });
+      expect(onViewportPresetChange).toHaveBeenCalledWith("ipad");
     });
 
     it("keyboard listener attaches after deferred chip row mount", () => {

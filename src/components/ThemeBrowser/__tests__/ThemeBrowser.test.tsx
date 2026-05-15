@@ -507,6 +507,60 @@ describe("ThemeBrowser", () => {
     expect(afterUp).toBe(DEFAULT_APP_SCHEME_ID);
   });
 
+  describe("Page navigation", () => {
+    it("PageDown advances by the computed page size and previews the new row", () => {
+      render(<Harness />);
+
+      const darkSchemes = BUILT_IN_APP_SCHEMES.filter((s) => s.type !== "light");
+      const initialIndex = darkSchemes.findIndex((s) => s.id === DEFAULT_APP_SCHEME_ID);
+      // jsdom returns 0 for clientHeight / getBoundingClientRect, so
+      // computeListPageSize falls back to PAGE_SIZE_FALLBACK (10).
+      const expected = darkSchemes[Math.min(initialIndex + 10, darkSchemes.length - 1)];
+
+      const list = screen.getByRole("listbox", { name: "Theme list" });
+      fireEvent.keyDown(list, { key: "PageDown" });
+
+      expect(useAppThemeStore.getState().previewSchemeId).toBe(expected?.id);
+    });
+
+    it("PageUp at index 0 stays at index 0 (clamped, no preview change)", () => {
+      render(<Harness />);
+
+      const list = screen.getByRole("listbox", { name: "Theme list" });
+      // We start at the committed scheme (index 0 of darkSchemes by default).
+      // PageUp should not move beyond the first row.
+      fireEvent.keyDown(list, { key: "PageUp" });
+
+      // No preview was set because we're already at the first index.
+      expect(useAppThemeStore.getState().previewSchemeId).toBeNull();
+    });
+
+    it("PageDown then PageUp returns preview to the original committed scheme", () => {
+      render(<Harness />);
+
+      const list = screen.getByRole("listbox", { name: "Theme list" });
+      fireEvent.keyDown(list, { key: "PageDown" });
+      expect(useAppThemeStore.getState().previewSchemeId).not.toBeNull();
+
+      fireEvent.keyDown(list, { key: "PageUp" });
+      expect(useAppThemeStore.getState().previewSchemeId).toBe(DEFAULT_APP_SCHEME_ID);
+    });
+
+    it("PageDown from the search input delegates to list navigation", () => {
+      render(<Harness />);
+
+      const searchInput = screen.getByLabelText("Filter themes") as HTMLInputElement;
+
+      const darkSchemes = BUILT_IN_APP_SCHEMES.filter((s) => s.type !== "light");
+      const initialIndex = darkSchemes.findIndex((s) => s.id === DEFAULT_APP_SCHEME_ID);
+      const expected = darkSchemes[Math.min(initialIndex + 10, darkSchemes.length - 1)];
+
+      fireEvent.keyDown(searchInput, { key: "PageDown" });
+
+      expect(useAppThemeStore.getState().previewSchemeId).toBe(expected?.id);
+    });
+  });
+
   describe("image error fallback", () => {
     it("shows fallback background div instead of broken thumbnail image", () => {
       render(<Harness />);

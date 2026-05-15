@@ -449,7 +449,7 @@ function App() {
     if (crashState.status === "pending") removeStartupSkeleton();
   }, [crashState.status]);
   useEffect(() => {
-    useNotificationSettingsStore.getState().hydrate();
+    void useNotificationSettingsStore.getState().hydrate();
   }, []);
   useProjectSwitchRehydration();
   useShortcutHints(isStateLoaded);
