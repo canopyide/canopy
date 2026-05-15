@@ -143,7 +143,10 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
     act(() => {
       store
         .getState()
-        .applyUpdate(makeWorktree("wt-1", { prCiStatus: "FAILURE" }), store.getState().nextVersion());
+        .applyUpdate(
+          makeWorktree("wt-1", { prCiStatus: "FAILURE" }),
+          store.getState().nextVersion()
+        );
     });
 
     act(() => {
