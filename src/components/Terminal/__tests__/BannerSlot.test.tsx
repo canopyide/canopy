@@ -233,4 +233,71 @@ describe("BannerSlot", () => {
     expect(wrapper.className).not.toContain("transition-all");
     expect(wrapper.className.match(/\btransition\b(?!-)/)).toBeNull();
   });
+
+  it("applies pointer-events-none while collapsed so stale buttons cannot fire", () => {
+    const { container, rerender } = render(
+      <BannerSlot visible={true}>
+        <button type="button">Retry</button>
+      </BannerSlot>
+    );
+    expect(getWrapper(container)!.className).not.toContain("pointer-events-none");
+
+    act(() => {
+      rerender(
+        <BannerSlot visible={false}>
+          <button type="button">Retry</button>
+        </BannerSlot>
+      );
+    });
+    expect(getWrapper(container)!.className).toContain("pointer-events-none");
+  });
+
+  it("paired slots overlap their height interpolation during a swap (no zero-height frame)", () => {
+    function Pair({ which }: { which: "a" | "b" }) {
+      return (
+        <>
+          <BannerSlot visible={which === "a"}>
+            <div data-testid="banner-a">A</div>
+          </BannerSlot>
+          <BannerSlot visible={which === "b"}>
+            <div data-testid="banner-b">B</div>
+          </BannerSlot>
+        </>
+      );
+    }
+
+    const { container, rerender, queryByTestId } = render(<Pair which="a" />);
+    const initialSlots = container.querySelectorAll(".banner-slot");
+    expect(initialSlots.length).toBe(1);
+    expect(initialSlots[0].className).toContain("h-auto");
+
+    act(() => {
+      rerender(<Pair which="b" />);
+    });
+
+    // Both slots mounted: A is collapsing (h-0, cached children still there),
+    // B is in its pre-rAF h-0 frame about to expand. Neither has unmounted, so
+    // the xterm pane below sees a continuous height curve instead of a 0-height gap.
+    const midSlots = container.querySelectorAll(".banner-slot");
+    expect(midSlots.length).toBe(2);
+    expect(queryByTestId("banner-a")).not.toBeNull();
+    expect(queryByTestId("banner-b")).not.toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(16);
+    });
+
+    // After rAF: B opens to h-auto, A is still collapsing.
+    const slotsAfterRaf = Array.from(container.querySelectorAll(".banner-slot"));
+    const slotA = slotsAfterRaf.find((el) => el.contains(queryByTestId("banner-a")!))!;
+    const slotB = slotsAfterRaf.find((el) => el.contains(queryByTestId("banner-b")!))!;
+    expect(slotA.className).toContain("h-0");
+    expect(slotB.className).toContain("h-auto");
+
+    act(() => {
+      vi.advanceTimersByTime(BANNER_EXIT_DURATION);
+    });
+    expect(queryByTestId("banner-a")).toBeNull();
+    expect(queryByTestId("banner-b")).not.toBeNull();
+  });
 });

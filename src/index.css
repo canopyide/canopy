@@ -1637,6 +1637,13 @@ body,
     transition-timing-function: ease-out;
   }
 
+  /* Banner slot — drop the height interpolation under reduced motion so the
+   * banner appears/disappears without spatial motion. WCAG 2.3.3.
+   */
+  .banner-slot {
+    transition: none;
+  }
+
   *:focus-visible {
     transition: none !important;
   }

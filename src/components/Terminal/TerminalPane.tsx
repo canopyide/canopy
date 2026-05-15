@@ -157,8 +157,10 @@ export function BannerSlot({ visible, children }: BannerSlotProps) {
   return (
     <div
       className={cn(
-        "shrink-0 overflow-hidden transition-[height]",
-        isVisible ? "h-auto ease-[var(--ease-snappy)]" : "h-0 ease-[var(--ease-exit)]"
+        "banner-slot shrink-0 overflow-hidden transition-[height]",
+        isVisible
+          ? "h-auto ease-[var(--ease-snappy)]"
+          : "h-0 ease-[var(--ease-exit)] pointer-events-none"
       )}
       style={{
         transitionDuration: `${isVisible ? BANNER_ENTER_DURATION : BANNER_EXIT_DURATION}ms`,
