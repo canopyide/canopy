@@ -515,9 +515,7 @@ export function McpServerSettingsTab() {
                 variant="compact"
                 title="Capture audit log"
                 subtitle={
-                  auditEnabled
-                    ? "Recording every dispatch"
-                    : "New dispatches will not be recorded"
+                  auditEnabled ? "Recording every dispatch" : "New dispatches will not be recorded"
                 }
                 isEnabled={auditEnabled}
                 onChange={handleAuditEnabledToggle}
