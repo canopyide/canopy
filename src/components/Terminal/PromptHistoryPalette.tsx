@@ -26,6 +26,55 @@ function truncatePrompt(text: string, maxLen = 80): string {
   return firstLine.slice(0, maxLen) + "…";
 }
 
+interface PromptHistoryRowProps {
+  item: PromptHistoryEntry;
+  index: number;
+  isSelected: boolean;
+  onSelect: (item: PromptHistoryEntry) => void;
+  onHoverIndex: (index: number) => void;
+}
+
+export function PromptHistoryRow({
+  item,
+  index,
+  isSelected,
+  onSelect,
+  onHoverIndex,
+}: PromptHistoryRowProps) {
+  return (
+    <button
+      type="button"
+      id={`prompt-history-option-${item.id}`}
+      tabIndex={-1}
+      onPointerDown={(e) => e.preventDefault()}
+      onPointerMove={() => onHoverIndex(index)}
+      role="option"
+      aria-selected={isSelected}
+      className={cn(
+        "group relative w-full flex items-center justify-between gap-2 px-3 py-2 rounded-[var(--radius-md)] text-sm text-left transition-colors",
+        "border border-transparent text-daintree-text/80",
+        "hover:bg-overlay-subtle hover:text-daintree-text",
+        "aria-selected:bg-overlay-soft aria-selected:border-overlay aria-selected:text-daintree-text",
+        "aria-selected:before:absolute aria-selected:before:left-0 aria-selected:before:top-2 aria-selected:before:bottom-2",
+        "aria-selected:before:w-[2px] aria-selected:before:bg-daintree-accent aria-selected:before:content-['']"
+      )}
+      onClick={() => onSelect(item)}
+    >
+      <span className="truncate font-mono text-xs">{truncatePrompt(item.prompt)}</span>
+      <div className="flex items-center gap-2 shrink-0">
+        {item.agentId && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-daintree-border text-daintree-text/60">
+            {item.agentId}
+          </span>
+        )}
+        <span className="text-[10px] text-daintree-text/40 transition-colors group-aria-selected:text-daintree-text/60">
+          {formatRelativeTime(item.addedAt)}
+        </span>
+      </div>
+    </button>
+  );
+}
+
 export interface PromptHistoryPaletteProps extends UsePromptHistoryPaletteOptions {
   onOpenRef?: React.MutableRefObject<(() => void) | null>;
 }
@@ -38,6 +87,7 @@ export function PromptHistoryPalette({ onOpenRef, ...props }: PromptHistoryPalet
     totalResults,
     selectedIndex,
     setQuery,
+    setSelectedIndex,
     selectPrevious,
     selectNext,
     confirmSelection,
@@ -59,32 +109,20 @@ export function PromptHistoryPalette({ onOpenRef, ...props }: PromptHistoryPalet
   const getItemId = useCallback((item: PromptHistoryEntry) => item.id, []);
 
   const renderItem = useCallback(
-    (item: PromptHistoryEntry, _index: number, isSelected: boolean) => (
-      <div
+    (
+      item: PromptHistoryEntry,
+      index: number,
+      isSelected: boolean,
+      onHoverIndex: (index: number) => void
+    ) => (
+      <PromptHistoryRow
         key={item.id}
-        id={`prompt-history-option-${item.id}`}
-        role="option"
-        aria-selected={isSelected}
-        className={cn(
-          "flex items-center justify-between gap-2 px-3 py-2 rounded-[var(--radius-md)] cursor-pointer text-sm",
-          isSelected
-            ? "bg-overlay-soft text-daintree-text"
-            : "text-daintree-text/80 hover:bg-daintree-sidebar"
-        )}
-        onClick={() => selectEntry(item)}
-      >
-        <span className="truncate font-mono text-xs">{truncatePrompt(item.prompt)}</span>
-        <div className="flex items-center gap-2 shrink-0">
-          {item.agentId && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-daintree-border text-daintree-text/60">
-              {item.agentId}
-            </span>
-          )}
-          <span className="text-[10px] text-daintree-text/40">
-            {formatRelativeTime(item.addedAt)}
-          </span>
-        </div>
-      </div>
+        item={item}
+        index={index}
+        isSelected={isSelected}
+        onSelect={selectEntry}
+        onHoverIndex={onHoverIndex}
+      />
     ),
     [selectEntry]
   );
@@ -122,6 +160,7 @@ export function PromptHistoryPalette({ onOpenRef, ...props }: PromptHistoryPalet
       onSelectNext={selectNext}
       onConfirm={confirmSelection}
       onClose={close}
+      onHoverIndex={setSelectedIndex}
       getItemId={getItemId}
       renderItem={renderItem}
       label="Prompt History"
