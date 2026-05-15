@@ -254,7 +254,10 @@ jobs:
       # (via "Re-run failed jobs") can scope to --last-failed and rerun only
       # the specs that failed before. Cache keys are immutable, so the save
       # key includes run_attempt; restore-keys strips that suffix to find the
-      # prior attempt's entry. Missing on attempt 1 — that's expected.
+      # prior attempt's entry. Missing on attempt 1 — that's expected. Note:
+      # "Re-run all jobs" forces a fresh runner but doesn't preserve failure
+      # context — that path bypasses --last-failed and reruns the full suite,
+      # which is correct (the user asked for a clean rerun).
       - name: Restore Playwright last-run results
         if: github.run_attempt > 1
         uses: actions/cache/restore@v5
@@ -264,13 +267,10 @@ jobs:
           restore-keys: |
             e2e-last-run-${{ runner.os }}-${{ runner.arch }}-${{ inputs.suite || 'core' }}-${{ github.run_id }}-
 
-      - name: Run ${{ inputs.suite || 'core' }} e2e tests (macOS)
-        if: runner.os == 'macOS'
+      # Single source of truth for the retry gate. Exporting via $GITHUB_ENV
+      # keeps the three OS run steps below identical and prevents drift.
+      - name: Resolve --last-failed args
         shell: bash
-        env:
-          # Required for `online`; harmless empty string for other projects
-          # when secrets aren't inherited.
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           set -euo pipefail
           SUITE="${{ inputs.suite || 'core' }}"
@@ -286,7 +286,18 @@ jobs:
             LAST_FAILED_ARGS="--last-failed"
             echo "[e2e] Retry attempt ${{ github.run_attempt }} — running with --last-failed"
           fi
-          npx playwright test ${{ steps.test-cmd.outputs.args }} $LAST_FAILED_ARGS
+          echo "LAST_FAILED_ARGS=$LAST_FAILED_ARGS" >> "$GITHUB_ENV"
+
+      - name: Run ${{ inputs.suite || 'core' }} e2e tests (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          # Required for `online`; harmless empty string for other projects
+          # when secrets aren't inherited.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          npx playwright test ${{ steps.test-cmd.outputs.args }} ${LAST_FAILED_ARGS:-}
 
       - name: Run ${{ inputs.suite || 'core' }} e2e tests (Linux)
         if: runner.os == 'Linux'
@@ -295,17 +306,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           set -euo pipefail
-          SUITE="${{ inputs.suite || 'core' }}"
-          LAST_FAILED_ARGS=""
-          if [ "${{ github.run_attempt }}" -gt 1 ] \
-             && [ -f test-results/.last-run.json ] \
-             && [ "$SUITE" != "nightly" ] \
-             && [ "$SUITE" != "online" ] \
-             && [ -z "${{ inputs.test_file }}" ]; then
-            LAST_FAILED_ARGS="--last-failed"
-            echo "[e2e] Retry attempt ${{ github.run_attempt }} — running with --last-failed"
-          fi
-          xvfb-run --auto-servernum npx playwright test ${{ steps.test-cmd.outputs.args }} $LAST_FAILED_ARGS
+          xvfb-run --auto-servernum npx playwright test ${{ steps.test-cmd.outputs.args }} ${LAST_FAILED_ARGS:-}
 
       - name: Verify native modules (Windows)
         if: runner.os == 'Windows'
@@ -329,17 +330,7 @@ jobs:
           heartbeat_pid=$!
           trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
 
-          SUITE="${{ inputs.suite || 'core' }}"
-          LAST_FAILED_ARGS=""
-          if [ "${{ github.run_attempt }}" -gt 1 ] \
-             && [ -f test-results/.last-run.json ] \
-             && [ "$SUITE" != "nightly" ] \
-             && [ "$SUITE" != "online" ] \
-             && [ -z "${{ inputs.test_file }}" ]; then
-            LAST_FAILED_ARGS="--last-failed"
-            echo "[e2e] Retry attempt ${{ github.run_attempt }} — running with --last-failed"
-          fi
-          npx playwright test ${{ steps.test-cmd.outputs.args }} $LAST_FAILED_ARGS
+          npx playwright test ${{ steps.test-cmd.outputs.args }} ${LAST_FAILED_ARGS:-}
 
       # Persist .last-run.json for a potential job-level retry. Runs even on
       # Playwright failure (if: always()) — that's precisely when the retry
