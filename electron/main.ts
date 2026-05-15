@@ -80,6 +80,7 @@ import { initializeCrashRecoveryService } from "./services/CrashRecoveryService.
 import { initializeGpuCrashMonitor } from "./services/GpuCrashMonitorService.js";
 import { initializeTrashedPidCleanup } from "./services/TrashedPidTracker.js";
 import { initializeScratchCleanup } from "./services/ScratchCleanupService.js";
+import { startAssistantScratchCleanup } from "./services/AssistantScratchService.js";
 import { initializeCrashLoopGuard, getCrashLoopGuard } from "./services/CrashLoopGuardService.js";
 import { initializeDatabaseMaintenance } from "./services/DatabaseMaintenanceService.js";
 import { readLastActiveProjectIdSync } from "./services/persistence/readLastProjectId.js";
@@ -172,6 +173,7 @@ if (!gotTheLock) {
   initializeDatabaseMaintenance();
   initializeTrashedPidCleanup();
   initializeScratchCleanup();
+  startAssistantScratchCleanup();
   initializeGpuCrashMonitor();
 
   const windowRegistry = new WindowRegistry();
