@@ -2097,6 +2097,22 @@ const api: ElectronAPI = {
     getLastCheck: () => _unwrappingInvoke(CHANNELS.UPDATE_GET_LAST_CHECK),
   },
 
+  // Windows Store update-notification API (parallel to `update`; only active
+  // on MSIX/AppX builds where electron-updater is suppressed).
+  storeUpdate: {
+    onUpdateAvailable: (callback: (info: { version: string; storeUrl: string }) => void) =>
+      _typedOn(CHANNELS.STORE_UPDATE_AVAILABLE, callback),
+
+    getLatest: () => _unwrappingInvoke(CHANNELS.STORE_UPDATE_GET_LATEST),
+
+    dismiss: (version: string) => _unwrappingInvoke(CHANNELS.STORE_UPDATE_DISMISS, version),
+
+    getSettings: () => _unwrappingInvoke(CHANNELS.STORE_UPDATE_GET_SETTINGS),
+
+    setSettings: (enabled: boolean) =>
+      _unwrappingInvoke(CHANNELS.STORE_UPDATE_SET_SETTINGS, enabled),
+  },
+
   // Gemini API
   gemini: {
     getStatus: () => _unwrappingInvoke(CHANNELS.GEMINI_GET_STATUS),

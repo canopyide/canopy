@@ -1,0 +1,408 @@
+import { app, ipcMain, net } from "electron";
+import { load as parseYaml } from "js-yaml";
+import * as semver from "semver";
+import { CHANNELS } from "../ipc/channels.js";
+import { broadcastToRenderer } from "../ipc/utils.js";
+import { getSystemSleepService } from "./SystemSleepService.js";
+import { store } from "../store.js";
+import { isTrustedRendererUrl } from "../../shared/utils/trustedRenderer.js";
+import { isWindowsStoreBuild } from "../../shared/config/distribution.js";
+
+// Store handles installs every ~8 hours, so polling more often than the OS does
+// makes us look noisy without surfacing anything sooner.
+const CHECK_INTERVAL_MS = 8 * 60 * 60 * 1000;
+const RETRY_BASE_DELAYS_MS = [30_000, 120_000, 480_000] as const;
+const MAX_RETRIES = RETRY_BASE_DELAYS_MS.length;
+const STARTUP_JITTER_MAX_MS = 60_000;
+const RESUME_CHECK_DELAY_MS = 7_000;
+const VERSION_MAX_LEN = 64;
+// Same canonical-form gate as AutoUpdaterService — strict numeric leading
+// digit prevents `v1.2.3`/`=1.2.3` from round-tripping through the store.
+const VERSION_ALLOWLIST = /^[0-9][0-9a-zA-Z._+-]{0,63}$/;
+
+// Public CDN paths — duplicated here on purpose. Coupling the Store notifier
+// to AutoUpdaterService just to share two strings would force a load-order
+// dependency for no benefit.
+const STABLE_FEED_URL = "https://updates.daintree.org/releases/";
+const NIGHTLY_FEED_URL = "https://updates.daintree.org/nightly/";
+
+const TRANSIENT_NET_ERROR_TOKENS = new Set([
+  "ERR_INTERNET_DISCONNECTED",
+  "ERR_NETWORK_CHANGED",
+  "ERR_CONNECTION_RESET",
+  "ERR_CONNECTION_ABORTED",
+  "ERR_CONNECTION_CLOSED",
+  "ERR_CONNECTION_REFUSED",
+  "ERR_CONNECTION_TIMED_OUT",
+  "ERR_TIMED_OUT",
+  "ERR_NAME_NOT_RESOLVED",
+  "ERR_DNS_TIMED_OUT",
+  "ERR_ADDRESS_UNREACHABLE",
+]);
+const PERMANENT_NET_ERROR_TOKENS = new Set([
+  "ERR_CERT_DATE_INVALID",
+  "ERR_CERT_AUTHORITY_INVALID",
+  "ERR_CERT_COMMON_NAME_INVALID",
+  "ERR_CERT_REVOKED",
+  "ERR_SSL_PROTOCOL_ERROR",
+  "ERR_BLOCKED_BY_CLIENT",
+  "ERR_NETWORK_ACCESS_DENIED",
+]);
+const ELECTRON_NET_TOKEN_RE = /net::([A-Z0-9_]+)/g;
+
+const MS_STORE_FALLBACK_URL = "ms-windows-store://downloadsandupdates";
+
+export interface DetectedStoreUpdate {
+  version: string;
+  storeUrl: string;
+}
+
+function buildStoreUrl(): string {
+  const productId = process.env.DAINTREE_MICROSOFT_STORE_PRODUCT_ID;
+  if (typeof productId !== "string") return MS_STORE_FALLBACK_URL;
+  const trimmed = productId.trim();
+  // Partner Center product IDs are 12 alphanumeric chars (e.g. 9NBLGGH4NNS1).
+  // Any deviation falls back so a stale or malformed env var can't produce a
+  // dead ms-windows-store URI.
+  if (!/^[A-Za-z0-9]{12}$/.test(trimmed)) return MS_STORE_FALLBACK_URL;
+  return `ms-windows-store://pdp/?ProductId=${trimmed}`;
+}
+
+function feedUrlForChannel(channel: "stable" | "nightly"): string {
+  return channel === "nightly" ? NIGHTLY_FEED_URL : STABLE_FEED_URL;
+}
+
+// electron-builder publishes per-platform manifests; the notifier polls the
+// Windows variant since this service only runs in Store builds.
+function manifestUrl(feedUrl: string): string {
+  return `${feedUrl}latest.yml`;
+}
+
+class WindowsStoreNotifierService {
+  private checkInterval: NodeJS.Timeout | null = null;
+  private startupJitterTimeout: NodeJS.Timeout | null = null;
+  private retryTimeout: NodeJS.Timeout | null = null;
+  private resumeTimeout: NodeJS.Timeout | null = null;
+  private removeSuspendListener: (() => void) | null = null;
+  private removeWakeListener: (() => void) | null = null;
+  private retryCount = 0;
+  private initialized = false;
+  private handlersRegistered = false;
+  private lastDetected: DetectedStoreUpdate | null = null;
+  private activeFeedUrl: string | null = null;
+
+  private clearRetryTimeout(): void {
+    if (this.retryTimeout) {
+      clearTimeout(this.retryTimeout);
+      this.retryTimeout = null;
+    }
+  }
+
+  private resetRetryState(): void {
+    this.clearRetryTimeout();
+    this.retryCount = 0;
+  }
+
+  // Same fail-closed posture as AutoUpdaterService: only the explicitly
+  // catalogued transient signals retry. Anything else (404, cert error,
+  // unknown net::ERR_) waits for the next 8-hour tick.
+  private isTransientError(err: unknown): boolean {
+    let current: unknown = err;
+    let foundTransient = false;
+    for (let depth = 0; depth < 5 && current && typeof current === "object"; depth++) {
+      const message = (current as { message?: unknown }).message;
+      if (typeof message === "string") {
+        for (const match of message.matchAll(ELECTRON_NET_TOKEN_RE)) {
+          const token = match[1];
+          if (PERMANENT_NET_ERROR_TOKENS.has(token)) return false;
+          if (TRANSIENT_NET_ERROR_TOKENS.has(token)) foundTransient = true;
+        }
+      }
+      const statusCode = (current as { statusCode?: unknown }).statusCode;
+      if (typeof statusCode === "number") {
+        if (statusCode === 404 || statusCode === 401 || statusCode === 403) return false;
+        if (statusCode >= 500 && statusCode < 600) foundTransient = true;
+        if (statusCode === 408 || statusCode === 429) foundTransient = true;
+      }
+      current = (current as { cause?: unknown }).cause;
+    }
+    return foundTransient;
+  }
+
+  private scheduleRetry(): void {
+    if (this.retryCount >= MAX_RETRIES) return;
+    const base = RETRY_BASE_DELAYS_MS[this.retryCount];
+    const jitterFactor = 0.8 + 0.4 * Math.random();
+    const delay = Math.floor(base * jitterFactor);
+    this.retryCount += 1;
+    this.clearRetryTimeout();
+    this.retryTimeout = setTimeout(() => {
+      this.retryTimeout = null;
+      void this.runCheck("Retry");
+    }, delay);
+  }
+
+  private getActiveFeedUrl(): string {
+    const channel = store.get("updateChannel") ?? "stable";
+    const feedUrl = feedUrlForChannel(channel);
+    // Channel switched between polls — drop the prior ETag so we don't send
+    // a stable-feed validator to the nightly feed (or vice versa).
+    if (this.activeFeedUrl && this.activeFeedUrl !== feedUrl) {
+      try {
+        store.delete("storeNotifierEtag");
+      } catch {
+        // Best-effort — corrupted store reads here shouldn't block polling.
+      }
+    }
+    this.activeFeedUrl = feedUrl;
+    return feedUrl;
+  }
+
+  private async fetchLatestVersion(feedUrl: string): Promise<string | null> {
+    const storedEtag = store.get("storeNotifierEtag");
+    const headers: Record<string, string> = {};
+    if (typeof storedEtag === "string" && storedEtag.length > 0) {
+      headers["If-None-Match"] = storedEtag;
+    }
+    const res = await net.fetch(manifestUrl(feedUrl), { headers });
+    if (res.status === 304) return null;
+    if (!res.ok) {
+      const err: Error & { statusCode?: number } = new Error(
+        `Manifest fetch failed: HTTP ${res.status}`
+      );
+      err.statusCode = res.status;
+      throw err;
+    }
+    const text = await res.text();
+    const parsed = parseYaml(text);
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const version = (parsed as { version?: unknown }).version;
+    if (typeof version !== "string") return null;
+    const trimmed = version.trim();
+    if (trimmed.length === 0 || trimmed.length > VERSION_MAX_LEN) return null;
+    if (!VERSION_ALLOWLIST.test(trimmed)) return null;
+    if (!semver.valid(trimmed)) return null;
+    const etag = res.headers.get("etag");
+    if (etag) {
+      try {
+        store.set("storeNotifierEtag", etag);
+      } catch {
+        // Persistence is best-effort — a write failure means we re-fetch
+        // the full body next tick, but the version compare still works.
+      }
+    }
+    return trimmed;
+  }
+
+  private shouldNotify(remoteVersion: string): boolean {
+    const installed = app.getVersion();
+    const installedSemver = semver.coerce(installed);
+    const remoteSemver = semver.coerce(remoteVersion);
+    if (!installedSemver || !remoteSemver) return false;
+    try {
+      if (!semver.gt(remoteSemver, installedSemver)) return false;
+    } catch {
+      return false;
+    }
+    const lastNotified = store.get("lastNotifiedStoreVersion");
+    if (typeof lastNotified === "string" && lastNotified === remoteVersion) return false;
+    return true;
+  }
+
+  private async runCheck(context: "Initial" | "Periodic" | "Retry" | "Resume"): Promise<void> {
+    try {
+      const enabled = store.get("storeUpdateNotificationsEnabled") ?? true;
+      if (!enabled) return;
+      const feedUrl = this.getActiveFeedUrl();
+      const remoteVersion = await this.fetchLatestVersion(feedUrl);
+      this.resetRetryState();
+      if (remoteVersion === null) return;
+      if (!this.shouldNotify(remoteVersion)) return;
+      const detected: DetectedStoreUpdate = {
+        version: remoteVersion,
+        storeUrl: buildStoreUrl(),
+      };
+      this.lastDetected = detected;
+      broadcastToRenderer(CHANNELS.STORE_UPDATE_AVAILABLE, detected);
+    } catch (err) {
+      console.error(`[MAIN] ${context} Store update check failed:`, err);
+      if (!this.isTransientError(err)) {
+        this.resetRetryState();
+        return;
+      }
+      if (this.retryCount >= MAX_RETRIES) {
+        this.resetRetryState();
+        return;
+      }
+      this.scheduleRetry();
+    }
+  }
+
+  /** Test-only seam: trigger a manual check (bypasses the jitter timer). */
+  async _checkNowForTest(): Promise<void> {
+    await this.runCheck("Initial");
+  }
+
+  getLastDetectedUpdate(): DetectedStoreUpdate | null {
+    return this.lastDetected;
+  }
+
+  initialize(): void {
+    if (this.initialized) return;
+
+    // Register the settings handlers unconditionally so non-Store renderers
+    // that import the preload binding never see `undefined` returns. The
+    // getter/setter just touch electron-store and don't depend on polling.
+    if (!this.handlersRegistered) {
+      ipcMain.handle(CHANNELS.STORE_UPDATE_GET_SETTINGS, () => {
+        const enabled = store.get("storeUpdateNotificationsEnabled") ?? true;
+        return { enabled };
+      });
+
+      ipcMain.handle(CHANNELS.STORE_UPDATE_SET_SETTINGS, (event, enabled: unknown) => {
+        const senderUrl = event.senderFrame?.url;
+        if (!senderUrl || !isTrustedRendererUrl(senderUrl)) {
+          return { enabled: store.get("storeUpdateNotificationsEnabled") ?? true };
+        }
+        const validated = typeof enabled === "boolean" ? enabled : true;
+        store.set("storeUpdateNotificationsEnabled", validated);
+        if (!validated) {
+          // Stop polling and drop the cached detection so a re-enable doesn't
+          // immediately fire a stale notification.
+          this.resetRetryState();
+          this.lastDetected = null;
+        }
+        return { enabled: validated };
+      });
+
+      ipcMain.handle(CHANNELS.STORE_UPDATE_GET_LATEST, () => {
+        return this.lastDetected;
+      });
+
+      ipcMain.handle(CHANNELS.STORE_UPDATE_DISMISS, (event, version: unknown) => {
+        const senderUrl = event.senderFrame?.url;
+        if (!senderUrl || !isTrustedRendererUrl(senderUrl)) return;
+        if (typeof version !== "string") return;
+        const trimmed = version.trim();
+        if (trimmed.length === 0 || trimmed.length > VERSION_MAX_LEN) return;
+        if (!VERSION_ALLOWLIST.test(trimmed)) return;
+        if (!semver.valid(trimmed)) return;
+        store.set("lastNotifiedStoreVersion", trimmed);
+      });
+
+      this.handlersRegistered = true;
+    }
+
+    if (!isWindowsStoreBuild()) {
+      console.log("[MAIN] Store update notifier inactive: not a Windows Store build");
+      return;
+    }
+
+    if (!app.isPackaged) {
+      console.log("[MAIN] Store update notifier inactive: not packaged");
+      return;
+    }
+
+    try {
+      const startupJitterMs = Math.floor(Math.random() * STARTUP_JITTER_MAX_MS);
+      this.startupJitterTimeout = setTimeout(() => {
+        this.startupJitterTimeout = null;
+        void this.runCheck("Initial");
+      }, startupJitterMs);
+
+      this.checkInterval = setInterval(() => {
+        void this.runCheck("Periodic");
+      }, CHECK_INTERVAL_MS);
+
+      try {
+        this.removeSuspendListener = getSystemSleepService().onSuspend(() => {
+          if (this.checkInterval) {
+            clearInterval(this.checkInterval);
+            this.checkInterval = null;
+          }
+          if (this.startupJitterTimeout) {
+            clearTimeout(this.startupJitterTimeout);
+            this.startupJitterTimeout = null;
+          }
+          if (this.resumeTimeout) {
+            clearTimeout(this.resumeTimeout);
+            this.resumeTimeout = null;
+          }
+          this.resetRetryState();
+        });
+        this.removeWakeListener = getSystemSleepService().onWake(() => {
+          if (this.resumeTimeout || this.checkInterval) return;
+          this.resumeTimeout = setTimeout(() => {
+            this.resumeTimeout = null;
+            void this.runCheck("Resume");
+            if (!this.checkInterval) {
+              this.checkInterval = setInterval(() => {
+                void this.runCheck("Periodic");
+              }, CHECK_INTERVAL_MS);
+            }
+          }, RESUME_CHECK_DELAY_MS);
+        });
+      } catch {
+        // SystemSleepService not initialized — periodic timer covers the gap.
+      }
+
+      this.initialized = true;
+      console.log("[MAIN] Windows Store update notifier initialized");
+    } catch (err) {
+      console.error("[MAIN] Windows Store notifier initialization failed:", err);
+      this.dispose();
+    }
+  }
+
+  dispose(): void {
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+      this.checkInterval = null;
+    }
+    if (this.startupJitterTimeout) {
+      clearTimeout(this.startupJitterTimeout);
+      this.startupJitterTimeout = null;
+    }
+    this.clearRetryTimeout();
+    if (this.resumeTimeout) {
+      clearTimeout(this.resumeTimeout);
+      this.resumeTimeout = null;
+    }
+    this.retryCount = 0;
+    if (this.removeSuspendListener) {
+      this.removeSuspendListener();
+      this.removeSuspendListener = null;
+    }
+    if (this.removeWakeListener) {
+      this.removeWakeListener();
+      this.removeWakeListener = null;
+    }
+    try {
+      ipcMain.removeHandler(CHANNELS.STORE_UPDATE_GET_SETTINGS);
+    } catch {
+      // Handler may not have been registered.
+    }
+    try {
+      ipcMain.removeHandler(CHANNELS.STORE_UPDATE_SET_SETTINGS);
+    } catch {
+      // Handler may not have been registered.
+    }
+    try {
+      ipcMain.removeHandler(CHANNELS.STORE_UPDATE_GET_LATEST);
+    } catch {
+      // Handler may not have been registered.
+    }
+    try {
+      ipcMain.removeHandler(CHANNELS.STORE_UPDATE_DISMISS);
+    } catch {
+      // Handler may not have been registered.
+    }
+    this.handlersRegistered = false;
+    this.lastDetected = null;
+    this.activeFeedUrl = null;
+    this.initialized = false;
+  }
+}
+
+export const windowsStoreNotifierService = new WindowsStoreNotifierService();
+export { buildStoreUrl, MS_STORE_FALLBACK_URL };

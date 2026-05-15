@@ -1065,6 +1065,18 @@ export interface ElectronAPI {
     notifyDismiss(version: string): Promise<void>;
     getLastCheck(): Promise<number | null>;
   };
+  storeUpdate: {
+    /** Subscribe to Store-build update notifications. Renderer hook short-circuits unless `isWindowsStore`. */
+    onUpdateAvailable(callback: (info: { version: string; storeUrl: string }) => void): () => void;
+    /** Hydrate-time getter so the renderer doesn't miss a detection that fired before first paint. */
+    getLatest(): Promise<{ version: string; storeUrl: string } | null>;
+    /** Persist that the user has seen this version so it isn't re-notified. */
+    dismiss(version: string): Promise<void>;
+    /** Read the user's preference for Store update notifications. */
+    getSettings(): Promise<{ enabled: boolean }>;
+    /** Toggle Store update notifications on/off. */
+    setSettings(enabled: boolean): Promise<{ enabled: boolean }>;
+  };
   gemini: {
     /** Get Gemini config status (exists, alternate buffer enabled) */
     getStatus(): Promise<{ exists: boolean; alternateBufferEnabled: boolean; error?: string }>;

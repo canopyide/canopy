@@ -28,6 +28,7 @@ import { useActionRegistry } from "./hooks/useActionRegistry";
 import { usePluginActions } from "./hooks/usePluginActions";
 import { usePluginPanelKinds } from "./hooks/usePluginPanelKinds";
 import { useUpdateListener } from "./hooks/useUpdateListener";
+import { useStoreUpdateListener } from "./hooks/useStoreUpdateListener";
 import { useMainProcessToastListener } from "./hooks/useMainProcessToastListener";
 
 import { useActionPalette } from "./hooks/useActionPalette";
@@ -463,6 +464,7 @@ function App() {
   const gettingStarted = useGettingStartedChecklist(isStateLoaded);
   const onboardingOverlayActive = gettingStarted.visible || gettingStarted.showCelebration;
   useUpdateListener(onboardingOverlayActive);
+  useStoreUpdateListener();
   useOrchestrationMilestones(isStateLoaded);
   useAgentWaitingNudge(isStateLoaded);
 

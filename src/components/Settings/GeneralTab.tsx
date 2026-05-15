@@ -129,6 +129,10 @@ export function GeneralTab({
   const [updateChannel, setUpdateChannel] = useState<"stable" | "nightly" | null>(null);
   const [channelSaving, setChannelSaving] = useState(false);
   const [lastUpdateCheck, setLastUpdateCheck] = useState<number | null>(null);
+  const [storeUpdateNotificationsEnabled, setStoreUpdateNotificationsEnabled] = useState<
+    boolean | null
+  >(null);
+  const [storeUpdateSettingsSaving, setStoreUpdateSettingsSaving] = useState(false);
   const updatesManagedByStore = useDistributionStore((s) => s.isWindowsStore);
   const isMountedRef = useRef(true);
   useEffect(() => {
@@ -187,6 +191,45 @@ export function GeneralTab({
       clearInterval(interval);
     };
   }, [updatesManagedByStore]);
+
+  useEffect(() => {
+    if (!updatesManagedByStore) return;
+    if (!window.electron?.storeUpdate?.getSettings) {
+      // Renderer running against an older preload (e.g. tests) — default visible.
+      setStoreUpdateNotificationsEnabled(true);
+      return;
+    }
+    let cancelled = false;
+    window.electron.storeUpdate
+      .getSettings()
+      .then((result) => {
+        if (!cancelled) setStoreUpdateNotificationsEnabled(result.enabled);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          logError("Failed to get store update notification settings", error);
+          setStoreUpdateNotificationsEnabled(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [updatesManagedByStore]);
+
+  const handleStoreUpdateNotificationsToggle = async () => {
+    if (storeUpdateSettingsSaving || storeUpdateNotificationsEnabled === null) return;
+    if (!window.electron?.storeUpdate?.setSettings) return;
+    const next = !storeUpdateNotificationsEnabled;
+    setStoreUpdateSettingsSaving(true);
+    try {
+      const result = await window.electron.storeUpdate.setSettings(next);
+      if (isMountedRef.current) setStoreUpdateNotificationsEnabled(result.enabled);
+    } catch (error) {
+      logError("Failed to set store update notification settings", error);
+    } finally {
+      if (isMountedRef.current) setStoreUpdateSettingsSaving(false);
+    }
+  };
 
   const handleChannelChange = async (channel: "stable" | "nightly") => {
     if (updatesManagedByStore) return;
@@ -593,7 +636,15 @@ export function GeneralTab({
               description="Updates are managed by the Microsoft Store on Windows."
               id="general-update-channel"
             >
-              <div />
+              <SettingsSwitchCard
+                icon={RefreshCw}
+                title="Notify when a new version is available"
+                subtitle="Show an inbox notification with a link to the Microsoft Store."
+                isEnabled={storeUpdateNotificationsEnabled ?? true}
+                onChange={() => void handleStoreUpdateNotificationsToggle()}
+                ariaLabel="Toggle Microsoft Store update notifications"
+                disabled={storeUpdateNotificationsEnabled === null || storeUpdateSettingsSaving}
+              />
             </SettingsSection>
           ) : (
             <SettingsSection
