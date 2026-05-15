@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import type { CrashType } from "@shared/types/pty-host";
 import { usePanelStore } from "@/store/panelStore";
 import { actionService } from "@/services/ActionService";
 import { logError } from "@/utils/logger";
+import { useDeferredLoading } from "@/hooks/useDeferredLoading";
+import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
 
 interface CrashCopy {
   title: string;
@@ -45,17 +47,32 @@ export function HostCrashBanner() {
   const backendStatus = usePanelStore((s) => s.backendStatus);
   const lastCrashType = usePanelStore((s) => s.lastCrashType);
   const [isRestarting, setIsRestarting] = useState(false);
+  const recoveringShown = useDeferredLoading(backendStatus === "recovering", UI_DOHERTY_THRESHOLD);
 
-  if (backendStatus !== "disconnected") return null;
+  if (backendStatus === "connected") return null;
+
+  if (backendStatus === "recovering") {
+    if (!recoveringShown) return null;
+
+    return (
+      <div
+        role="alert"
+        className="flex items-start gap-3 px-4 py-2 bg-[var(--color-status-warning)]/10 border-b border-[var(--color-status-warning)]/25 text-[var(--color-status-warning)] text-sm shrink-0"
+      >
+        <Loader2 className="w-4 h-4 shrink-0 mt-0.5 animate-spin" aria-hidden="true" />
+        <div className="flex-1 flex flex-col gap-0.5">
+          <p className="font-medium">Terminal service restarting</p>
+          <p>The terminal backend stopped and is restarting automatically.</p>
+        </div>
+      </div>
+    );
+  }
 
   const { title, body } = copyForCrash(lastCrashType);
 
   const handleRestart = async () => {
     if (isRestarting) return;
     setIsRestarting(true);
-    // dispatch never throws — it returns { ok, error }. On a successful restart
-    // the backend status transitions out of "disconnected" and the banner
-    // unmounts, so we only need to unlock the button on failure.
     const result = await actionService.dispatch("terminal.restartService", undefined, {
       source: "user",
     });

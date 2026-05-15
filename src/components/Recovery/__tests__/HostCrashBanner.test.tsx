@@ -35,10 +35,51 @@ describe("HostCrashBanner", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("renders nothing when backend is recovering", () => {
+  it("renders nothing when backend is recovering (sub-Doherty gate)", () => {
     usePanelStore.setState({ backendStatus: "recovering" });
     const { container } = render(<HostCrashBanner />);
     expect(container.firstChild).toBeNull();
+  });
+
+  it("renders recovering banner after Doherty threshold", () => {
+    vi.useFakeTimers();
+    usePanelStore.setState({ backendStatus: "recovering" });
+    const { container } = render(<HostCrashBanner />);
+    expect(container.firstChild).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(container.firstChild).not.toBeNull();
+    vi.useRealTimers();
+  });
+
+  it("shows spinner and restarting copy in recovering variant", () => {
+    vi.useFakeTimers();
+    usePanelStore.setState({ backendStatus: "recovering" });
+    render(<HostCrashBanner />);
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(screen.getByText("Terminal service restarting")).toBeTruthy();
+    expect(
+      screen.getByText(/The terminal backend stopped and is restarting automatically/)
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Restart service/i })).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it("hides recovering banner when recovering resolves within Doherty threshold", () => {
+    vi.useFakeTimers();
+    usePanelStore.setState({ backendStatus: "recovering" });
+    const { container } = render(<HostCrashBanner />);
+    act(() => {
+      usePanelStore.setState({ backendStatus: "connected", lastCrashType: null });
+    });
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(container.firstChild).toBeNull();
+    vi.useRealTimers();
   });
 
   it("renders the OUT_OF_MEMORY copy when applicable", () => {

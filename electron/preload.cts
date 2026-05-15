@@ -893,6 +893,15 @@ const api: ElectronAPI = {
       }) => void
     ): (() => void) => _eventBusOn("terminal:backend-crashed", callback),
 
+    onBackendRecovering: (
+      callback: (data: {
+        crashType: string;
+        code: number | null;
+        signal: string | null;
+        timestamp: number;
+      }) => void
+    ): (() => void) => _eventBusOn("terminal:backend-recovering", callback),
+
     onBackendReady: (callback: () => void): (() => void) =>
       _eventBusOn("terminal:backend-ready", () => callback()),
 
