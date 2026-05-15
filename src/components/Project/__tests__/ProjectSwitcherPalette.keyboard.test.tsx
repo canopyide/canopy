@@ -103,8 +103,9 @@ vi.mock("@/components/ui/context-menu", () => ({
   ContextMenuSeparator: () => null,
 }));
 
+const modifierKeysState = { meta: false, alt: false };
 vi.mock("@/hooks/useModifierKeys", () => ({
-  useModifierKeys: () => ({ meta: false, alt: false }),
+  useModifierKeys: () => modifierKeysState,
 }));
 
 vi.mock("@/utils/timeAgo", () => ({
@@ -158,6 +159,8 @@ describe("ProjectSwitcherPalette keyboard navigation", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    modifierKeysState.meta = false;
+    modifierKeysState.alt = false;
   });
 
   afterEach(() => {
@@ -261,5 +264,43 @@ describe("ProjectSwitcherPalette keyboard navigation", () => {
     expect(footer.textContent).toContain("Switch");
     expect(footer.textContent).not.toContain("Remove");
     expect(footer.textContent).not.toContain("Right-click for more");
+  });
+
+  it("Alt+Enter performs a normal switch and never triggers new-window", () => {
+    const onSelectNewWindow = vi.fn();
+    render(<ProjectSwitcherPalette {...defaultProps} onSelectNewWindow={onSelectNewWindow} />);
+    const input = screen.getByTestId("palette-input");
+    fireEvent.keyDown(input, { key: "Enter", altKey: true });
+    expect(defaultProps.onSelect).toHaveBeenCalledTimes(1);
+    expect(defaultProps.onSelect).toHaveBeenCalledWith(defaultProps.results[0]);
+    expect(onSelectNewWindow).not.toHaveBeenCalled();
+  });
+
+  it("Meta+Enter still triggers the new-window shortcut", () => {
+    const onSelectNewWindow = vi.fn();
+    render(<ProjectSwitcherPalette {...defaultProps} onSelectNewWindow={onSelectNewWindow} />);
+    const input = screen.getByTestId("palette-input");
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
+    expect(onSelectNewWindow).toHaveBeenCalledTimes(1);
+    expect(onSelectNewWindow).toHaveBeenCalledWith(defaultProps.results[0]);
+    expect(defaultProps.onSelect).not.toHaveBeenCalled();
+  });
+
+  it("footer never shows a background hint when Alt is held (modal mode)", () => {
+    modifierKeysState.alt = true;
+    render(<ProjectSwitcherPalette {...defaultProps} />);
+    const footer = screen.getByTestId("palette-footer");
+    expect(footer.textContent).not.toContain("Background");
+    expect(footer.textContent).not.toContain("⌥↵");
+    expect(footer.textContent).toContain("Switch");
+  });
+
+  it("footer never shows a background hint when Alt is held (dropdown mode)", () => {
+    modifierKeysState.alt = true;
+    render(<ProjectSwitcherPalette {...defaultProps} mode="dropdown" />);
+    const footer = screen.getByTestId("palette-footer");
+    expect(footer.textContent).not.toContain("Background");
+    expect(footer.textContent).not.toContain("⌥↵");
+    expect(footer.textContent).toContain("Switch");
   });
 });
