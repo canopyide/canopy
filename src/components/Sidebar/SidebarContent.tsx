@@ -77,6 +77,12 @@ function formatButtonTitle(label: string, shortcut?: string | null): string {
 
 const NO_MATCH_QUERY_MAX = 40;
 
+const QUICK_STATE_LABELS: Record<"working" | "waiting" | "finished", string> = {
+  working: "Working",
+  waiting: "Waiting",
+  finished: "Finished",
+};
+
 function truncateSearchQuery(trimmedQuery: string) {
   const codepoints = Array.from(trimmedQuery);
   return codepoints.length > NO_MATCH_QUERY_MAX
@@ -176,6 +182,12 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const hasActiveFilters = useWorktreeFilterStore((state) => state.hasActiveFilters);
   const hasFacetFilters = useWorktreeFilterStore((state) => state.hasFacetFilters);
   const hasFacetFiltersActive = hasFacetFilters();
+  const activeFacetFilterCount =
+    statusFilters.size +
+    typeFilters.size +
+    githubFilters.size +
+    sessionFilters.size +
+    activityFilters.size;
   const collapsedWorktrees = useWorktreeFilterStore((state) => state.collapsedWorktrees);
   const pruneStaleWorktreeIds = useWorktreeFilterStore((state) => state.pruneStaleWorktreeIds);
   const setQuickStateFilter = useWorktreeFilterStore((state) => state.setQuickStateFilter);
@@ -953,13 +965,19 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                 <EmptyState
                   variant="filtered-empty"
                   scale="sidebar"
-                  title={`No ${quickStateFilter} worktrees`}
+                  title={
+                    hasFacetFiltersActive && activeFacetFilterCount > 0
+                      ? `No worktrees match ${QUICK_STATE_LABELS[quickStateFilter]} with ${activeFacetFilterCount} ${
+                          activeFacetFilterCount === 1 ? "filter" : "filters"
+                        }`
+                      : `No ${quickStateFilter} worktrees`
+                  }
                   action={
                     <button
                       onClick={clearAllFilters}
                       className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
                     >
-                      Clear filters
+                      Show all worktrees
                     </button>
                   }
                 />
@@ -980,7 +998,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                       onClick={clearAllFilters}
                       className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
                     >
-                      Clear filters
+                      Show all worktrees
                     </button>
                   }
                 />
