@@ -68,6 +68,23 @@ vi.mock("@/components/DragDrop", () => ({
   TRASH_DROPPABLE_ID: "__trash-droppable__",
 }));
 
+// TrashGroupItem pulls in panel/worktree stores and the second-ticker — mock
+// it to a minimal shape so we can assert TrashContainer's display-ordering
+// logic and prop-passing without the heavy dependency surface.
+vi.mock("../TrashGroupItem", () => ({
+  TrashGroupItem: ({
+    groupRestoreId,
+    earliestExpiry,
+  }: {
+    groupRestoreId: string;
+    earliestExpiry: number;
+  }) => (
+    <div data-testid={`trash-group-item-${groupRestoreId}`} data-earliest={String(earliestExpiry)}>
+      GROUP {groupRestoreId}
+    </div>
+  ),
+}));
+
 function makeTrashedItem(
   id: string,
   expiresAt: number = Date.now() + 10_000
@@ -81,6 +98,44 @@ function makeTrashedItem(
       id,
       expiresAt,
       originalLocation: "grid",
+    },
+  };
+}
+
+function makeGroupAnchor(
+  id: string,
+  groupRestoreId: string,
+  expiresAt: number
+): { terminal: TerminalInstance; trashedInfo: TrashedTerminal } {
+  return {
+    terminal: { id, title: `Terminal ${id}` } as TerminalInstance,
+    trashedInfo: {
+      id,
+      expiresAt,
+      originalLocation: "grid",
+      groupRestoreId,
+      groupMetadata: {
+        panelIds: [id],
+        activeTabId: id,
+        location: "grid",
+        worktreeId: null,
+      },
+    },
+  };
+}
+
+function makeGroupMember(
+  id: string,
+  groupRestoreId: string,
+  expiresAt: number
+): { terminal: TerminalInstance; trashedInfo: TrashedTerminal } {
+  return {
+    terminal: { id, title: `Terminal ${id}` } as TerminalInstance,
+    trashedInfo: {
+      id,
+      expiresAt,
+      originalLocation: "grid",
+      groupRestoreId,
     },
   };
 }
@@ -301,5 +356,31 @@ describe("TrashContainer", () => {
     expect(newerIdx).toBeGreaterThanOrEqual(0);
     expect(olderIdx).toBeGreaterThanOrEqual(0);
     expect(newerIdx).toBeLessThan(olderIdx);
+  });
+
+  it("sorts groups by latestExpiry, not earliestExpiry, when interleaved with singles", () => {
+    // Group's members span expiry [1000, 9000]. A single sits at 5000.
+    // LIFO must use the group's latestExpiry (9000) so the group comes first.
+    const anchor = makeGroupAnchor("g-a", "grp", 1_000);
+    const member = makeGroupMember("g-b", "grp", 9_000);
+    const single = makeTrashedItem("solo", 5_000);
+    const { container } = render(<TrashContainer trashedTerminals={[anchor, member, single]} />);
+
+    const text = container.textContent ?? "";
+    const groupIdx = text.indexOf("GROUP grp");
+    const singleIdx = text.indexOf("Terminal solo");
+    expect(groupIdx).toBeGreaterThanOrEqual(0);
+    expect(singleIdx).toBeGreaterThanOrEqual(0);
+    expect(groupIdx).toBeLessThan(singleIdx);
+  });
+
+  it("passes earliestExpiry (not latestExpiry) to TrashGroupItem for the countdown", () => {
+    const anchor = makeGroupAnchor("g-a", "grp", 1_000);
+    const member = makeGroupMember("g-b", "grp", 9_000);
+    const { getByTestId } = render(<TrashContainer trashedTerminals={[anchor, member]} />);
+
+    // The countdown displayed by TrashGroupItem must use the soonest-to-expire
+    // member; the sortKey/LIFO change must not bleed into this prop.
+    expect(getByTestId("trash-group-item-grp").getAttribute("data-earliest")).toBe("1000");
   });
 });
