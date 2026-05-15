@@ -101,8 +101,10 @@ describe("NotificationThread worst severity", () => {
 
     const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
 
+    // Worst severity (error) disagrees with the latest entry (success), so the
+    // preview is prefixed to flag the icon/text divergence.
     await waitFor(() => {
-      expect(screen.queryAllByText("Deploy successful").length).toBeGreaterThan(0);
+      expect(screen.queryAllByText("Latest: Deploy successful").length).toBeGreaterThan(0);
     });
 
     const errorIcon = container.querySelector(".text-status-error");
@@ -283,7 +285,7 @@ describe("NotificationThread with single entry", () => {
 });
 
 describe("NotificationThread message content", () => {
-  it("shows latest entry message even when worst severity is different", async () => {
+  it("prefixes the preview with 'Latest:' when worst severity disagrees with the latest entry", async () => {
     const correlationId = "thread-6";
     useNotificationHistoryStore.getState().addEntry(
       makeEntry({
@@ -307,8 +309,40 @@ describe("NotificationThread message content", () => {
     render(<NotificationCenter open onClose={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.queryAllByText("Build retried and succeeded").length).toBeGreaterThan(0);
+      expect(screen.queryAllByText("Latest: Build retried and succeeded").length).toBeGreaterThan(
+        0
+      );
     });
+    expect(screen.queryByText("Build retried and succeeded")).toBeNull();
+  });
+
+  it("omits the 'Latest:' prefix when the latest entry already matches the worst severity", async () => {
+    const correlationId = "thread-7";
+    useNotificationHistoryStore.getState().addEntry(
+      makeEntry({
+        id: "error-entry-1",
+        type: "error",
+        message: "Build failed",
+        correlationId,
+        timestamp: Date.now() - 2000,
+      })
+    );
+    useNotificationHistoryStore.getState().addEntry(
+      makeEntry({
+        id: "error-entry-2",
+        type: "error",
+        message: "Build failed again",
+        correlationId,
+        timestamp: Date.now() - 1000,
+      })
+    );
+
+    render(<NotificationCenter open onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.queryAllByText("Build failed again").length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByText("Latest: Build failed again")).toBeNull();
   });
 });
 

@@ -530,20 +530,35 @@ describe("NotificationCenterToolbarButton — DND state surface", () => {
       expect(useNotificationHistoryStore.getState().evictedToInboxCount).toBe(0);
     });
 
-    it("animation class persists across multiple subsequent increments", async () => {
+    it("uses a leading-edge throttle: in-window bumps do not push out the next allowed fire", async () => {
+      vi.useFakeTimers();
       const { getByTestId } = render(<NotificationCenterToolbarButton />);
+      const bell = getByTestId("notification-bell-icon");
+
+      // T0: first eviction. Leading-edge fires; throttle ref is captured here.
       await act(async () => {
         useNotificationHistoryStore.setState({ evictedToInboxCount: 1 });
       });
-      expect(getByTestId("notification-bell-icon").className).toContain("animate-activity-blip");
+      expect(bell.className).toContain("animate-activity-blip");
+
+      // T0+100: a second eviction lands inside the 250ms window. A correct
+      // leading-edge throttle drops it without advancing the ref. (A naive
+      // "trailing" implementation that updates the ref on every bump would
+      // delay the next allowed fire to T0+350.)
       await act(async () => {
+        vi.advanceTimersByTime(100);
         useNotificationHistoryStore.setState({ evictedToInboxCount: 2 });
       });
-      expect(getByTestId("notification-bell-icon").className).toContain("animate-activity-blip");
+
+      // T0+260: the safety timeout from the first bump fired at T0+250 and
+      // cleared the class. A fresh eviction now should re-fire because the
+      // ref still points at T0 (260 - 0 = 260 ≥ DURATION_250). If the ref
+      // had drifted to T0+100, this bump would be wrongly throttled.
       await act(async () => {
+        vi.advanceTimersByTime(160);
         useNotificationHistoryStore.setState({ evictedToInboxCount: 3 });
       });
-      expect(getByTestId("notification-bell-icon").className).toContain("animate-activity-blip");
+      expect(bell.className).toContain("animate-activity-blip");
     });
 
     it("removes the animation class via safety timeout when the animation completes", async () => {
