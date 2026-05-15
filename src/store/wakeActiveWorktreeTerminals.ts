@@ -1,18 +1,28 @@
-import { TerminalRefreshTier } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
+import { logWarn } from "@/utils/logger";
 
 /**
- * Apply VISIBLE renderer policy to every grid terminal in the active worktree.
+ * Wake every grid terminal in the active worktree (#7999).
  *
- * Used on project view activation (cached `WebContentsView` reactivation in
- * Electron 41). Chromium fires `visibilitychange` when the view returns, but
- * the xterm DOM renderer's IntersectionObserver may have set `_isPaused=true`
- * while backgrounded — a bare `refresh()` is insufficient (#5092). Calling
- * `applyRendererPolicy(VISIBLE)` routes through `wakeAndRestore`, which
- * re-syncs the renderer buffer from the pty-host headless mirror. Dock and
- * trash terminals are excluded — they manage their own visibility.
+ * Called on cached `WebContentsView` reactivation (project view activation
+ * via Electron 41 `addChildView`). The pty-host headless mirror keeps
+ * receiving every byte regardless of tier, so the authoritative buffer is
+ * always current — but the renderer's xterm.js buffer accumulates only what
+ * arrives over the active stream. After the view returns, the missed range
+ * needs to be pulled from the headless mirror via the `wake-terminal` IPC
+ * and applied via `restoreFromSerialized`.
+ *
+ * Uses `terminalInstanceService.wake(id)` directly rather than
+ * `applyRendererPolicy(VISIBLE)` because the renderer-policy path returns
+ * early when tier equality holds (`TerminalRendererPolicy.applyRendererPolicy`),
+ * and a backgrounded view's terminals stay at VISIBLE the whole time —
+ * so the policy guard would prevent the wake from ever firing. `wake()`
+ * also unhibernates and uses its own rate-limit guard against rapid
+ * view-toggle floods.
+ *
+ * Dock and trash terminals are excluded — they manage their own visibility.
  */
 export function wakeActiveWorktreeTerminals(): void {
   const activeWorktreeId = useWorktreeSelectionStore.getState().activeWorktreeId ?? null;
@@ -26,6 +36,12 @@ export function wakeActiveWorktreeTerminals(): void {
     const location = panel.location ?? "grid";
     if (location === "dock" || location === "trash") continue;
 
-    terminalInstanceService.applyRendererPolicy(id, TerminalRefreshTier.VISIBLE);
+    try {
+      terminalInstanceService.wake(id);
+    } catch (error) {
+      // One broken terminal must not abort the fan-out — the next visible
+      // terminal still needs its missed range pulled from the headless mirror.
+      logWarn("[wakeActiveWorktreeTerminals] wake failed", { id, error });
+    }
   }
 }

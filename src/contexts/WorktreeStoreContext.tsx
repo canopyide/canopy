@@ -306,11 +306,10 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
     );
 
     // Snapshot-on-wake: when a cached view is reactivated (addChildView),
-    // Chromium fires visibilitychange. Request a fresh snapshot to rehydrate
-    // state that may have changed while the view was backgrounded, and wake
-    // the renderer-side xterm buffers for visible terminals (#7999) — the
-    // DOM renderer's IntersectionObserver may have set _isPaused while
-    // hidden, so a `refresh()` alone won't recover the buffer (#5092).
+    // Chromium fires visibilitychange. Request a fresh worktree snapshot to
+    // rehydrate state that may have changed while the view was backgrounded,
+    // then fan out per-terminal wake to pull the missed range from the
+    // pty-host's headless mirror into each visible xterm buffer (#7999).
     function handleVisibilityChange() {
       if (document.visibilityState !== "visible") return;
       if (worktreePort.isReady()) {

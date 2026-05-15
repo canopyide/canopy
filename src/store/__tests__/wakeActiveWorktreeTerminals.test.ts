@@ -1,13 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { TerminalInstance } from "@shared/types";
-import { TerminalRefreshTier } from "@/types";
 
-const applyRendererPolicyMock = vi.fn();
+const wakeMock = vi.fn();
+const logWarnMock = vi.fn();
 
 vi.mock("@/services/TerminalInstanceService", () => ({
   terminalInstanceService: {
-    applyRendererPolicy: applyRendererPolicyMock,
+    wake: wakeMock,
   },
+}));
+
+vi.mock("@/utils/logger", () => ({
+  logWarn: logWarnMock,
 }));
 
 let mockActiveWorktreeId: string | null = null;
@@ -38,7 +42,8 @@ function panel(id: string, overrides: Partial<TerminalInstance> = {}): TerminalI
 }
 
 beforeEach(() => {
-  applyRendererPolicyMock.mockReset();
+  wakeMock.mockReset();
+  logWarnMock.mockReset();
   mockActiveWorktreeId = null;
   mockPanelIds = [];
   mockPanelsById = {};
@@ -54,9 +59,9 @@ describe("wakeActiveWorktreeTerminals", () => {
 
     wakeActiveWorktreeTerminals();
 
-    expect(applyRendererPolicyMock).toHaveBeenCalledTimes(2);
-    expect(applyRendererPolicyMock).toHaveBeenCalledWith("a", TerminalRefreshTier.VISIBLE);
-    expect(applyRendererPolicyMock).toHaveBeenCalledWith("b", TerminalRefreshTier.VISIBLE);
+    expect(wakeMock).toHaveBeenCalledTimes(2);
+    expect(wakeMock).toHaveBeenCalledWith("a");
+    expect(wakeMock).toHaveBeenCalledWith("b");
   });
 
   it("excludes terminals from other worktrees", () => {
@@ -68,8 +73,8 @@ describe("wakeActiveWorktreeTerminals", () => {
 
     wakeActiveWorktreeTerminals();
 
-    expect(applyRendererPolicyMock).toHaveBeenCalledTimes(1);
-    expect(applyRendererPolicyMock).toHaveBeenCalledWith("a", TerminalRefreshTier.VISIBLE);
+    expect(wakeMock).toHaveBeenCalledTimes(1);
+    expect(wakeMock).toHaveBeenCalledWith("a");
   });
 
   it("excludes dock-located terminals", () => {
@@ -81,8 +86,8 @@ describe("wakeActiveWorktreeTerminals", () => {
 
     wakeActiveWorktreeTerminals();
 
-    expect(applyRendererPolicyMock).toHaveBeenCalledTimes(1);
-    expect(applyRendererPolicyMock).toHaveBeenCalledWith("a", TerminalRefreshTier.VISIBLE);
+    expect(wakeMock).toHaveBeenCalledTimes(1);
+    expect(wakeMock).toHaveBeenCalledWith("a");
   });
 
   it("excludes trash-located terminals", () => {
@@ -94,8 +99,8 @@ describe("wakeActiveWorktreeTerminals", () => {
 
     wakeActiveWorktreeTerminals();
 
-    expect(applyRendererPolicyMock).toHaveBeenCalledTimes(1);
-    expect(applyRendererPolicyMock).toHaveBeenCalledWith("a", TerminalRefreshTier.VISIBLE);
+    expect(wakeMock).toHaveBeenCalledTimes(1);
+    expect(wakeMock).toHaveBeenCalledWith("a");
   });
 
   it("excludes non-terminal panel kinds", () => {
@@ -108,8 +113,8 @@ describe("wakeActiveWorktreeTerminals", () => {
 
     wakeActiveWorktreeTerminals();
 
-    expect(applyRendererPolicyMock).toHaveBeenCalledTimes(1);
-    expect(applyRendererPolicyMock).toHaveBeenCalledWith("term", TerminalRefreshTier.VISIBLE);
+    expect(wakeMock).toHaveBeenCalledTimes(1);
+    expect(wakeMock).toHaveBeenCalledWith("term");
   });
 
   it("treats undefined kind as terminal", () => {
@@ -120,20 +125,8 @@ describe("wakeActiveWorktreeTerminals", () => {
 
     wakeActiveWorktreeTerminals();
 
-    expect(applyRendererPolicyMock).toHaveBeenCalledTimes(1);
-    expect(applyRendererPolicyMock).toHaveBeenCalledWith("a", TerminalRefreshTier.VISIBLE);
-  });
-
-  it("treats undefined location as grid", () => {
-    mockActiveWorktreeId = "wt-1";
-    const a = { id: "a", title: "a", worktreeId: "wt-1" } as unknown as TerminalInstance;
-    mockPanelIds = ["a"];
-    mockPanelsById = { a };
-
-    wakeActiveWorktreeTerminals();
-
-    expect(applyRendererPolicyMock).toHaveBeenCalledTimes(1);
-    expect(applyRendererPolicyMock).toHaveBeenCalledWith("a", TerminalRefreshTier.VISIBLE);
+    expect(wakeMock).toHaveBeenCalledTimes(1);
+    expect(wakeMock).toHaveBeenCalledWith("a");
   });
 
   it("when no active worktree, only wakes terminals with no worktree affiliation", () => {
@@ -145,8 +138,8 @@ describe("wakeActiveWorktreeTerminals", () => {
 
     wakeActiveWorktreeTerminals();
 
-    expect(applyRendererPolicyMock).toHaveBeenCalledTimes(1);
-    expect(applyRendererPolicyMock).toHaveBeenCalledWith("a", TerminalRefreshTier.VISIBLE);
+    expect(wakeMock).toHaveBeenCalledTimes(1);
+    expect(wakeMock).toHaveBeenCalledWith("a");
   });
 
   it("no-ops when there are no panels", () => {
@@ -156,7 +149,7 @@ describe("wakeActiveWorktreeTerminals", () => {
 
     wakeActiveWorktreeTerminals();
 
-    expect(applyRendererPolicyMock).not.toHaveBeenCalled();
+    expect(wakeMock).not.toHaveBeenCalled();
   });
 
   it("skips panels missing from panelsById", () => {
@@ -165,6 +158,31 @@ describe("wakeActiveWorktreeTerminals", () => {
     mockPanelsById = {};
 
     expect(() => wakeActiveWorktreeTerminals()).not.toThrow();
-    expect(applyRendererPolicyMock).not.toHaveBeenCalled();
+    expect(wakeMock).not.toHaveBeenCalled();
+  });
+
+  it("isolates per-terminal failures so the fan-out continues", () => {
+    mockActiveWorktreeId = "wt-1";
+    const a = panel("a", { worktreeId: "wt-1" });
+    const b = panel("b", { worktreeId: "wt-1" });
+    const c = panel("c", { worktreeId: "wt-1" });
+    mockPanelIds = ["a", "b", "c"];
+    mockPanelsById = { a, b, c };
+
+    wakeMock.mockImplementation((id: string) => {
+      if (id === "b") throw new Error("broken xterm");
+    });
+
+    expect(() => wakeActiveWorktreeTerminals()).not.toThrow();
+
+    expect(wakeMock).toHaveBeenCalledTimes(3);
+    expect(wakeMock).toHaveBeenCalledWith("a");
+    expect(wakeMock).toHaveBeenCalledWith("b");
+    expect(wakeMock).toHaveBeenCalledWith("c");
+    expect(logWarnMock).toHaveBeenCalledTimes(1);
+    expect(logWarnMock).toHaveBeenCalledWith(
+      "[wakeActiveWorktreeTerminals] wake failed",
+      expect.objectContaining({ id: "b" })
+    );
   });
 });
