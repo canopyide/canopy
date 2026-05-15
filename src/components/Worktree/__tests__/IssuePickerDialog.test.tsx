@@ -62,6 +62,27 @@ describe("IssuePickerDialog empty states", () => {
     await waitFor(() => {
       expect(screen.getByRole("status").textContent).toContain("No issues found");
     });
+    const status = screen.getByRole("status");
+    expect(status.getAttribute("aria-live")).toBe("polite");
+    expect(status.hasAttribute("aria-describedby")).toBe(false);
+  });
+
+  it("trims whitespace-only search before querying the API and shows zero-data copy", async () => {
+    listIssuesMock.mockResolvedValue({ items: [] });
+    renderDialog();
+    await waitFor(() => screen.getByRole("status"));
+
+    fireEvent.change(screen.getByPlaceholderText("Search issues by title or number..."), {
+      target: { value: "   " },
+    });
+
+    await waitFor(
+      () => {
+        expect(listIssuesMock.mock.calls.some((call) => call[0]?.search === undefined)).toBe(true);
+      },
+      { timeout: 2000 }
+    );
+    expect(screen.getByRole("status").textContent).toContain("No issues found");
   });
 
   it("renders filtered-empty EmptyState with interpolated query", async () => {

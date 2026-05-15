@@ -49,6 +49,8 @@ describe("BaseBranchCombobox empty states", () => {
     renderCombobox({ branchQuery: "", selectableRows: [] });
     const status = screen.getByRole("status");
     expect(status.textContent).toContain("No branches available");
+    expect(status.getAttribute("aria-live")).toBe("polite");
+    expect(status.hasAttribute("aria-describedby")).toBe(false);
   });
 
   it("renders filtered-empty EmptyState with interpolated query", () => {

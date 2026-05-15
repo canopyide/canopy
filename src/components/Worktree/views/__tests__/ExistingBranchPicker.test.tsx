@@ -37,6 +37,8 @@ describe("ExistingBranchPicker empty states", () => {
     renderPicker({ query: "", filteredBranches: [] });
     const status = screen.getByRole("status");
     expect(status.textContent).toContain("No available local branches");
+    expect(status.getAttribute("aria-live")).toBe("polite");
+    expect(status.hasAttribute("aria-describedby")).toBe(false);
   });
 
   it("renders filtered-empty EmptyState with interpolated query", () => {

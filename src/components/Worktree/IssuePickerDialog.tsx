@@ -96,7 +96,7 @@ export function IssuePickerDialog({
       try {
         const result = await githubClient.listIssues({
           cwd: worktree.path,
-          search: searchTerm || undefined,
+          search: searchTerm.trim() || undefined,
           state,
         });
         setIssues(result.items);
