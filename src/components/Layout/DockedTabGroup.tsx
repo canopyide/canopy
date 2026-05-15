@@ -62,6 +62,10 @@ import { handleDockInteractOutside, handleDockEscapeKeyDown } from "./dockPopove
 import { usePreferencesStore } from "@/store";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
+// Defer terminal focus by one frame's worth so Radix Popover finishes its
+// open animation before we steal focus into the PTY.
+const TERMINAL_FOCUS_DELAY_MS = 50;
+
 interface DockedTabGroupProps {
   group: TabGroup;
   panels: TerminalInstance[];
@@ -571,7 +575,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
             return;
           }
 
-          setTimeout(() => terminalInstanceService.focus(activePanel.id), 50);
+          setTimeout(() => terminalInstanceService.focus(activePanel.id), TERMINAL_FOCUS_DELAY_MS);
         }}
       >
         {/* Tab bar at top of popover */}
