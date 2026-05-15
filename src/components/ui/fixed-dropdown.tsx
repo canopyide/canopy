@@ -166,6 +166,15 @@ export function FixedDropdown({
   // skips its commits, while preserving component state for sub-frame reopens.
   // The outer pointer-events:none wrapper stays in the DOM so layout doesn't
   // thrash; Activity only hides its child.
+  //
+  // INVARIANT for descendants: do NOT use exit-retaining `AnimatePresence`
+  // inside a keepMounted dropdown. React 19's Activity hidden mode defers
+  // effects and animation lifecycles, which strands AnimatePresence's exiting
+  // children in the DOM with stale closures — they stay fully interactive but
+  // disconnected from current state. Enter-only animation is fine; exit
+  // animation is not. Use plain conditional render for show/hide UI inside
+  // here. See `BulkActionBar.tsx` and `GitHubResourceList.tsx`'s
+  // skeleton/content switch for examples of the safe pattern.
   const inner = (
     <div
       ref={contentRef}
