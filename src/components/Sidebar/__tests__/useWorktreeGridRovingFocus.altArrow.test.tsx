@@ -126,6 +126,25 @@ describe("useWorktreeGridRovingFocus — Alt+Arrow keyboard reorder", () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
+  it("still invokes the reorder callback at top/bottom boundaries — the caller decides whether to no-op", () => {
+    // The hook stays generic: it only translates the keystroke. The caller's
+    // own bounds check (in SidebarContent.handleKeyboardReorder) handles the
+    // boundary no-op. Without this contract, the boundary behavior would be
+    // ambiguous (hook clamp vs. caller clamp). Lock it down here.
+    const onKeyboardReorder = vi.fn();
+    const { getByTestId } = render(<Harness onKeyboardReorder={onKeyboardReorder} />);
+    const topRow = getByTestId("row-wt1");
+    topRow.focus();
+    fireEvent.keyDown(topRow, { key: "ArrowUp", altKey: true });
+    expect(onKeyboardReorder).toHaveBeenLastCalledWith(topRow, -1);
+
+    const bottomRow = getByTestId("row-wt3");
+    bottomRow.focus();
+    fireEvent.keyDown(bottomRow, { key: "ArrowDown", altKey: true });
+    expect(onKeyboardReorder).toHaveBeenLastCalledWith(bottomRow, 1);
+    expect(onKeyboardReorder).toHaveBeenCalledTimes(2);
+  });
+
   it("ignores Alt+ArrowDown when focus is not on a row wrapper", () => {
     const onKeyboardReorder = vi.fn();
     const Wrap = () => {

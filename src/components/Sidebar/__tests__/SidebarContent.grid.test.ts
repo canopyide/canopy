@@ -425,6 +425,17 @@ describe("Worktree list keyboard grid — issue #6422", () => {
         expect(source).toMatch(/filterStore\.setManualOrder\(merged\)/);
         expect(source).toMatch(/filterStore\.setOrderBy\("manual"\)/);
       });
+
+      it("guards the reorder against grouped-by-type / active-search modes so it never silently mutates manualOrder when the drag handle is hidden", () => {
+        // Grouped mode and active search both flip isSortDisabled true; the
+        // drag handle hides in those modes, so Alt+Arrow must mirror that or
+        // it'd write to the manual order behind the user's back.
+        expect(source).toMatch(/isSortDisabledRef\s*=\s*useRef\(false\)/);
+        expect(source).toMatch(/isSortDisabledRef\.current\s*=\s*isSortDisabled/);
+        const guard = source.match(/handleKeyboardReorder = useCallback\([\s\S]*?\}, \[\]\);/);
+        expect(guard).toBeTruthy();
+        expect(guard?.[0]).toMatch(/if \(isSortDisabledRef\.current\) return;/);
+      });
     });
   });
 });

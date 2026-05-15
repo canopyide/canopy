@@ -103,11 +103,17 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const refreshAriaShortcut = useAriaKeyshortcuts("worktree.refresh");
   const createWorktreeAriaShortcut = useAriaKeyshortcuts("worktree.createDialog.open");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  // Latest dragStartOrder, captured in a ref so the keyboard-reorder callback
-  // identity stays stable across renders without skipping new visible orders.
+  // Latest dragStartOrder + sort-disabled state captured in refs so the
+  // keyboard-reorder callback identity stays stable across renders without
+  // missing new visible orders or going stale on group/search toggles.
   const dragStartOrderRef = useRef<readonly string[]>([]);
+  const isSortDisabledRef = useRef(false);
   const [keyboardReorderAnnouncement, setKeyboardReorderAnnouncement] = useState("");
   const handleKeyboardReorder = useCallback((rowEl: HTMLElement, delta: -1 | 1) => {
+    // Grouped-by-type and active-search modes hide the drag handle; keyboard
+    // reorder must mirror that — writing to manualOrder here would silently
+    // mutate ordering the user can't see being applied.
+    if (isSortDisabledRef.current) return;
     const worktreeId = rowEl.dataset.worktreeRow;
     if (!worktreeId) return;
     const visible = dragStartOrderRef.current;
@@ -826,6 +832,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 
   const hasQuery = query.trim().length > 0;
   const isSortDisabled = isGroupedByType || hasQuery;
+  isSortDisabledRef.current = isSortDisabled;
 
   // 1-based aria-rowindex slots for the pinned rows.
   const mainRowIndex = mainVisible ? 1 : 0;
