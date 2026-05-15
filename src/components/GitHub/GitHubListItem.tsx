@@ -8,7 +8,6 @@ import {
   MoreHorizontal,
   ExternalLink,
   Check,
-  X,
   MessageSquare,
 } from "lucide-react";
 import { FolderGit2 } from "@/components/icons";
@@ -16,14 +15,9 @@ import { Avatar } from "@/components/ui/Avatar";
 import { cn } from "@/lib/utils";
 import { formatTimeAgo } from "@/utils/timeAgo";
 import { actionService } from "@/services/ActionService";
-import type {
-  GitHubIssue,
-  GitHubPR,
-  GitHubLabel,
-  GitHubPRCIStatus,
-  GitHubPRCISummary,
-} from "@shared/types/github";
+import type { GitHubIssue, GitHubPR, GitHubLabel } from "@shared/types/github";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { getPRCIStatusVisual, getPRCIStatusTooltip } from "./prCIStatus";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -65,48 +59,6 @@ function getStateColor(state: string, isDraft?: boolean): string {
 
 function isPR(item: GitHubIssue | GitHubPR): item is GitHubPR {
   return "isDraft" in item;
-}
-
-function getCIStatusInfo(
-  status: GitHubPRCIStatus,
-  summary?: GitHubPRCISummary
-): {
-  icon: typeof Check | null;
-  color: string;
-  tooltip: string;
-} {
-  switch (status) {
-    case "SUCCESS": {
-      let tooltip: string;
-      if (summary) {
-        tooltip =
-          summary.requiredTotal === 0
-            ? "No required checks"
-            : `${summary.requiredTotal} required check${summary.requiredTotal === 1 ? "" : "s"} passing`;
-      } else {
-        tooltip = "All checks passed";
-      }
-      return { icon: Check, color: "text-status-success", tooltip };
-    }
-    case "PENDING":
-    case "EXPECTED": {
-      const tooltip =
-        summary && summary.requiredPending > 0
-          ? `${summary.requiredPending} of ${summary.requiredTotal} required check${summary.requiredTotal === 1 ? "" : "s"} pending`
-          : "Checks pending";
-      return { icon: null, color: "bg-status-warning", tooltip };
-    }
-    case "FAILURE":
-    case "ERROR": {
-      const tooltip =
-        summary && summary.requiredFailing > 0
-          ? `${summary.requiredFailing} of ${summary.requiredTotal} required check${summary.requiredTotal === 1 ? "" : "s"} failing`
-          : "Checks failing";
-      return { icon: X, color: "text-status-error", tooltip };
-    }
-    default:
-      return { icon: null, color: "bg-muted-foreground", tooltip: "Check status unknown" };
-  }
 }
 
 export function GitHubListItem({
@@ -240,19 +192,24 @@ export function GitHubListItem({
               item.state === "OPEN" &&
               item.ciStatus &&
               (() => {
-                const ciInfo = getCIStatusInfo(item.ciStatus, item.ciSummary);
+                const ciVisual = getPRCIStatusVisual(item.ciStatus);
+                const ciTooltip = getPRCIStatusTooltip(item.ciStatus, item.ciSummary);
+                if (!ciVisual || !ciTooltip) return null;
                 return (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <span className="shrink-0" aria-label={ciInfo.tooltip}>
-                        {ciInfo.icon ? (
-                          <ciInfo.icon className={cn("w-3 h-3", ciInfo.color)} />
+                      <span
+                        className="inline-flex items-center justify-center w-3 h-3 shrink-0"
+                        aria-label={ciTooltip}
+                      >
+                        {ciVisual.kind === "icon" ? (
+                          <ciVisual.Icon className={cn("w-3 h-3", ciVisual.colorClass)} />
                         ) : (
-                          <span className={cn("block w-2 h-2 rounded-full", ciInfo.color)} />
+                          <span className={cn("block w-2 h-2 rounded-full", ciVisual.colorClass)} />
                         )}
                       </span>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom">{ciInfo.tooltip}</TooltipContent>
+                    <TooltipContent side="bottom">{ciTooltip}</TooltipContent>
                   </Tooltip>
                 );
               })()}
