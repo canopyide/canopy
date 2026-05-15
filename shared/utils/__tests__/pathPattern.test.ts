@@ -55,6 +55,24 @@ describe("buildPathPatternVariables", () => {
     // base-folder will be the full string on Unix (backslash is not a separator)
     expect(vars["base-folder"]).toBeDefined();
   });
+
+  it("builds variables from a WSL UNC root path", () => {
+    const vars = buildPathPatternVariables("\\\\wsl$\\Ubuntu\\home\\user\\my-app", "feature/foo");
+    expect(vars["base-folder"]).toBe("my-app");
+    expect(vars["branch-slug"]).toBe("feature-foo");
+    expect(vars["repo-name"]).toBe("my-app");
+    expect(vars["parent-dir"]).toBe("//wsl$/Ubuntu/home/user");
+  });
+
+  it("treats a UNC share root as the parent dir with empty base-folder", () => {
+    // \\server\share is the unescapable UNC root — basename returns ""
+    // and dirname returns the share itself (matches path.win32 semantics).
+    const vars = buildPathPatternVariables("\\\\server\\share", "develop");
+    expect(vars["base-folder"]).toBe("");
+    expect(vars["repo-name"]).toBe("");
+    expect(vars["parent-dir"]).toBe("//server/share");
+    expect(vars["branch-slug"]).toBe("develop");
+  });
 });
 
 describe("resolvePathPattern", () => {
@@ -96,6 +114,46 @@ describe("resolvePathPattern", () => {
     // Relative patterns now resolve against rootPath for security
     expect(result).toBe("/Users/name/Projects/my-app/my-app/my-app-feature-test");
   });
+
+  it("preserves the leading double-slash for a UNC parent-dir", () => {
+    const uncVariables = {
+      "base-folder": "my-app",
+      "branch-slug": "feature-test",
+      "repo-name": "my-app",
+      "parent-dir": "//server/share/projects",
+    };
+    const pattern = "{parent-dir}/{base-folder}-worktrees/{branch-slug}";
+    const result = resolvePathPattern(pattern, uncVariables, "//server/share/projects/my-app");
+    expect(result).toBe("//server/share/projects/my-app-worktrees/feature-test");
+  });
+
+  it("normalizes a backslash UNC parent-dir without collapsing the prefix", () => {
+    const uncVariables = {
+      "base-folder": "my-app",
+      "branch-slug": "feature-test",
+      "repo-name": "my-app",
+      "parent-dir": "\\\\server\\share\\projects",
+    };
+    const pattern = "{parent-dir}/{base-folder}-worktrees/{branch-slug}";
+    const result = resolvePathPattern(pattern, uncVariables, "\\\\server\\share\\projects\\my-app");
+    expect(result).toBe("//server/share/projects/my-app-worktrees/feature-test");
+  });
+
+  it("resolves relative patterns against a UNC root path", () => {
+    const uncVariables = {
+      "base-folder": "my-app",
+      "branch-slug": "feature-test",
+      "repo-name": "my-app",
+      "parent-dir": "//wsl$/Ubuntu/home/user",
+    };
+    const pattern = "worktrees/{branch-slug}";
+    const result = resolvePathPattern(
+      pattern,
+      uncVariables,
+      "\\\\wsl$\\Ubuntu\\home\\user\\my-app"
+    );
+    expect(result).toBe("//wsl$/Ubuntu/home/user/my-app/worktrees/feature-test");
+  });
 });
 
 describe("generateWorktreePath", () => {
@@ -120,6 +178,38 @@ describe("generateWorktreePath", () => {
       "{parent-dir}/{branch-slug}"
     );
     expect(result).toBe("/Users/name/Projects/feature-foo-bar");
+  });
+
+  it("preserves the UNC prefix for a WSL root path", () => {
+    const result = generateWorktreePath("\\\\wsl$\\Ubuntu\\home\\user\\my-app", "feature/foo-bar");
+    expect(result).toBe("//wsl$/Ubuntu/home/user/my-app-worktrees/feature-foo-bar");
+  });
+
+  it("preserves the UNC prefix for a standard server share root path", () => {
+    const result = generateWorktreePath("\\\\server\\share\\projects\\my-app", "develop");
+    expect(result).toBe("//server/share/projects/my-app-worktrees/develop");
+  });
+
+  it("preserves the UNC prefix for the \\\\server\\share\\dir fixture from issue #7948", () => {
+    const result = generateWorktreePath("\\\\server\\share\\dir", "main");
+    expect(result).toBe("//server/share/dir-worktrees/main");
+  });
+
+  it("anchors the path at the share when the root path IS the bare UNC share", () => {
+    // \\server\share resolves to base-folder="" and parent-dir="//server/share",
+    // so the default pattern produces a path immediately under the share root —
+    // the share itself is the unescapable floor.
+    const result = generateWorktreePath("\\\\server\\share", "main");
+    expect(result).toBe("//server/share/-worktrees/main");
+  });
+
+  it("preserves the UNC prefix when using a custom pattern with UNC-derived variables", () => {
+    const result = generateWorktreePath(
+      "\\\\server\\share\\dir",
+      "feature/foo",
+      "{parent-dir}/{branch-slug}"
+    );
+    expect(result).toBe("//server/share/feature-foo");
   });
 });
 
@@ -202,6 +292,14 @@ describe("previewPathPattern", () => {
     const result = previewPathPattern("{branch-slug}", "/Users/name/Projects/my-project");
     // This is valid, so it should produce a result
     expect(result).toContain("feature-example-branch");
+  });
+
+  it("preserves the UNC prefix for a UNC root path", () => {
+    const result = previewPathPattern(
+      "{parent-dir}/{base-folder}-worktrees/{branch-slug}",
+      "\\\\server\\share\\projects\\my-app"
+    );
+    expect(result).toBe("//server/share/projects/my-app-worktrees/feature-example-branch");
   });
 });
 
