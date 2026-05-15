@@ -1090,6 +1090,15 @@ function NotificationThread({
 
   const displayType = getWorstSeverity(group.entries);
 
+  // When the worst-severity icon disagrees with the latest entry's type (e.g.
+  // an "error" thread whose newest entry is a "success" recovery), prefix the
+  // preview text so the icon/message divergence reads as intentional rather
+  // than a mismatch.
+  const displayEntry =
+    displayType !== latest.type && latest.message.length > 0
+      ? { ...latest, message: `Latest: ${latest.message}` }
+      : latest;
+
   return (
     <div
       ref={rowRef}
@@ -1104,7 +1113,7 @@ function NotificationThread({
       )}
     >
       <NotificationCenterEntry
-        entry={latest}
+        entry={displayEntry}
         displayType={displayType}
         threadCount={group.entries.length}
         isNew={isNew}
