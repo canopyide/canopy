@@ -1,8 +1,11 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useDeferredValue } from "react";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { Button } from "@/components/ui/button";
-import { CircleDot, Search, Link, Unlink, CircleCheck } from "lucide-react";
+import { CircleDot, Search, Link, Unlink, CircleCheck, AlertCircle, RefreshCw } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { useDeferredLoading } from "@/hooks/useDeferredLoading";
+import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
 import { cn } from "@/lib/utils";
 import { githubClient } from "@/clients";
 import type { GitHubIssue } from "@shared/types/github";
@@ -87,6 +90,11 @@ export function IssuePickerDialog({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const isInitialLoading = isLoading && issues.length === 0;
+  const showLoader = useDeferredLoading(isInitialLoading, UI_DOHERTY_THRESHOLD);
+  const trimmedSearch = search.trim();
+  const deferredSearch = useDeferredValue(trimmedSearch);
 
   const fetchIssues = useCallback(
     async (searchTerm: string, state: StateFilter) => {
@@ -216,17 +224,43 @@ export function IssuePickerDialog({
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0 px-6 pb-4">
-        {isLoading && issues.length === 0 ? (
+        {showLoader ? (
           <div className="flex items-center justify-center py-8 text-daintree-text/50">
             <Spinner size="lg" className="mr-2" />
             <span className="text-sm">Loading issues...</span>
           </div>
-        ) : error ? (
-          <div className="text-center py-8 text-sm text-status-error">{error}</div>
-        ) : issues.length === 0 ? (
-          <div className="text-center py-8 text-sm text-daintree-text/50">
-            {search ? "No issues match your search" : "No issues found"}
+        ) : isInitialLoading ? null : error ? (
+          <div role="alert" className="flex items-start gap-2 px-3 py-8 text-sm text-status-error">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p>{error}</p>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => fetchIssues(search, stateFilter)}
+                className="mt-2 text-status-error hover:text-status-error"
+              >
+                <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                Retry
+              </Button>
+            </div>
           </div>
+        ) : issues.length === 0 ? (
+          trimmedSearch ? (
+            <EmptyState
+              scale="popover"
+              variant="filtered-empty"
+              title={`No matches for "${deferredSearch}"`}
+              className="px-3 py-8"
+            />
+          ) : (
+            <EmptyState
+              scale="popover"
+              variant="zero-data"
+              title="No issues found"
+              className="px-3 py-8"
+            />
+          )
         ) : (
           <div ref={listRef} className="space-y-1" role="listbox">
             {issues.map((issue, index) => (

@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollShadow } from "@/components/ui/ScrollShadow";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Check, ChevronsUpDown, GitBranch, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BranchInfo } from "@/types/electron";
@@ -70,9 +71,11 @@ export function ExistingBranchPicker({
           </div>
           <ScrollShadow role="listbox" className="max-h-[300px]" scrollClassName="p-1">
             {filteredBranches.length === 0 ? (
-              <div className="py-6 text-center text-sm text-muted-foreground">
-                {query ? "No matching branches" : "No available local branches"}
-              </div>
+              query ? (
+                <EmptyState scale="popover" variant="filtered-empty" title="No matching branches" />
+              ) : (
+                <EmptyState scale="popover" variant="zero-data" title="No local branches" />
+              )
             ) : (
               filteredBranches.map((branch) => (
                 <div
