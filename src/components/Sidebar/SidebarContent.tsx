@@ -108,6 +108,15 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   // missing new visible orders or going stale on group/search toggles.
   const dragStartOrderRef = useRef<readonly string[]>([]);
   const isSortDisabledRef = useRef(false);
+  // Latest worktrees captured in a ref so the keyboard-reorder callback can
+  // resolve the moved row's display name for the announcement without taking
+  // `worktrees` as a dep (which would churn the callback identity every poll).
+  const worktreesRef = useRef<readonly WorktreeState[]>([]);
+  // Trailing debounce for the sr-only reorder announcement: OS key-repeat fires
+  // Alt+Arrow at ~30Hz, and NVDA/JAWS queue every intermediate position on a
+  // polite live region, so without this they keep reading stale slots long
+  // after the row settles. Only the final resting position is announced.
+  const reorderAnnouncementTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [keyboardReorderAnnouncement, setKeyboardReorderAnnouncement] = useState("");
   const handleKeyboardReorder = useCallback((rowEl: HTMLElement, delta: -1 | 1) => {
     // Grouped-by-type and active-search modes hide the drag handle; keyboard
@@ -130,13 +139,22 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     );
     filterStore.setManualOrder(merged);
     filterStore.setOrderBy("manual");
-    setKeyboardReorderAnnouncement(`Moved to position ${targetIdx + 1} of ${visible.length}`);
+    const name = worktreesRef.current.find((w) => w.id === worktreeId)?.name ?? worktreeId;
+    const message = `Moved '${name}' to position ${targetIdx + 1} of ${visible.length}`;
+    if (reorderAnnouncementTimerRef.current !== null) {
+      clearTimeout(reorderAnnouncementTimerRef.current);
+    }
+    reorderAnnouncementTimerRef.current = setTimeout(() => {
+      reorderAnnouncementTimerRef.current = null;
+      setKeyboardReorderAnnouncement(message);
+    }, 150);
   }, []);
   const { gridRef, handleGridKeyDown, handleGridFocusCapture } = useWorktreeGridRovingFocus(
     scrollContainerRef,
     { onKeyboardReorder: handleKeyboardReorder }
   );
   const { worktrees, isLoading, isReconnecting, error, refresh } = useWorktrees();
+  worktreesRef.current = worktrees;
   const deferredWorktrees = useDeferredValue(worktrees);
   const [isRefreshing, startRefreshTransition] = useTransition();
   const showRefreshSpinner = useDeferredLoading(isRefreshing, UI_DOHERTY_THRESHOLD);
@@ -584,6 +602,15 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 
   const dragStartOrder = useMemo(() => filteredWorktrees.map((w) => w.id), [filteredWorktrees]);
   dragStartOrderRef.current = dragStartOrder;
+
+  // Drop a pending reorder announcement if the sidebar unmounts mid-key-repeat.
+  useEffect(() => {
+    return () => {
+      if (reorderAnnouncementTimerRef.current !== null) {
+        clearTimeout(reorderAnnouncementTimerRef.current);
+      }
+    };
+  }, []);
 
   // Fleet-eligible terminals inside the currently visible worktrees, split so an
   // arm/disarm elsewhere only re-walks the unarmed tally rather than re-scanning
