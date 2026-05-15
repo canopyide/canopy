@@ -3,6 +3,7 @@ import { AppDialog } from "@/components/ui/AppDialog";
 import { Button } from "@/components/ui/button";
 import { CircleDot, Search, Link, Unlink, CircleCheck } from "lucide-react";
 import { Skeleton, SkeletonBone } from "@/components/ui/Skeleton";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { cn } from "@/lib/utils";
 import { githubClient } from "@/clients";
 import type { GitHubIssue } from "@shared/types/github";
@@ -234,9 +235,15 @@ export function IssuePickerDialog({
         ) : error ? (
           <div className="text-center py-8 text-sm text-status-error">{error}</div>
         ) : issues.length === 0 ? (
-          <div className="text-center py-8 text-sm text-daintree-text/50">
-            {search ? "No issues match your search" : "No issues found"}
-          </div>
+          search.trim() ? (
+            <EmptyState
+              variant="filtered-empty"
+              scale="popover"
+              title={`No matches for "${search.trim()}"`}
+            />
+          ) : (
+            <EmptyState variant="zero-data" scale="popover" title="No issues found" />
+          )
         ) : (
           <div ref={listRef} className="space-y-1" role="listbox">
             {issues.map((issue, index) => (

@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollShadow } from "@/components/ui/ScrollShadow";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Check, ChevronsUpDown, Info, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -121,9 +122,15 @@ export function BaseBranchCombobox({
             scrollClassName="p-1"
           >
             {selectableRows.length === 0 ? (
-              <div className="py-6 text-center text-sm text-muted-foreground">
-                {branchQuery ? "No branches found" : "No branches available"}
-              </div>
+              branchQuery.trim() ? (
+                <EmptyState
+                  variant="filtered-empty"
+                  scale="popover"
+                  title={`No matches for "${branchQuery.trim()}"`}
+                />
+              ) : (
+                <EmptyState variant="zero-data" scale="popover" title="No branches available" />
+              )
             ) : (
               (() => {
                 let optionIndex = 0;
