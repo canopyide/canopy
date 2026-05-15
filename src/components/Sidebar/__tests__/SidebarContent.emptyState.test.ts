@@ -85,7 +85,43 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
     });
 
     it("titles the quick-state empty state with the active filter label via the EmptyState primitive", () => {
-      expect(source).toMatch(/title=\{`No \$\{quickStateFilter\} worktrees`\}/);
+      // Single-axis fallback when no facet filters are active alongside the
+      // quick-state filter (still the default copy).
+      expect(source).toMatch(/: `No \$\{quickStateFilter\} worktrees`/);
+    });
+
+    it("names both axes when a facet filter is active alongside the quick-state — issue #7971", () => {
+      // When the quick-state filter and one or more facet filters are active
+      // together and produce zero results, the title must call out both axes
+      // (e.g. "No worktrees match Working with 2 filters") instead of picking
+      // only one. The fallback to "No {quickStateFilter} worktrees" stays for
+      // the quick-state-only case.
+      const branchStart = source.indexOf("showQuickStateEmptyState ?");
+      const branchEnd = source.indexOf(") : filteredWorktrees.length === 0 &&", branchStart);
+      const branch = source.slice(branchStart, branchEnd);
+      expect(branch).toContain("hasFacetFiltersActive && activeFacetFilterCount > 0");
+      expect(branch).toMatch(
+        /`No worktrees match \$\{QUICK_STATE_LABELS\[quickStateFilter\]\} with \$\{activeFacetFilterCount\} \$\{[\s\S]*?activeFacetFilterCount === 1 \? "filter" : "filters"[\s\S]*?\}`/
+      );
+    });
+
+    it("derives the active facet filter count from the five facet Set sizes — issue #7971", () => {
+      // The combined-axis title needs the actual number of facet filters
+      // selected. Sum the five facet axes (status, type, github, session,
+      // activity) — the same axes hasFacetFilters() reads. Do not include
+      // query or quickStateFilter, which are named separately in the title.
+      expect(source).toMatch(
+        /const activeFacetFilterCount =\s*statusFilters\.size \+\s*typeFilters\.size \+\s*githubFilters\.size \+\s*sessionFilters\.size \+\s*activityFilters\.size;/
+      );
+    });
+
+    it("maps quick-state filter values to title-cased labels for the combined-axis title — issue #7971", () => {
+      // The raw quickStateFilter values are lowercase ("working", "waiting",
+      // "finished"). The combined-axis title displays them title-cased via a
+      // module-level QUICK_STATE_LABELS map so the prose reads naturally.
+      expect(source).toMatch(
+        /const QUICK_STATE_LABELS: Record<"working" \| "waiting" \| "finished", string> = \{\s*working: "Working",\s*waiting: "Waiting",\s*finished: "Finished",\s*\};/
+      );
     });
 
     it("uses the EmptyState filtered-empty variant for the quick-state branch", () => {
@@ -99,14 +135,15 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       expect(branch).toContain('variant="filtered-empty"');
     });
 
-    it("collapses the quick-state empty state to a single 'Clear filters' CTA wired to clearAllFilters", () => {
-      // #6934: the dual-CTA shape ('Show all states' + conditional 'Clear all filters')
-      // was an empty-state anti-pattern. clearAll() resets every dimension including
-      // quickStateFilter, so a single button is the natural recovery shape.
+    it("collapses the quick-state empty state to a single 'Show all worktrees' CTA wired to clearAllFilters — issue #7971", () => {
+      // #6934 collapsed the dual-CTA shape ('Show all states' + 'Clear all
+      // filters') to a single button wired to clearAll(); #7971 renamed the
+      // label from "Clear filters" to "Show all worktrees" so the button
+      // describes the outcome rather than the action.
       const branchStart = source.indexOf("showQuickStateEmptyState ?");
       const branchEnd = source.indexOf(") : filteredWorktrees.length === 0 &&", branchStart);
       const branch = source.slice(branchStart, branchEnd);
-      expect(branch).toMatch(/onClick=\{clearAllFilters\}[\s\S]*?>\s*Clear filters\s*</);
+      expect(branch).toMatch(/onClick=\{clearAllFilters\}[\s\S]*?>\s*Show all worktrees\s*</);
       expect(branch).not.toContain("Show all states");
       expect(branch).not.toContain("clearQuickStateFilter");
       // Exactly one button — guards against the dual-CTA pattern returning by
@@ -142,7 +179,7 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       expect(branch).toContain('"No matching worktrees"');
       expect(branch).toMatch(/hasQuery/);
       expect(branch).toMatch(/truncateSearchQuery/);
-      expect(branch).toMatch(/onClick=\{clearAllFilters\}[\s\S]*?>\s*Clear filters\s*</);
+      expect(branch).toMatch(/onClick=\{clearAllFilters\}[\s\S]*?>\s*Show all worktrees\s*</);
     });
   });
 });
