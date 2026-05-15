@@ -604,7 +604,7 @@ describe("McpServerSettingsTab", () => {
     const dialogConfirm = buttons[buttons.length - 1]!;
     fireEvent.click(dialogConfirm);
 
-    await waitForContent(container, "No tool dispatches recorded yet.");
+    await waitForContent(container, "No tool dispatches recorded yet");
     expect(mockedNotify).not.toHaveBeenCalled();
   });
 

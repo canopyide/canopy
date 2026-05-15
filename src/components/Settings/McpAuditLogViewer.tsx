@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { Check, Copy, RefreshCw, ShieldOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Skeleton, SkeletonBone } from "@/components/ui/Skeleton";
 import type { McpAuditRecord, McpAuditResult } from "@shared/types";
 
 type AuditResultFilter = "all" | McpAuditResult;
@@ -144,13 +146,25 @@ export function McpAuditLogViewer({
 
       <div className="max-h-64 overflow-y-auto rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg">
         {loading ? (
-          <p className="p-3 text-xs text-daintree-text/50">Loading…</p>
+          <Skeleton label="Loading audit records" className="space-y-2 p-3">
+            <SkeletonBone className="h-5 w-5/6" />
+            <SkeletonBone className="h-5 w-4/6" />
+            <SkeletonBone className="h-5 w-3/4" />
+          </Skeleton>
         ) : filteredRecords.length === 0 ? (
-          <p className="p-3 text-xs text-daintree-text/50">
-            {visibleRecords.length === 0
-              ? "No tool dispatches recorded yet."
-              : "No records match the current filters."}
-          </p>
+          visibleRecords.length === 0 ? (
+            <EmptyState
+              variant="zero-data"
+              scale="sidebar"
+              title="No tool dispatches recorded yet"
+            />
+          ) : (
+            <EmptyState
+              variant="filtered-empty"
+              scale="sidebar"
+              title="No records match the current filters"
+            />
+          )
         ) : (
           <ul className="divide-y divide-daintree-border">
             {filteredRecords.map((record) => (

@@ -3,6 +3,7 @@ import { Plus, Trash2, Edit3, Download, FileDown, Check, Globe } from "lucide-re
 import { Workflow } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Skeleton, SkeletonBone } from "@/components/ui/Skeleton";
 import { useRecipeStore } from "@/store/recipeStore";
 import { LiveTimeAgo } from "@/components/Worktree/LiveTimeAgo";
 import { RecipeEditor } from "@/components/TerminalRecipe/RecipeEditor";
@@ -186,9 +187,14 @@ export function RecipesTab({
 
         <div className="space-y-2">
           {recipesLoading ? (
-            <div className="text-sm text-daintree-text/60 text-center py-8 border border-dashed border-daintree-border rounded-[var(--radius-md)]">
-              Loading recipes...
-            </div>
+            <Skeleton
+              label="Loading recipes"
+              className="space-y-2 p-3 border border-dashed border-daintree-border rounded-[var(--radius-md)]"
+            >
+              <SkeletonBone className="h-14 w-full" />
+              <SkeletonBone className="h-14 w-full" />
+              <SkeletonBone className="h-14 w-full" />
+            </Skeleton>
           ) : recipes.length === 0 ? (
             <div className="border border-dashed border-daintree-border rounded-[var(--radius-md)]">
               <EmptyState

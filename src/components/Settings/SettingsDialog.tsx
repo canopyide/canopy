@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/select";
 import { appClient } from "@/clients";
 import { AppDialog } from "@/components/ui/AppDialog";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { GeneralTab } from "./GeneralTab";
 import {
   SETTINGS_REGISTRY,
@@ -1194,18 +1195,20 @@ function SearchResults({
   }, [activeIndex]);
 
   if (results.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <Search className="w-8 h-8 text-daintree-text/20 mb-3" />
-        <p className="text-sm text-daintree-text/50">
-          No results for <span className="font-medium text-daintree-text/70">"{query}"</span>
-        </p>
-        <p className="text-xs text-daintree-text/40 mt-1">
-          {cleanQuery
-            ? "Try different keywords or check spelling"
-            : "No settings have been modified from their defaults"}
-        </p>
-      </div>
+    return cleanQuery ? (
+      <EmptyState
+        variant="filtered-empty"
+        scale="canvas"
+        title={`No results for "${query}"`}
+        description="Try different keywords or check spelling"
+      />
+    ) : (
+      <EmptyState
+        variant="zero-data"
+        scale="canvas"
+        title="No modified settings"
+        description="No settings have been changed from their defaults"
+      />
     );
   }
 
