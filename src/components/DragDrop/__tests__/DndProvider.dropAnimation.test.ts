@@ -78,6 +78,18 @@ describe("DragOverlay dropAnimation config", () => {
         sideEffects: null,
       });
     });
+
+    it("keeps the snap-back settle in performance mode (semantic motion, not decoration)", () => {
+      document.body.dataset.performanceMode = "true";
+      // The cancel branch intentionally keeps PANEL_RESTORE_DURATION even in
+      // performance mode: the settle is a meaning-bearing cue for "put it back",
+      // not decorative motion, so it is not zeroed like the success branch.
+      expect(dropAnimation(true)).toEqual({
+        duration: PANEL_RESTORE_DURATION,
+        easing: EASE_OUT_EXPO,
+        sideEffects: null,
+      });
+    });
   });
 
   it("returns a non-null config with duration 0 in performance mode", () => {
