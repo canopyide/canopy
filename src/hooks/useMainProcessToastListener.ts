@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { notify } from "@/lib/notify";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
 import type { MainProcessToastPayload } from "@shared/types/ipc/maps";
-import { isWindowsStoreBuild } from "@shared/config/distribution";
+import { useDistributionStore } from "@/store/distributionStore";
 
 export function useMainProcessToastListener(): void {
   useEffect(() => {
@@ -15,7 +15,7 @@ export function useMainProcessToastListener(): void {
             onClick: () => {
               const { ipcChannel, data } = payload.action!;
               if (ipcChannel === "update:check-for-updates") {
-                if (isWindowsStoreBuild()) return;
+                if (useDistributionStore.getState().isWindowsStore) return;
                 safeFireAndForget(window.electron.update.checkForUpdates(), {
                   context: "Checking for updates from toast action",
                 });

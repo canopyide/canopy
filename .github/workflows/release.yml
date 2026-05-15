@@ -184,6 +184,18 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: npm ci
 
+      # Cross-compile win-job-object (source-only N-API addon) for arm64 so the
+      # NSIS combined installer can ship both archs. node-pty and better-sqlite3
+      # have arm64 prebuilts; electron-builder pulls those via npmRebuild during
+      # packaging. The post-install copy of node-pty's conpty win10-arm64 DLLs
+      # is recovered by `scripts/afterPack.cjs` based on `context.arch`.
+      - name: Cross-compile arm64 native modules (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        env:
+          npm_config_msvs_version: "2022"
+        run: npm run rebuild:win-arm64
+
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-22.04'
         run: |
@@ -293,6 +305,18 @@ jobs:
           }
           Write-Host "Found $($packages.Count) Store package(s) in release/"
 
+      - name: Verify Windows NSIS installer was built
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem -Path 'release\*.exe' -ErrorAction SilentlyContinue)
+          if ($installers.Count -ne 1) {
+            Write-Host "::error::Expected exactly 1 NSIS .exe in release/, found $($installers.Count). Confirm electron-builder.config.cjs lists the nsis target."
+            Get-ChildItem -Path release -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_.Name }
+            exit 1
+          }
+          Write-Host "Found NSIS installer: $($installers[0].Name) ($([math]::Round($installers[0].Length / 1MB, 1)) MB)"
+
       - name: Run WACK (Windows, best-effort)
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -400,6 +424,22 @@ jobs:
           fi
           node scripts/ci/validate-update-metadata.mjs "release/${UPDATE_METADATA_PREFIX}-linux.yml"
 
+      - name: Validate update metadata (Windows NSIS)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          # electron-updater on Windows polls `<channel>.yml` (no platform
+          # suffix) — Provider.js getChannelFilePrefix() returns "" for win32.
+          # This is the canonical filename installed clients fetch, so we
+          # generate (and validate) it here even though electron-builder's
+          # packaging step already wrote a copy.
+          node scripts/ci/generate-update-metadata.mjs windows "release/${UPDATE_METADATA_PREFIX}.yml"
+          if [ ! -f "release/${UPDATE_METADATA_PREFIX}.yml" ]; then
+            echo "::error::Missing release/${UPDATE_METADATA_PREFIX}.yml - Windows auto-update metadata was not generated"
+            exit 1
+          fi
+          node scripts/ci/validate-update-metadata.mjs "release/${UPDATE_METADATA_PREFIX}.yml"
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -409,6 +449,7 @@ jobs:
             release/*.zip
             release/*.appx
             release/*.msix
+            release/*.exe
             release/*.AppImage
             release/*.deb
             release/*.blockmap
@@ -497,6 +538,7 @@ jobs:
             --include "*.zip" \
             --include "*.appx" \
             --include "*.msix" \
+            --include "*.exe" \
             --include "*.AppImage" \
             --include "*.deb" \
             --include "*.blockmap" \

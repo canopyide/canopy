@@ -26,6 +26,7 @@ function makeHydrate(projectId: string): HydrateResult {
     gpuWebGLHardware: true,
     gpuHardwareAccelerationDisabled: false,
     safeMode: false,
+    isWindowsStore: false,
     settingsRecovery: null,
     projectStateRecovery: null,
   };

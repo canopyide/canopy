@@ -279,6 +279,8 @@ export function registerAppStateHandlers(deps?: HandlerDependencies): () => void
       gpuWebGLHardware,
       gpuHardwareAccelerationDisabled: isGpuDisabledByFlag(app.getPath("userData")),
       safeMode: inSafeMode,
+      isWindowsStore:
+        (process as NodeJS.Process & { windowsStore?: boolean }).windowsStore === true,
       skippedPanelCount,
       crashCount: guard.getCrashCount(),
       lastCrashAt: guard.getLastCrashTimestamp(),

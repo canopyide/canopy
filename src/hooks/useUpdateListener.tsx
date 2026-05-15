@@ -3,7 +3,7 @@ import { useNotificationStore } from "@/store/notificationStore";
 import { logError } from "@/utils/logger";
 import { notify } from "@/lib/notify";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
-import { isWindowsStoreBuild } from "@shared/config/distribution";
+import { useDistributionStore } from "@/store/distributionStore";
 
 const AVAILABLE_HINT = 'Use "Check for Updates..." to check again.';
 const UPDATE_CORRELATION_ID = "app-update";
@@ -31,7 +31,7 @@ function findLiveUpdateToastId(): string | null {
 }
 
 export function useUpdateListener(suppressToasts = false): void {
-  const updatesManagedByStore = isWindowsStoreBuild();
+  const updatesManagedByStore = useDistributionStore((s) => s.isWindowsStore);
   const suppressRef = useRef(suppressToasts);
   const pendingUpdateRef = useRef<{ version: string; downloaded: boolean } | null>(null);
 

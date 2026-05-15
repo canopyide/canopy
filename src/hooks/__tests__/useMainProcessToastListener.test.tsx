@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useMainProcessToastListener } from "../useMainProcessToastListener";
+import { useDistributionStore } from "@/store/distributionStore";
 import type { NotifyPayload } from "@/lib/notify";
 
 const notifyMock = vi.fn<(payload: NotifyPayload) => string>().mockReturnValue("toast-id");
@@ -25,6 +26,7 @@ describe("useMainProcessToastListener", () => {
 
   beforeEach(() => {
     Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+    useDistributionStore.setState({ isWindowsStore: false });
     capturedCallback = null;
     cleanupFn.mockClear();
     notifyMock.mockClear();
@@ -110,6 +112,7 @@ describe("useMainProcessToastListener", () => {
 
   it("ignores update retry toast actions on Windows Store builds", () => {
     Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    useDistributionStore.setState({ isWindowsStore: true });
     const checkForUpdatesMock = vi.fn(() => Promise.resolve());
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window.electron as any).update = {

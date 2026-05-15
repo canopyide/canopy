@@ -39,7 +39,7 @@ import { actionService } from "@/services/ActionService";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { logError } from "@/utils/logger";
 import { formatTimeAgo } from "@/utils/timeAgo";
-import { isWindowsStoreBuild } from "@shared/config/distribution";
+import { useDistributionStore } from "@/store/distributionStore";
 
 const GENERAL_SUBTABS: SettingsSubtabItem[] = [
   { id: "overview", label: "Overview" },
@@ -129,7 +129,7 @@ export function GeneralTab({
   const [updateChannel, setUpdateChannel] = useState<"stable" | "nightly" | null>(null);
   const [channelSaving, setChannelSaving] = useState(false);
   const [lastUpdateCheck, setLastUpdateCheck] = useState<number | null>(null);
-  const updatesManagedByStore = isWindowsStoreBuild();
+  const updatesManagedByStore = useDistributionStore((s) => s.isWindowsStore);
   const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;

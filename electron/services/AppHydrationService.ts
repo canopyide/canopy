@@ -85,6 +85,7 @@ export async function buildSwitchHydrateResult(projectId: string): Promise<Hydra
     gpuWebGLHardware,
     gpuHardwareAccelerationDisabled: isGpuDisabledByFlag(app.getPath("userData")),
     safeMode: inSafeMode,
+    isWindowsStore: (process as NodeJS.Process & { windowsStore?: boolean }).windowsStore === true,
     settingsRecovery: null,
     projectStateRecovery: projectStateQuarantinedPath
       ? { quarantinedPath: projectStateQuarantinedPath }

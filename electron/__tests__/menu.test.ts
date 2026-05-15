@@ -386,8 +386,18 @@ describe("update menu lifecycle", () => {
   describe("on Windows Store builds (packaged)", () => {
     beforeEach(() => {
       Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+      // isWindowsStoreBuild() now reads process.windowsStore — only MSIX/AppX
+      // containers set this. Simulate the Store path here so the in-app
+      // updater menu items are suppressed.
+      Object.defineProperty(process, "windowsStore", { value: true, configurable: true });
       Object.defineProperty(app, "isPackaged", { value: true, configurable: true });
       createApplicationMenu(mockBrowserWindow as unknown as Electron.BrowserWindow);
+    });
+
+    afterEach(() => {
+      // Reset between describe blocks so the NSIS/non-Store path tests start
+      // with windowsStore undefined.
+      Reflect.deleteProperty(process, "windowsStore");
     });
 
     it("does NOT emit a Help-menu Check for Updates item", () => {

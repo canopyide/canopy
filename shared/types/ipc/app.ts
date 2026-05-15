@@ -106,6 +106,12 @@ export interface HydrateResult {
   gpuWebGLHardware: boolean;
   gpuHardwareAccelerationDisabled: boolean;
   safeMode: boolean;
+  /**
+   * True when running inside an MSIX/AppX (Microsoft Store) container, where
+   * update delivery is owned by the OS. Mirrors `process.windowsStore` from
+   * the main process and is `false` for NSIS installs and non-Windows builds.
+   */
+  isWindowsStore: boolean;
   /** Number of saved panels skipped due to safe-mode boot (0 when safe mode is inactive). */
   skippedPanelCount?: number;
   /** Consecutive recent unclean launches counted by the crash-loop guard. */

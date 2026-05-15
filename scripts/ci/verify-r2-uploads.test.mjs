@@ -197,11 +197,12 @@ describe("verifyWithRetries", () => {
 });
 
 describe("findMetadataFiles", () => {
-  it("returns mac and linux files when both present, ignoring others", async () => {
+  it("returns mac, linux, and Windows (no-suffix) files when all present, ignoring other artifacts", async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "verify-r2-test-"));
     try {
       await writeFile(path.join(dir, "latest-mac.yml"), "x: 1");
       await writeFile(path.join(dir, "latest-linux.yml"), "x: 1");
+      // electron-updater on Windows polls `<prefix>.yml` (no platform suffix).
       await writeFile(path.join(dir, "latest.yml"), "x: 1");
       await writeFile(path.join(dir, "Daintree-1.0.0.zip"), "binary");
 
@@ -209,21 +210,27 @@ describe("findMetadataFiles", () => {
       expect(result.map((p) => path.basename(p)).sort()).toEqual([
         "latest-linux.yml",
         "latest-mac.yml",
+        "latest.yml",
       ]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
 
-  it("matches the prefix exactly (rc, beta, latest)", async () => {
+  it("matches the prefix exactly (rc, beta, latest) across all three platforms", async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "verify-r2-test-"));
     try {
       await writeFile(path.join(dir, "rc-mac.yml"), "x: 1");
       await writeFile(path.join(dir, "rc-linux.yml"), "x: 1");
+      await writeFile(path.join(dir, "rc.yml"), "x: 1");
       await writeFile(path.join(dir, "latest-mac.yml"), "x: 1");
 
       const result = await findMetadataFiles(dir, "rc");
-      expect(result.map((p) => path.basename(p)).sort()).toEqual(["rc-linux.yml", "rc-mac.yml"]);
+      expect(result.map((p) => path.basename(p)).sort()).toEqual([
+        "rc-linux.yml",
+        "rc-mac.yml",
+        "rc.yml",
+      ]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
