@@ -312,8 +312,16 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
       // Anchor arrow movement to the currently focused tab when one is
       // focused (so successive arrows roam without activating), else to the
       // active tab (first arrow after entering the tablist via Tab).
+      //
+      // The `+` (duplicate) button lives inside the tablist container but is
+      // not itself a tab. If focus is on a non-tab element in the tablist
+      // (i.e. the `+` button), bail out so arrows don't yank focus back into
+      // the tab strip from the user's current position.
       const focused = document.activeElement as HTMLElement | null;
       const focusedTabId = focused?.getAttribute("data-tab-id");
+      if (!focusedTabId && focused && tabListEl?.contains(focused)) {
+        return;
+      }
       const anchorId = focusedTabId ?? activeTabId;
       const currentIndex = panels.findIndex((p) => p.id === anchorId);
       let nextIndex: number | undefined;
@@ -337,11 +345,17 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
 
       e.preventDefault();
       const nextPanel = panels[nextIndex];
-      if (nextPanel) {
-        const tabButton = tabListEl?.querySelector(
-          `[data-tab-id="${nextPanel.id}"]`
-        ) as HTMLElement | null;
-        tabButton?.focus();
+      if (nextPanel && tabListEl) {
+        // Iterate rather than build a `[data-tab-id="${id}"]` selector so we
+        // don't need to escape panel IDs containing quotes or other CSS-special
+        // characters (and so the lookup works in jsdom, which lacks CSS.escape).
+        const tabs = tabListEl.querySelectorAll<HTMLElement>("[data-tab-id]");
+        for (const el of tabs) {
+          if (el.getAttribute("data-tab-id") === nextPanel.id) {
+            el.focus();
+            break;
+          }
+        }
       }
     },
     [panels, activeTabId, tabListEl]

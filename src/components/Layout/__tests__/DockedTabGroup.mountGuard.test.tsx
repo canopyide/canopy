@@ -452,6 +452,29 @@ describe("DockedTabGroup mount-time close guard (#6602)", () => {
       expect(openDockTerminalMock).toHaveBeenCalledWith("t-2");
     });
 
+    it("ArrowRight while the duplicate-as-new-tab (+) button is focused does not yank focus into the tab strip", () => {
+      mockActiveDockTerminalId = "t-1";
+      const panels = [makePanel({ id: "t-1" }), makePanel({ id: "t-2" })];
+      const { container } = render(
+        <DockedTabGroup group={makeGroup(["t-1", "t-2"], "t-1")} panels={panels} />
+      );
+
+      const addTabButton = container.querySelector(
+        '[aria-label="Duplicate panel as new tab"]'
+      ) as HTMLElement;
+      const tab1 = container.querySelector('[data-tab-id="t-1"]') as HTMLElement;
+      const tablist = container.querySelector('[role="tablist"]') as HTMLElement;
+      expect(addTabButton).not.toBeNull();
+
+      addTabButton.focus();
+      fireEvent.keyDown(tablist, { key: "ArrowRight" });
+
+      // Focus stays on the + button — the handler bails out for non-tab focus
+      // anchors inside the tablist.
+      expect(document.activeElement).toBe(addTabButton);
+      expect(document.activeElement).not.toBe(tab1);
+    });
+
     it("Home moves focus to the first tab without activating", () => {
       mockActiveDockTerminalId = "t-2";
       const panels = [makePanel({ id: "t-1" }), makePanel({ id: "t-2" })];
