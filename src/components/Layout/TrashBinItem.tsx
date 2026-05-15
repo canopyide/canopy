@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePanelStore, type TerminalInstance } from "@/store";
@@ -9,7 +9,7 @@ import { deriveTerminalChrome } from "@/utils/terminalChrome";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isUselessTitle } from "@shared/utils/isUselessTitle";
 import { getEffectiveAgentConfig } from "@shared/config/agentRegistry";
-import { useGlobalSecondTicker } from "@/hooks/useGlobalSecondTicker";
+import { useVisibilityAwareInterval } from "@/hooks/useVisibilityAwareInterval";
 import { cn } from "@/lib/utils";
 
 // Reveal precise seconds only when the deadline is imminent (≤5s, the M3/WCAG
@@ -30,9 +30,9 @@ export function TrashBinItem({ terminal, trashedInfo, worktreeName }: TrashBinIt
 
   const isOrphan = !!terminal.worktreeId && !worktreeName;
 
-  const tick = useGlobalSecondTicker();
-  void tick;
-  const timeRemaining = Math.max(0, trashedInfo.expiresAt - Date.now());
+  const [now, setNow] = useState(() => Date.now());
+  useVisibilityAwareInterval(() => setNow(Date.now()), 1000);
+  const timeRemaining = Math.max(0, trashedInfo.expiresAt - now);
   const seconds = Math.ceil(timeRemaining / 1000);
 
   const canRestore = !isOrphan || !!activeWorktreeId;

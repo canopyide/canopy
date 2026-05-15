@@ -6,42 +6,14 @@ import { act, render, cleanup } from "@testing-library/react";
 import { ActivityLight } from "../ActivityLight";
 import { DECAY_DURATION } from "@/utils/colorInterpolation";
 
-let tickValue = 0;
-const tickListeners = new Set<(tick: number) => void>();
-
-vi.mock("@/hooks/useGlobalSecondTicker", async () => {
-  const { useState, useEffect } = await import("react");
-  return {
-    useGlobalSecondTicker: () => {
-      const [tick, setTick] = useState(tickValue);
-      useEffect(() => {
-        tickListeners.add(setTick);
-        return () => {
-          tickListeners.delete(setTick);
-        };
-      }, []);
-      return tick;
-    },
-  };
-});
-
-function advanceTicker() {
-  tickValue += 1;
-  act(() => {
-    tickListeners.forEach((listener) => listener(tickValue));
-  });
-}
-
 describe("ActivityLight", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    tickValue = 0;
   });
 
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
-    tickListeners.clear();
   });
 
   function getDot(container: HTMLElement): HTMLElement {
@@ -132,12 +104,75 @@ describe("ActivityLight", () => {
     // Starts active (filled).
     expect(getDot(container).className).not.toMatch(/\bborder\b/);
 
-    // Advance past the decay window and drive the ticker.
-    vi.setSystemTime(now + DECAY_DURATION + 1);
-    advanceTicker();
+    // Jump wall-clock past the decay window and let the next scheduled
+    // flip fire — the component recomputes from Date.now().
+    act(() => {
+      vi.setSystemTime(now + DECAY_DURATION + 1);
+      vi.advanceTimersByTime(1000);
+    });
 
-    // Now idle (hollow ring).
     expect(getDot(container).className).toMatch(/\bborder\b/);
     expect(getDot(container).className).toMatch(/bg-transparent/);
+  });
+
+  it("schedules no timer when mounted already idle (past the decay window)", () => {
+    const now = Date.now();
+    vi.setSystemTime(now);
+    render(<ActivityLight lastActivityTimestamp={now - DECAY_DURATION - 1} />);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("stops scheduling once the decay window elapses (no timer re-armed)", () => {
+    const now = Date.now();
+    vi.setSystemTime(now);
+    render(<ActivityLight lastActivityTimestamp={now} />);
+
+    // Active: a flip is armed.
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    act(() => {
+      vi.setSystemTime(now + DECAY_DURATION + 1);
+      vi.advanceTimersByTime(1000);
+    });
+
+    // Past decay: the effect bails out and does not re-arm.
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("flips to idle at the decay boundary even under performance mode", () => {
+    document.body.setAttribute("data-performance-mode", "true");
+    try {
+      const now = Date.now();
+      vi.setSystemTime(now);
+      const { container } = render(
+        <ActivityLight lastActivityTimestamp={now - (DECAY_DURATION - 1)} />
+      );
+
+      // Active at mount (1ms before the boundary).
+      expect(getDot(container).className).not.toMatch(/\bborder\b/);
+
+      // The perf-mode 60s floor must NOT delay the idle transition past the
+      // 90s window — the delay is clamped to the remaining decay time.
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(getDot(container).className).toMatch(/\bborder\b/);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      document.body.removeAttribute("data-performance-mode");
+    }
+  });
+
+  it("re-arms scheduling when lastActivityTimestamp changes (new activity)", () => {
+    const now = Date.now();
+    vi.setSystemTime(now);
+    const { rerender } = render(<ActivityLight lastActivityTimestamp={now - DECAY_DURATION - 1} />);
+    expect(vi.getTimerCount()).toBe(0);
+
+    // A fresh activity timestamp restarts the decay scheduler.
+    act(() => {
+      rerender(<ActivityLight lastActivityTimestamp={now} />);
+    });
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
   });
 });
