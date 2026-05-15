@@ -183,6 +183,7 @@ describe("TrashContainer", () => {
     const ghost = getByTestId("trash-container-ghost");
     expect(ghost.className).toContain("bg-overlay-soft");
     expect(ghost.className).toContain("ring-border-default");
+    expect(ghost.className).toContain("cursor-copy");
     expect(ghost.className).not.toContain("daintree-accent");
   });
 
@@ -193,6 +194,7 @@ describe("TrashContainer", () => {
     const pill = getByTestId("trash-container");
     expect(pill.className).toContain("bg-overlay-soft");
     expect(pill.className).toContain("ring-border-default");
+    expect(pill.className).toContain("cursor-copy");
     expect(pill.className).not.toContain("daintree-accent");
   });
 
@@ -201,6 +203,17 @@ describe("TrashContainer", () => {
     dndMocks.isWorktreeSortDragging = true;
     const { container } = render(<TrashContainer trashedTerminals={[]} />);
     expect(container.innerHTML).toBe("");
+  });
+
+  it("does not apply armed classes on populated pill during worktree-sort drags", () => {
+    dndMocks.isDragging = true;
+    dndMocks.isWorktreeSortDragging = true;
+    dndMocks.isOver = true;
+    const { getByTestId } = render(<TrashContainer trashedTerminals={[makeTrashedItem("1")]} />);
+    const pill = getByTestId("trash-container");
+    expect(pill.className).not.toContain("cursor-copy");
+    expect(pill.className).not.toContain("bg-overlay-soft");
+    expect(pill.className).not.toContain("ring-border-default");
   });
 
   it("does not pulse on initial mount", () => {

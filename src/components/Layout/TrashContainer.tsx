@@ -204,7 +204,8 @@ export function TrashContainer({ trashedTerminals, compact = false }: TrashConta
           className={cn(
             compact ? "px-1.5 min-w-0" : "px-3",
             "opacity-70 animate-in fade-in",
-            isOver && "opacity-100 bg-overlay-soft ring-2 ring-inset ring-border-default"
+            isOver &&
+              "cursor-copy opacity-100 bg-overlay-soft ring-2 ring-inset ring-border-default"
           )}
         >
           <Trash2 className="w-3.5 h-3.5 text-daintree-text/60" aria-hidden="true" />
@@ -231,7 +232,9 @@ export function TrashContainer({ trashedTerminals, compact = false }: TrashConta
                 className={cn(
                   compact ? "px-1.5 min-w-0" : "px-3",
                   isOpen && "bg-overlay-emphasis border-border-default",
-                  isOver && "bg-overlay-soft ring-2 ring-inset ring-border-default"
+                  isOver &&
+                    isPanelDragging &&
+                    "cursor-copy bg-overlay-soft ring-2 ring-inset ring-border-default"
                 )}
                 aria-haspopup="dialog"
                 aria-expanded={isOpen}
