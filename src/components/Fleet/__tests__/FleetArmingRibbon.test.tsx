@@ -26,6 +26,16 @@ vi.mock("@/hooks/useWorktreeColorMap", () => ({
   useWorktreeColorMap: () => null,
 }));
 
+// ConfirmDialog (via AppDialog/Radix) observes layout; jsdom lacks this.
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+);
+
 vi.mock("@/components/ui/dropdown-menu", () => ({
   DropdownMenu: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   DropdownMenuTrigger: ({ children }: { children: React.ReactNode; asChild?: boolean }) => (
@@ -68,6 +78,8 @@ import { useFleetBroadcastConfirmStore } from "@/store/fleetBroadcastConfirmStor
 import { useFleetBroadcastProgressStore } from "@/store/fleetBroadcastProgressStore";
 import { useFleetPickerSessionStore } from "@/store/fleetPickerSessionStore";
 import { usePanelStore } from "@/store/panelStore";
+import { useProjectSettingsStore } from "@/store/projectSettingsStore";
+import type { ProjectSettings } from "@shared/types/project";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useWorktreeFilterStore } from "@/store/worktreeFilterStore";
 import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
@@ -1098,5 +1110,107 @@ describe("FleetArmingRibbon", () => {
       });
       expect(screen.queryByTestId("fleet-picker-add-root")).toBeNull();
     });
+  });
+});
+
+describe("FleetArmingRibbon — saved fleet delete confirm (#8023)", () => {
+  beforeEach(() => {
+    resetStores();
+    useProjectSettingsStore.setState({
+      settings: {
+        runCommands: [],
+        fleetSavedScopes: [
+          { kind: "snapshot", id: "fs-1", name: "My fleet", terminalIds: [], createdAt: 1 },
+        ],
+      } as ProjectSettings,
+    });
+  });
+
+  it("trash button opens a confirm dialog instead of deleting immediately", async () => {
+    const actionServiceModule = await import("@/services/ActionService");
+    const dispatchSpy = vi.spyOn(actionServiceModule.actionService, "dispatch");
+
+    useFleetArmingStore.getState().armIds(["a", "b"]);
+    render(<FleetArmingRibbon />);
+
+    const trash = screen.getByTestId("fleet-saved-row-delete");
+    await act(async () => {
+      fireEvent.click(trash);
+    });
+
+    // No immediate dispatch — the confirm must gate the deletion.
+    expect(dispatchSpy.mock.calls.some((c) => c[0] === "fleet.deleteNamedFleet")).toBe(false);
+    expect(screen.getByText("Delete 'My fleet'?")).toBeTruthy();
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("confirming the dialog dispatches fleet.deleteNamedFleet with the scope id", async () => {
+    const actionServiceModule = await import("@/services/ActionService");
+    const dispatchSpy = vi.spyOn(actionServiceModule.actionService, "dispatch");
+
+    useFleetArmingStore.getState().armIds(["a", "b"]);
+    render(<FleetArmingRibbon />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("fleet-saved-row-delete"));
+    });
+
+    const confirmBtn = screen.getByRole("button", { name: "Delete fleet" });
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+    });
+
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      "fleet.deleteNamedFleet",
+      { id: "fs-1" },
+      { source: "user" }
+    );
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("cancelling the dialog does not dispatch and closes the dialog", async () => {
+    const actionServiceModule = await import("@/services/ActionService");
+    const dispatchSpy = vi.spyOn(actionServiceModule.actionService, "dispatch");
+
+    useFleetArmingStore.getState().armIds(["a", "b"]);
+    render(<FleetArmingRibbon />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("fleet-saved-row-delete"));
+    });
+    expect(screen.getByText("Delete 'My fleet'?")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    });
+
+    expect(dispatchSpy.mock.calls.some((c) => c[0] === "fleet.deleteNamedFleet")).toBe(false);
+    expect(screen.queryByText("Delete 'My fleet'?")).toBeNull();
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("clears the pending delete when the armed set drains below 2", async () => {
+    useFleetArmingStore.getState().armIds(["a", "b"]);
+    render(<FleetArmingRibbon />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("fleet-saved-row-delete"));
+    });
+    expect(screen.getByText("Delete 'My fleet'?")).toBeTruthy();
+
+    // Drain to 1 — the ribbon (and dialog) unmount via the armedCount<2 guard.
+    await act(async () => {
+      useFleetArmingStore.getState().armIds(["a"]);
+    });
+    expect(screen.queryByText("Delete 'My fleet'?")).toBeNull();
+
+    // Re-arm: the dialog must NOT resurface for the stale fleet id.
+    await act(async () => {
+      useFleetArmingStore.getState().armIds(["a", "b"]);
+    });
+    expect(screen.queryByText("Delete 'My fleet'?")).toBeNull();
   });
 });

@@ -5,6 +5,7 @@ import { usePortalStore } from "@/store/portalStore";
 import { getAgentConfig, isRegisteredAgent } from "@/config/agents";
 import { BrandMark } from "@/components/icons";
 import { actionService } from "@/services/ActionService";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SettingsSection } from "./SettingsSection";
 import { SettingsSelect } from "./SettingsSelect";
 import { SettingsSwitch } from "./SettingsSwitch";
@@ -64,6 +65,7 @@ export function PortalSettingsTab() {
   const [showCustomUrlInput, setShowCustomUrlInput] = useState(false);
   const [customDefaultUrl, setCustomDefaultUrl] = useState("");
   const [customUrlError, setCustomUrlError] = useState("");
+  const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null);
   const customUrlErrorId = useId();
   const addLinkErrorId = useId();
 
@@ -287,13 +289,7 @@ export function PortalSettingsTab() {
           />
           {allowDelete && (
             <button
-              onClick={() =>
-                void actionService.dispatch(
-                  "portal.links.remove",
-                  { id: link.id },
-                  { source: "user" }
-                )
-              }
+              onClick={() => setPendingRemoveId(link.id)}
               disabled={link.alwaysEnabled}
               className="p-1.5 rounded hover:bg-daintree-border/50 text-daintree-text/50 hover:text-status-error disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
@@ -305,8 +301,29 @@ export function PortalSettingsTab() {
     );
   };
 
+  const pendingRemoveLink = links.find((l) => l.id === pendingRemoveId) ?? null;
+
   return (
     <div className="space-y-6">
+      <ConfirmDialog
+        isOpen={pendingRemoveId !== null}
+        variant="destructive"
+        title={`Remove '${pendingRemoveLink?.title || "this link"}'?`}
+        description="This removes the link from your portal tab bar. You can add it back later."
+        confirmLabel="Remove link"
+        onConfirm={() => {
+          if (pendingRemoveId !== null) {
+            void actionService.dispatch(
+              "portal.links.remove",
+              { id: pendingRemoveId },
+              { source: "user" }
+            );
+          }
+          setPendingRemoveId(null);
+        }}
+        onClose={() => setPendingRemoveId(null)}
+      />
+
       <SettingsSection
         icon={PanelRight}
         title="Default new tab agent"

@@ -305,6 +305,10 @@ export function WorktreeCard({
   const hasPauseCommand = !!worktree.hasPauseCommand;
   const hasResumeCommand = !!worktree.hasResumeCommand;
   const hasTeardownCommand = !!worktree.hasTeardownCommand;
+  const teardownCommands =
+    worktree.worktreeMode && worktree.worktreeMode !== "local"
+      ? (resourceEnvironments?.[worktree.worktreeMode]?.teardown ?? [])
+      : [];
   const hasStatusCommand = !!worktree.hasStatusCommand;
   const hasProvisionCommand = !!worktree.hasProvisionCommand;
 
@@ -323,9 +327,11 @@ export function WorktreeCard({
     handleSelectWorkingAgents,
     handleCloseAll,
     handleTerminateAll,
+    handleResourceTeardown,
   } = useWorktreeActions({
     worktree,
     onCopyTree,
+    teardownCommands,
   });
 
   const handleOpenIssuePortal = () => {
@@ -397,14 +403,6 @@ export function WorktreeCard({
   const handleResourceProvision = () => {
     void actionService.dispatch(
       "worktree.resource.provision",
-      { worktreeId: worktree.id },
-      { source: "context-menu" }
-    );
-  };
-
-  const handleResourceTeardown = () => {
-    void actionService.dispatch(
-      "worktree.resource.teardown",
       { worktreeId: worktree.id },
       { source: "context-menu" }
     );

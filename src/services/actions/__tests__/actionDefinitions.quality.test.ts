@@ -1,4 +1,8 @@
 import { describe, it, expect } from "vitest";
+import { createStore } from "zustand/vanilla";
+import { setCurrentViewStore } from "@/store/createWorktreeStore";
+import type { WorktreeViewStore, WorktreeViewStoreApi } from "@/store/createWorktreeStore";
+import type { WorktreeSnapshot } from "@shared/types";
 import { KEY_ACTION_VALUES } from "@shared/types/keymap";
 import { BUILT_IN_ACTION_IDS } from "@shared/config/actionIds";
 import type { ActionId } from "@shared/types/actions";
@@ -238,6 +242,9 @@ const EXPECTED_CONFIRM_DANGER: ReadonlyArray<ActionId> = [
   "fleet.kill",
   "fleet.trash",
   "fleet.restart",
+  "fleet.deleteNamedFleet",
+  "worktree.resource.teardown",
+  "portal.links.remove",
 ];
 
 describe("destructive-action danger metadata", () => {
@@ -274,14 +281,47 @@ describe("destructive-action danger metadata", () => {
       if (factory) service.register(factory());
     }
 
-    // Many destructive actions require a `worktreeId` arg; arg validation runs
-    // before the confirm gate, so undefined args would short-circuit with
-    // VALIDATION_ERROR. Provide a placeholder so the danger gate is what fires.
-    const placeholderArgs = { worktreeId: "wt-placeholder" };
+    // Many destructive actions require a `worktreeId` or `id` arg; arg
+    // validation runs before the confirm gate, so undefined args would
+    // short-circuit with VALIDATION_ERROR. Provide both placeholder keys —
+    // zod object schemas strip unknown keys, so the irrelevant one is a no-op.
+    const placeholderArgs = { worktreeId: "wt-placeholder", id: "id-placeholder" };
+
+    // Some listed actions (e.g. worktree.resource.teardown) gate availability
+    // via `isEnabled`, which runs *before* the confirm gate. Without a view
+    // store its predicate throws → DISABLED, masking the confirm gate we want
+    // to assert. Seed a placeholder worktree that satisfies those predicates
+    // and pass the matching context so the danger gate is what fires.
+    const viewStore: WorktreeViewStoreApi = createStore<WorktreeViewStore>(() => ({
+      worktrees: new Map<string, WorktreeSnapshot>([
+        ["wt-placeholder", { id: "wt-placeholder", hasTeardownCommand: true } as WorktreeSnapshot],
+      ]),
+      version: 1,
+      isLoading: false,
+      error: null,
+      isInitialized: true,
+      isReconnecting: false,
+      nextVersion: () => 1,
+      applySnapshot: () => {},
+      applyUpdate: () => {},
+      applyRemove: () => {},
+      setLoading: () => {},
+      setError: () => {},
+      setFatalError: () => {},
+      setReconnecting: () => {},
+    }));
+    setCurrentViewStore(viewStore);
+    const contextOverride = {
+      activeWorktreeId: "wt-placeholder",
+      focusedWorktreeId: "wt-placeholder",
+    };
 
     const failures: string[] = [];
     for (const id of EXPECTED_CONFIRM_DANGER) {
-      const result = await service.dispatch(id, placeholderArgs, { source: "agent" });
+      const result = await service.dispatch(id, placeholderArgs, {
+        source: "agent",
+        contextOverride,
+      });
       if (result.ok) {
         failures.push(`${id} (agent dispatch succeeded without confirmed:true)`);
         continue;

@@ -6,7 +6,11 @@ import { DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdo
 import { SavedFleetRow } from "./SavedFleetRow";
 import { SaveFleetForm } from "./SaveFleetForm";
 
-export function SavedFleetsSection(): ReactElement {
+interface SavedFleetsSectionProps {
+  onRequestDelete: (id: string) => void;
+}
+
+export function SavedFleetsSection({ onRequestDelete }: SavedFleetsSectionProps): ReactElement {
   const armedCount = useFleetArmingStore((s) => s.armedIds.size);
   const savedScopes = useProjectSettingsStore(
     useShallow((s) => s.settings?.fleetSavedScopes ?? [])
@@ -18,7 +22,7 @@ export function SavedFleetsSection(): ReactElement {
         <>
           <DropdownMenuLabel>Saved fleets</DropdownMenuLabel>
           {savedScopes.map((scope) => (
-            <SavedFleetRow key={scope.id} scope={scope} />
+            <SavedFleetRow key={scope.id} scope={scope} onRequestDelete={onRequestDelete} />
           ))}
         </>
       ) : null}

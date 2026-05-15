@@ -59,9 +59,9 @@ Columns:
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `worktree.create` / `worktree.quickCreate` / `worktree.createDialog.open` | safe | n/a (creation) | reversible (delete the worktree) | one new worktree | D0 | Leave | — |
 | `worktree.delete` | confirm | yes (`WorktreeDeleteDialog`) | shared-state (working tree + branch on disk) | one worktree, optionally one branch | D2 | Leave — preview shows file count split (tracked vs untracked, see #4927) | — |
-| `worktree.delete` with `force: true` | confirm | yes; force flag is a separate toggle in the dialog | shared-state, may discard uncommitted work | one worktree | D2 → escalates to D3 when worktree has uncommitted tracked changes | Treat the "force delete with uncommitted changes" path as D3 — require typed-name confirmation | TBD |
+| `worktree.delete` with `force: true` | confirm | yes; force flag is a separate toggle in the dialog, escalates to typed-name gate | shared-state, may discard uncommitted work | one worktree | D2 → escalates to D3 when worktree has uncommitted tracked changes | Done (#8023) — `WorktreeDeleteDialog.isHighTier` escalates to the typed-name gate when `force && hasTrackedChanges` (in addition to protected branch / main worktree); uses `hasTrackedChanges` not `hasChanges` so untracked-only deletes don't escalate (#4927) | — |
 | `worktree.resource.provision` | safe | n/a | reversible (teardown) | one resource | D0 | Leave | — |
-| `worktree.resource.teardown` | safe | none in action; depends on resource client | shared-state (cloud resource destroyed) | one resource | D2 | Add confirm + show what teardown will run / which resource | TBD |
+| `worktree.resource.teardown` | **confirm** (updated #8023) | yes (`ConfirmDialog` via `useWorktreeActions` / `WorktreeCard`) — preview lists the actual teardown commands | shared-state (cloud resource destroyed) | one resource | D2 | Done (#8023) — confirm shows the resolved teardown command list before dispatch | — |
 | `worktree.resource.pause` / `worktree.resource.resume` | safe | n/a | reversible | one resource | D0 | Leave | — |
 
 ### Worktree sessions
@@ -100,7 +100,7 @@ Columns:
 | `fleet.armMatchingFilter` / `fleet.armFocused` / `fleet.armAll` | safe | n/a | reversible (disarm) | armed set | D0 | Leave | — |
 | `fleet.saveNamedFleet` | safe | n/a | reversible (delete fleet) | one saved fleet | D0 | Leave | — |
 | `fleet.recallNamedFleet` | safe | n/a | reversible (re-arm) | armed set | D0 | Leave | — |
-| `fleet.deleteNamedFleet` | safe | none | local-irreversible (settings entry gone) | one saved fleet | D1 | Add confirm at the SavedFleetsSection delete button | TBD |
+| `fleet.deleteNamedFleet` | **confirm** (updated #8023) | yes (`ConfirmDialog` hoisted to `FleetArmingRibbon`, outside the dropdown tree) | local-irreversible (settings entry gone) | one saved fleet | D1 | Done (#8023) — confirm state lifted above the Radix `DropdownMenu` so the dialog survives the menu closing (#2828) | — |
 | `fleet.retryFailures` | safe | n/a | local-undo (just re-fires the last broadcast) | failed broadcast targets | D0 | Leave | — |
 
 ### Project / window
@@ -140,7 +140,7 @@ The current GitHub action set is read-only (`openIssues`, `listPullRequests`, et
 | Action / call site | Current | UI confirm | Reversibility | Blast | Tier | Recommendation | Follow-up |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `portal.links.add` / `update` / `toggle` / `reorder` | safe | n/a | reversible | one link | D0 | Leave | — |
-| `portal.links.remove` | safe | none | local-irreversible (link gone) | one link | D1 | Add confirm at the SettingsPanel delete control | TBD |
+| `portal.links.remove` | **confirm** (updated #8023) | yes (`ConfirmDialog` in `PortalSettingsTab`) | local-irreversible (link gone) | one link | D1 | Done (#8023) — confirm wired at the Custom links delete control | — |
 | `portal.closeTab` / `closeOthers` / `closeToRight` / `closeAllTabs` | safe | none | local-irreversible (tab history lost) | 1..N tabs | D0 (single) → D1 (bulk) | Add confirm for `closeAllTabs` and `closeOthers` when 3+ tabs would close | TBD |
 | `portal.duplicateTab` / `reload` / `goBack` / `goForward` | safe | n/a | reversible | one tab | D0 | Leave | — |
 

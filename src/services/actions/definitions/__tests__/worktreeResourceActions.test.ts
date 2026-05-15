@@ -71,7 +71,7 @@ describe("worktree resource action definitions", () => {
 
   it.each([
     ["worktree.resource.provision", "safe"],
-    ["worktree.resource.teardown", "safe"],
+    ["worktree.resource.teardown", "confirm"],
     ["worktree.resource.resume", "safe"],
     ["worktree.resource.pause", "safe"],
     ["worktree.resource.status", "safe"],

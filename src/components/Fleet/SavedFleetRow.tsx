@@ -7,9 +7,10 @@ import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
 interface SavedFleetRowProps {
   scope: FleetSavedScope;
+  onRequestDelete: (id: string) => void;
 }
 
-export function SavedFleetRow({ scope }: SavedFleetRowProps): ReactElement {
+export function SavedFleetRow({ scope, onRequestDelete }: SavedFleetRowProps): ReactElement {
   // Counts are computed at render time — the dropdown opens fresh each time,
   // so re-running this on every paint of the open menu is fine and there's no
   // need for a panelStore subscription that would burn cycles while closed.
@@ -33,14 +34,12 @@ export function SavedFleetRow({ scope }: SavedFleetRowProps): ReactElement {
         data-testid="fleet-saved-row-delete"
         onClick={(e) => {
           // Stop the parent DropdownMenuItem's onSelect from firing the recall
-          // when the user clicks the trash icon.
+          // when the user clicks the trash icon. The confirm dialog is hoisted
+          // to FleetArmingRibbon (outside this dropdown tree) so it survives
+          // the menu closing — see #8023.
           e.preventDefault();
           e.stopPropagation();
-          void actionService.dispatch(
-            "fleet.deleteNamedFleet",
-            { id: scope.id },
-            { source: "user" }
-          );
+          onRequestDelete(scope.id);
         }}
         onPointerDown={(e) => {
           // Radix DropdownMenuItem also commits on pointerdown — guard the

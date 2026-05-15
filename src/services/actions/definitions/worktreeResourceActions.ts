@@ -76,7 +76,7 @@ export function registerWorktreeResourceActions(
       description: "Run resource teardown commands for a worktree",
       category: "worktree",
       kind: "command",
-      danger: "safe",
+      danger: "confirm",
       scope: "renderer",
       argsSchema: z.object({ worktreeId: z.string().optional() }).optional(),
       isEnabled: (ctx: ActionContext) => {
