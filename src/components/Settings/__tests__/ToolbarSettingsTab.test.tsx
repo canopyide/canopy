@@ -105,14 +105,18 @@ vi.mock("@dnd-kit/sortable", () => ({
 
 // Test-time helper for restoring the default useSortable return between
 // cases (the mock factory above is hoisted, so it can't reference this).
-const defaultSortable = () => ({
-  attributes: {},
-  listeners: {},
-  setNodeRef: vi.fn(),
-  transform: null,
-  transition: null,
-  isDragging: false,
-});
+// The component only reads transform/transition/isDragging/listeners/
+// attributes/setNodeRef; the cast keeps the partial shape without
+// reconstructing dnd-kit's full ~20-field return type.
+const defaultSortable = (): ReturnType<typeof useSortable> =>
+  ({
+    attributes: {},
+    listeners: {},
+    setNodeRef: vi.fn(),
+    transform: null,
+    transition: null,
+    isDragging: false,
+  }) as unknown as ReturnType<typeof useSortable>;
 
 vi.mock("@dnd-kit/utilities", () => ({
   CSS: { Transform: { toString: () => "" } },
@@ -330,6 +334,22 @@ describe("ToolbarSettingsTab — drag-source vs hidden opacity deconfliction", (
     const row = rowFor("Terminal", container);
     expect(row.style.opacity).toBe(String(DRAG_GHOST_OPACITY));
     expect(row.style.opacity).not.toBe("0.5");
+  });
+
+  it("prefers DRAG_GHOST_OPACITY over the hidden preview when dragging a hidden row", () => {
+    // Unreachable in production today (useSortable is called with
+    // `disabled: !isVisible`, so a hidden row can't drag), but this locks
+    // the ternary's `isDragging`-first ordering against a future refactor
+    // that drops the disabled guard.
+    mockAgentSettings = agentSettings({ gemini: { pinned: false } });
+    vi.mocked(useSortable).mockImplementation(() => ({
+      ...defaultSortable(),
+      isDragging: true,
+    }));
+
+    const { container } = render(<ToolbarSettingsTab />);
+    const row = rowFor("Gemini Agent", container);
+    expect(row.style.opacity).toBe(String(DRAG_GHOST_OPACITY));
   });
 
   it("keeps the hidden-in-toolbar preview at 0.5 (distinct from the drag ghost)", () => {
