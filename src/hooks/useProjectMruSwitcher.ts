@@ -5,10 +5,15 @@ import { notify } from "@/lib/notify";
 import { useProjectStore } from "@/store/projectStore";
 import type { Project } from "@shared/types";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import {
+  armProjectMruModifierGate,
+  clearProjectMruModifierGate,
+  isProjectMruModifierGateActive,
+} from "@/lib/projectMruSwitchGestureGate";
 
 import { useEscapeStack } from "./useEscapeStack";
 
-const HOLD_THRESHOLD_MS = 120;
+const HOLD_THRESHOLD_MS = 60;
 
 export interface UseProjectMruSwitcherReturn {
   isVisible: boolean;
@@ -42,11 +47,38 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return false;
 }
 
+function getTriggerDirection(event: KeyboardEvent): "older" | "newer" | null {
+  if (event.code === "Equal" || event.code === "NumpadAdd") return "older";
+  if (event.code === "Minus" || event.code === "NumpadSubtract") return "newer";
+  return null;
+}
+
+function isModifierKey(event: KeyboardEvent): boolean {
+  return event.key === "Meta" || event.key === "Alt";
+}
+
+function isFreshModifierKeyDown(event: KeyboardEvent): boolean {
+  if (event.key === "Meta") return !event.altKey;
+  if (event.key === "Alt") return !event.metaKey;
+  return false;
+}
+
+function consumeEvent(event: KeyboardEvent): void {
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation();
+}
+
+function preloadProjectMruSwitcherOverlay(): void {
+  void import("../components/Project/ProjectMruSwitcherOverlay").catch(() => {});
+}
+
 /**
  * Hold-scrub MRU project switcher.
  *
- * Tap Cmd+Alt+= (or Cmd+Alt+-): switch to the most recent other project.
- * Hold Cmd+Alt+-/= for >120ms: show an overlay that scrubs through the MRU
+ * Tap Cmd+Alt+=/Plus: switch down/forward in MRU order.
+ * Tap Cmd+Alt+-: switch up/backward in MRU order.
+ * Hold Cmd+Alt+-/= briefly: show an overlay that scrubs through the MRU
  * list with each additional '=' (older/down) or '-' (newer/up) keypress. Release
  * Cmd/Alt to commit; Escape or window blur to cancel.
  *
@@ -85,6 +117,7 @@ export function useProjectMruSwitcher(): UseProjectMruSwitcherReturn {
     if (state.currentProject?.id === liveTarget.id) return;
     const targetId = liveTarget.id;
     const switchFn = liveTarget.status === "background" ? state.reopenProject : state.switchProject;
+    armProjectMruModifierGate();
     Promise.resolve(switchFn(targetId)).catch((error) => {
       notify({
         type: "error",
@@ -127,17 +160,25 @@ export function useProjectMruSwitcher(): UseProjectMruSwitcherReturn {
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isModifierKey(event)) {
+        if (isFreshModifierKeyDown(event)) {
+          clearProjectMruModifierGate();
+        }
+        return;
+      }
       if (event.isComposing) return;
       if (!event.metaKey || !event.altKey) return;
-      const isOlder = event.code === "Equal";
-      const isNewer = event.code === "Minus";
-      if (!isOlder && !isNewer) return;
+      const direction = getTriggerDirection(event);
+      if (!direction) return;
 
       if (isEditableTarget(event.target)) return;
 
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation();
+      consumeEvent(event);
+      preloadProjectMruSwitcherOverlay();
+
+      if (isProjectMruModifierGateActive()) {
+        return;
+      }
 
       const state = useProjectStore.getState();
       const currentId = state.currentProject?.id ?? null;
@@ -151,11 +192,12 @@ export function useProjectMruSwitcher(): UseProjectMruSwitcherReturn {
 
       const session = sessionRef.current;
       if (!session.active) {
+        const selectedIndex = advanceMruIndex(0, direction, sorted.length);
         sessionRef.current = {
           active: true,
           holding: false,
           hasTriggerKey: true,
-          selectedIndex: 1,
+          selectedIndex,
           projects: sorted,
         };
         startHoldTimer();
@@ -164,11 +206,7 @@ export function useProjectMruSwitcher(): UseProjectMruSwitcherReturn {
 
       session.hasTriggerKey = true;
       session.projects = sorted;
-      const newIndex = advanceMruIndex(
-        session.selectedIndex,
-        isOlder ? "older" : "newer",
-        sorted.length
-      );
+      const newIndex = advanceMruIndex(session.selectedIndex, direction, sorted.length);
       session.selectedIndex = newIndex;
       if (session.holding) {
         setOverlay({
@@ -181,6 +219,7 @@ export function useProjectMruSwitcher(): UseProjectMruSwitcherReturn {
 
     const handleKeyUp = (event: KeyboardEvent) => {
       if (event.key !== "Meta" && event.key !== "Alt") return;
+      clearProjectMruModifierGate();
       const session = sessionRef.current;
       if (!session.active) return;
 

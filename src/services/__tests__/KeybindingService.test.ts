@@ -517,6 +517,9 @@ describe("KeybindingService", () => {
 
     expect(service.getBinding("project.mruCycleOlder")?.combo).toBe("Cmd+Alt+=");
     expect(service.getBinding("project.mruCycleNewer")?.combo).toBe("Cmd+Alt+-");
+    expect(
+      DEFAULT_KEYBINDINGS.filter((b) => b.actionId === "project.mruCycleOlder").map((b) => b.combo)
+    ).toContain("Cmd+Shift+Alt+=");
 
     const plus = createKeyboardEvent({
       key: "≠",
@@ -525,6 +528,15 @@ describe("KeybindingService", () => {
       altKey: true,
     });
     expect(service.findMatchingAction(plus)?.actionId).toBe("project.mruCycleOlder");
+
+    const shiftedPlus = createKeyboardEvent({
+      key: "+",
+      code: "Equal",
+      metaKey: true,
+      altKey: true,
+      shiftKey: true,
+    });
+    expect(service.findMatchingAction(shiftedPlus)?.actionId).toBe("project.mruCycleOlder");
 
     const minus = createKeyboardEvent({
       key: "–",

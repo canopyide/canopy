@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, renderHook } from "@testing-library/react";
+import { act, render, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { switchProjectMock, reopenProjectMock, notifyMock, projectState, useProjectStoreMock } =
@@ -41,6 +41,24 @@ const { switchProjectMock, reopenProjectMock, notifyMock, projectState, useProje
     };
   });
 
+const { actionDispatchMock, keybindingServiceMock } = vi.hoisted(() => {
+  const actionDispatchMock = vi.fn(async () => ({ ok: true, result: undefined }));
+  const keybindingServiceMock = {
+    resolveKeybinding: vi.fn(() => ({
+      match: { actionId: "project.mruCycleOlder" },
+      chordPrefix: false,
+      shouldConsume: true,
+    })),
+    getPendingChord: vi.fn<() => string | null>(() => null),
+    clearPendingChord: vi.fn(),
+    popPendingChord: vi.fn(),
+    getEffectiveCombo: vi.fn<() => string | undefined>(() => undefined),
+    matchesEvent: vi.fn(() => false),
+    subscribe: vi.fn(() => () => {}),
+  };
+  return { actionDispatchMock, keybindingServiceMock };
+});
+
 vi.mock("@/store/projectStore", () => ({
   useProjectStore: useProjectStoreMock,
 }));
@@ -49,19 +67,52 @@ vi.mock("@/lib/notify", () => ({
   notify: notifyMock,
 }));
 
+vi.mock("@/services/ActionService", () => ({
+  actionService: { dispatch: actionDispatchMock },
+}));
+
+vi.mock("@/services/KeybindingService", () => ({
+  keybindingService: keybindingServiceMock,
+  normalizeKeyForBinding: (event: KeyboardEvent) => {
+    if (event.code === "Equal" || event.code === "NumpadAdd") return "=";
+    if (event.code === "Minus" || event.code === "NumpadSubtract") return "-";
+    return event.key;
+  },
+}));
+
+vi.mock("../../store", () => ({
+  usePanelStore: { getState: () => ({ focusedId: null }) },
+}));
+
+vi.mock("@/utils/logger", () => ({
+  logError: vi.fn(),
+}));
+
 import { _resetForTests as resetEscapeStack, dispatchEscape } from "@/lib/escapeStack";
+import {
+  armProjectMruModifierGate,
+  clearProjectMruModifierGate,
+  isProjectMruModifierGateActive,
+} from "@/lib/projectMruSwitchGestureGate";
 import { useProjectMruSwitcher } from "../useProjectMruSwitcher";
+import { useGlobalKeybindings } from "../useGlobalKeybindings";
 
 function keyDown(
-  code: "Minus" | "Equal",
-  opts: { repeat?: boolean; isComposing?: boolean; target?: Element | null } = {}
+  code: "Minus" | "Equal" | "NumpadAdd" | "NumpadSubtract",
+  opts: {
+    repeat?: boolean;
+    isComposing?: boolean;
+    target?: Element | null;
+    shiftKey?: boolean;
+  } = {}
 ) {
-  const key = code === "Minus" ? "–" : "≠";
+  const key = code === "Minus" || code === "NumpadSubtract" ? "–" : opts.shiftKey ? "+" : "≠";
   const event = new KeyboardEvent("keydown", {
     key,
     code,
     metaKey: true,
     altKey: true,
+    shiftKey: opts.shiftKey ?? false,
     repeat: opts.repeat ?? false,
     isComposing: opts.isComposing ?? false,
     bubbles: true,
@@ -80,8 +131,26 @@ function keyUp(key: "Meta" | "Alt") {
     bubbles: true,
     cancelable: true,
   });
-  window.dispatchEvent(event);
+  document.body.dispatchEvent(event);
   return event;
+}
+
+function modifierKeyDown(key: "Meta" | "Alt", opts: { metaKey?: boolean; altKey?: boolean } = {}) {
+  const event = new KeyboardEvent("keydown", {
+    key,
+    metaKey: opts.metaKey ?? key === "Meta",
+    altKey: opts.altKey ?? key === "Alt",
+    bubbles: true,
+    cancelable: true,
+  });
+  document.body.dispatchEvent(event);
+  return event;
+}
+
+function AppLikeKeybindingHost() {
+  useProjectMruSwitcher();
+  useGlobalKeybindings(true);
+  return null;
 }
 
 describe("useProjectMruSwitcher", () => {
@@ -89,6 +158,7 @@ describe("useProjectMruSwitcher", () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     resetEscapeStack();
+    clearProjectMruModifierGate();
     projectState.currentProject = { id: "p-current" };
     projectState.projects = [
       { id: "p-current", path: "/p-current", name: "Current", emoji: "🌲", lastOpened: 500 },
@@ -99,10 +169,11 @@ describe("useProjectMruSwitcher", () => {
   });
 
   afterEach(() => {
+    clearProjectMruModifierGate();
     vi.useRealTimers();
   });
 
-  it("tap Cmd+Alt+- switches to most recent other project without showing overlay", () => {
+  it("tap Cmd+Alt+- switches backward through MRU without showing overlay", () => {
     const { result } = renderHook(() => useProjectMruSwitcher());
 
     act(() => {
@@ -112,12 +183,12 @@ describe("useProjectMruSwitcher", () => {
       keyUp("Meta");
     });
 
-    expect(switchProjectMock).toHaveBeenCalledWith("p-recent");
+    expect(switchProjectMock).toHaveBeenCalledWith("p-oldest");
     expect(reopenProjectMock).not.toHaveBeenCalled();
     expect(result.current.isVisible).toBe(false);
   });
 
-  it("tap Cmd+Alt+= also switches to the same most recent other project", () => {
+  it("tap Cmd+Alt+= switches forward through MRU", () => {
     renderHook(() => useProjectMruSwitcher());
 
     act(() => {
@@ -128,6 +199,45 @@ describe("useProjectMruSwitcher", () => {
     });
 
     expect(switchProjectMock).toHaveBeenCalledWith("p-recent");
+  });
+
+  it("tap Cmd+Alt+Plus (Shift+Equal) switches forward through MRU", () => {
+    renderHook(() => useProjectMruSwitcher());
+
+    act(() => {
+      keyDown("Equal", { shiftKey: true });
+    });
+    act(() => {
+      keyUp("Alt");
+    });
+
+    expect(switchProjectMock).toHaveBeenCalledWith("p-recent");
+  });
+
+  it("tap Cmd+Alt+NumpadAdd switches forward through MRU", () => {
+    renderHook(() => useProjectMruSwitcher());
+
+    act(() => {
+      keyDown("NumpadAdd");
+    });
+    act(() => {
+      keyUp("Alt");
+    });
+
+    expect(switchProjectMock).toHaveBeenCalledWith("p-recent");
+  });
+
+  it("tap Cmd+Alt+NumpadSubtract switches backward through MRU", () => {
+    renderHook(() => useProjectMruSwitcher());
+
+    act(() => {
+      keyDown("NumpadSubtract");
+    });
+    act(() => {
+      keyUp("Alt");
+    });
+
+    expect(switchProjectMock).toHaveBeenCalledWith("p-oldest");
   });
 
   it("single-project state is a no-op", () => {
@@ -174,10 +284,10 @@ describe("useProjectMruSwitcher", () => {
     const { result } = renderHook(() => useProjectMruSwitcher());
 
     act(() => {
-      keyDown("Minus");
+      keyDown("Equal");
     });
     act(() => {
-      vi.advanceTimersByTime(130);
+      vi.advanceTimersByTime(70);
     });
 
     expect(result.current.isVisible).toBe(true);
@@ -190,12 +300,27 @@ describe("useProjectMruSwitcher", () => {
     ]);
   });
 
+  it("holding Cmd+Alt+- starts at the backward wrapped project", () => {
+    const { result } = renderHook(() => useProjectMruSwitcher());
+
+    act(() => {
+      keyDown("Minus");
+    });
+    act(() => {
+      vi.advanceTimersByTime(70);
+    });
+
+    expect(result.current.isVisible).toBe(true);
+    expect(result.current.selectedIndex).toBe(3);
+    expect(result.current.projects[result.current.selectedIndex]?.id).toBe("p-oldest");
+  });
+
   it("hold + Equal advances down through MRU", () => {
     const { result } = renderHook(() => useProjectMruSwitcher());
 
     act(() => {
       keyDown("Equal");
-      vi.advanceTimersByTime(130);
+      vi.advanceTimersByTime(70);
     });
     act(() => {
       keyDown("Equal", { repeat: true });
@@ -209,7 +334,7 @@ describe("useProjectMruSwitcher", () => {
 
     act(() => {
       keyDown("Equal");
-      vi.advanceTimersByTime(130);
+      vi.advanceTimersByTime(70);
     });
     act(() => {
       keyDown("Minus", { repeat: true });
@@ -223,7 +348,7 @@ describe("useProjectMruSwitcher", () => {
 
     act(() => {
       keyDown("Equal");
-      vi.advanceTimersByTime(130);
+      vi.advanceTimersByTime(70);
     });
     // Sequence on a 4-project list (indices 0..3), starting at selectedIndex 1:
     //   1 → 2 → 3 → 0 (wraps through current) → 1
@@ -245,7 +370,7 @@ describe("useProjectMruSwitcher", () => {
 
     act(() => {
       keyDown("Equal");
-      vi.advanceTimersByTime(130);
+      vi.advanceTimersByTime(70);
     });
     // Advance 1 → 2, then scrub back 2 → 1 → 0 (current project)
     act(() => {
@@ -271,7 +396,7 @@ describe("useProjectMruSwitcher", () => {
 
     act(() => {
       keyDown("Equal");
-      vi.advanceTimersByTime(130);
+      vi.advanceTimersByTime(70);
     });
     act(() => {
       keyDown("Equal", { repeat: true });
@@ -288,7 +413,7 @@ describe("useProjectMruSwitcher", () => {
 
     act(() => {
       keyDown("Minus");
-      vi.advanceTimersByTime(130);
+      vi.advanceTimersByTime(70);
     });
     expect(result.current.isVisible).toBe(true);
 
@@ -308,7 +433,7 @@ describe("useProjectMruSwitcher", () => {
 
     act(() => {
       keyDown("Minus");
-      vi.advanceTimersByTime(130);
+      vi.advanceTimersByTime(70);
     });
 
     act(() => {
@@ -327,7 +452,7 @@ describe("useProjectMruSwitcher", () => {
 
     act(() => {
       keyDown("Minus");
-      vi.advanceTimersByTime(130);
+      vi.advanceTimersByTime(70);
     });
 
     Object.defineProperty(document, "hidden", { value: true, configurable: true });
@@ -343,16 +468,16 @@ describe("useProjectMruSwitcher", () => {
     const { result } = renderHook(() => useProjectMruSwitcher());
 
     act(() => {
-      keyDown("Minus");
+      keyDown("Equal");
     });
     // Before threshold, repeat events advance the index but do NOT restart timer
     act(() => {
-      vi.advanceTimersByTime(80);
+      vi.advanceTimersByTime(40);
       keyDown("Equal", { repeat: true });
-      vi.advanceTimersByTime(60);
+      vi.advanceTimersByTime(30);
     });
 
-    // 80 + 60 = 140 > 120 threshold, so overlay should be visible
+    // 40 + 30 = 70 > 60 threshold, so overlay should be visible
     expect(result.current.isVisible).toBe(true);
     expect(result.current.selectedIndex).toBe(2);
   });
@@ -405,7 +530,7 @@ describe("useProjectMruSwitcher", () => {
     term.className = "xterm";
     document.body.appendChild(term);
     act(() => {
-      keyDown("Minus", { target: term });
+      keyDown("Equal", { target: term });
     });
     act(() => {
       keyUp("Meta");
@@ -485,7 +610,7 @@ describe("useProjectMruSwitcher", () => {
     document.body.appendChild(term);
 
     act(() => {
-      keyDown("Minus", { target: helper });
+      keyDown("Equal", { target: helper });
     });
     act(() => {
       keyUp("Meta");
@@ -515,12 +640,75 @@ describe("useProjectMruSwitcher", () => {
     expect(sip).toHaveBeenCalled();
   });
 
+  it("blocks the generic keybinding fallback in the app-like hook order", () => {
+    render(<AppLikeKeybindingHost />);
+
+    act(() => {
+      keyDown("Equal");
+    });
+    act(() => {
+      keyUp("Meta");
+    });
+
+    expect(switchProjectMock).toHaveBeenCalledWith("p-recent");
+    expect(keybindingServiceMock.resolveKeybinding).not.toHaveBeenCalled();
+    expect(actionDispatchMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks a cross-view trigger until a fresh modifier keydown is observed", () => {
+    render(<AppLikeKeybindingHost />);
+    armProjectMruModifierGate();
+
+    let blockedEvent: KeyboardEvent | undefined;
+    act(() => {
+      blockedEvent = keyDown("Equal");
+    });
+
+    expect(blockedEvent?.defaultPrevented).toBe(true);
+    expect(switchProjectMock).not.toHaveBeenCalled();
+    expect(keybindingServiceMock.resolveKeybinding).not.toHaveBeenCalled();
+    expect(actionDispatchMock).not.toHaveBeenCalled();
+    expect(isProjectMruModifierGateActive()).toBe(true);
+
+    act(() => {
+      modifierKeyDown("Meta");
+    });
+    expect(isProjectMruModifierGateActive()).toBe(false);
+
+    act(() => {
+      keyDown("Equal");
+    });
+    act(() => {
+      keyUp("Meta");
+    });
+
+    expect(switchProjectMock).toHaveBeenCalledWith("p-recent");
+  });
+
+  it("keeps the cross-view gate when a modifier keydown still reports both modifiers held", () => {
+    render(<AppLikeKeybindingHost />);
+    armProjectMruModifierGate();
+
+    act(() => {
+      modifierKeyDown("Meta", { metaKey: true, altKey: true });
+    });
+
+    expect(isProjectMruModifierGateActive()).toBe(true);
+
+    act(() => {
+      keyDown("Equal");
+    });
+
+    expect(switchProjectMock).not.toHaveBeenCalled();
+    expect(actionDispatchMock).not.toHaveBeenCalled();
+  });
+
   it("revalidates target against live store at commit time", () => {
     renderHook(() => useProjectMruSwitcher());
 
     act(() => {
-      keyDown("Minus");
-      vi.advanceTimersByTime(130);
+      keyDown("Equal");
+      vi.advanceTimersByTime(70);
     });
     // Mutate the store: remove the selected target (p-recent at index 1)
     projectState.projects = projectState.projects.filter((p) => p.id !== "p-recent");
@@ -543,7 +731,7 @@ describe("useProjectMruSwitcher", () => {
 
     act(() => {
       keyDown("Minus");
-      vi.advanceTimersByTime(130);
+      vi.advanceTimersByTime(70);
     });
 
     expect(result.current.projects.map((p) => p.id)).toEqual(["p-stale", "p-fresh"]);

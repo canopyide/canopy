@@ -8,18 +8,20 @@ import { getMruProjects } from "@shared/utils/projectMru";
 import { notify, EVENT_KIND_TO_SETTING_KEY, EVENT_KIND_LABEL } from "@/lib/notify";
 import type { NotificationEventKind } from "@/lib/notify";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { armProjectMruModifierGate } from "@/lib/projectMruSwitchGestureGate";
 
-async function runMruFallbackSwitch(): Promise<void> {
+async function runMruFallbackSwitch(direction: "older" | "newer"): Promise<void> {
   const state = useProjectStore.getState();
   const currentId = state.currentProject?.id ?? null;
   const sorted = getMruProjects(state.projects);
   const otherProjects = sorted.filter((p) => p.id !== currentId);
   if (otherProjects.length === 0) return;
 
-  const target = otherProjects[0];
+  const target = direction === "older" ? otherProjects[0] : otherProjects[otherProjects.length - 1];
   if (!target) return;
 
   try {
+    armProjectMruModifierGate();
     if (target.status === "background") {
       await state.reopenProject(target.id);
     } else {
@@ -35,7 +37,7 @@ async function runMruFallbackSwitch(): Promise<void> {
           label: "Try again",
           variant: "primary",
           onClick: () => {
-            void runMruFallbackSwitch();
+            void runMruFallbackSwitch(direction);
           },
         },
       ],
@@ -66,7 +68,7 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    run: () => runMruFallbackSwitch(),
+    run: () => runMruFallbackSwitch("older"),
   }));
 
   actions.set("project.mruCycleNewer", () => ({
@@ -77,7 +79,7 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    run: () => runMruFallbackSwitch(),
+    run: () => runMruFallbackSwitch("newer"),
   }));
 
   actions.set("project.add", () => ({

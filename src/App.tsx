@@ -486,6 +486,7 @@ function App() {
       void preloadSendToAgentPalette();
       void preloadQuickCreatePalette();
       void preloadLogLevelPalette();
+      void preloadProjectMruSwitcherOverlay();
       import("@fontsource/jetbrains-mono/latin-500.css").catch(() => {});
       import("@fontsource/jetbrains-mono/latin-600.css").catch(() => {});
     };
