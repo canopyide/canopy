@@ -62,7 +62,8 @@ describe("classifyError", () => {
     expect(result.recoveryHint).toContain("credentials");
     expect(result.recoveryAction).toEqual({
       label: "Sign in with GitHub",
-      actionId: "github.auth",
+      actionId: "app.settings.openTab",
+      args: { tab: "github" },
     });
   });
 
@@ -73,7 +74,7 @@ describe("classifyError", () => {
     expect(result.errorType).toBe("git");
     expect(result.recoveryAction).toEqual({
       label: "Pull and rebase",
-      actionId: "git.pull",
+      actionId: "git.pullRebase",
     });
   });
 
@@ -283,7 +284,7 @@ describe("classifyError", () => {
     expect(result.isCritical).toBe(false);
     expect(result.recoveryAction).toEqual({
       label: "Resolve conflicts",
-      actionId: "git.resolveConflicts",
+      actionId: "worktree.openReviewHub",
     });
   });
 
