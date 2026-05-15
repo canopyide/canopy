@@ -170,6 +170,10 @@ export function getBoostedCategories(context: RankContext | undefined): Set<stri
         boosted.add("devserver");
         boosted.add("panel");
         break;
+      case "review":
+        boosted.add("git");
+        boosted.add("panel");
+        break;
     }
   }
 

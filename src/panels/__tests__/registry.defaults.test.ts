@@ -66,4 +66,13 @@ describe("panelKindRegistry createDefaults (co-located)", () => {
     } as AddPanelOptions);
     expect(Object.keys(result)).toHaveLength(0);
   });
+
+  it("review factory returns empty object (worktreeId carried by base)", () => {
+    const config = getPanelKindConfig("review")!;
+    const result = config.createDefaults!({
+      kind: "review",
+      worktreeId: "wt-1",
+    } as AddPanelOptions);
+    expect(Object.keys(result)).toHaveLength(0);
+  });
 });

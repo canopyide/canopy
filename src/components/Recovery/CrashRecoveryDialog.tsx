@@ -9,6 +9,7 @@ import {
   SquareTerminal,
   Globe,
   MonitorPlay,
+  GitPullRequest,
 } from "lucide-react";
 import { Plug } from "@/components/icons";
 import { AppDialog } from "../ui/AppDialog";
@@ -42,6 +43,8 @@ function getPanelIcon(kind: string) {
       return <Globe className="h-3.5 w-3.5" />;
     case "dev-preview":
       return <MonitorPlay className="h-3.5 w-3.5" />;
+    case "review":
+      return <GitPullRequest className="h-3.5 w-3.5" />;
     default:
       return <SquareTerminal className="h-3.5 w-3.5" />;
   }

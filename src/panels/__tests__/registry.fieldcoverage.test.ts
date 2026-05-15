@@ -71,6 +71,7 @@ const BUILT_IN_KINDS = [
   "terminal",
   "browser",
   "dev-preview",
+  "review",
 ] as const satisfies readonly BuiltInPanelKind[];
 
 // Compile-time exhaustiveness pin: if a new BuiltInPanelKind is added and not

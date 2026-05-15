@@ -364,6 +364,7 @@ function PanelHeaderComponent({
 
   const getAriaLabel = () => {
     if (kind === "browser") return "Edit browser title";
+    if (kind === "review") return "Edit review title";
     if (!chrome.isAgent && kind === "terminal") return "Edit terminal title";
     return "Edit agent title";
   };
@@ -372,9 +373,11 @@ function PanelHeaderComponent({
     const prefix =
       kind === "browser"
         ? "Browser title"
-        : !chrome.isAgent && kind === "terminal"
-          ? "Terminal title"
-          : "Agent title";
+        : kind === "review"
+          ? "Review title"
+          : !chrome.isAgent && kind === "terminal"
+            ? "Terminal title"
+            : "Agent title";
     return `${prefix}: ${title}. Press Enter or F2 to edit`;
   };
 

@@ -382,7 +382,18 @@ export interface DevPreviewPanelData extends BasePanelData {
   devPreviewScrollPosition?: { url: string; scrollY: number };
 }
 
-export type PanelInstance = PtyPanelData | BrowserPanelData | DevPreviewPanelData;
+/**
+ * Review panel — mounts the worktree's Review & Commit surface inside a grid
+ * cell instead of (or in addition to) the modal `ReviewHub`. Carries no
+ * kind-specific persisted fields: `worktreeId` from `BasePanelData` is the
+ * sole binding, and the worktree path is resolved fresh from the worktree
+ * store at render time so renames or moves don't leave a stale reference.
+ */
+export interface ReviewPanelData extends BasePanelData {
+  kind: "review";
+}
+
+export type PanelInstance = PtyPanelData | BrowserPanelData | DevPreviewPanelData | ReviewPanelData;
 
 export function isPtyPanel(panel: PanelInstance | TerminalInstance): panel is PtyPanelData {
   const kind = panel.kind ?? "terminal";
@@ -402,6 +413,12 @@ export function isDevPreviewPanel(
   const kind = panel.kind ?? "terminal";
   // eslint-disable-next-line no-restricted-syntax -- sanctioned panel-kind type guard
   return kind === "dev-preview";
+}
+
+export function isReviewPanel(panel: PanelInstance | TerminalInstance): panel is ReviewPanelData {
+  const kind = panel.kind ?? "terminal";
+  // eslint-disable-next-line no-restricted-syntax -- sanctioned panel-kind type guard
+  return kind === "review";
 }
 
 /**

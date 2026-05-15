@@ -10,7 +10,7 @@ import { GridPanel } from "./GridPanel";
 import { TwoPaneSplitDivider, DIVIDER_WIDTH_PX } from "./TwoPaneSplitDivider";
 import { MIN_TERMINAL_WIDTH_PX } from "@/lib/terminalLayout";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
-import { isBrowserPanel, isDevPreviewPanel } from "@shared/types/panel";
+import { isBrowserPanel, isDevPreviewPanel, isReviewPanel } from "@shared/types/panel";
 import {
   isSidebarLayoutTransitionLocked,
   subscribeSidebarLayoutTransitionUnlock,
@@ -93,8 +93,9 @@ export function TwoPaneSplitLayout({
     if (!preferPreview) return defaultRatio;
 
     const [left, right] = terminals;
-    const leftIsPreview = isBrowserPanel(left) || isDevPreviewPanel(left);
-    const rightIsPreview = isBrowserPanel(right) || isDevPreviewPanel(right);
+    const leftIsPreview = isBrowserPanel(left) || isDevPreviewPanel(left) || isReviewPanel(left);
+    const rightIsPreview =
+      isBrowserPanel(right) || isDevPreviewPanel(right) || isReviewPanel(right);
 
     if (leftIsPreview && !rightIsPreview) {
       return 0.65;

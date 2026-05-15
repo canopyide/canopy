@@ -9,7 +9,7 @@ import { PANEL_KIND_BRAND_COLORS } from "../theme/index.js";
  * built-in kind is a one-line change here — every guard and registry helper
  * derives from this array.
  */
-export const BUILT_IN_PANEL_KINDS = ["terminal", "browser", "dev-preview"] as const;
+export const BUILT_IN_PANEL_KINDS = ["terminal", "browser", "dev-preview", "review"] as const;
 
 /** Built-in panel kinds — derived from `BUILT_IN_PANEL_KINDS` */
 export type BuiltInPanelKind = (typeof BUILT_IN_PANEL_KINDS)[number];
@@ -99,6 +99,19 @@ const PANEL_KIND_REGISTRY: Record<string, PanelKindConfig> = {
     keepAliveOnProjectSwitch: true,
     showInPalette: true,
     searchAliases: ["localhost", "server", "preview", "port"],
+  },
+  review: {
+    id: "review",
+    name: "Review",
+    iconId: "git-pull-request",
+    color: PANEL_KIND_BRAND_COLORS.review,
+    hasPty: false,
+    canRestart: false,
+    canConvert: false,
+    usesTerminalUi: false,
+    keepAliveOnProjectSwitch: true,
+    showInPalette: true,
+    searchAliases: ["diff", "commit", "stage", "git"],
   },
 };
 
