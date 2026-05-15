@@ -90,14 +90,16 @@ export interface BannerSlotProps {
 export function BannerSlot({ visible, children }: BannerSlotProps) {
   const [isVisible, setIsVisible] = useState(visible);
   const [renderChildren, setRenderChildren] = useState(visible);
-  const cachedChildrenRef = useRef<React.ReactNode>(visible ? children : null);
+  const [cachedChildren, setCachedChildren] = useState<React.ReactNode>(visible ? children : null);
   const exitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const entryFrameRef = useRef<number | null>(null);
   const hasMountedRef = useRef(false);
 
-  if (visible) {
-    cachedChildrenRef.current = children;
-  }
+  useEffect(() => {
+    if (visible) {
+      setCachedChildren(children);
+    }
+  }, [visible, children]);
 
   useEffect(() => {
     if (!hasMountedRef.current) {
@@ -167,7 +169,7 @@ export function BannerSlot({ visible, children }: BannerSlotProps) {
       }}
       aria-hidden={isVisible ? undefined : true}
     >
-      {cachedChildrenRef.current}
+      {visible ? children : cachedChildren}
     </div>
   );
 }

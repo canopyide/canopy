@@ -67,7 +67,9 @@ export function useWorktreeGridRovingFocus(
   const onKeyboardReorderRef = useRef<UseWorktreeGridRovingFocusOptions["onKeyboardReorder"]>(
     options?.onKeyboardReorder
   );
-  onKeyboardReorderRef.current = options?.onKeyboardReorder;
+  useEffect(() => {
+    onKeyboardReorderRef.current = options?.onKeyboardReorder;
+  });
 
   const getRows = useCallback((): HTMLElement[] => {
     if (!gridRef.current) return [];
