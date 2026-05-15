@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useWorktreeFilterStore } from "@/store/worktreeFilterStore";
@@ -191,6 +191,91 @@ describe("WorktreeSidebarSearchBar", () => {
       useWorktreeFilterStore.getState().setQuickStateFilter("waiting");
     });
     expect(screen.getByRole("button", { name: "Clear all" })).toBeTruthy();
+  });
+
+  it("X click via keyboard activation keeps focus on the input", () => {
+    renderBar();
+    fireEvent.change(getInput(), { target: { value: "foo" } });
+    act(() => {
+      useWorktreeFilterStore.getState().setQuery("foo");
+    });
+    const clearBtn = screen.getByRole("button", { name: "Clear search" });
+    // Simulate keyboard activation: focus the button then click via fireEvent
+    // (jsdom fires keydown→keypress→click for Enter, but a direct .click() is
+    // a closer model of what tests assert about activation behaviour).
+    clearBtn.focus();
+    fireEvent.click(clearBtn);
+    expect(document.activeElement).toBe(getInput());
+  });
+
+  it("whitespace-only query does not count as an active axis for 'Clear all'", () => {
+    renderBar();
+    act(() => {
+      useWorktreeFilterStore.getState().toggleStatusFilter("active");
+    });
+    fireEvent.change(getInput(), { target: { value: "   " } });
+    // Only one real axis is active (facets). The whitespace input should not
+    // inflate the count and surface "Clear all".
+    expect(screen.queryByRole("button", { name: "Clear all" })).toBeNull();
+  });
+
+  it("'Clear all' disappears after a partial clear leaves only one axis", () => {
+    renderBar();
+    act(() => {
+      useWorktreeFilterStore.getState().toggleStatusFilter("active");
+    });
+    fireEvent.change(getInput(), { target: { value: "foo" } });
+    expect(screen.getByRole("button", { name: "Clear all" })).toBeTruthy();
+    // The X button only clears query; one axis (facets) remains.
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(screen.queryByRole("button", { name: "Clear all" })).toBeNull();
+  });
+
+  it("stale debounce: external clearAll cancels the pending query write", () => {
+    vi.useFakeTimers();
+    try {
+      renderBar();
+      // Seed a facet so hasActiveFilters is true while debounce is pending.
+      act(() => {
+        useWorktreeFilterStore.getState().toggleStatusFilter("active");
+      });
+      fireEvent.change(getInput(), { target: { value: "foo" } });
+      // Debounce is now scheduled; store.query is still "".
+      expect(useWorktreeFilterStore.getState().query).toBe("");
+      // External clearAll (e.g., popover footer) fires before the 200 ms elapses.
+      act(() => {
+        useWorktreeFilterStore.getState().clearAll();
+      });
+      // Advance past the debounce window.
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+      // Query must NOT be silently resurrected to "foo".
+      expect(useWorktreeFilterStore.getState().query).toBe("");
+      // The visible input should mirror the cleared state.
+      expect(getInput().value).toBe("");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stale debounce: X click during pending debounce commits an empty query", () => {
+    vi.useFakeTimers();
+    try {
+      renderBar();
+      fireEvent.change(getInput(), { target: { value: "foo" } });
+      // Debounce is pending; store.query is still "".
+      // Click X immediately — this triggers handleClearSearch which cancels the
+      // pending debounce and calls setQuery("").
+      fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+      expect(useWorktreeFilterStore.getState().query).toBe("");
+      expect(getInput().value).toBe("");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("'Clear all' click resets query, facets, and quick-state via clearAll()", () => {

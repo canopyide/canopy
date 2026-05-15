@@ -24,11 +24,13 @@ export function WorktreeSidebarSearchBar({ inputRef, chipCounts }: WorktreeSideb
   const clearAll = useWorktreeFilterStore((state) => state.clearAll);
   const quickStateFilter = useWorktreeFilterStore((state) => state.quickStateFilter);
   const hasFacetFilters = useWorktreeFilterStore((state) => state.hasFacetFilters());
+  const hasActiveFiltersValue = useWorktreeFilterStore((state) => state.hasActiveFilters());
 
   const [localQuery, setLocalQuery] = useState("");
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const internalRef = useRef<HTMLInputElement | null>(null);
+  const prevHasActiveFiltersRef = useRef(hasActiveFiltersValue);
 
   useEffect(() => {
     if (debounceRef.current) {
@@ -37,6 +39,23 @@ export function WorktreeSidebarSearchBar({ inputRef, chipCounts }: WorktreeSideb
     }
     setLocalQuery(query);
   }, [query]);
+
+  // Cancel any pending debounce when ANY filter is cleared externally
+  // (popover footer "Clear all filters", sidebar empty-state CTA, etc.).
+  // The `[query]` effect above only catches transitions of `query` itself;
+  // when the typed-but-uncommitted query coincides with an external clearAll,
+  // the store's `query` stays "" and the debounce would silently resurrect
+  // the typed value 200 ms later.
+  useEffect(() => {
+    if (prevHasActiveFiltersRef.current && !hasActiveFiltersValue) {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+      setLocalQuery("");
+    }
+    prevHasActiveFiltersRef.current = hasActiveFiltersValue;
+  }, [hasActiveFiltersValue]);
 
   useEffect(() => {
     return () => {
@@ -66,6 +85,9 @@ export function WorktreeSidebarSearchBar({ inputRef, chipCounts }: WorktreeSideb
     }
     setLocalQuery("");
     setQuery("");
+    // Keep focus on input after clearing, per ARIA APG combobox guidance —
+    // the X button unmounts when localQuery clears, so focus would otherwise fall to body.
+    internalRef.current?.focus();
   }, [setQuery]);
 
   const handleClearAll = useCallback(() => {
@@ -106,7 +128,7 @@ export function WorktreeSidebarSearchBar({ inputRef, chipCounts }: WorktreeSideb
 
   const showClear = !!localQuery;
   const activeAxisCount =
-    (localQuery ? 1 : 0) + (quickStateFilter !== "all" ? 1 : 0) + (hasFacetFilters ? 1 : 0);
+    (localQuery.trim() ? 1 : 0) + (quickStateFilter !== "all" ? 1 : 0) + (hasFacetFilters ? 1 : 0);
   const showClearAll = activeAxisCount >= 2;
 
   return (
