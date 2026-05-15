@@ -1,4 +1,4 @@
-import { AlertTriangle, RotateCcw, FolderEdit, Trash2, Settings2 } from "lucide-react";
+import { XCircle, RotateCcw, FolderEdit, Trash2, Settings2 } from "lucide-react";
 import { InlineStatusBanner, type BannerAction } from "./InlineStatusBanner";
 import { sanitizeErrorText, boundedErrorText } from "@/utils/errorText";
 import { actionService } from "@/services/ActionService";
@@ -149,7 +149,7 @@ export function SpawnErrorBanner({
 
   return (
     <InlineStatusBanner
-      icon={AlertTriangle}
+      icon={XCircle}
       title={getErrorTitle(error.code)}
       description={getErrorDescription(error, cwd)}
       contextLine={cwd ? `Directory: ${sanitizeErrorText(cwd)}` : undefined}
