@@ -2,11 +2,12 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 
+const { mockUseAnimatedPresence } = vi.hoisted(() => ({
+  mockUseAnimatedPresence: vi.fn(),
+}));
+
 vi.mock("../../../hooks/useAnimatedPresence", () => ({
-  useAnimatedPresence: ({ isOpen }: { isOpen: boolean }) => ({
-    isVisible: isOpen,
-    shouldRender: isOpen,
-  }),
+  useAnimatedPresence: mockUseAnimatedPresence,
 }));
 
 import { ScrollIndicator } from "../ScrollIndicator";
@@ -16,6 +17,27 @@ describe("ScrollIndicator", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseAnimatedPresence.mockImplementation(({ isOpen }: { isOpen: boolean }) => ({
+      isVisible: isOpen,
+      shouldRender: isOpen,
+    }));
+  });
+
+  it("slides up when exiting in the above direction", () => {
+    mockUseAnimatedPresence.mockReturnValue({ isVisible: false, shouldRender: true });
+    render(<ScrollIndicator direction="above" count={1} onClick={onClick} />);
+    const button = screen.getByRole("button");
+    expect(button.className).toContain("opacity-0");
+    expect(button.className).toContain("-translate-y-2");
+  });
+
+  it("slides down when exiting in the below direction", () => {
+    mockUseAnimatedPresence.mockReturnValue({ isVisible: false, shouldRender: true });
+    render(<ScrollIndicator direction="below" count={1} onClick={onClick} />);
+    const button = screen.getByRole("button");
+    expect(button.className).toContain("opacity-0");
+    expect(button.className).toContain("translate-y-2");
+    expect(button.className.split(/\s+/)).not.toContain("-translate-y-2");
   });
 
   it("does not render when count is 0", () => {
