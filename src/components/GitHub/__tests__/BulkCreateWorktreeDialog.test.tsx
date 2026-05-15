@@ -908,6 +908,7 @@ describe("BulkCreateWorktreeDialog", () => {
   });
 
   it("done-phase counts match UI after recipe verification with mixed outcomes", async () => {
+    const { notify: mockNotify } = await import("@/lib/notify");
     mockSelectedRecipeId = "test-recipe";
 
     let recipeCallIndex = 0;
@@ -935,6 +936,8 @@ describe("BulkCreateWorktreeDialog", () => {
 
     expect(screen.getByText(/1 of 2 created/)).toBeTruthy();
     expect(screen.getByText(/1 failed/)).toBeTruthy();
+    // Done-phase body conveys the result; no toast should fire.
+    expect(mockNotify).not.toHaveBeenCalled();
   });
 
   it("recipe verification with multiple crashed terminals reports correct count", async () => {

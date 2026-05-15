@@ -425,6 +425,9 @@ export function EnvVarEditor({
     if (contextChanged) {
       setTouchedKeys({});
       setRevealedRows(new Set());
+      normalizeTimers.current.forEach((t) => clearTimeout(t));
+      normalizeTimers.current.clear();
+      setNormalizedRows(new Set());
     }
     // Only reseed if the incoming env+inheritance actually differs from what
     // our current draft would produce. Otherwise the parent's commit echo
@@ -498,6 +501,17 @@ export function EnvVarEditor({
   };
 
   const handleRemove = (rowId: string) => {
+    const priorTimer = normalizeTimers.current.get(rowId);
+    if (priorTimer) {
+      clearTimeout(priorTimer);
+      normalizeTimers.current.delete(rowId);
+    }
+    setNormalizedRows((prev) => {
+      if (!prev.has(rowId)) return prev;
+      const next = new Set(prev);
+      next.delete(rowId);
+      return next;
+    });
     setRows((prev) => {
       const row = prev.find((r) => r.rowId === rowId);
       if (!row) return prev;
