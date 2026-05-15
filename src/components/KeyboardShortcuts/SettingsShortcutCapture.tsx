@@ -3,6 +3,7 @@ import { AlertTriangle, X } from "lucide-react";
 import { isMac } from "@/lib/platform";
 import {
   CHORD_TIMEOUT_MS,
+  combosFieldsEqual,
   keybindingService,
   normalizeKeyForBinding,
   type KeyScope,
@@ -209,22 +210,22 @@ export function SettingsShortcutCapture({
       let newOverrideCombos: string[] | undefined;
 
       if (currentOverride) {
-        const matchingOverride = currentOverride.find(
-          (combo) => combo.trim().toLowerCase() === capturedCombo!.trim().toLowerCase()
+        // Platform-aware compare so a stored "Cmd+Shift+E" override is matched
+        // when the user captures "Ctrl+Shift+E" on Windows/Linux. (#7941)
+        const matchingOverride = currentOverride.find((combo) =>
+          combosFieldsEqual(combo, capturedCombo!)
         );
         if (matchingOverride) {
           conflictingCombo = matchingOverride;
           isOverrideConflict = true;
           newOverrideCombos = currentOverride.filter(
-            (combo) => combo.trim().toLowerCase() !== capturedCombo!.trim().toLowerCase()
+            (combo) => !combosFieldsEqual(combo, capturedCombo!)
           );
         }
       }
 
       if (!conflictingCombo && defaultCombo) {
-        const normalizedDefault = defaultCombo.trim().toLowerCase();
-        const normalizedCaptured = capturedCombo!.trim().toLowerCase();
-        if (normalizedDefault === normalizedCaptured) {
+        if (combosFieldsEqual(defaultCombo, capturedCombo!)) {
           conflictingCombo = defaultCombo;
         }
       }

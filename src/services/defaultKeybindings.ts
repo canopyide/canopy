@@ -597,14 +597,6 @@ const CORE_KEYBINDINGS: KeybindingConfig[] = [
     category: "Panels",
   },
   {
-    actionId: "panel.diagnosticsEvents",
-    combo: "Ctrl+Shift+E",
-    scope: "global",
-    priority: 0,
-    description: "Open diagnostics dock to Events tab",
-    category: "Panels",
-  },
-  {
     actionId: "panel.diagnosticsMessages",
     combo: "Ctrl+Shift+M",
     scope: "global",
