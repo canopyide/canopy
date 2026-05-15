@@ -1182,6 +1182,22 @@ describe("ReviewHub", () => {
       );
     });
 
+    it("renders user-cleared empty state when all conflicts are resolved", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeMergingStatus({
+          conflicted: [],
+          conflictedFiles: [],
+          staged: [{ path: "src/app.ts", status: "modified", insertions: 1, deletions: 1 }],
+        })
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByTestId("conflict-panel"));
+      expect(screen.getByText("All conflicts resolved")).toBeTruthy();
+      expect(screen.getAllByTestId("empty-state-user-cleared").length).toBeGreaterThan(0);
+    });
+
     it("stages a file when Mark resolved is clicked", async () => {
       getStagingStatusMock.mockResolvedValue(makeMergingStatus());
 
@@ -2486,7 +2502,8 @@ describe("ReviewHub", () => {
 
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
 
-      await waitFor(() => screen.getByText("No unstaged changes"));
+      await waitFor(() => screen.getByText("All changes staged"));
+      expect(screen.getAllByTestId("empty-state-user-cleared").length).toBeGreaterThan(0);
       // Stage all button (for Changes section) should be hidden when there are no unstaged files
       expect(screen.queryByTestId("review-hub-stage-section-button")).toBeNull();
       // Unstage all button (for Staged section) should be visible with 1 file
@@ -2509,7 +2526,7 @@ describe("ReviewHub", () => {
       expect((filters[0]! as HTMLInputElement).value).toBe("src");
     });
 
-    it("shows No staged files when section is empty but filter is not active", async () => {
+    it("shows Nothing staged user-cleared empty state when section is empty but filter is not active", async () => {
       getStagingStatusMock.mockResolvedValue(
         makeStatus({
           staged: [],
@@ -2520,9 +2537,10 @@ describe("ReviewHub", () => {
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
 
       await waitFor(() => {
-        screen.getByText("No staged files");
+        screen.getByText("Nothing staged");
         screen.getByText("b.ts");
       });
+      expect(screen.getAllByTestId("empty-state-user-cleared").length).toBeGreaterThan(0);
     });
 
     it("renders files sorted by path ascending by default", async () => {
