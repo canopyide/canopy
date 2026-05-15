@@ -688,22 +688,6 @@ export function BulkCreateWorktreeDialog({
       }
 
       dispatchProgress({ type: "DONE" });
-
-      const sCount = succeededItems.size;
-      const fCount = failedItems.size;
-      if (fCount === 0) {
-        notify({
-          type: "success",
-          title: "Worktrees created",
-          message: `Created ${sCount} worktree${sCount !== 1 ? "s" : ""}`,
-        });
-      } else {
-        notify({
-          type: "error",
-          title: "Some worktrees couldn't be created",
-          message: `${sCount} created, ${fCount} failed`,
-        });
-      }
     },
     [selectedRecipeId, assignWorktreeToSelf, currentProject?.path]
   );
@@ -714,14 +698,9 @@ export function BulkCreateWorktreeDialog({
     try {
       const toCreate = planned.filter((p) => !p.skipped);
       if (toCreate.length === 0) {
-        notify({
-          type: "info",
-          title: "Nothing to create",
-          message:
-            mode === "pr"
-              ? "All selected PRs already have worktrees or are ineligible"
-              : "All selected issues already have worktrees or are closed",
-        });
+        console.warn(
+          "[BulkCreateWorktreeDialog] handleCreate called with no creatable items — guard fired"
+        );
         return;
       }
 
@@ -741,7 +720,6 @@ export function BulkCreateWorktreeDialog({
     }
   }, [
     planned,
-    mode,
     selectedRecipeId,
     projectId,
     recipeSelectionTouchedRef,

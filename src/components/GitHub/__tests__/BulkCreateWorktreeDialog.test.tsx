@@ -907,7 +907,7 @@ describe("BulkCreateWorktreeDialog", () => {
     expect(screen.queryByText(/failed/)).toBeNull();
   });
 
-  it("notification counts match UI counts after recipe verification", async () => {
+  it("done-phase counts match UI after recipe verification with mixed outcomes", async () => {
     const { notify: mockNotify } = await import("@/lib/notify");
     mockSelectedRecipeId = "test-recipe";
 
@@ -934,17 +934,10 @@ describe("BulkCreateWorktreeDialog", () => {
     });
     await advanceTimersGradually(5000);
 
-    // UI shows correct counts
     expect(screen.getByText(/1 of 2 created/)).toBeTruthy();
     expect(screen.getByText(/1 failed/)).toBeTruthy();
-
-    // Notification was called with matching counts
-    expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "error",
-        message: "1 created, 1 failed",
-      })
-    );
+    // Done-phase body conveys the result; no toast should fire.
+    expect(mockNotify).not.toHaveBeenCalled();
   });
 
   it("recipe verification with multiple crashed terminals reports correct count", async () => {
@@ -1947,7 +1940,6 @@ describe("BulkCreateWorktreeDialog — PR mode", () => {
   });
 
   it("fails all PRs when shared listBranches snapshot rejects", async () => {
-    const { notify: mockNotify } = await import("@/lib/notify");
     mockListBranches.mockRejectedValueOnce(new Error("git ls-remote failed"));
 
     render(<BulkCreateWorktreeDialog {...prProps} />);
@@ -1962,12 +1954,6 @@ describe("BulkCreateWorktreeDialog — PR mode", () => {
     expect(screen.getAllByText(/git ls-remote failed/).length).toBeGreaterThanOrEqual(1);
     expect(mockWorktreeCreate).not.toHaveBeenCalled();
     expect(mockFetchPRBranch).not.toHaveBeenCalled();
-    expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "error",
-        message: "0 created, 3 failed",
-      })
-    );
   });
 
   it("fails when branch cannot be fetched from remote", async () => {
