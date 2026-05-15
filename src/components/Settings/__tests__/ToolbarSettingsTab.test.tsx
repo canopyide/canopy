@@ -92,16 +92,27 @@ vi.mock("@dnd-kit/core", () => ({
 vi.mock("@dnd-kit/sortable", () => ({
   SortableContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   sortableKeyboardCoordinates: vi.fn(),
-  useSortable: () => ({
+  useSortable: vi.fn(() => ({
     attributes: {},
     listeners: {},
     setNodeRef: vi.fn(),
     transform: null,
     transition: null,
     isDragging: false,
-  }),
+  })),
   verticalListSortingStrategy: vi.fn(),
 }));
+
+// Test-time helper for restoring the default useSortable return between
+// cases (the mock factory above is hoisted, so it can't reference this).
+const defaultSortable = () => ({
+  attributes: {},
+  listeners: {},
+  setNodeRef: vi.fn(),
+  transform: null,
+  transition: null,
+  isDragging: false,
+});
 
 vi.mock("@dnd-kit/utilities", () => ({
   CSS: { Transform: { toString: () => "" } },
@@ -127,6 +138,8 @@ vi.mock("../SettingsSwitchCard", () => ({
   SettingsSwitchCard: () => null,
 }));
 
+import { useSortable } from "@dnd-kit/sortable";
+import { DRAG_GHOST_OPACITY } from "@/lib/animationUtils";
 import { ToolbarSettingsTab } from "../ToolbarSettingsTab";
 
 function agentSettings(overrides: Record<string, { pinned?: boolean }>): AgentSettings {
@@ -271,5 +284,68 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
 
     expect(setAgentPinnedMock).toHaveBeenCalledWith("codex", false);
     expect(toggleButtonVisibilityMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("ToolbarSettingsTab — drag-source vs hidden opacity deconfliction", () => {
+  // The drag-source ghost (DRAG_GHOST_OPACITY) and the hidden-in-toolbar
+  // preview (0.5) are semantically distinct states that previously shared a
+  // magic 0.5. These tests lock the deconfliction so the two values can't
+  // silently collapse back together.
+  beforeEach(() => {
+    setAgentPinnedMock.mockClear();
+    vi.mocked(useSortable).mockImplementation(defaultSortable);
+    mockToolbarState = {
+      layout: {
+        leftButtons: ["agent-tray", "claude", "gemini", "terminal"],
+        rightButtons: ["copy-tree", "settings"],
+        pinnedButtons: {},
+      },
+      launcher: { alwaysShowDevServer: false, defaultSelection: undefined },
+      setLeftButtons: setLeftButtonsMock,
+      setRightButtons: setRightButtonsMock,
+      toggleButtonVisibility: toggleButtonVisibilityMock,
+      setAlwaysShowDevServer: setAlwaysShowDevServerMock,
+      setDefaultSelection: setDefaultSelectionMock,
+      reset: resetMock,
+    };
+    mockAgentSettings = null;
+  });
+
+  function rowFor(label: string, container: HTMLElement): HTMLElement {
+    const checkbox = container.querySelector(
+      `input[aria-label="Toggle ${label} visibility"]`
+    ) as HTMLInputElement;
+    return checkbox.parentElement as HTMLElement;
+  }
+
+  it("applies DRAG_GHOST_OPACITY to a dragged row (not the legacy 0.5)", () => {
+    vi.mocked(useSortable).mockImplementation(() => ({
+      ...defaultSortable(),
+      isDragging: true,
+    }));
+
+    const { getByLabelText, container } = render(<ToolbarSettingsTab />);
+    getByLabelText("Toggle Terminal visibility");
+    const row = rowFor("Terminal", container);
+    expect(row.style.opacity).toBe(String(DRAG_GHOST_OPACITY));
+    expect(row.style.opacity).not.toBe("0.5");
+  });
+
+  it("keeps the hidden-in-toolbar preview at 0.5 (distinct from the drag ghost)", () => {
+    // gemini unpinned → not visible → hidden-preview opacity.
+    mockAgentSettings = agentSettings({ gemini: { pinned: false } });
+
+    const { container } = render(<ToolbarSettingsTab />);
+    const row = rowFor("Gemini Agent", container);
+    expect(row.style.opacity).toBe("0.5");
+  });
+
+  it("renders a visible, non-dragged row at full opacity", () => {
+    mockAgentSettings = agentSettings({ claude: { pinned: true } });
+
+    const { container } = render(<ToolbarSettingsTab />);
+    const row = rowFor("Claude Agent", container);
+    expect(row.style.opacity).toBe("1");
   });
 });

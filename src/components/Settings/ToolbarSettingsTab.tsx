@@ -31,6 +31,7 @@ import { getAgentConfig } from "@/config/agents";
 import { usePluginToolbarButtons } from "@/hooks/usePluginToolbarButtons";
 import { McpServerIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { DRAG_GHOST_OPACITY } from "@/lib/animationUtils";
 import { SettingsSection } from "./SettingsSection";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
 
@@ -63,7 +64,7 @@ function SortableButtonItem({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : isVisible ? 1 : 0.5,
+    opacity: isDragging ? DRAG_GHOST_OPACITY : isVisible ? 1 : 0.5,
   };
 
   if (!metadata) return null;
