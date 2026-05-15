@@ -273,10 +273,10 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
             <div
               ref={combinedRef}
               className={cn(
-                "flex items-center gap-[var(--dock-gap)] overflow-x-auto overscroll-x-none flex-1 min-h-[var(--dock-item-height)] no-scrollbar scroll-smooth px-1 transition-colors",
+                "flex items-center gap-[var(--dock-gap)] overflow-x-auto overscroll-x-none flex-1 min-h-[var(--dock-item-height)] no-scrollbar scroll-smooth px-1 transition-[color,background-color,box-shadow]",
                 isPanelDragging && "bg-overlay-subtle",
                 isOver &&
-                  "bg-overlay-soft ring-2 ring-border-default ring-inset rounded-[var(--radius-md)]"
+                  "cursor-copy bg-overlay-soft ring-2 ring-border-default ring-inset rounded-[var(--radius-md)]"
               )}
             >
               <SortableContext

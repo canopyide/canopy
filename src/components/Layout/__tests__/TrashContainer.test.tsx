@@ -183,6 +183,7 @@ describe("TrashContainer", () => {
     const ghost = getByTestId("trash-container-ghost");
     expect(ghost.className).toContain("bg-overlay-soft");
     expect(ghost.className).toContain("ring-border-default");
+    expect(ghost.className).toContain("cursor-copy");
     expect(ghost.className).not.toContain("daintree-accent");
   });
 
@@ -193,6 +194,7 @@ describe("TrashContainer", () => {
     const pill = getByTestId("trash-container");
     expect(pill.className).toContain("bg-overlay-soft");
     expect(pill.className).toContain("ring-border-default");
+    expect(pill.className).toContain("cursor-copy");
     expect(pill.className).not.toContain("daintree-accent");
   });
 
