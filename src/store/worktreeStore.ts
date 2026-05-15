@@ -1,6 +1,7 @@
 import { create, type StateCreator } from "zustand";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { TerminalRefreshTier } from "@shared/types/panel";
+import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import type { GitHubIssue, GitHubPR } from "@shared/types/github";
 import { useFocusStore } from "@/store/focusStore";
 import { logErrorWithContext } from "@/utils/errorContext";
@@ -770,8 +771,27 @@ function applyWorktreeTerminalPolicy(
 
         // Apply appropriate renderer policy based on worktree membership.
         // Avoid waking dock/trash terminals - they manage their own visibility.
-        // applyRendererPolicy handles backend tier transitions internally.
+        // `applyRendererPolicy(VISIBLE)` only restores on a real
+        // BACKGROUND->active transition. It returns early on same-tier VISIBLE,
+        // so pair active grid promotion with an explicit wake to pull any bytes
+        // that arrived while the renderer was hidden or not yet mounted.
         terminalInstanceService.applyRendererPolicy(terminal.id, targetTier);
+        if (
+          targetTier !== TerminalRefreshTier.BACKGROUND &&
+          terminal.hasPty !== false &&
+          panelKindHasPty(terminal.kind ?? "terminal")
+        ) {
+          try {
+            terminalInstanceService.wake(terminal.id);
+          } catch (error) {
+            logErrorWithContext(error, {
+              operation: "wake_visible_worktree_terminal",
+              component: "worktreeStore",
+              errorType: "process",
+              details: { terminalId: terminal.id, targetWorktreeId, generation },
+            });
+          }
+        }
       }
 
       onComplete?.();
