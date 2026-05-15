@@ -315,8 +315,8 @@ export function McpServerSettingsTab() {
     <div className="space-y-6">
       <SettingsSwitchCard
         icon={McpServerIcon}
-        title="MCP Server"
-        subtitle="Start a local Model Context Protocol server so AI agents can discover and invoke Daintree actions directly."
+        title="MCP server"
+        subtitle="Start a local Model Context Protocol server so AI agents can discover and invoke Daintree actions directly"
         isEnabled={status.enabled}
         onChange={handleToggle}
         ariaLabel="Enable MCP server"
@@ -515,9 +515,7 @@ export function McpServerSettingsTab() {
                 variant="compact"
                 title="Capture audit log"
                 subtitle={
-                  auditEnabled
-                    ? "Recording every dispatch."
-                    : "New dispatches will not be recorded."
+                  auditEnabled ? "Recording every dispatch" : "New dispatches will not be recorded"
                 }
                 isEnabled={auditEnabled}
                 onChange={handleAuditEnabledToggle}

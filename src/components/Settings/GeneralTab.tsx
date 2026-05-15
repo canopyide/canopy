@@ -524,7 +524,7 @@ export function GeneralTab({
 
           <SettingsSection
             icon={Info}
-            title="System Status"
+            title="System status"
             description="Agents ready to use on your system."
             id="general-system-status"
           >
@@ -649,7 +649,7 @@ export function GeneralTab({
           ) : (
             <SettingsSection
               icon={RefreshCw}
-              title="Update Channel"
+              title="Update channel"
               description="Choose between stable releases and nightly builds."
               id="general-update-channel"
             >
@@ -686,7 +686,7 @@ export function GeneralTab({
 
           <SettingsSection
             icon={Keyboard}
-            title="Quick Reference"
+            title="Quick reference"
             description="Common keyboard shortcuts. Edit all shortcuts in the Keyboard settings tab."
           >
             <button
@@ -741,13 +741,13 @@ export function GeneralTab({
           {idleNotifyConfig && (
             <SettingsSection
               icon={Moon}
-              title="Idle Terminal Notifications"
+              title="Idle terminal notifications"
               description="Get a friendly reminder when terminals in background projects have been idle for a while. Doesn't kill anything — just lets you decide."
               id="general-idle-terminal-notify"
             >
               <SettingsSwitchCard
                 icon={Moon}
-                title="Idle Terminal Notifications"
+                title="Idle terminal notifications"
                 subtitle="Notify when background project terminals have been idle past a threshold"
                 isEnabled={idleNotifyConfig.enabled}
                 onChange={handleIdleNotifyToggle}
@@ -792,13 +792,13 @@ export function GeneralTab({
           ) : hibernationConfig ? (
             <SettingsSection
               icon={Moon}
-              title="Auto-Hibernation"
+              title="Auto-hibernation"
               description="Automatically stop terminals and servers for projects that have been inactive for a period of time. Reduces system resource usage."
               id="general-hibernation"
             >
               <SettingsSwitchCard
                 icon={Moon}
-                title="Auto-Hibernation"
+                title="Auto-hibernation"
                 subtitle="Automatically stop terminals and servers for inactive projects"
                 isEnabled={hibernationConfig.enabled}
                 onChange={handleHibernationToggle}
@@ -847,7 +847,7 @@ export function GeneralTab({
         >
           <SettingsSwitchCard
             icon={Activity}
-            title="Project Pulse"
+            title="Project pulse"
             subtitle="Show activity heatmap on the empty panel grid"
             isEnabled={showProjectPulse}
             onChange={() =>
@@ -871,7 +871,7 @@ export function GeneralTab({
           <SettingsSwitchCard
             id="general-developer-tools"
             icon={Wrench}
-            title="Developer Tools"
+            title="Developer tools"
             subtitle="Show problems panel button in the toolbar"
             isEnabled={showDeveloperTools}
             onChange={() =>
@@ -895,7 +895,7 @@ export function GeneralTab({
           <SettingsSwitchCard
             id="general-grid-agent-highlights"
             icon={LayoutGrid}
-            title="Grid Panel Agent Highlights"
+            title="Grid panel agent highlights"
             subtitle="Show waiting and working state borders on grid panels. Failed state borders are always visible."
             isEnabled={showGridAgentHighlights}
             onChange={() =>
@@ -919,7 +919,7 @@ export function GeneralTab({
           <SettingsSwitchCard
             id="general-dock-agent-highlights"
             icon={PanelBottom}
-            title="Dock Item Agent Highlights"
+            title="Dock item agent highlights"
             subtitle="Show waiting state borders on dock items. Failed state borders are always visible."
             isEnabled={showDockAgentHighlights}
             onChange={() =>
@@ -943,8 +943,8 @@ export function GeneralTab({
           <SettingsSwitchCard
             id="general-reduce-animations"
             icon={Gauge}
-            title="Reduce UI Animations"
-            subtitle="Minimize motion across the interface, independent of your OS reduce-motion setting."
+            title="Reduce UI animations"
+            subtitle="Minimize motion across the interface, independent of your OS reduce-motion setting"
             isEnabled={reduceAnimations}
             onChange={() =>
               void actionService.dispatch(

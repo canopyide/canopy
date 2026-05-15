@@ -24,7 +24,7 @@ export interface SettingsSearchEntry {
   requiresEnabled?: {
     /** id of the gate entry in the search index (e.g. "mcp-server-enable") */
     settingId: string;
-    /** Human-readable label shown in warnings (e.g. "MCP Server") */
+    /** Human-readable label shown in warnings (e.g. "MCP server") */
     label: string;
   };
 }

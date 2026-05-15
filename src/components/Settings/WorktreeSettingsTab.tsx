@@ -158,7 +158,7 @@ export function WorktreeSettingsTab() {
     <div className="space-y-6">
       <SettingsSection
         icon={FolderGit2}
-        title="Worktree Path Pattern"
+        title="Worktree path pattern"
         description="Configure the default path pattern for new worktrees. Use variables to build dynamic paths based on your repository and branch names."
       >
         <div className="contents">

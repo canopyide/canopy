@@ -523,7 +523,7 @@ describe("McpServerSettingsTab", () => {
         <McpServerSettingsTab />
       </SettingsValidationProvider>
     );
-    await waitForContent(container, "MCP Server");
+    await waitForContent(container, "MCP server");
 
     fireEvent.click(screen.getByLabelText("Enable MCP server"));
 

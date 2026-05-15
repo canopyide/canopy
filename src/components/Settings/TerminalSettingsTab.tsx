@@ -309,14 +309,14 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
       {effectiveSubtab === "performance" && (
         <SettingsSection
           icon={Zap}
-          title="Performance Mode"
+          title="Performance mode"
           id="terminal-performance-mode"
           description={`Manual safe mode for low-end hardware or high-density workflows. Reduces scrollback to ${PERFORMANCE_MODE_SCROLLBACK} lines and disables animations for maximum performance.`}
           iconColor="text-status-warning"
         >
           <SettingsSwitchCard
             icon={Zap}
-            title="Performance Mode"
+            title="Performance mode"
             subtitle="Reduce scrollback and disable animations for low-end hardware or high-density workflows"
             isEnabled={performanceMode}
             onChange={handlePerformanceModeToggle}
@@ -346,13 +346,13 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
       {effectiveSubtab === "performance" && (
         <SettingsSection
           icon={Activity}
-          title="Resource Monitoring"
+          title="Resource monitoring"
           id="terminal-resource-monitoring"
           description="Show CPU and memory usage in terminal panel headers. Polls process tree every 2.5 seconds."
         >
           <SettingsSwitchCard
             icon={Activity}
-            title="Resource Monitoring"
+            title="Resource monitoring"
             subtitle="Display per-terminal CPU% and memory in panel headers"
             isEnabled={resourceMonitoringEnabled}
             onChange={() => {
@@ -377,13 +377,13 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
       {effectiveSubtab === "performance" && (
         <SettingsSection
           icon={MemoryStick}
-          title="Memory Leak Detection"
+          title="Memory leak detection"
           id="terminal-memory-leak-detection"
           description="Detect runaway memory growth in terminal processes and alert with restart options. Requires resource monitoring."
         >
           <SettingsSwitchCard
             icon={MemoryStick}
-            title="Memory Leak Detection"
+            title="Memory leak detection"
             subtitle="Show warnings when a terminal's memory grows continuously"
             isEnabled={memoryLeakDetectionEnabled}
             onChange={() => {
@@ -446,13 +446,13 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
       {effectiveSubtab === "performance" && (
         <SettingsSection
           icon={Shield}
-          title="Panel Limits"
+          title="Panel limits"
           id="terminal-panel-limits"
           description="Control when warnings appear as you open more panels. Limits are auto-detected from your hardware on first launch."
         >
           <SettingsSwitchCard
             icon={AlertTriangle}
-            title="Panel Warnings"
+            title="Panel warnings"
             subtitle="Show warning banner and confirmation dialog when panel count is high"
             isEnabled={!panelLimits.warningsDisabled}
             onChange={() => setWarningsDisabled(!panelLimits.warningsDisabled)}
@@ -529,7 +529,7 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
       {effectiveSubtab === "performance" && (
         <SettingsSection
           icon={Layers}
-          title="Cached Project Views"
+          title="Cached project views"
           id="terminal-cached-project-views"
           description="Number of project views to keep loaded in memory. Lower values save memory; switching to an evicted project takes ~500ms to reload."
         >
@@ -563,13 +563,13 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
       {effectiveSubtab === "input" && (
         <SettingsSection
           icon={MessageSquare}
-          title="Hybrid Input Bar"
+          title="Hybrid input bar"
           id="terminal-hybrid-input"
           description="Configure the bottom input bar used for agent terminals."
         >
           <SettingsSwitchCard
             icon={MessageSquare}
-            title="Hybrid Input Bar"
+            title="Hybrid input bar"
             subtitle="Show the multi-line input bar on agent terminals"
             isEnabled={hybridInputEnabled}
             onChange={handleHybridInputEnabledToggle}
@@ -610,13 +610,13 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
         <div className="space-y-6">
           <SettingsSection
             icon={SplitSquareHorizontal}
-            title="Two-Pane Split Layout"
+            title="Two-pane split layout"
             id="terminal-two-pane-split"
             description="When exactly two panels are open, display them with a resizable divider instead of equal columns. The split ratio is remembered per worktree."
           >
             <SettingsSwitchCard
               icon={SplitSquareHorizontal}
-              title="Two-Pane Split"
+              title="Two-pane split"
               subtitle="Display two panels with a resizable divider instead of equal columns"
               isEnabled={twoPaneSplitConfig.enabled}
               onChange={() => setTwoPaneSplitEnabled(!twoPaneSplitConfig.enabled)}
@@ -628,7 +628,7 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
             <div className="ml-4 space-y-3 border-l-2 border-daintree-border pl-4">
               <SettingsSwitchCard
                 icon={MonitorPlay}
-                title="Preview-Focused Layout"
+                title="Preview-focused layout"
                 subtitle="Give more space to browser and dev-preview panels"
                 isEnabled={twoPaneSplitConfig.preferPreview}
                 onChange={() => setPreferPreview(!twoPaneSplitConfig.preferPreview)}
@@ -690,7 +690,7 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
 
           <SettingsSection
             icon={LayoutGrid}
-            title="Grid Layout Strategy"
+            title="Grid layout strategy"
             id="terminal-grid-layout"
             description="Control how panels arrange in the grid as you add more."
           >
@@ -745,7 +745,7 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
       {effectiveSubtab === "scrollback" && (
         <SettingsSection
           icon={HardDrive}
-          title="Scrollback History"
+          title="Scrollback history"
           id="terminal-scrollback"
           description="Base scrollback applies to agent terminals. Shells and dev servers use reduced limits automatically."
           badge="New Terminals"
@@ -833,7 +833,7 @@ export function TerminalSettingsTab({ activeSubtab, onSubtabChange }: TerminalSe
       {effectiveSubtab === "accessibility" && (
         <SettingsSection
           icon={Ear}
-          title="Screen Reader Mode"
+          title="Screen reader mode"
           id="terminal-screen-reader"
           description="Enable screen reader support so assistive technology can read terminal output. When set to Auto, screen reader mode activates only when the OS reports an active screen reader."
         >

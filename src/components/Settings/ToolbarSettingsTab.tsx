@@ -204,7 +204,7 @@ export function ToolbarSettingsTab() {
     <div className="space-y-6">
       <SettingsSection
         icon={LayoutGrid}
-        title="Left Side Buttons"
+        title="Left side buttons"
         description={`Drag to reorder, uncheck to hide. ${layout.leftButtons.filter((id) => isToolbarButtonVisible(id, layout.pinnedButtons, agentSettings, agentAvailability)).length} of ${layout.leftButtons.length} visible.`}
       >
         <DndContext
@@ -235,7 +235,7 @@ export function ToolbarSettingsTab() {
 
       <SettingsSection
         icon={LayoutGrid}
-        title="Right Side Buttons"
+        title="Right side buttons"
         description={`Drag to reorder, uncheck to hide. ${layout.rightButtons.filter((id) => isToolbarButtonVisible(id, layout.pinnedButtons, agentSettings, agentAvailability)).length} of ${layout.rightButtons.length} visible.`}
       >
         <DndContext
@@ -266,7 +266,7 @@ export function ToolbarSettingsTab() {
 
       <SettingsSection
         icon={Rocket}
-        title="Launcher Palette"
+        title="Launcher palette"
         description="Configure defaults for the panel launcher palette."
       >
         <div className="space-y-4">

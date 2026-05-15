@@ -204,13 +204,13 @@ export function VoiceInputSettingsTab() {
       {/* ── Speech-to-Text ── */}
       <SettingsSection
         icon={Mic}
-        title="Speech-to-Text"
+        title="Speech-to-text"
         description="Real-time transcription. Requires an OpenAI API key and microphone access."
         id="voice-speech-to-text"
       >
         <SettingsSwitchCard
           icon={Mic}
-          title="Voice Input"
+          title="Voice input"
           subtitle="Dictate commands using your microphone"
           isEnabled={settings.enabled}
           onChange={() => update({ enabled: !settings.enabled })}
@@ -292,13 +292,13 @@ export function VoiceInputSettingsTab() {
       {settings.enabled && (
         <SettingsSection
           icon={Sparkles}
-          title="AI Text Correction"
+          title="AI text correction"
           description="Post-process transcriptions with a GPT-5 reasoning model to fix technical terms, punctuation, and filler words. Optional."
           id="voice-ai-correction"
         >
           <SettingsSwitchCard
             icon={Sparkles}
-            title="AI Text Correction"
+            title="AI text correction"
             subtitle="Clean up transcriptions automatically after dictation"
             isEnabled={settings.correctionEnabled}
             onChange={() => update({ correctionEnabled: !settings.correctionEnabled })}
@@ -322,7 +322,7 @@ export function VoiceInputSettingsTab() {
                 <>
                   <SettingsSwitchCard
                     icon={FileSearch}
-                    title="Resolve File References"
+                    title="Resolve file references"
                     subtitle={
                       'Voice commands like "link to the input component" insert @file references'
                     }

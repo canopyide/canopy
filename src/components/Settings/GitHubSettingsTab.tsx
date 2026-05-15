@@ -197,7 +197,7 @@ export function GitHubSettingsTab() {
       <SettingsSection
         id="github-token"
         icon={Key}
-        title="Personal Access Token"
+        title="Personal access token"
         description="Used for repository statistics, issue/PR detection, and linking worktrees to GitHub. Eliminates the need for the gh CLI."
       >
         <div className="contents">
@@ -290,7 +290,7 @@ export function GitHubSettingsTab() {
 
       <SettingsSection
         icon={Github}
-        title="Create a New Token"
+        title="Create a new token"
         description="To create a personal access token with the required scopes, click the button below. This will open GitHub in your browser."
       >
         <Button

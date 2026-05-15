@@ -309,7 +309,7 @@ export function PortalSettingsTab() {
     <div className="space-y-6">
       <SettingsSection
         icon={PanelRight}
-        title="Default New Tab Agent"
+        title="Default new tab agent"
         description='Choose which agent opens when you click the + button. Select "None" to show the Launchpad.'
       >
         <div className="flex flex-col gap-3">
@@ -388,7 +388,7 @@ export function PortalSettingsTab() {
 
       <SettingsSection
         icon={Link}
-        title="Default Links"
+        title="Default links"
         description="Built-in agent and service links. Toggle visibility in the portal tab bar."
       >
         <div className="space-y-2">{systemLinks.map((link) => renderLinkRow(link, false))}</div>
@@ -396,7 +396,7 @@ export function PortalSettingsTab() {
 
       <SettingsSection
         icon={Globe}
-        title="Custom Links"
+        title="Custom links"
         description="Add your own links to AI services or documentation."
       >
         <div className="space-y-2">{userLinks.map((link) => renderLinkRow(link, true))}</div>
