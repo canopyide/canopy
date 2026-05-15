@@ -742,7 +742,6 @@ code.hljs {
     background: var(--scrollbar-thumb);
     border-radius: 3px;
     min-height: 20px;
-    min-width: 20px;
   }
 
   *::-webkit-scrollbar-thumb:hover {

@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useRef } from "react";
+import { useCallback, useDeferredValue, useEffect, useRef, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { TABBABLE_SELECTOR } from "@/lib/accessibility";
@@ -203,12 +203,15 @@ export function AppPaletteDialog({
           isVisible ? "opacity-100 scale-100" : "opacity-0 scale-[0.96]",
           className
         )}
-        style={{
-          transitionDuration: isVisible
-            ? `${UI_PALETTE_ENTER_DURATION}ms`
-            : `${UI_PALETTE_EXIT_DURATION}ms`,
-          transitionTimingFunction: isVisible ? UI_ENTER_EASING : UI_EXIT_EASING,
-        }}
+        style={
+          {
+            transitionDuration: isVisible
+              ? `${UI_PALETTE_ENTER_DURATION}ms`
+              : `${UI_PALETTE_EXIT_DURATION}ms`,
+            transitionTimingFunction: isVisible ? UI_ENTER_EASING : UI_EXIT_EASING,
+            "--scroll-shadow-color": "var(--color-surface-canvas)",
+          } as CSSProperties
+        }
         onClick={(e) => e.stopPropagation()}
       >
         {children}

@@ -88,9 +88,13 @@ export function useScrollShadowOverlays(externalRef?: Ref<HTMLElement>) {
     }
   }, []);
 
+  // Conditional rendering here is load-bearing: `useVerticalScrollShadows`
+  // observes `el.firstElementChild` to detect content-size changes. If the
+  // top overlay were always mounted as the first child, the ResizeObserver
+  // would track a fixed-height overlay instead of the actual content.
   return {
     ref,
-    topShadow: <ScrollShadowOverlay edge="top" visible={canScrollUp} />,
-    bottomShadow: <ScrollShadowOverlay edge="bottom" visible={canScrollDown} />,
+    topShadow: canScrollUp ? <ScrollShadowOverlay edge="top" visible /> : null,
+    bottomShadow: canScrollDown ? <ScrollShadowOverlay edge="bottom" visible /> : null,
   };
 }
