@@ -3,6 +3,7 @@ import type * as TooltipPrimitiveType from "@radix-ui/react-tooltip";
 import { Slot } from "@radix-ui/react-slot";
 import { cn } from "@/lib/utils";
 import { primeOnEvent, useRadixPrimitives } from "./radix-loader";
+import { FixedDropdownVisibleContext } from "./fixed-dropdown";
 
 type TooltipProviderProps = React.ComponentProps<typeof TooltipPrimitiveType.Provider>;
 
@@ -16,11 +17,24 @@ TooltipProvider.displayName = "TooltipProvider";
 
 type TooltipRootProps = React.ComponentProps<typeof TooltipPrimitiveType.Root>;
 
-const Tooltip = ({ children, ...props }: TooltipRootProps) => {
+const Tooltip = ({ children, open, ...props }: TooltipRootProps) => {
   const radix = useRadixPrimitives();
+  // When the surrounding keepMounted FixedDropdown has transitioned to the
+  // Activity-hidden state, force `open={false}` on the Radix Root so any
+  // tooltip whose dismiss path was skipped by the synchronous `display:none`
+  // gets explicitly closed before its portaled content can strand at (0,0)
+  // on document.body (issue #8001). Outside that subtree the context default
+  // (`true`) preserves the caller's `open` value, so uncontrolled tooltips
+  // and any explicit `open={true}` callers keep working unchanged.
+  const dropdownVisible = React.useContext(FixedDropdownVisibleContext);
+  const effectiveOpen = dropdownVisible ? open : false;
   if (!radix) return <>{children}</>;
   const Root = radix.TooltipPrimitive.Root;
-  return <Root {...props}>{children}</Root>;
+  return (
+    <Root {...props} open={effectiveOpen}>
+      {children}
+    </Root>
+  );
 };
 Tooltip.displayName = "Tooltip";
 

@@ -19,6 +19,15 @@ import { useUIStore } from "@/store/uiStore";
 // GitHub toolbar dropdown.
 const OVERLAY_RACE_GRACE_MS = 300;
 
+// Signals to descendants whether the keepMounted dropdown body is currently
+// visible (`true`) or has transitioned to Activity-hidden (`false`). The
+// shared `Tooltip` wrapper consumes this to force `open={false}` on Radix
+// Tooltip roots once the body is hidden, killing strand-in-top-left ghosts
+// caused by portaled overlay content escaping Activity's `display:none`
+// (issue #8001). Default `true` keeps non-keepMounted dropdowns and any
+// tooltip rendered outside a FixedDropdown unaffected.
+export const FixedDropdownVisibleContext = React.createContext<boolean>(true);
+
 interface FixedDropdownProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -167,14 +176,21 @@ export function FixedDropdown({
   // The outer pointer-events:none wrapper stays in the DOM so layout doesn't
   // thrash; Activity only hides its child.
   //
-  // INVARIANT for descendants: do NOT use exit-retaining `AnimatePresence`
-  // inside a keepMounted dropdown. React 19's Activity hidden mode defers
-  // effects and animation lifecycles, which strands AnimatePresence's exiting
-  // children in the DOM with stale closures — they stay fully interactive but
-  // disconnected from current state. Enter-only animation is fine; exit
-  // animation is not. Use plain conditional render for show/hide UI inside
-  // here. See `BulkActionBar.tsx` and `GitHubResourceList.tsx`'s
-  // skeleton/content switch for examples of the safe pattern.
+  // INVARIANT for descendants: do NOT rely on exit-retaining portal overlays
+  // inside a keepMounted dropdown. React 19's Activity hidden mode applies
+  // `display:none` synchronously but defers effect cleanups, so any overlay
+  // whose dismiss path depends on browser events (`pointerleave`, `blur`)
+  // never receives them once the trigger DOM is hidden. Portaled content
+  // (Radix Tooltip / Popover / HoverCard / DropdownMenu content, Framer
+  // Motion `AnimatePresence` exit children) escapes the Activity subtree
+  // entirely — it stays mounted on `document.body` with stale state and,
+  // in Floating-UI-positioned cases, falls back to (0,0) (issue #8001).
+  // For exit animation: use plain conditional render. For uncontrolled
+  // overlays: route through the shared `Tooltip` wrapper, which consumes
+  // `FixedDropdownVisibleContext` and force-closes on the hidden transition.
+  // Direct Radix primitive usage bypasses this guard. See `BulkActionBar.tsx`
+  // and `GitHubResourceList.tsx`'s skeleton/content switch for the safe
+  // exit-animation pattern.
   const inner = (
     <div
       ref={contentRef}
@@ -201,7 +217,11 @@ export function FixedDropdown({
   return createPortal(
     <div className="fixed inset-0 z-[var(--z-popover)] pointer-events-none">
       {keepMounted ? (
-        <Activity mode={shouldRender ? "visible" : "hidden"}>{inner}</Activity>
+        <Activity mode={shouldRender ? "visible" : "hidden"}>
+          <FixedDropdownVisibleContext.Provider value={shouldRender}>
+            {inner}
+          </FixedDropdownVisibleContext.Provider>
+        </Activity>
       ) : (
         inner
       )}
