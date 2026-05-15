@@ -64,12 +64,23 @@ export const usePreferencesStore = create<PreferencesState>()(
         })),
       skipPushConfirmByWorktreePath: {},
       setSkipPushConfirmForWorktree: (worktreePath, value) =>
-        set((state) => ({
-          skipPushConfirmByWorktreePath: {
-            ...state.skipPushConfirmByWorktreePath,
-            [worktreePath]: value,
-          },
-        })),
+        set((state) => {
+          if (value) {
+            return {
+              skipPushConfirmByWorktreePath: {
+                ...state.skipPushConfirmByWorktreePath,
+                [worktreePath]: true,
+              },
+            };
+          }
+          // Drop the key when clearing so the record doesn't accumulate
+          // `false` entries on every confirm-without-opt-out.
+          if (state.skipPushConfirmByWorktreePath[worktreePath] === undefined) {
+            return state;
+          }
+          const { [worktreePath]: _removed, ...rest } = state.skipPushConfirmByWorktreePath;
+          return { skipPushConfirmByWorktreePath: rest };
+        }),
     }),
     {
       name: "daintree-preferences",
@@ -142,7 +153,24 @@ export const usePreferencesStore = create<PreferencesState>()(
         if (version < 9) {
           if (persisted && typeof persisted === "object") {
             const state = persisted as Record<string, unknown>;
-            state.skipPushConfirmByWorktreePath ??= {};
+            // Validate the record shape rather than just `??=` so a corrupt
+            // value (e.g. hand-edited array or string) is normalised. A
+            // truthy string would otherwise bypass the confirm gate.
+            const current = state.skipPushConfirmByWorktreePath;
+            if (
+              current === undefined ||
+              current === null ||
+              typeof current !== "object" ||
+              Array.isArray(current)
+            ) {
+              state.skipPushConfirmByWorktreePath = {};
+            } else {
+              const validated: Record<string, boolean> = {};
+              for (const [key, value] of Object.entries(current as Record<string, unknown>)) {
+                if (typeof value === "boolean") validated[key] = value;
+              }
+              state.skipPushConfirmByWorktreePath = validated;
+            }
           }
         }
         return persisted as PreferencesState;

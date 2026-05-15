@@ -195,6 +195,9 @@ export function CommitPanel({
   ]);
 
   const handleConfirmPush = useCallback(() => {
+    // The opt-out is persisted on confirm regardless of whether the
+    // subsequent push succeeds — the user expressed a preference about the
+    // confirm dialog, which is orthogonal to network/rejection failure.
     onSetSkipPushConfirm(dontAskChecked);
     setPushConfirmOpen(false);
     setDontAskChecked(false);

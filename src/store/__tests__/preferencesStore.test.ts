@@ -491,14 +491,20 @@ describe("preferencesStore migration", () => {
       expect(store.getState().skipPushConfirmByWorktreePath).toEqual({});
     });
 
-    it("setSkipPushConfirmForWorktree merges into the existing record", async () => {
+    it("setSkipPushConfirmForWorktree stores true entries and drops keys on false", async () => {
       const store = await loadStore();
       store.getState().setSkipPushConfirmForWorktree("/repo/a", true);
-      store.getState().setSkipPushConfirmForWorktree("/repo/b", false);
+      store.getState().setSkipPushConfirmForWorktree("/repo/b", true);
       expect(store.getState().skipPushConfirmByWorktreePath).toEqual({
         "/repo/a": true,
-        "/repo/b": false,
+        "/repo/b": true,
       });
+      // Setting false clears the existing entry rather than persisting `false`.
+      store.getState().setSkipPushConfirmForWorktree("/repo/a", false);
+      expect(store.getState().skipPushConfirmByWorktreePath).toEqual({ "/repo/b": true });
+      // Setting false on a key that's not present is a no-op.
+      store.getState().setSkipPushConfirmForWorktree("/repo/c", false);
+      expect(store.getState().skipPushConfirmByWorktreePath).toEqual({ "/repo/b": true });
     });
 
     it("persists the record to localStorage", async () => {
@@ -551,6 +557,69 @@ describe("preferencesStore migration", () => {
 
       const store = await loadStore();
       expect(store.getState().skipPushConfirmByWorktreePath).toEqual({ "/repo/x": true });
+    });
+
+    it("normalises a corrupt persisted value (string instead of object) to {}", async () => {
+      setStoredState(
+        {
+          diffViewType: "split",
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          reduceAnimations: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+          skipPushConfirmByWorktreePath: "yes",
+        },
+        8
+      );
+
+      const store = await loadStore();
+      expect(store.getState().skipPushConfirmByWorktreePath).toEqual({});
+    });
+
+    it("strips non-boolean entries from a partially corrupt persisted record", async () => {
+      setStoredState(
+        {
+          diffViewType: "split",
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          reduceAnimations: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+          skipPushConfirmByWorktreePath: { "/repo/a": true, "/repo/b": "yes", "/repo/c": 1 },
+        },
+        8
+      );
+
+      const store = await loadStore();
+      expect(store.getState().skipPushConfirmByWorktreePath).toEqual({ "/repo/a": true });
+    });
+
+    it("normalises an array value to {}", async () => {
+      setStoredState(
+        {
+          diffViewType: "split",
+          showProjectPulse: true,
+          showDeveloperTools: false,
+          showGridAgentHighlights: false,
+          showDockAgentHighlights: false,
+          dockDensity: "normal",
+          assignWorktreeToSelf: false,
+          reduceAnimations: false,
+          lastSelectedWorktreeRecipeIdByProject: {},
+          skipPushConfirmByWorktreePath: ["/repo/a"],
+        },
+        8
+      );
+
+      const store = await loadStore();
+      expect(store.getState().skipPushConfirmByWorktreePath).toEqual({});
     });
 
     it("migrates cumulatively from v3 through v9", async () => {

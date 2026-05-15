@@ -91,6 +91,10 @@ interface RenderProps {
 function renderPanel(overrides: RenderProps = {}) {
   const onCommitAndPush = overrides.onCommitAndPush ?? vi.fn().mockResolvedValue(undefined);
   const onSetSkipPushConfirm = overrides.onSetSkipPushConfirm ?? vi.fn();
+  // Use `in` so callers can explicitly pass `currentBranch: null` to test the
+  // missing-branch path — `??` would coalesce null to the default.
+  const currentBranch =
+    "currentBranch" in overrides ? (overrides.currentBranch ?? null) : "feature/x";
   render(
     <CommitPanel
       stagedCount={1}
@@ -98,7 +102,7 @@ function renderPanel(overrides: RenderProps = {}) {
       hasConflicts={false}
       hasRemote={overrides.hasRemote ?? true}
       worktreePath="/repo"
-      currentBranch={overrides.currentBranch ?? "feature/x"}
+      currentBranch={currentBranch}
       commitMessage={overrides.commitMessage ?? "fix: bug"}
       onCommitMessageChange={vi.fn()}
       onCommit={vi.fn().mockResolvedValue(undefined)}
@@ -255,5 +259,65 @@ describe("CommitPanel — push confirm", () => {
     renderPanel({ currentBranch: "development" });
     fireEvent.click(screen.getByRole("button", { name: /Commit & Push/ }));
     expect(screen.getByTestId("confirm-description").textContent).toContain("protected branch");
+  });
+
+  it("with hasRemote=false, does not open the dialog (no push to confirm)", () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const onCommitAndPush = vi.fn().mockResolvedValue(undefined);
+    render(
+      <CommitPanel
+        stagedCount={1}
+        isDetachedHead={false}
+        hasConflicts={false}
+        hasRemote={false}
+        worktreePath="/repo"
+        currentBranch="feature/x"
+        commitMessage="fix: bug"
+        onCommitMessageChange={vi.fn()}
+        onCommit={onCommit}
+        onCommitAndPush={onCommitAndPush}
+        isPushing={false}
+        pushProgress={new Map()}
+        pushTargetBranch={null}
+        skipPushConfirm={false}
+        onSetSkipPushConfirm={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Commit \(/ }));
+    expect(onCommit).toHaveBeenCalledWith("fix: bug");
+    expect(onCommitAndPush).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("push-confirm-dialog")).toBeNull();
+  });
+
+  it("Cmd+Enter on the textarea routes through the confirm gate", () => {
+    const { onCommitAndPush } = renderPanel({ currentBranch: "feature/x" });
+    const textarea = screen.getByPlaceholderText(/Commit message/);
+    fireEvent.keyDown(textarea, { key: "Enter", metaKey: true });
+    expect(onCommitAndPush).not.toHaveBeenCalled();
+    expect(screen.getByTestId("push-confirm-dialog")).toBeDefined();
+  });
+
+  it("with currentBranch=null, the dialog opens and confirming fires push exactly once", () => {
+    const { onCommitAndPush } = renderPanel({ currentBranch: null });
+    fireEvent.click(screen.getByRole("button", { name: /Commit & Push/ }));
+    const dialog = screen.getByTestId("push-confirm-dialog");
+    expect(dialog).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: /Push to branch/ }));
+    expect(onCommitAndPush).toHaveBeenCalledTimes(1);
+    expect(onCommitAndPush).toHaveBeenCalledWith("fix: bug");
+  });
+
+  it("persists the opt-out even when the push call rejects", () => {
+    const onCommitAndPush = vi.fn().mockRejectedValue(new Error("network"));
+    const { onSetSkipPushConfirm } = renderPanel({
+      currentBranch: "feature/x",
+      onCommitAndPush,
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Commit & Push/ }));
+    fireEvent.click(screen.getByTestId("commit-panel-push-confirm-dont-ask"));
+    fireEvent.click(screen.getByRole("button", { name: /Push to feature\/x/ }));
+    expect(onSetSkipPushConfirm).toHaveBeenCalledWith(true);
+    // The push attempt itself was made.
+    expect(onCommitAndPush).toHaveBeenCalledWith("fix: bug");
   });
 });
