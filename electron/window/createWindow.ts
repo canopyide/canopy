@@ -211,7 +211,7 @@ export function setupBrowserWindow(
               titleBarOverlay: {
                 color: windowBg,
                 symbolColor: "#a1a1aa",
-                height: 36,
+                height: 48,
               },
               // Hide the native menu bar so the custom 48px toolbar is the
               // only chrome; Alt still reveals the menu. Must be set in the

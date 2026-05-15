@@ -18,7 +18,7 @@ import { Folders, McpServerIcon } from "@/components/icons";
 import { TOOLBAR_BUTTON_METADATA, isToolbarButtonVisible } from "./toolbarButtonMetadata";
 import { cn } from "@/lib/utils";
 import { shortcutHintStore } from "@/store/shortcutHintStore";
-import { isMac, isLinux } from "@/lib/platform";
+import { isMac, isLinux, isWindows } from "@/lib/platform";
 import { createTooltipContent } from "@/lib/tooltipShortcut";
 import { AgentButton } from "./AgentButton";
 import { AgentTrayButton } from "./AgentTrayButton";
@@ -1097,6 +1097,14 @@ export function Toolbar({
             {buttonRegistry["assistant-toggle"]!.render()}
             {buttonRegistry["portal-toggle"]!.render()}
           </div>
+
+          {isWindows() && (
+            <div
+              aria-hidden="true"
+              className={cn("shrink-0 transition-[width] duration-150", isFullscreen && "w-0")}
+              style={isFullscreen ? undefined : { width: "var(--win-caption-width, 138px)" }}
+            />
+          )}
         </div>
       </div>
     </header>

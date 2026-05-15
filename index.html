@@ -133,6 +133,11 @@
         align-items: center;
         justify-content: flex-end;
         gap: 6px;
+        /* Reserve space for Windows native caption controls during the
+           pre-React skeleton phase. The var is only injected on win32 by
+           injectSkeletonCss; the 0 fallback keeps macOS/Linux unaffected.
+           See issue #7951. */
+        padding-right: var(--win-caption-width, 0px);
       }
 
       /* ── Skeleton placeholder shapes (3-tier opacity hierarchy) ── */

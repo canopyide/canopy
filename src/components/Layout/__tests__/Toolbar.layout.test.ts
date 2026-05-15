@@ -185,4 +185,50 @@ describe("Toolbar layout — issue #2584 project switcher collision", () => {
       expect(source).not.toContain("onRecomputeDragRegions");
     });
   });
+
+  describe("Windows caption control spacer — issue #7951", () => {
+    it("imports isWindows from the platform helper", () => {
+      expect(source).toMatch(/import\s*{[^}]*\bisWindows\b[^}]*}\s*from\s*"@\/lib\/platform"/);
+    });
+
+    it("does not inline navigator.platform checks", () => {
+      expect(source).not.toContain("navigator.platform");
+    });
+
+    it("guards the trailing spacer with isWindows()", () => {
+      expect(source).toMatch(/isWindows\(\)\s*&&\s*\(/);
+    });
+
+    it("reserves space via the --win-caption-width CSS variable", () => {
+      expect(source).toContain("var(--win-caption-width, 138px)");
+    });
+
+    it("collapses the spacer to zero width when entering fullscreen", () => {
+      expect(source).toMatch(/isFullscreen\s*&&\s*"w-0"/);
+    });
+
+    it("places the spacer inside the right toolbar group, after the portal toggle", () => {
+      const rightGroupIndex = source.indexOf('aria-label="Tools and settings"');
+      const spacerIndex = source.indexOf("var(--win-caption-width, 138px)");
+      const portalToggleIndex = source.indexOf('buttonRegistry["portal-toggle"]');
+      expect(rightGroupIndex).toBeGreaterThan(-1);
+      expect(spacerIndex).toBeGreaterThan(-1);
+      expect(portalToggleIndex).toBeGreaterThan(-1);
+      expect(spacerIndex).toBeGreaterThan(rightGroupIndex);
+      expect(spacerIndex).toBeGreaterThan(portalToggleIndex);
+    });
+
+    it("uses scoped transition-[width] motion, not transition-all", () => {
+      expect(source).toMatch(/transition-\[width\]\s+duration-150/);
+    });
+
+    it("spacer is decorative (aria-hidden) and not focusable as a toolbar item", () => {
+      const spacerBlock = source.slice(
+        source.indexOf("isWindows() &&"),
+        source.indexOf("var(--win-caption-width, 138px)") + 200
+      );
+      expect(spacerBlock).toContain('aria-hidden="true"');
+      expect(spacerBlock).not.toContain("data-toolbar-item");
+    });
+  });
 });
