@@ -1,12 +1,18 @@
 import { Suspense, lazy, type ComponentProps, type ComponentType } from "react";
 import type { PanelKindConfig } from "@shared/config/panelKindRegistry";
 import { getPanelKindConfig } from "@shared/config/panelKindRegistry";
-import type { PtyPanelData, BrowserPanelData, DevPreviewPanelData } from "@shared/types/panel";
+import type {
+  PtyPanelData,
+  BrowserPanelData,
+  DevPreviewPanelData,
+  ReviewPanelData,
+} from "@shared/types/panel";
 import { isBuiltInPanelKind } from "@shared/types/panel";
 import type {
   TerminalPanelOptions,
   BrowserPanelOptions,
   DevPreviewPanelOptions,
+  ReviewPanelOptions,
 } from "@shared/types/addPanelOptions";
 import type { PanelSnapshot } from "@shared/types/project";
 import { TerminalPane } from "@/components/Terminal/TerminalPane";
@@ -21,6 +27,8 @@ import { serializeBrowser } from "./browser/serializer";
 import { createBrowserDefaults } from "./browser/defaults";
 import { serializeDevPreview } from "./dev-preview/serializer";
 import { createDevPreviewDefaults } from "./dev-preview/defaults";
+import { serializeReview } from "./review/serializer";
+import { createReviewDefaults } from "./review/defaults";
 
 export interface PanelComponentProps {
   id: string;
@@ -49,6 +57,9 @@ const LazyBrowserPane = lazy(() =>
 );
 const LazyDevPreviewPane = lazy(() =>
   import("@/components/DevPreview/DevPreviewPane").then((m) => ({ default: m.DevPreviewPane }))
+);
+const LazyReviewPane = lazy(() =>
+  import("./review/ReviewPane").then((m) => ({ default: m.ReviewPane }))
 );
 
 // Wrapper providing Suspense fallback for the lazy dynamic import and
@@ -79,6 +90,18 @@ function DevPreviewPaneWrapper(props: ComponentProps<typeof LazyDevPreviewPane>)
   );
 }
 
+function ReviewPaneWrapper(props: ComponentProps<typeof LazyReviewPane>) {
+  return (
+    <ErrorBoundary variant="component" componentName="ReviewPane">
+      <Suspense fallback={<BrowserPaneSkeleton label="Loading review panel" />}>
+        <ContentFadeIn className="flex flex-col h-full w-full">
+          <LazyReviewPane {...props} />
+        </ContentFadeIn>
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
 /**
  * Maps each built-in panel kind to its panel data variant. `createdAt` is
  * intentionally widened on the PTY and dev-preview entries so serializers can
@@ -88,12 +111,14 @@ interface BuiltInPanelMap {
   terminal: PtyPanelData & { createdAt?: number };
   browser: BrowserPanelData;
   "dev-preview": DevPreviewPanelData & { createdAt?: number };
+  review: ReviewPanelData;
 }
 
 interface BuiltInPanelOptionsMap {
   terminal: TerminalPanelOptions;
   browser: BrowserPanelOptions;
   "dev-preview": DevPreviewPanelOptions;
+  review: ReviewPanelOptions;
 }
 
 type BuiltInSerializeDefaults = {
@@ -107,6 +132,7 @@ const BUILT_IN_SERIALIZE_DEFAULTS = {
   terminal: { serialize: serializePtyPanel, createDefaults: createTerminalDefaults },
   browser: { serialize: serializeBrowser, createDefaults: createBrowserDefaults },
   "dev-preview": { serialize: serializeDevPreview, createDefaults: createDevPreviewDefaults },
+  review: { serialize: serializeReview, createDefaults: createReviewDefaults },
 } satisfies BuiltInSerializeDefaults;
 
 export function initBuiltInPanelKinds(): void {
@@ -145,6 +171,7 @@ const PANEL_KIND_DEFINITION_REGISTRY: Record<string, PanelKindDefinition> = {
   terminal: { ...requirePanelKindConfig("terminal"), component: TerminalPane },
   browser: { ...requirePanelKindConfig("browser"), component: BrowserPaneWrapper },
   "dev-preview": { ...requirePanelKindConfig("dev-preview"), component: DevPreviewPaneWrapper },
+  review: { ...requirePanelKindConfig("review"), component: ReviewPaneWrapper },
 };
 
 /**

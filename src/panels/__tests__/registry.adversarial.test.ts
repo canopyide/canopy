@@ -47,6 +47,12 @@ function mockRegistryImports(options?: { throwBrowserDefaults?: boolean }): void
   vi.doMock("../dev-preview/defaults", () => ({
     createDevPreviewDefaults: vi.fn(() => ({ devCommand: "npm run dev" })),
   }));
+  vi.doMock("../review/serializer", () => ({
+    serializeReview: vi.fn(() => ({})),
+  }));
+  vi.doMock("../review/defaults", () => ({
+    createReviewDefaults: vi.fn(() => ({})),
+  }));
 }
 
 describe("panel registry adversarial", () => {

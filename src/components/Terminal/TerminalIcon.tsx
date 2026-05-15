@@ -1,4 +1,4 @@
-import { SquareTerminal, Globe, MonitorPlay } from "lucide-react";
+import { SquareTerminal, Globe, MonitorPlay, GitPullRequest } from "lucide-react";
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { BrandMark } from "@/components/icons";
@@ -66,6 +66,16 @@ export function TerminalIcon({ kind, chrome, className, brandColor }: TerminalIc
   ) {
     return withIconMarker(
       <MonitorPlay {...finalProps} className={cn(finalProps.className, "text-status-info")} />
+    );
+  }
+
+  // Review panes get a git-pull-request icon
+  if (kind === "review" || resolvedChrome.iconId === "git-pull-request") {
+    return withIconMarker(
+      <GitPullRequest
+        {...finalProps}
+        className={cn(finalProps.className, "text-category-violet")}
+      />
     );
   }
 

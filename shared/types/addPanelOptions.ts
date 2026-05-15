@@ -152,6 +152,16 @@ export interface DevPreviewPanelOptions extends AddPanelOptionsBase {
 }
 
 /**
+ * Options for creating a review panel. Mounts the worktree's Review & Commit
+ * surface in a grid cell. Carries no kind-specific fields beyond the base:
+ * `worktreeId` from `AddPanelOptionsBase` is the sole binding, and the
+ * worktree path is resolved at render time from the worktree store.
+ */
+export interface ReviewPanelOptions extends AddPanelOptionsBase {
+  kind: "review";
+}
+
+/**
  * Options for extension-provided panel kinds.
  *
  * NOTE: intentionally excluded from the `AddPanelOptions` union below. Including
@@ -166,4 +176,8 @@ export interface ExtensionPanelOptions extends AddPanelOptionsBase {
 }
 
 /** Discriminated union of all built-in panel creation option types */
-export type AddPanelOptions = TerminalPanelOptions | BrowserPanelOptions | DevPreviewPanelOptions;
+export type AddPanelOptions =
+  | TerminalPanelOptions
+  | BrowserPanelOptions
+  | DevPreviewPanelOptions
+  | ReviewPanelOptions;

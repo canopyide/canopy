@@ -186,7 +186,7 @@ export function terminalChromeDescriptorsEqual(
 
 export function deriveTerminalChrome(input: TerminalChromeInput = {}): TerminalChromeDescriptor {
   const kind = input.kind ?? "terminal";
-  if (kind === "browser" || kind === "dev-preview") {
+  if (kind === "browser" || kind === "dev-preview" || kind === "review") {
     const config = getPanelKindConfig(kind);
     return {
       iconId: config?.iconId ?? null,

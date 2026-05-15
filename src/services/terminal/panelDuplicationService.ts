@@ -166,6 +166,13 @@ export function buildPanelSnapshotOptions(panel: TerminalInstance): AddPanelOpti
     };
   }
 
+  if (kind === "review") {
+    return {
+      kind: "review",
+      worktreeId: panel.worktreeId,
+    };
+  }
+
   return {
     kind: "terminal",
     launchAgentId: panel.launchAgentId,
@@ -252,6 +259,14 @@ export async function buildPanelDuplicateOptions(
       exitBehavior: sourcePanel.exitBehavior,
       isInputLocked: sourcePanel.isInputLocked,
       ...buildDevPreviewOptions(sourcePanel),
+    };
+  }
+
+  if (kind === "review") {
+    return {
+      kind: "review",
+      worktreeId: sourcePanel.worktreeId,
+      location: targetLocation,
     };
   }
 

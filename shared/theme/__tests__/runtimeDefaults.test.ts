@@ -135,7 +135,7 @@ describe("PANEL_KIND_BRAND_COLORS — agent vs dev-preview distinctness", () => 
     expect(PANEL_KIND_BRAND_COLORS["dev-preview"]).not.toBe("var(--theme-category-violet)");
   });
 
-  it("all four panel kinds have distinct colors", () => {
+  it("all panel kinds have distinct colors", () => {
     const values = Object.values(PANEL_KIND_BRAND_COLORS);
     expect(new Set(values).size).toBe(values.length);
   });
