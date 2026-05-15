@@ -107,10 +107,11 @@ describe("Worktree list keyboard grid — issue #6422", () => {
     });
 
     it('wires gridRef + handlers from the hook into a role="grid" container', () => {
-      // Hook now takes a scrollContainerRef so PageUp/PageDown can size the page
-      // from the viewport. The destructured return shape is unchanged.
+      // Hook takes a scrollContainerRef (for PageUp/PageDown sizing) and an
+      // options object (for the Alt+Arrow keyboard reorder callback). The
+      // destructured return shape is unchanged.
       expect(source).toMatch(
-        /const \{ gridRef, handleGridKeyDown, handleGridFocusCapture \} =\s*useWorktreeGridRovingFocus\(scrollContainerRef\);/
+        /const \{ gridRef, handleGridKeyDown, handleGridFocusCapture \} = useWorktreeGridRovingFocus\(\s*scrollContainerRef,/
       );
       expect(source).toContain('role="grid"');
       expect(source).toContain('aria-label="Worktrees"');
@@ -312,9 +313,128 @@ describe("Worktree list keyboard grid — issue #6422", () => {
     });
 
     describe("SidebarContent passes scrollContainerRef into the roving-focus hook", () => {
-      it("calls useWorktreeGridRovingFocus with the scroll container ref", async () => {
+      it("calls useWorktreeGridRovingFocus with the scroll container ref and a reorder callback", async () => {
         const source = await fs.readFile(SIDEBAR_CONTENT_PATH, "utf-8");
-        expect(source).toMatch(/useWorktreeGridRovingFocus\(scrollContainerRef\)/);
+        expect(source).toMatch(
+          /useWorktreeGridRovingFocus\(\s*scrollContainerRef,\s*\{\s*onKeyboardReorder:\s*handleKeyboardReorder\s*\}\s*\)/
+        );
+      });
+    });
+  });
+
+  describe("issue #7972 — sortable sidebar drop indicator and keyboard reorder", () => {
+    describe("SortableWorktreeCard directional drop indicator", () => {
+      let source: string;
+      beforeEach(async () => {
+        source = await fs.readFile(SORTABLE_CARD_PATH, "utf-8");
+      });
+
+      it("computes drop direction from active vs over rect midpoints", () => {
+        expect(source).toContain("active?.rect.current.translated");
+        expect(source).toMatch(/translatedRect\.top \+ translatedRect\.height \/ 2/);
+        expect(source).toMatch(/over\.rect\.top \+ over\.rect\.height \/ 2/);
+      });
+
+      it("gates the insertion line on a worktree-sort drag (not terminal/browser drags)", () => {
+        expect(source).toMatch(/active\?\.data\.current\?\.type === "worktree-sort"/);
+      });
+
+      it("marks the outer wrapper relative so the absolute indicator positions against the row", () => {
+        expect(source).toContain('className="relative"');
+      });
+
+      it("uses neutral bg-border-strong (no accent tokens) for the indicator", () => {
+        expect(source).toContain("bg-border-strong");
+        expect(source).not.toMatch(/daintree-accent|accent-primary/);
+      });
+
+      it("renders the indicator above (-top-px) or below (-bottom-px) based on drop direction", () => {
+        expect(source).toContain('"-top-px"');
+        expect(source).toContain('"-bottom-px"');
+      });
+
+      it("marks the indicator pointer-events-none so it never blocks the drop target", () => {
+        expect(source).toContain("pointer-events-none");
+      });
+
+      it("exposes the indicator via data-worktree-drop-indicator for E2E and DOM assertions", () => {
+        expect(source).toContain("data-worktree-drop-indicator");
+      });
+
+      it("advertises Alt+ArrowUp/Down via aria-keyshortcuts when the row is sortable", () => {
+        expect(source).toMatch(
+          /aria-keyshortcuts=\{disabled \? undefined : "Alt\+ArrowUp Alt\+ArrowDown"\}/
+        );
+      });
+    });
+
+    describe("useWorktreeGridRovingFocus Alt+Arrow carve", () => {
+      let source: string;
+      beforeEach(async () => {
+        source = await fs.readFile(HOOK_PATH, "utf-8");
+      });
+
+      it("accepts an onKeyboardReorder option", () => {
+        expect(source).toMatch(/onKeyboardReorder\??:\s*\(/);
+      });
+
+      it("splits the modifier guard so Alt+Arrow carves through but other Alt combos bail", () => {
+        // The guard is split into a metaKey bail and an altKey-non-arrow bail
+        // so Alt+Arrow can reach the list-mode handler.
+        expect(source).toMatch(/if \(e\.metaKey\) return;/);
+        expect(source).toMatch(/e\.altKey && \(e\.key === "ArrowUp" \|\| e\.key === "ArrowDown"\)/);
+        expect(source).toMatch(/if \(e\.altKey && !isAltArrowReorder\) return;/);
+      });
+
+      it("preventDefaults Alt+Arrow so navigation never fires alongside reorder", () => {
+        const reorderBranch = source.match(/if \(isAltArrowReorder\) \{[\s\S]*?return;\s*\}/);
+        expect(reorderBranch).toBeTruthy();
+        expect(reorderBranch?.[0]).toContain("e.preventDefault()");
+        expect(reorderBranch?.[0]).toContain("e.stopPropagation()");
+      });
+
+      it("invokes the reorder callback with the focused row and a -1/+1 delta", () => {
+        expect(source).toMatch(
+          /onKeyboardReorderRef\.current\(row,\s*e\.key === "ArrowDown" \? 1 : -1\)/
+        );
+      });
+    });
+
+    describe("SidebarContent wires keyboard reorder to applyManualWorktreeReorder", () => {
+      let source: string;
+      beforeEach(async () => {
+        source = await fs.readFile(SIDEBAR_CONTENT_PATH, "utf-8");
+      });
+
+      it("imports the shared reorder helper used by drag-end (single source of truth)", () => {
+        expect(source).toContain('from "@/lib/worktreeReorder"');
+        expect(source).toContain("applyManualWorktreeReorder");
+      });
+
+      it("renders a sr-only aria-live polite region for keyboard reorder announcements", () => {
+        expect(source).toMatch(/className="sr-only"[\s\S]*?aria-live="polite"/);
+        expect(source).toContain("keyboardReorderAnnouncement");
+      });
+
+      it("derives the worktree id from data-worktree-row and bounds-clamps the move", () => {
+        expect(source).toContain("rowEl.dataset.worktreeRow");
+        expect(source).toMatch(/targetIdx < 0 \|\| targetIdx >= visible\.length/);
+      });
+
+      it("routes the reorder through useWorktreeFilterStore (manualOrder + manual sort)", () => {
+        expect(source).toMatch(/filterStore\.setManualOrder\(merged\)/);
+        expect(source).toMatch(/filterStore\.setOrderBy\("manual"\)/);
+      });
+
+      it("guards the reorder against grouped-by-type / active-search modes so it never silently mutates manualOrder when the drag handle is hidden", () => {
+        // Grouped mode and active search both flip isSortDisabled true; the
+        // drag handle hides in those modes, so Alt+Arrow must mirror that or
+        // it'd write to the manual order behind the user's back.
+        expect(source).toMatch(/isSortDisabledRef\s*=\s*useRef\(false\)/);
+        expect(source).toMatch(/isSortDisabledRef\.current\s*=\s*isSortDisabled/);
+        const guard = source.match(/handleKeyboardReorder = useCallback\([\s\S]*?\}, \[\]\);/);
+        expect(guard).toBeTruthy();
+        expect(guard?.[0]).toMatch(/if \(isSortDisabledRef\.current\) return;/);
       });
     });
   });

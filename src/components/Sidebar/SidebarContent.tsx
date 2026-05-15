@@ -30,6 +30,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { getWorktreeSortDragId } from "@/components/DragDrop/SortableWorktreeCard";
+import { applyManualWorktreeReorder } from "@/lib/worktreeReorder";
 import { usePanelStore, useWorktreeSelectionStore, useProjectStore } from "@/store";
 import { useFleetArmingStore, collectFilterArmEligibleIds } from "@/store/fleetArmingStore";
 import { useShallow } from "zustand/react/shallow";
@@ -102,8 +103,39 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const refreshAriaShortcut = useAriaKeyshortcuts("worktree.refresh");
   const createWorktreeAriaShortcut = useAriaKeyshortcuts("worktree.createDialog.open");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const { gridRef, handleGridKeyDown, handleGridFocusCapture } =
-    useWorktreeGridRovingFocus(scrollContainerRef);
+  // Latest dragStartOrder + sort-disabled state captured in refs so the
+  // keyboard-reorder callback identity stays stable across renders without
+  // missing new visible orders or going stale on group/search toggles.
+  const dragStartOrderRef = useRef<readonly string[]>([]);
+  const isSortDisabledRef = useRef(false);
+  const [keyboardReorderAnnouncement, setKeyboardReorderAnnouncement] = useState("");
+  const handleKeyboardReorder = useCallback((rowEl: HTMLElement, delta: -1 | 1) => {
+    // Grouped-by-type and active-search modes hide the drag handle; keyboard
+    // reorder must mirror that — writing to manualOrder here would silently
+    // mutate ordering the user can't see being applied.
+    if (isSortDisabledRef.current) return;
+    const worktreeId = rowEl.dataset.worktreeRow;
+    if (!worktreeId) return;
+    const visible = dragStartOrderRef.current;
+    const currentIdx = visible.indexOf(worktreeId);
+    if (currentIdx === -1) return;
+    const targetIdx = currentIdx + delta;
+    if (targetIdx < 0 || targetIdx >= visible.length) return;
+    const filterStore = useWorktreeFilterStore.getState();
+    const merged = applyManualWorktreeReorder(
+      filterStore.manualOrder,
+      visible,
+      currentIdx,
+      targetIdx
+    );
+    filterStore.setManualOrder(merged);
+    filterStore.setOrderBy("manual");
+    setKeyboardReorderAnnouncement(`Moved to position ${targetIdx + 1} of ${visible.length}`);
+  }, []);
+  const { gridRef, handleGridKeyDown, handleGridFocusCapture } = useWorktreeGridRovingFocus(
+    scrollContainerRef,
+    { onKeyboardReorder: handleKeyboardReorder }
+  );
   const { worktrees, isLoading, isReconnecting, error, refresh } = useWorktrees();
   const deferredWorktrees = useDeferredValue(worktrees);
   const [isRefreshing, startRefreshTransition] = useTransition();
@@ -551,6 +583,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   );
 
   const dragStartOrder = useMemo(() => filteredWorktrees.map((w) => w.id), [filteredWorktrees]);
+  dragStartOrderRef.current = dragStartOrder;
 
   // Fleet-eligible terminals inside the currently visible worktrees, split so an
   // arm/disarm elsewhere only re-walks the unarmed tally rather than re-scanning
@@ -799,6 +832,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 
   const hasQuery = query.trim().length > 0;
   const isSortDisabled = isGroupedByType || hasQuery;
+  isSortDisabledRef.current = isSortDisabled;
 
   // 1-based aria-rowindex slots for the pinned rows.
   const mainRowIndex = mainVisible ? 1 : 0;
@@ -903,6 +937,12 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         <WorktreeSidebarSearchBar inputRef={searchInputRef} chipCounts={chipCounts} />
       )}
 
+      {/* SR-only live region for keyboard reorder announcements. dnd-kit's
+          built-in announcer can't see external mutations like Alt+Arrow, so
+          announce here. */}
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {keyboardReorderAnnouncement}
+      </div>
       {/* Worktree list — single role="grid" with roving tab stop spans pinned + scrollable rows */}
       <div
         ref={gridRef}
