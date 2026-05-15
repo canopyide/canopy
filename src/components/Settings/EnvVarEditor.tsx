@@ -4,7 +4,6 @@ import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/compon
 import { cn } from "@/lib/utils";
 import { looksLikeSecret } from "@/utils/secretDetection";
 import { isSensitiveEnvKey } from "../../../shared/utils/envVars";
-import { notify } from "@/lib/notify";
 import { ImportEnvDialog } from "./ImportEnvDialog";
 
 /**
@@ -402,6 +401,9 @@ export function EnvVarEditor({
   // When non-null, the focus-recovery effect focuses the key input for that rowId.
   const [pendingFocusKey, setPendingFocusKey] = useState<string | null>(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  // Per-row "Pasted text normalized" inline indicator. Auto-clears after 2s.
+  const [normalizedRows, setNormalizedRows] = useState<Set<string>>(() => new Set());
+  const normalizeTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const lastEnvRef = useRef<Record<string, string>>(env);
   const lastInheritedRef = useRef<Record<string, string> | undefined>(inheritedEnv);
   const lastContextKeyRef = useRef<string | undefined>(contextKey);
@@ -432,6 +434,16 @@ export function EnvVarEditor({
       setRows(envToDraft(env, inheritedEnv));
     }
   }, [env, inheritedEnv, contextKey, rows]);
+
+  // Clear any pending normalize-indicator timers on unmount so we don't
+  // setState on an unmounted component.
+  useEffect(() => {
+    const timers = normalizeTimers.current;
+    return () => {
+      timers.forEach((t) => clearTimeout(t));
+      timers.clear();
+    };
+  }, []);
 
   // Focus recovery after adding a row. Narrowly keyed to avoid cross-firing
   // with the reseed effect above.
@@ -549,12 +561,24 @@ export function EnvVarEditor({
       const end = input.selectionEnd ?? 0;
       handleValueChange(rowId, input.value.slice(0, start) + cleaned + input.value.slice(end));
     }
-    notify({
-      type: "info",
-      title: "Pasted text normalized",
-      message: "Quotation marks, dashes, and surrounding whitespace were cleaned up.",
-      transient: true,
+    const prior = normalizeTimers.current.get(rowId);
+    if (prior) clearTimeout(prior);
+    setNormalizedRows((prev) => {
+      if (prev.has(rowId)) return prev;
+      const next = new Set(prev);
+      next.add(rowId);
+      return next;
     });
+    const timer = setTimeout(() => {
+      normalizeTimers.current.delete(rowId);
+      setNormalizedRows((prev) => {
+        if (!prev.has(rowId)) return prev;
+        const next = new Set(prev);
+        next.delete(rowId);
+        return next;
+      });
+    }, 2000);
+    normalizeTimers.current.set(rowId, timer);
   };
 
   const handleOverride = (rowId: string) => {
@@ -803,6 +827,14 @@ export function EnvVarEditor({
                       title="Looks like a secret. Prefer a ${ENV_VAR} reference to your shell environment."
                     >
                       {"Looks like a secret — prefer ${ENV_VAR}"}
+                    </p>
+                  )}
+                  {!hasSecretWarning && normalizedRows.has(row.rowId) && (
+                    <p
+                      className="absolute left-2.5 bottom-0.5 text-[9px] leading-none text-status-info pointer-events-none"
+                      data-testid="env-editor-normalized"
+                    >
+                      Pasted text normalized
                     </p>
                   )}
                 </div>

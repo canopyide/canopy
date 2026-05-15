@@ -23,7 +23,7 @@ export function useHibernationNotifications(): void {
         title: "Project hibernated",
         message: `"${projectName}" — ${terminalsKilled} terminal${terminalsKilled === 1 ? "" : "s"} suspended${reasonLabel}`,
         inboxMessage: `"${projectName}" — ${terminalsKilled} terminal${terminalsKilled === 1 ? "" : "s"} suspended${reasonLabel}`,
-        priority: "watch",
+        priority: "low",
         context: { projectId },
         coalesce: {
           key: "hibernation:project",
