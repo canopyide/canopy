@@ -183,7 +183,7 @@ function ProjectListItem({
     if (project.activeAgentCount > 0)
       return { secondaryText: "Agent working\u2026", secondaryClass: "text-activity-working" };
     if (project.waitingAgentCount > 0)
-      return { secondaryText: "Needs review", secondaryClass: "text-status-warning/80" };
+      return { secondaryText: "Agent waiting…", secondaryClass: "text-activity-waiting" };
     if (project.lastOpened > 0)
       return {
         secondaryText: formatTimeAgo(project.lastOpened),

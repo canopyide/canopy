@@ -177,11 +177,11 @@ describe("ProjectSwitcherPalette secondary text waterfall", () => {
     expect(screen.getByText("Agent working\u2026")).toBeTruthy();
   });
 
-  it("shows 'Needs review' when only waitingAgentCount > 0", () => {
+  it("shows 'Agent waiting…' when only waitingAgentCount > 0", () => {
     render(
       <ProjectSwitcherPalette {...baseProps} results={[makeProject({ waitingAgentCount: 1 })]} />
     );
-    expect(screen.getByText("Needs review")).toBeTruthy();
+    expect(screen.getByText("Agent waiting…")).toBeTruthy();
   });
 
   it("shows relative time when lastOpened > 0 and no agents active", () => {
