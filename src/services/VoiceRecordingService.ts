@@ -42,6 +42,7 @@ class VoiceRecordingService {
   private stream: MediaStream | null = null;
   private elapsedTimer: ReturnType<typeof setInterval> | null = null;
   private sessionStartedAt = 0;
+  private selectedDeviceId = "";
   private unsubscribers: Array<() => void> = [];
   private isStoppingSession = false;
   private stopPromise: Promise<void> | null = null;
@@ -283,6 +284,7 @@ class VoiceRecordingService {
   async refreshConfiguration(): Promise<boolean> {
     const settings = await window.electron.voiceInput.getSettings();
     const isConfigured = settings.enabled && !!settings.openaiApiKey;
+    this.selectedDeviceId = settings.deviceId ?? "";
     logDebug(`${LOG_PREFIX} refreshConfiguration`, {
       enabled: settings.enabled,
       hasApiKey: !!settings.openaiApiKey,
@@ -378,7 +380,10 @@ class VoiceRecordingService {
     logDebug(`${LOG_PREFIX} Requesting microphone access`);
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const constraints: MediaStreamConstraints = this.selectedDeviceId
+        ? { audio: { deviceId: { ideal: this.selectedDeviceId } }, video: false }
+        : { audio: true, video: false };
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
     } catch (error) {
       const message =
         error instanceof DOMException && error.name === "NotAllowedError"
@@ -419,6 +424,15 @@ class VoiceRecordingService {
           };
         }),
       });
+      if (this.selectedDeviceId) {
+        const actualId = stream.getAudioTracks()[0]?.getSettings?.().deviceId;
+        if (actualId && actualId !== this.selectedDeviceId) {
+          logWarn(`${LOG_PREFIX} Microphone device mismatch`, {
+            requested: this.selectedDeviceId,
+            actual: actualId,
+          });
+        }
+      }
     } catch (err) {
       logDebug(`${LOG_PREFIX} Could not read microphone track settings`, { err });
     }

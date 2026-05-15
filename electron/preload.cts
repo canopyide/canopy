@@ -2328,6 +2328,7 @@ const api: ElectronAPI = {
         correctionCustomInstructions: string;
         paragraphingStrategy: "spoken-command" | "manual";
         resolveFileLinks: boolean;
+        deviceId: string;
       }>
     ) => _unwrappingInvoke(CHANNELS.VOICE_INPUT_SET_SETTINGS, patch),
     start: () => _unwrappingInvoke(CHANNELS.VOICE_INPUT_START),

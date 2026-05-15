@@ -15,6 +15,7 @@ import {
   ChevronDown,
   ChevronUp,
   FileSearch,
+  RotateCcw,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ import { SettingsTextarea } from "./SettingsTextarea";
 import { useSettingsTabValidation } from "./SettingsValidationRegistry";
 import { dispatchVoiceInputSettingsChanged } from "@/lib/voiceInputSettingsEvents";
 import { logWarn } from "@/utils/logger";
+import { useAudioDevices, SYSTEM_DEFAULT_VALUE } from "@/hooks/useAudioDevices";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { CORE_CORRECTION_PROMPT } from "@shared/config/voiceCorrection";
 import type {
@@ -76,6 +78,7 @@ const DEFAULT_SETTINGS: VoiceInputSettings = {
   correctionCustomInstructions: "",
   paragraphingStrategy: "spoken-command",
   resolveFileLinks: true,
+  deviceId: "",
 };
 
 type LoadState = "loading" | "ready" | "error";
@@ -88,6 +91,13 @@ export function VoiceInputSettingsTab() {
   const [isRequestingMic, setIsRequestingMic] = useState(false);
   const [newDictionaryWord, setNewDictionaryWord] = useState("");
   const dictionaryInputRef = useRef<HTMLInputElement>(null);
+
+  const {
+    devices,
+    loading: devicesLoading,
+    error: devicesError,
+    refresh: refreshDevices,
+  } = useAudioDevices();
 
   useEffect(() => {
     let settled = false;
@@ -216,6 +226,32 @@ export function VoiceInputSettingsTab() {
               onOpenSettings={handleOpenMicSettings}
               onRefresh={handleRefreshMicPermission}
             />
+
+            <div className="flex items-center justify-between">
+              <SettingsSelect
+                label="Microphone"
+                description={
+                  devicesError
+                    ? devicesError
+                    : devicesLoading
+                      ? "Detecting devices..."
+                      : "Select which microphone to use for dictation"
+                }
+                error={devicesError ?? undefined}
+                value={settings.deviceId || SYSTEM_DEFAULT_VALUE}
+                onValueChange={(v) => update({ deviceId: v === SYSTEM_DEFAULT_VALUE ? "" : v })}
+                options={devices}
+                disabled={devicesLoading && devices.length <= 1}
+              />
+              <button
+                type="button"
+                onClick={refreshDevices}
+                className="mt-0.5 p-1.5 rounded-sm text-daintree-text/40 hover:text-daintree-text/70 transition-colors"
+                aria-label="Refresh microphone list"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            </div>
 
             <ApiKeyRow
               label="OpenAI API Key"
