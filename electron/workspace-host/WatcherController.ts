@@ -7,6 +7,7 @@ const WATCHER_FALLBACK_POLL_INTERVAL_MS = 300_000;
 const WATCHER_GIT_ONLY_ACTIVE_POLL_INTERVAL_MS = 60_000;
 const WATCHER_RETRY_INTERVAL_MS = 30_000;
 const WATCHER_MAX_RETRIES = 5;
+const MAX_RESETS_PER_SESSION = 3;
 const WATCHER_WORKTREE_MIN_DEBOUNCE_MS = 250;
 const WATCHER_WORKTREE_MAX_DEBOUNCE_MS = 800;
 const WATCHER_WORKTREE_MAX_WAIT_MS = 1500;
@@ -49,6 +50,7 @@ export class WatcherController {
   private gitWatchRefreshPending = false;
   private watcherRetryTimer: NodeJS.Timeout | null = null;
   private watcherRetryCount = 0;
+  private retryBudgetResetCount = 0;
   private downgradeTimer: NodeJS.Timeout | null = null;
   private disposed = false;
 
@@ -169,6 +171,7 @@ export class WatcherController {
         this.watcherRetryTimer = null;
       }
       this.watcherRetryCount = 0;
+      this.retryBudgetResetCount = 0;
     }
     this.gitWatchRefreshPending = false;
   }
@@ -285,6 +288,35 @@ export class WatcherController {
       clearTimeout(this.watcherRetryTimer);
       this.watcherRetryTimer = null;
     }
+  }
+
+  /**
+   * Reset the recursive-arm retry budget so transient kernel constraints
+   * (inotify limits cleared after closing a heavy process, sleep/wake) don't
+   * require a full project reload. Gated by a session cap to prevent
+   * thrashing on truly constrained systems.
+   *
+   * Resets on any non-zero counter, not only exhaustion — a user hitting
+   * refresh during the backoff window (count 1-4) may want immediate relief
+   * and doesn't need to wait for budget exhaustion before the recovery path
+   * is available. The session cap still bounds total resets.
+   *
+   * Returns `true` when the budget was actually reset (non-zero counter,
+   * under the cap); callers can use this to decide whether a re-arm attempt
+   * is worthwhile.
+   */
+  resetRetryBudget(): boolean {
+    if (this.disposed) return false;
+    if (this.watcherRetryCount === 0) return false;
+    if (this.retryBudgetResetCount >= MAX_RESETS_PER_SESSION) return false;
+
+    if (this.watcherRetryTimer) {
+      clearTimeout(this.watcherRetryTimer);
+      this.watcherRetryTimer = null;
+    }
+    this.watcherRetryCount = 0;
+    this.retryBudgetResetCount++;
+    return true;
   }
 
   /**

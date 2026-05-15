@@ -878,6 +878,66 @@ describe("WorktreeMonitor", () => {
       monitor.stop();
     });
 
+    it("refresh() resets watcher retry budget so subsequent failures can schedule retries", async () => {
+      mockRecursiveStartResult = false;
+      mockGitOnlyStartResult = true;
+      mockGetWorktreeChangesWithStats.mockResolvedValue({
+        worktreeId: "/test/worktree",
+        rootPath: "/test",
+        changes: [],
+        changedFileCount: 0,
+        lastUpdated: Date.now(),
+      });
+
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      // Exhaust all 5 retries.
+      for (let i = 0; i < 5; i++) {
+        await vi.advanceTimersByTimeAsync(30_000);
+      }
+      const startsAtExhaustion = watcherStartCallCount;
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(watcherStartCallCount).toBe(startsAtExhaustion);
+
+      // refresh() resets budget and calls update() which fires
+      // stop(false) + start("recursive") [fails] + start("git-only") [succeeds].
+      await monitor.refresh();
+      expect(watcherStartCallCount).toBe(startsAtExhaustion + 2);
+
+      // Recursive still fails — should schedule a retry with fresh budget.
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(watcherStartCallCount).toBe(startsAtExhaustion + 4);
+
+      monitor.stop();
+    });
+
+    it("refresh() does not attempt re-arm when budget was not exhausted", async () => {
+      mockRecursiveStartResult = true;
+      mockGitOnlyStartResult = true;
+      mockGetWorktreeChangesWithStats.mockResolvedValue({
+        worktreeId: "/test/worktree",
+        rootPath: "/test",
+        changes: [],
+        changedFileCount: 0,
+        lastUpdated: Date.now(),
+      });
+
+      const callbacks = makeCallbacks();
+      const monitor = new WorktreeMonitor(ACTIVE_WORKTREE, WATCH_CONFIG, callbacks, "main");
+      await monitor.start();
+
+      expect(monitor.hasWatcher).toBe(true);
+      const startsBeforeRefresh = watcherStartCallCount;
+
+      // refresh() when budget is zero no-ops — no extra watcher churn.
+      await monitor.refresh();
+      expect(watcherStartCallCount).toBe(startsBeforeRefresh);
+
+      monitor.stop();
+    });
+
     it("ensureWatcherState during recursive backoff preserves retry budget", async () => {
       // Regression guard: ensureWatcherState() / focus rotation must not
       // reset the recursive-retry counter while a retry is already pending.
