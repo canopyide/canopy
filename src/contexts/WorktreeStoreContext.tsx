@@ -8,6 +8,7 @@ import type { WorktreeSnapshot } from "@shared/types";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { usePanelStore } from "@/store/panelStore";
 import { usePulseStore } from "@/store/pulseStore";
+import { wakeActiveWorktreeTerminals } from "@/store/wakeActiveWorktreeTerminals";
 import { worktreeClient } from "@/clients/worktreeClient";
 
 export const WorktreeStoreContext = createContext<WorktreeViewStoreApi | null>(null);
@@ -305,15 +306,28 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
     );
 
     // Snapshot-on-wake: when a cached view is reactivated (addChildView),
-    // Chromium fires visibilitychange. Request a fresh snapshot to rehydrate
-    // state that may have changed while the view was backgrounded.
+    // Chromium fires visibilitychange. Request a fresh worktree snapshot to
+    // rehydrate state that may have changed while the view was backgrounded,
+    // then fan out per-terminal wake to pull the missed range from the
+    // pty-host's headless mirror into each visible xterm buffer (#7999).
     function handleVisibilityChange() {
-      if (document.visibilityState === "visible" && worktreePort.isReady()) {
+      if (document.visibilityState !== "visible") return;
+      if (worktreePort.isReady()) {
         fetchInitialState();
       }
+      wakeActiveWorktreeTerminals();
     }
     document.addEventListener("visibilitychange", handleVisibilityChange);
     cleanups.push(() => document.removeEventListener("visibilitychange", handleVisibilityChange));
+
+    // Missed-event guard: if the view is already visible by the time this
+    // listener installs (fast cached reactivation), the visibilitychange
+    // event has already fired (#4935). Worktree state is fetched via the
+    // worktreePort.isReady() / onReady paths above, so only the wake fan-out
+    // needs to run here.
+    if (document.visibilityState === "visible") {
+      wakeActiveWorktreeTerminals();
+    }
 
     return () => {
       generation++;
