@@ -3,6 +3,7 @@ import { useShallow } from "zustand/react/shallow";
 import { Check, Copy, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useTelemetryPreviewStore } from "@/store/telemetryPreviewStore";
 import { telemetryPreviewClient } from "@/clients";
 import { actionService } from "@/services/ActionService";
@@ -110,8 +111,12 @@ function TelemetryDetail({ event }: DetailProps) {
 
   if (!event) {
     return (
-      <div className="flex items-center justify-center h-full text-sm text-daintree-text/60">
-        <p>Select an event to view the sanitised payload</p>
+      <div className="flex items-center justify-center h-full">
+        <EmptyState
+          variant="zero-data"
+          scale="sidebar"
+          title="Select an event to view its payload"
+        />
       </div>
     );
   }
@@ -162,30 +167,35 @@ function TelemetryDetail({ event }: DetailProps) {
   );
 }
 
-function EmptyState({ active }: { active: boolean }) {
+function TelemetryEmptyState({ active }: { active: boolean }) {
   const handleEnable = useCallback(() => {
     void actionService.dispatch("telemetry.togglePreview", { active: true }, { source: "user" });
   }, []);
 
-  return (
-    <div className="h-full flex items-center justify-center p-6">
-      <div className="max-w-sm text-center space-y-3">
-        <ShieldCheck className="w-8 h-8 mx-auto text-daintree-accent/70" aria-hidden />
-        <h3 className="text-sm font-medium text-daintree-text">
-          {active ? "No events captured yet" : "Telemetry preview is off"}
-        </h3>
-        <p className="text-xs text-daintree-text/60">
-          {active
-            ? "Perform an action that emits an analytics event (e.g. finishing onboarding) to see its sanitised payload here. Crash reports only appear in preview once telemetry is set to Errors Only or Full Usage. Nothing is transmitted until you opt in."
-            : "Turn on preview to mirror the sanitised payloads Daintree would transmit — inspect them before deciding whether to enable telemetry."}
-        </p>
-        {!active && (
+  if (!active) {
+    return (
+      <EmptyState
+        variant="zero-data"
+        scale="canvas"
+        title="Telemetry preview is off"
+        icon={<ShieldCheck />}
+        description="Turn it on to mirror the sanitised payloads Daintree would transmit — inspect them before deciding whether to enable telemetry."
+        action={
           <Button variant="subtle" size="xs" onClick={handleEnable}>
-            Enable preview
+            Turn on telemetry preview
           </Button>
-        )}
-      </div>
-    </div>
+        }
+      />
+    );
+  }
+
+  return (
+    <EmptyState
+      variant="zero-data"
+      scale="canvas"
+      title="No events captured yet"
+      description="Perform an action that emits an analytics event (e.g. finishing onboarding) to see its sanitised payload here. Crash reports only appear in preview once telemetry is set to Errors Only or Full Usage. Nothing is transmitted until you opt in."
+    />
   );
 }
 
@@ -239,8 +249,8 @@ export function TelemetryContent({ className }: TelemetryContentProps) {
 
   if (events.length === 0) {
     return (
-      <div className={cn("h-full", className)}>
-        <EmptyState active={active} />
+      <div className={cn("h-full flex items-center justify-center", className)}>
+        <TelemetryEmptyState active={active} />
       </div>
     );
   }

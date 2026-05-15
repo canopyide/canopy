@@ -264,7 +264,7 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
 
       <div className="flex-1 relative min-h-0">
         {displayEntries.length === 0 ? (
-          logs.length > 0 && hasActiveFilters ? (
+          logs.some((l) => l.id !== "previous-session-separator") && hasActiveFilters ? (
             <div className="flex items-center justify-center h-full">
               <EmptyState
                 variant="filtered-empty"
@@ -281,10 +281,16 @@ export function LogsContent({ className, onSourcesChange }: LogsContentProps) {
               />
             </div>
           ) : (
-            <div className="flex items-center justify-center h-full text-daintree-text/60 text-sm">
-              {logs.length === 0 && !previousSessionEntry
-                ? "No logs yet"
-                : "No new logs this session"}
+            <div className="flex items-center justify-center h-full">
+              {logs.length === 0 && !previousSessionEntry ? (
+                <EmptyState variant="zero-data" scale="sidebar" title="No logs yet" />
+              ) : (
+                <EmptyState
+                  variant="user-cleared"
+                  scale="sidebar"
+                  title="No new logs this session"
+                />
+              )}
             </div>
           )
         ) : (
