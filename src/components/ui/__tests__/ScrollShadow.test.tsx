@@ -60,8 +60,23 @@ describe("ScrollShadow", () => {
         <p>Short content</p>
       </ScrollShadow>
     );
-    const gradients = container.querySelectorAll("[aria-hidden='true']");
-    expect(gradients).toHaveLength(0);
+    const visible = container.querySelectorAll("[data-visible='true']");
+    expect(visible).toHaveLength(0);
+  });
+
+  it("always mounts both overlays for opacity-transition continuity", () => {
+    const { container } = render(
+      <ScrollShadow>
+        <p>Short content</p>
+      </ScrollShadow>
+    );
+    const overlays = container.querySelectorAll("[aria-hidden='true']");
+    expect(overlays).toHaveLength(2);
+    for (const overlay of overlays) {
+      expect(overlay.getAttribute("data-visible")).toBe("false");
+      expect(overlay.className).toContain("transition-opacity");
+      expect(overlay.className).toContain("opacity-0");
+    }
   });
 
   it("shows bottom shadow when content overflows and scrolled to top", () => {
@@ -82,7 +97,7 @@ describe("ScrollShadow", () => {
       fireEvent.scroll(scrollDiv);
     });
 
-    const gradients = container.querySelectorAll("[aria-hidden='true']");
+    const gradients = container.querySelectorAll("[data-visible='true']");
     expect(gradients).toHaveLength(1);
     expect(gradients[0]!.className).toContain("bottom-0");
   });
@@ -105,7 +120,7 @@ describe("ScrollShadow", () => {
       fireEvent.scroll(scrollDiv);
     });
 
-    const gradients = container.querySelectorAll("[aria-hidden='true']");
+    const gradients = container.querySelectorAll("[data-visible='true']");
     expect(gradients).toHaveLength(1);
     expect(gradients[0]!.className).toContain("top-0");
   });
@@ -128,7 +143,7 @@ describe("ScrollShadow", () => {
       fireEvent.scroll(scrollDiv);
     });
 
-    const gradients = container.querySelectorAll("[aria-hidden='true']");
+    const gradients = container.querySelectorAll("[data-visible='true']");
     expect(gradients).toHaveLength(2);
     expect(gradients[0]!.className).toContain("top-0");
     expect(gradients[1]!.className).toContain("bottom-0");
@@ -204,7 +219,7 @@ describe("ScrollShadow", () => {
       fireEvent.scroll(scrollDiv);
     });
 
-    const gradients = container.querySelectorAll("[aria-hidden='true']");
+    const gradients = container.querySelectorAll("[data-visible='true']");
     for (const gradient of gradients) {
       expect(gradient.className).toContain("pointer-events-none");
     }
