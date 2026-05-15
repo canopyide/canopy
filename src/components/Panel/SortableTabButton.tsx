@@ -2,7 +2,7 @@ import React, { useCallback } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { m } from "framer-motion";
-import { cn } from "@/lib/utils";
+import { DRAG_GHOST_OPACITY } from "@/lib/animationUtils";
 import { TabButton, type TabButtonProps } from "./TabButton";
 
 export interface SortableTabButtonProps extends TabButtonProps {
@@ -33,6 +33,7 @@ function SortableTabButtonComponent({
     transform: CSS.Transform.toString(transform),
     transition,
     zIndex: isDragging ? 10 : undefined,
+    opacity: isDragging ? DRAG_GHOST_OPACITY : undefined,
   };
 
   // Wrap handlers to prevent activation of sortable when clicking or closing
@@ -55,7 +56,7 @@ function SortableTabButtonComponent({
   const performanceMode = document.body.dataset.performanceMode === "true";
 
   return (
-    <div ref={setNodeRef} style={style} className={cn(isDragging && "opacity-50")}>
+    <div ref={setNodeRef} style={style}>
       {performanceMode ? (
         <TabButton
           ref={setActivatorNodeRef}
