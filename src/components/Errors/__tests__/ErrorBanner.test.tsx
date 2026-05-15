@@ -318,7 +318,7 @@ describe("ErrorBanner", () => {
       render(
         <ErrorBanner
           error={makeError({
-            isTransient: true,
+            retryability: "auto",
             retryAction: "git",
             retryExhausted: true,
           })}
@@ -335,7 +335,7 @@ describe("ErrorBanner", () => {
       render(
         <ErrorBanner
           error={makeError({
-            isTransient: true,
+            retryability: "auto",
             retryAction: "git",
             retryExhausted: true,
           })}
@@ -351,7 +351,7 @@ describe("ErrorBanner", () => {
       render(
         <ErrorBanner
           error={makeError({
-            isTransient: true,
+            retryability: "auto",
             retryAction: "git",
             occurrenceCount: 5,
           })}
@@ -368,7 +368,7 @@ describe("ErrorBanner", () => {
       render(
         <ErrorBanner
           error={makeError({
-            isTransient: true,
+            retryability: "auto",
             retryAction: "git",
             occurrenceCount: 4,
           })}
@@ -381,11 +381,11 @@ describe("ErrorBanner", () => {
       expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     });
 
-    it("remains non-retryable (0 occurrenceCount) when isTransient is false", () => {
+    it("remains non-retryable (0 occurrenceCount) when retryability is 'none'", () => {
       render(
         <ErrorBanner
           error={makeError({
-            isTransient: false,
+            retryability: "none",
             occurrenceCount: 0,
             retryAction: undefined,
           })}
