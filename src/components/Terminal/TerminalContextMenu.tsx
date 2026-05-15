@@ -114,7 +114,9 @@ export function TerminalContextMenu({
     [terminalId]
   );
 
-  const isPaused = terminal?.flowStatus === "paused-backpressure";
+  const isPaused =
+    terminal?.flowStatus === "paused-backpressure" ||
+    terminal?.flowStatus === "paused-resource-governor";
 
   const currentLocation: PanelLocation = forceLocation ?? terminal?.location ?? "grid";
 

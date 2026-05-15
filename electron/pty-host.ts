@@ -251,6 +251,14 @@ const resourceGovernor = new ResourceGovernor({
     backpressureManager.stats.pauseCount += count;
   },
   sendEvent,
+  emitTerminalStatus: (...args) => backpressureManager.emitTerminalStatus(...args),
+  getTerminalActivity: () =>
+    ptyManager.getAll().map((t) => ({
+      id: t.id,
+      lastOutputTime: t.lastOutputTime,
+      lastInputTime: t.lastInputTime,
+      agentState: t.agentState,
+    })),
   getPendingBytesSnapshot: () => {
     // Merge SAB-path, IPC-path, and per-window MessagePort-path queue depths so
     // the reliability gauge captures every in-flight byte the pty-host is holding.
