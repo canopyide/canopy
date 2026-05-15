@@ -269,7 +269,7 @@ describe("BannerSlot", () => {
     const { container, rerender, queryByTestId } = render(<Pair which="a" />);
     const initialSlots = container.querySelectorAll(".banner-slot");
     expect(initialSlots.length).toBe(1);
-    expect(initialSlots[0].className).toContain("h-auto");
+    expect(initialSlots[0]!.className).toContain("h-auto");
 
     act(() => {
       rerender(<Pair which="b" />);
