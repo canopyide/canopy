@@ -138,7 +138,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
     expect(store.getState().worktrees.get("wt-1")?.prCiStatus).toBe("SUCCESS");
   });
 
-  it("preserves the existing prCiStatus when the event omits it", async () => {
+  it("clears prCiStatus when the event omits it (full-replace, matches backend)", async () => {
     const store = await renderProvider();
     act(() => {
       store
@@ -156,7 +156,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
       });
     });
 
-    expect(store.getState().worktrees.get("wt-1")?.prCiStatus).toBe("FAILURE");
+    expect(store.getState().worktrees.get("wt-1")?.prCiStatus).toBeUndefined();
   });
 
   it("updates the GitHub PR cache so the dropdown stays in sync", async () => {
@@ -222,7 +222,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
     expect(getGeneration(key)).toBe(genBefore);
   });
 
-  it("skips the cache mutation when prCiStatus is undefined", async () => {
+  it("clears the cached ciStatus when prCiStatus is undefined (full-replace)", async () => {
     const store = await renderProvider();
     act(() => {
       store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
@@ -247,8 +247,8 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
       });
     });
 
-    expect((getCache(key)?.items[0] as GitHubPR).ciStatus).toBe("SUCCESS");
-    expect(getGeneration(key)).toBe(genBefore);
+    expect((getCache(key)?.items[0] as GitHubPR).ciStatus).toBeUndefined();
+    expect(getGeneration(key)).toBe(genBefore + 1);
   });
 
   it("skips the cache mutation when there is no current project", async () => {
@@ -316,6 +316,64 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
 
     expect((getCache(sameProj)?.items[0] as GitHubPR).ciStatus).toBe("SUCCESS");
     expect((getCache(otherProj)?.items[0] as GitHubPR).ciStatus).toBe("PENDING");
+  });
+
+  it("applies last-write-wins across rapid successive events for the same PR", async () => {
+    const store = await renderProvider();
+    act(() => {
+      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+    });
+
+    const key = buildCacheKey("/repo/proj", "pr", "open", "created");
+    setCache(key, {
+      items: [makePR(42, "PENDING")],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: 1,
+    });
+
+    act(() => {
+      for (const ciStatus of ["PENDING", "FAILURE", "SUCCESS"] as const) {
+        emit("pr-detected", {
+          type: "pr-detected",
+          worktreeId: "wt-1",
+          prNumber: 42,
+          prUrl: "https://example.test/pr/42",
+          prState: "open",
+          prCiStatus: ciStatus,
+        });
+      }
+    });
+
+    expect(store.getState().worktrees.get("wt-1")?.prCiStatus).toBe("SUCCESS");
+    expect((getCache(key)?.items[0] as GitHubPR).ciStatus).toBe("SUCCESS");
+  });
+
+  it("does nothing when the worktree is not in the store", async () => {
+    const store = await renderProvider();
+    const key = buildCacheKey("/repo/proj", "pr", "open", "created");
+    setCache(key, {
+      items: [makePR(42, "PENDING")],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: 1,
+    });
+    const genBefore = getGeneration(key);
+
+    act(() => {
+      emit("pr-detected", {
+        type: "pr-detected",
+        worktreeId: "wt-missing",
+        prNumber: 42,
+        prUrl: "https://example.test/pr/42",
+        prState: "open",
+        prCiStatus: "SUCCESS",
+      });
+    });
+
+    expect(store.getState().worktrees.get("wt-missing")).toBeUndefined();
+    expect((getCache(key)?.items[0] as GitHubPR).ciStatus).toBe("PENDING");
+    expect(getGeneration(key)).toBe(genBefore);
   });
 
   it("uses the project path read at event time so closures cannot go stale", async () => {

@@ -202,13 +202,17 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
         const { worktrees } = store.getState();
         const existing = worktrees.get(event.worktreeId);
         if (!existing) return;
+        // Full-replace semantics for prCiStatus mirror the backend
+        // (WorktreeMonitor.setPRInfo): undefined means "no checks", not
+        // "preserve prior value." Merging with ?? would let stale CI rollups
+        // linger after checks disappear.
         store.getState().applyUpdate(
           {
             ...existing,
             prNumber: event.prNumber,
             prUrl: event.prUrl,
             prState: event.prState,
-            prCiStatus: event.prCiStatus ?? existing.prCiStatus,
+            prCiStatus: event.prCiStatus,
             prTitle: event.prTitle ?? existing.prTitle,
             issueNumber: event.issueNumber ?? existing.issueNumber,
             issueTitle: event.issueTitle ?? existing.issueTitle,
@@ -221,10 +225,7 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
         // Sync the GitHub PR dropdown cache so the sidebar PRBadge and the
         // dropdown row can't drift. Read the project path at event time —
         // capturing it in the effect closure would corrupt cache slots after
-        // a project switch (#4670). Skip when prCiStatus is missing (don't
-        // overwrite a cached value with undefined) or when the project store
-        // hasn't been hydrated yet.
-        if (event.prCiStatus === undefined) return;
+        // a project switch (#4670).
         const projectPath = useProjectStore.getState().currentProject?.path;
         if (!projectPath) return;
         mutateCacheEntries(projectPath, "pr", (entry) => {
