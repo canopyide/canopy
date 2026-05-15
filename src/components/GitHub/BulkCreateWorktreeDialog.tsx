@@ -790,17 +790,28 @@ export function BulkCreateWorktreeDialog({
   }, [progress.items, planned, runBatch]);
 
   const handleClose = useCallback(() => {
-    // Cancel/Escape/backdrop dismissal preserves bulk selection so the user
-    // can reopen the dropdown and finish picking. Selection only clears via
-    // handleDone after worktrees are actually created.
+    // Cancel/Escape/backdrop while idle or mid-execution preserves the bulk
+    // selection so the user can reopen the dropdown and finish picking.
+    // Once the run has completed, dismissing via X/Escape/backdrop must run
+    // the same selection cleanup as the Done button — otherwise the bulk
+    // bar stays visible with the now-stale selection.
     if (isExecuting) {
       runIdRef.current++;
       queueRef.current?.clear();
       queueRef.current = null;
     }
     isExecutingRef.current = false;
+
+    // Capture before onClose() — onClose is wired to closeBulkCreateDialog
+    // upstream, which zeroes out the stored callback as part of its reset.
+    const storedOnComplete =
+      progress.phase === "done"
+        ? useWorktreeSelectionStore.getState().bulkCreateDialog.onComplete
+        : undefined;
+
     onClose();
-  }, [isExecuting, onClose]);
+    storedOnComplete?.();
+  }, [isExecuting, onClose, progress.phase]);
 
   const handleDone = useCallback(() => {
     // Capture before onComplete()/onClose() — both are wired to closeBulkCreateDialog

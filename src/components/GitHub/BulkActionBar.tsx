@@ -52,8 +52,8 @@ export function BulkActionBar({
           key="bulk-bar"
           role="toolbar"
           aria-label="Bulk actions"
-          initial={{ y: "100%", opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
+          initial={{ y: "100%", opacity: 0, pointerEvents: "none" }}
+          animate={{ y: 0, opacity: 1, pointerEvents: "auto" }}
           exit={{ y: "100%", opacity: 0, pointerEvents: "none" }}
           transition={{ type: "spring", damping: 25, stiffness: 200 }}
           className="mx-2 mb-2 rounded-xl shadow-[var(--theme-shadow-floating)] bg-surface-panel ring-1 ring-border-default inset-shadow-[0_1px_0_var(--color-overlay-soft)] flex items-center gap-3 px-4 py-3"

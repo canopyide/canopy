@@ -19,12 +19,17 @@ vi.mock("framer-motion", () => {
     HTMLDivElement,
     React.HTMLAttributes<HTMLDivElement> & {
       exit?: Record<string, unknown>;
-      initial?: unknown;
-      animate?: unknown;
+      initial?: Record<string, unknown>;
+      animate?: Record<string, unknown>;
       transition?: unknown;
     }
   >(({ children, exit, initial, animate, transition, ...rest }, ref) => (
-    <div ref={ref} data-exit={exit ? JSON.stringify(exit) : undefined} {...rest}>
+    <div
+      ref={ref}
+      data-exit={exit ? JSON.stringify(exit) : undefined}
+      data-animate={animate ? JSON.stringify(animate) : undefined}
+      {...rest}
+    >
       {children}
     </div>
   ));
@@ -113,6 +118,27 @@ describe("BulkActionBar", () => {
     expect(exitProp).toBeTruthy();
     const exit = JSON.parse(exitProp!) as Record<string, unknown>;
     expect(exit.pointerEvents).toBe("none");
+  });
+
+  it("restores pointer events in the animate variant so re-entry isn't hit-test dead", () => {
+    // Without this, framer-motion never clears the inline style written by
+    // the exit variant — in production builds the bar can come back visually
+    // visible while the X button stays unclickable.
+    render(
+      <BulkActionBar
+        mode="issue"
+        selectedIssues={[makeIssue(1)]}
+        selectedPRs={[]}
+        selectedCount={1}
+        onClear={vi.fn()}
+      />
+    );
+
+    const toolbar = screen.getByRole("toolbar", { name: /bulk actions/i });
+    const animateProp = toolbar.getAttribute("data-animate");
+    expect(animateProp).toBeTruthy();
+    const animate = JSON.parse(animateProp!) as Record<string, unknown>;
+    expect(animate.pointerEvents).toBe("auto");
   });
 
   it("calls onClear when the X button is clicked", () => {
