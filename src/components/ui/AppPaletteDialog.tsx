@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useDeferredValue, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { TABBABLE_SELECTOR } from "@/lib/accessibility";
@@ -446,12 +446,18 @@ AppPaletteDialog.Empty = function AppPaletteEmpty({
   children,
 }: AppPaletteEmptyProps) {
   const trimmedQuery = query.trim();
+  // Defer the *displayed* query so the title doesn't redraw every keystroke
+  // while a fast typist is filling the input. The branch decision still uses
+  // the immediate `trimmedQuery` so clearing the input flips back to
+  // zero-data without a stale "No matches for ..." flash.
+  const deferredTrimmedQuery = useDeferredValue(trimmedQuery);
   if (trimmedQuery) {
+    const displayQuery = deferredTrimmedQuery || trimmedQuery;
     return (
       <EmptyState
         variant="filtered-empty"
         scale="popover"
-        title={noMatchMessage ?? defaultNoMatchTitle(trimmedQuery)}
+        title={noMatchMessage ?? defaultNoMatchTitle(displayQuery)}
         action={noMatchContent}
         className="px-3 py-8"
       />
