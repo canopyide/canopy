@@ -125,4 +125,55 @@ describe("IssuePickerDialog", () => {
 
     expect(screen.getByRole("option", { name: /test issue/i })).toBeDefined();
   });
+
+  it("trims the search term before sending it to the client", async () => {
+    mockListIssues.mockResolvedValue({ items: [] });
+
+    render(<IssuePickerDialog {...defaultProps} />, { wrapper: TooltipProvider });
+
+    const input = screen.getByPlaceholderText("Search issues by title or number...");
+    fireEvent.change(input, { target: { value: "  bug  " } });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(800);
+    });
+
+    expect(mockListIssues).toHaveBeenCalledWith(
+      expect.objectContaining({ search: "bug", state: "open" })
+    );
+  });
+
+  it("treats a whitespace-only query as no search and shows the zero-data state", async () => {
+    mockListIssues.mockResolvedValue({ items: [] });
+
+    render(<IssuePickerDialog {...defaultProps} />, { wrapper: TooltipProvider });
+
+    const input = screen.getByPlaceholderText("Search issues by title or number...");
+    fireEvent.change(input, { target: { value: "   " } });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(800);
+    });
+
+    expect(mockListIssues).toHaveBeenLastCalledWith(expect.objectContaining({ search: undefined }));
+    expect(screen.getByRole("status").textContent).toContain("No issues found");
+  });
+
+  it("truncates an overly long query in the filtered-empty title", async () => {
+    mockListIssues.mockResolvedValue({ items: [] });
+
+    render(<IssuePickerDialog {...defaultProps} />, { wrapper: TooltipProvider });
+
+    const longQuery = "x".repeat(80);
+    const input = screen.getByPlaceholderText("Search issues by title or number...");
+    fireEvent.change(input, { target: { value: longQuery } });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(800);
+    });
+
+    const status = screen.getByRole("status");
+    expect(status.textContent).toContain("…");
+    expect(status.textContent).not.toContain("x".repeat(80));
+  });
 });

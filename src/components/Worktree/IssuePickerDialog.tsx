@@ -6,6 +6,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useDeferredLoading } from "@/hooks/useDeferredLoading";
 import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
+import { truncateSearchQuery } from "@/lib/searchQuery";
 import { cn } from "@/lib/utils";
 import { githubClient } from "@/clients";
 import type { GitHubIssue } from "@shared/types/github";
@@ -127,7 +128,7 @@ export function IssuePickerDialog({
     if (!isOpen) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      fetchIssues(search, stateFilter);
+      fetchIssues(search.trim(), stateFilter);
     }, 300);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -237,7 +238,7 @@ export function IssuePickerDialog({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => fetchIssues(search, stateFilter)}
+                onClick={() => fetchIssues(trimmedSearch, stateFilter)}
                 className="mt-2 text-status-error hover:text-status-error"
               >
                 <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
@@ -250,7 +251,7 @@ export function IssuePickerDialog({
             <EmptyState
               scale="popover"
               variant="filtered-empty"
-              title={`No matches for "${deferredSearch}"`}
+              title={`No matches for "${truncateSearchQuery(deferredSearch || trimmedSearch)}"`}
               className="px-3 py-8"
             />
           ) : (
