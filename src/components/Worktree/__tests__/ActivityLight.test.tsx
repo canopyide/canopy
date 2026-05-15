@@ -166,9 +166,7 @@ describe("ActivityLight", () => {
   it("re-arms scheduling when lastActivityTimestamp changes (new activity)", () => {
     const now = Date.now();
     vi.setSystemTime(now);
-    const { rerender } = render(
-      <ActivityLight lastActivityTimestamp={now - DECAY_DURATION - 1} />
-    );
+    const { rerender } = render(<ActivityLight lastActivityTimestamp={now - DECAY_DURATION - 1} />);
     expect(vi.getTimerCount()).toBe(0);
 
     // A fresh activity timestamp restarts the decay scheduler.
