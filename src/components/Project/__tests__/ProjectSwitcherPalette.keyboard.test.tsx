@@ -266,17 +266,38 @@ describe("ProjectSwitcherPalette keyboard navigation", () => {
     expect(footer.textContent).not.toContain("Right-click for more");
   });
 
-  it("Alt+Enter performs a normal switch (no background-open affordance)", () => {
-    render(<ProjectSwitcherPalette {...defaultProps} />);
+  it("Alt+Enter performs a normal switch and never triggers new-window", () => {
+    const onSelectNewWindow = vi.fn();
+    render(<ProjectSwitcherPalette {...defaultProps} onSelectNewWindow={onSelectNewWindow} />);
     const input = screen.getByTestId("palette-input");
     fireEvent.keyDown(input, { key: "Enter", altKey: true });
     expect(defaultProps.onSelect).toHaveBeenCalledTimes(1);
     expect(defaultProps.onSelect).toHaveBeenCalledWith(defaultProps.results[0]);
+    expect(onSelectNewWindow).not.toHaveBeenCalled();
   });
 
-  it("footer never shows a background hint when Alt is held", () => {
+  it("Meta+Enter still triggers the new-window shortcut", () => {
+    const onSelectNewWindow = vi.fn();
+    render(<ProjectSwitcherPalette {...defaultProps} onSelectNewWindow={onSelectNewWindow} />);
+    const input = screen.getByTestId("palette-input");
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
+    expect(onSelectNewWindow).toHaveBeenCalledTimes(1);
+    expect(onSelectNewWindow).toHaveBeenCalledWith(defaultProps.results[0]);
+    expect(defaultProps.onSelect).not.toHaveBeenCalled();
+  });
+
+  it("footer never shows a background hint when Alt is held (modal mode)", () => {
     modifierKeysState.alt = true;
     render(<ProjectSwitcherPalette {...defaultProps} />);
+    const footer = screen.getByTestId("palette-footer");
+    expect(footer.textContent).not.toContain("Background");
+    expect(footer.textContent).not.toContain("⌥↵");
+    expect(footer.textContent).toContain("Switch");
+  });
+
+  it("footer never shows a background hint when Alt is held (dropdown mode)", () => {
+    modifierKeysState.alt = true;
+    render(<ProjectSwitcherPalette {...defaultProps} mode="dropdown" />);
     const footer = screen.getByTestId("palette-footer");
     expect(footer.textContent).not.toContain("Background");
     expect(footer.textContent).not.toContain("⌥↵");
