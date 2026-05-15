@@ -393,7 +393,7 @@ describe("GeneralTab — System Status filtering (issue #5072)", () => {
     await renderGeneralTab();
 
     await waitFor(() => {
-      const desc = screen.getByTestId("section-desc-System Status");
+      const desc = screen.getByTestId("section-desc-System status");
       expect(desc.textContent).toBe("Agents ready to use on your system.");
     });
   });
