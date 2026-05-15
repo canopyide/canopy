@@ -38,19 +38,26 @@ export function detectWslPath(p: string): WslPathInfo | null {
 }
 
 /**
- * Return the name of the first WSL distro listed by `wsl.exe --list --quiet`.
+ * Return the name of the user's default WSL distro by parsing
+ * `wsl.exe --list --verbose` output for the line marked with `*`.
  * On non-Windows or when wsl.exe is unavailable, returns `null`.
+ *
+ * The `*` marker is the only locale-independent signal — the header row
+ * and the STATE column are both translated on non-English Windows, but
+ * the marker stays put. `--list --quiet` does not include the marker and
+ * does not order entries by default-status, so on multi-distro hosts the
+ * first-listed distro is not necessarily the default (issue #7944).
  *
  * Encoding handling mirrors the CliAvailabilityService probe: WSL has
  * historically emitted UTF-16LE (with BOM); newer Windows builds honour
  * `WSL_UTF8=1`. We pick the encoding heuristically.
  */
-export function listFirstWslDistro(): Promise<string | null> {
+export function getDefaultWslDistro(): Promise<string | null> {
   if (process.platform !== "win32") return Promise.resolve(null);
   return new Promise((resolve) => {
     execFile(
       "wsl.exe",
-      ["--list", "--quiet"],
+      ["--list", "--verbose"],
       {
         env: { ...process.env, WSL_UTF8: "1" },
         timeout: WSL_LIST_TIMEOUT_MS,
@@ -82,11 +89,23 @@ export function listFirstWslDistro(): Promise<string | null> {
           ? buf.toString("utf16le").replace(/^\uFEFF/, "")
           : buf.toString("utf8");
 
-        const lines = decoded
-          .split(/\r?\n/)
-          .map((l) => l.trim())
-          .filter(Boolean);
-        resolve(lines[0] ?? null);
+        // `--verbose` lines look like:
+        //   "* Ubuntu          Running         2"   (default)
+        //   "  Debian          Stopped         2"   (non-default)
+        // The NAME column is separated from STATE by 2+ spaces, which lets
+        // names with internal spaces (e.g. "Ubuntu 22.04 LTS") parse cleanly.
+        const lines = decoded.split(/\r?\n/);
+        for (const line of lines) {
+          const match = /^\*\s+(.+?)\s{2,}/.exec(line);
+          if (match) {
+            const name = match[1]?.trim();
+            if (name) {
+              resolve(name);
+              return;
+            }
+          }
+        }
+        resolve(null);
       }
     );
   });

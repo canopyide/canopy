@@ -18,7 +18,7 @@ import { refreshPath, expandWindowsEnvVars } from "../setup/environment.js";
 import { store } from "../store.js";
 import { CHANNELS } from "../ipc/channels.js";
 import { broadcastToRenderer } from "../ipc/utils.js";
-import { listFirstWslDistro } from "../utils/wsl.js";
+import { getDefaultWslDistro } from "../utils/wsl.js";
 
 interface ProbeSuccess {
   status: "found";
@@ -430,8 +430,10 @@ export class CliAvailabilityService {
    *    been executed once via `npx <pkg>`, populating `~/.npm/_npx` without
    *    installing a launchable bin shim (issue #5641).
    * 4. WSL probe on Windows — only fires when `AgentConfig.supportsWsl` is
-   *    true. Probes `wsl.exe --list --quiet` then `wsl.exe -d <distro> -e
-   *    <cmd> --version` against the first listed distribution.
+   *    true. Resolves the default distro via `wsl.exe --list --verbose` (the
+   *    `*`-marked line) then probes `wsl.exe -d <distro> -e <cmd> --version`
+   *    against it. Identifying the default by marker rather than list order
+   *    matters on multi-distro hosts (issue #7944).
    *
    * A `blocked` result from the shell probe short-circuits the fallbacks:
    * the same endpoint security policy that blocked the PATH binary will
@@ -737,7 +739,7 @@ export class CliAvailabilityService {
   }
 
   private async probeWsl(command: string): Promise<ProbeResult> {
-    const distro = await listFirstWslDistro();
+    const distro = await getDefaultWslDistro();
     if (!distro) return { status: "missing" };
 
     return new Promise((resolve) => {
