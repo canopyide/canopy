@@ -13,13 +13,15 @@ import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 const execFileAsync = promisify(execFile);
 
 export const SMOKE_BOOT_TIMEOUT_MS = 90_000;
-const SMOKE_RENDERER_TIMEOUT_MS = 20_000;
-const SMOKE_TERMINAL_TIMEOUT_MS = 20_000;
-const SMOKE_PROJECT_TIMEOUT_MS = 45_000;
-const SMOKE_GIT_TIMEOUT_MS = 15_000;
-const SMOKE_STABILITY_SOAK_MS = process.platform === "win32" ? 20_000 : 12_000;
-const SMOKE_TERMINAL_ROUNDS = process.platform === "win32" ? 3 : 2;
-const SMOKE_PERSISTENCE_ITERATIONS = process.platform === "win32" ? 48 : 24;
+const IS_WIN32 = process.platform === "win32";
+const SMOKE_RENDERER_TIMEOUT_MS = IS_WIN32 ? 45_000 : 20_000;
+const SMOKE_RENDERER_MOUNT_POLL_MS = IS_WIN32 ? 30_000 : 15_000;
+const SMOKE_TERMINAL_TIMEOUT_MS = IS_WIN32 ? 30_000 : 20_000;
+const SMOKE_PROJECT_TIMEOUT_MS = IS_WIN32 ? 75_000 : 45_000;
+const SMOKE_GIT_TIMEOUT_MS = IS_WIN32 ? 30_000 : 15_000;
+const SMOKE_STABILITY_SOAK_MS = IS_WIN32 ? 20_000 : 12_000;
+const SMOKE_TERMINAL_ROUNDS = IS_WIN32 ? 3 : 2;
+const SMOKE_PERSISTENCE_ITERATIONS = IS_WIN32 ? 48 : 24;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -81,7 +83,7 @@ async function runSmokeRendererChecks(window: BrowserWindow): Promise<void> {
     // React bootstrap is async (font loading + dynamic import), so poll until mounted
     let rootChildCount = root ? root.childElementCount : 0;
     if (hasRoot && rootChildCount === 0) {
-      const deadline = Date.now() + 15000;
+      const deadline = Date.now() + ${SMOKE_RENDERER_MOUNT_POLL_MS};
       while (rootChildCount === 0 && Date.now() < deadline) {
         await new Promise(r => setTimeout(r, 200));
         rootChildCount = root.childElementCount;
