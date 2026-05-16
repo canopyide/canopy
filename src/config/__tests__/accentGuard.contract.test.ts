@@ -272,7 +272,6 @@ const ALLOWLIST_BY_ISSUE: Record<string, string[]> = {
     "src/components/Layout/ContentDock.tsx",
     "src/components/Layout/DockedTabGroup.tsx",
     "src/components/Layout/DockedTerminalItem.tsx",
-    "src/components/Project/ProjectMruSwitcherOverlay.tsx",
     "src/components/Pulse/PulseHeatmap.tsx",
   ],
 };
