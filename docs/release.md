@@ -2,7 +2,7 @@
 
 ## Overview
 
-Releases are built by the `.github/workflows/release.yml` workflow, triggered by `v*` tags or manual `workflow_dispatch`. The workflow builds for macOS (universal), Windows (x64), and Linux (x64), then publishes artifacts to Cloudflare R2.
+Releases are built by **three per-OS workflows** — `.github/workflows/release-macos.yml`, `release-linux.yml`, and `release-windows.yml` (#8052) — each triggered independently by the same `v*` tag (or manual `workflow_dispatch`). Each workflow runs a full vertical slice for its OS (checks → unit tests → e2e → build → R2 upload → website notify) and publishes to Cloudflare R2 the moment its own pipeline is green. A failure or hang in one OS only delays that OS; the other two ship unaffected, and re-running a failed OS is a single-workflow re-trigger. macOS builds universal, Windows x64+arm64, Linux x64.
 
 Use the `/release` command to execute a full gitflow release.
 
@@ -62,10 +62,13 @@ The `/release` command produces the GitHub release body from the `CHANGELOG.md` 
 Before tagging a real release, run the workflow in dry-run mode to validate the full pipeline against the current `develop` head. The `/release` command prompts for this between preflight and the changelog work — it's the recommended way to avoid the "tag → CI fails → re-tag" loop.
 
 ```bash
-gh workflow run release.yml --ref develop -f dry_run=true
+# Each OS is its own workflow now — dry-run the one(s) you want, or all three.
+gh workflow run release-macos.yml   --ref develop -f dry_run=true
+gh workflow run release-linux.yml   --ref develop -f dry_run=true
+gh workflow run release-windows.yml --ref develop -f dry_run=true
 ```
 
-A dry run executes every gate and build job — checks, unit tests, every E2E bucket (`core` and `online` on macOS + Linux + Windows; the six `full-*` buckets on macOS + Linux only), and the full `build-daintree` matrix (macOS sign + notarize, Linux, Windows including Store package + WACK) — but **skips** the side effects that matter for an actual release:
+Each dry run executes every gate and build job for its OS — checks, unit tests, that OS's E2E buckets (`core`, `online`, and all six auto-sharded `full-*` buckets — see #8053), and that OS's `build-daintree` job (macOS sign + notarize; Linux; Windows including Store package + WACK) — but **skips** the side effects that matter for an actual release:
 
 - No R2 upload (binaries or metadata)
 - No Microsoft Store submission (`Submit to Microsoft Store` is gated by `inputs.dry_run != true`)

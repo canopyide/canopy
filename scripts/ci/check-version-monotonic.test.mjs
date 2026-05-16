@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   ALLOWED_PREFIXES,
+  PLATFORMS,
   checkVersionMonotonic,
   extractVersion,
+  resolvePlatforms,
   validatePrefix,
 } from "./check-version-monotonic.mjs";
 
@@ -160,6 +162,36 @@ describe("check-version-monotonic", () => {
       const result = validatePrefix("nightly");
       expect(result.ok).toBe(false);
       expect(result.error).toContain("not a known channel");
+    });
+  });
+
+  describe("resolvePlatforms", () => {
+    it("defaults to all platforms when unset", () => {
+      expect(resolvePlatforms(undefined)).toEqual({ ok: true, platforms: [...PLATFORMS] });
+    });
+
+    it("treats empty / whitespace as all platforms", () => {
+      expect(resolvePlatforms("")).toEqual({ ok: true, platforms: [...PLATFORMS] });
+      expect(resolvePlatforms("   ")).toEqual({ ok: true, platforms: [...PLATFORMS] });
+    });
+
+    it("scopes to a single platform", () => {
+      expect(resolvePlatforms("mac")).toEqual({ ok: true, platforms: ["mac"] });
+      expect(resolvePlatforms("win")).toEqual({ ok: true, platforms: ["win"] });
+    });
+
+    it("normalizes case and whitespace, dedupes, and preserves PLATFORMS order", () => {
+      expect(resolvePlatforms(" WIN , mac , mac ")).toEqual({
+        ok: true,
+        platforms: ["mac", "win"],
+      });
+    });
+
+    it("rejects an unknown platform so a typo can't silently skip the gate", () => {
+      const result = resolvePlatforms("macos");
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain("macos");
+      expect(result.error).toContain("mac, linux, win");
     });
   });
 });

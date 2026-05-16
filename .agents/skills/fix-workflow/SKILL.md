@@ -1,6 +1,6 @@
 ---
 name: fix-workflow
-description: Fix Daintree GitHub Actions workflows until the selected workflow passes. Use when the user asks Codex to repair `.github/workflows/release.yml` dry runs, `.github/workflows/nightly.yml`, release-gating E2E failures, nightly memory-leak failures, CI packaging/signing/update-metadata failures, or to repeatedly run a failing workflow until it passes on a dedicated branch and then squash/merge the fix back to `develop`.
+description: Fix Daintree GitHub Actions workflows until the selected workflow passes. Use when the user asks Codex to repair the per-OS release workflows (`.github/workflows/release-macos.yml` / `release-linux.yml` / `release-windows.yml`) dry runs, `.github/workflows/nightly.yml`, release-gating E2E failures, nightly memory-leak failures, CI packaging/signing/update-metadata failures, or to repeatedly run a failing workflow until it passes on a dedicated branch and then squash/merge the fix back to `develop`.
 ---
 
 # Fix Workflow
@@ -34,7 +34,7 @@ In this repo, `.gitignore` ignores both `tmp/` and `.tmp`, and `.tmp` is already
 Track:
 
 - Current branch and pushed SHA.
-- Target workflow (`nightly.yml` or `release.yml dry_run=true`).
+- Target workflow (`nightly.yml`, or one/all of `release-macos.yml` / `release-linux.yml` / `release-windows.yml` with `dry_run=true`).
 - Last full workflow run URL and conclusion.
 - Failure queue: job, platform, step, suite/spec, suspected cause, current status.
 - Narrow validation commands already run.
@@ -57,7 +57,7 @@ If a run is still in progress when reporting status, give the run URL, elapsed t
 Authoritative files:
 
 - `.github/workflows/nightly.yml` runs `check`, `test`, `build`, `integration-test`, `knip`, `e2e-core`, `e2e-full`, `e2e-online`, `e2e-nightly`, then `publish` when `platform` is empty/all.
-- `.github/workflows/release.yml` supports manual dry runs with `dry_run=true`; it runs checks, unit tests, `core`, all six `full-*` buckets, `online`, and the full `build-daintree` matrix without publishing to R2, Microsoft Store, or the website.
+- `.github/workflows/release-macos.yml`, `release-linux.yml`, and `release-windows.yml` are three independent per-OS release workflows (#8052), each triggered by the same `v*` tag and each supporting manual dry runs with `dry_run=true`. Each runs checks, unit tests, that OS's `core` + all six (auto-sharded, #8053) `full-*` buckets + `online`, and that OS's `build-daintree` job without publishing to R2, Microsoft Store, or the website. They're independent — fix and re-run only the failing OS('s) workflow.
 - `.github/workflows/e2e.yml` is the unified suite runner. Valid `suite`: `full`, `core`, `full-terminal`, `full-worktree`, `full-presets`, `full-platform`, `full-panels`, `full-resilience`, `online`, `nightly`.
 - `.github/workflows/e2e-single.yml` is the preferred CI loop for one failing spec. It accepts `platform`, `suite`, `test_file`, optional `grep`, `workers`, and `retries`.
 - `scripts/ci/run-single-e2e.mjs` validates that a single E2E spec belongs to the selected suite.
@@ -110,7 +110,9 @@ If the user gave a run URL, inspect that run. Otherwise list recent failures:
 
 ```bash
 gh run list --workflow nightly.yml --branch develop --limit 10
-gh run list --workflow release.yml --branch develop --limit 10
+gh run list --workflow release-macos.yml --branch develop --limit 10
+gh run list --workflow release-linux.yml --branch develop --limit 10
+gh run list --workflow release-windows.yml --branch develop --limit 10
 ```
 
 For a run:
@@ -187,7 +189,9 @@ gh workflow run nightly.yml --ref <branch> -f platform=all
 Run the full release dry run:
 
 ```bash
-gh workflow run release.yml --ref <branch> -f dry_run=true
+gh workflow run release-macos.yml   --ref <branch> -f dry_run=true
+gh workflow run release-linux.yml   --ref <branch> -f dry_run=true
+gh workflow run release-windows.yml --ref <branch> -f dry_run=true
 ```
 
 Find and watch the run:

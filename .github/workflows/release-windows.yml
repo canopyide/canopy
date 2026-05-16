@@ -1,4 +1,11 @@
-name: Release
+name: Release (Windows)
+
+# Per-OS release workflow (#8052) — see release-macos.yml for the rationale.
+# Windows owns `*.exe`, `*.appx`, `*.msix`, and `latest.yml` (no platform
+# suffix — electron-updater's Provider.getChannelFilePrefix() returns "" for
+# win32) on R2. Microsoft Store submission stays inline here. A hung Windows
+# E2E shard or a stalled Store submission now only delays Windows; macOS and
+# Linux publish from their own workflows the moment they go green.
 
 on:
   push:
@@ -6,13 +13,8 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
-      skip_notarization:
-        description: "Skip macOS notarization (use when Apple's service is down)"
-        required: false
-        type: boolean
-        default: false
       dry_run:
-        description: "Dry run — exercise the full pipeline (gates + build + sign + notarize) without publishing to R2, Microsoft Store, or the website"
+        description: "Dry run — exercise the full pipeline (gates + build) without publishing to R2, Microsoft Store, or the website"
         required: false
         type: boolean
         default: false
@@ -22,7 +24,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-windows-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -53,19 +55,9 @@ jobs:
         run: npm run check
 
   unit-tests:
-    name: Unit Tests (${{ matrix.name }})
-    runs-on: ${{ matrix.os }}
+    name: Unit Tests (Windows)
+    runs-on: windows-latest
     timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-22.04
-            name: Linux
-          - os: macos-14
-            name: macOS
-          - os: windows-latest
-            name: Windows
     steps:
       - uses: actions/checkout@v6
 
@@ -74,21 +66,10 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Install Linux dependencies
-        if: matrix.os == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libarchive-tools
-
-      - name: Install dependencies (Windows)
-        if: matrix.os == 'windows-latest'
+      - name: Install dependencies
         run: npm ci
         env:
           npm_config_msvs_version: "2022"
-
-      - name: Install dependencies
-        if: matrix.os != 'windows-latest'
-        run: npm ci
 
       - name: Test
         run: npm run test
@@ -98,15 +79,12 @@ jobs:
     uses: ./.github/workflows/e2e.yml
     with:
       suite: core
-      platform: all
+      platform: windows
 
-  # Fan out the six full-* domain buckets as a matrix of reusable-workflow
-  # calls. GitHub Actions waits on every matrix entry before unblocking
-  # `build-daintree`, so a single `needs: [..., e2e-full-gate]` is enough.
-  #
-  # Releases gate on all three OSes here so Windows-only regressions can't
-  # ship. The nightly job validates the same surface daily (see nightly.yml)
-  # so this isn't a cold path — Windows full has been green in nightly.
+  # The motivating case for #8053: each full-* bucket auto-shards 4 ways
+  # inside e2e.yml, so a 39-minute serial Windows bucket becomes ~10min
+  # wall-time and a hung Windows spec takes out 1/4 of one bucket instead of
+  # stalling the entire Windows release.
   e2e-full-gate:
     needs: [checks, unit-tests]
     strategy:
@@ -122,25 +100,21 @@ jobs:
     uses: ./.github/workflows/e2e.yml
     with:
       suite: ${{ matrix.suite }}
-      platform: all
+      platform: windows
 
   e2e-online-gate:
     needs: [checks, unit-tests]
     uses: ./.github/workflows/e2e.yml
     with:
       suite: online
-      platform: all
+      platform: windows
     secrets: inherit
 
   build-daintree:
     needs: [checks, unit-tests, e2e-core-gate, e2e-full-gate, e2e-online-gate]
-    name: Build Daintree (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Build Daintree (Windows)
+    runs-on: windows-latest
     timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-14, ubuntu-22.04, windows-latest]
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -174,15 +148,10 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Install dependencies (Windows)
-        if: matrix.os == 'windows-latest'
+      - name: Install dependencies
         run: npm ci
         env:
           npm_config_msvs_version: "2022"
-
-      - name: Install dependencies
-        if: matrix.os != 'windows-latest'
-        run: npm ci
 
       # Cross-compile win-job-object (source-only N-API addon) for arm64 so the
       # NSIS combined installer can ship both archs. node-pty and better-sqlite3
@@ -190,111 +159,24 @@ jobs:
       # packaging. The post-install copy of node-pty's conpty win10-arm64 DLLs
       # is recovered by `scripts/afterPack.cjs` based on `context.arch`.
       - name: Cross-compile arm64 native modules (Windows)
-        if: matrix.os == 'windows-latest'
         shell: bash
         env:
           npm_config_msvs_version: "2022"
         run: npm run rebuild:win-arm64
 
-      - name: Install Linux dependencies
-        if: matrix.os == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libarchive-tools \
-            libxss-dev \
-            libsecret-1-dev \
-            libnss3-dev \
-            libnotify-dev \
-            libxkbfile-dev
-
-      - name: Import macOS certificates
-        if: startsWith(matrix.os, 'macos')
-        uses: apple-actions/import-codesign-certs@v6
-        with:
-          p12-file-base64: ${{ secrets.MAC_CERTS }}
-          p12-password: ${{ secrets.MAC_CERTS_PASSWORD }}
-          keychain-password: ${{ secrets.MAC_CERTS_PASSWORD }}
-
-      - name: Prepare Apple API key
-        if: startsWith(matrix.os, 'macos')
-        run: |
-          mkdir -p "$RUNNER_TEMP/apple"
-          printf '%s' "$APPLE_API_KEY_CONTENT" > "$RUNNER_TEMP/apple/AuthKey.p8"
-        env:
-          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
-
-      - name: Build (macOS)
-        if: startsWith(matrix.os, 'macos')
-        shell: bash
-        env:
-          CSC_LINK: ${{ secrets.MAC_CERTS }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
-          APPLE_API_KEY: ${{ runner.temp }}/apple/AuthKey.p8
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-          DEBUG: electron-builder,electron-notarize*,electron-osx-sign*
-          npm_config_build_from_source: "true"
-        run: |
-          npm run build
-          PUBLISH_FLAG="always"
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            echo "::warning::Dry run — skipping publish to electron-builder targets"
-            PUBLISH_FLAG="never"
-          fi
-          EXTRA_ARGS=""
-          if [ "${{ inputs.skip_notarization }}" = "true" ]; then
-            echo "::warning::Skipping macOS notarization (manually disabled)"
-            EXTRA_ARGS="-c.mac.notarize=false"
-          fi
-          npx electron-builder --config electron-builder.config.cjs --publish "$PUBLISH_FLAG" -c.buildDependenciesFromSource=true $EXTRA_ARGS
-
-      - name: Verify macOS notarization staple
-        if: startsWith(matrix.os, 'macos') && inputs.skip_notarization != true
-        shell: bash
-        run: |
-          set -euo pipefail
-          # x64 has no arch suffix because electron-builder treats it as the default arch
-          # (builder-util getArchSuffix returns "" for the default); arm64 and universal do.
-          apps=(
-            "release/mac-arm64/Daintree.app"
-            "release/mac/Daintree.app"
-            "release/mac-universal/Daintree.app"
-          )
-          for app in "${apps[@]}"; do
-            if [[ ! -d "$app" ]]; then
-              echo "::error::Missing expected macOS app bundle: $app"
-              exit 1
-            fi
-            echo "--- codesign: $app"
-            codesign --verify --deep --strict --verbose=4 "$app"
-            echo "--- stapler validate: $app"
-            xcrun stapler validate "$app"
-            echo "--- spctl (diagnostic only): $app"
-            spctl --assess --type execute --verbose --ignore-cache --no-cache "$app" || true
-          done
-
       - name: Build
-        if: ${{ !startsWith(matrix.os, 'macos') }}
         shell: bash
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           DEBUG: electron-builder,electron-notarize*,electron-osx-sign*
         run: |
           npm run build
-          PUBLISH_FLAG="always"
-          if [ "${{ matrix.os }}" = "windows-latest" ] || [ "${{ inputs.dry_run }}" = "true" ]; then
-            if [ "${{ inputs.dry_run }}" = "true" ] && [ "${{ matrix.os }}" != "windows-latest" ]; then
-              echo "::warning::Dry run — skipping publish to electron-builder targets"
-            fi
-            PUBLISH_FLAG="never"
-          fi
-          npx electron-builder --config electron-builder.config.cjs --publish "$PUBLISH_FLAG"
+          # Windows binaries are published via the R2 upload in the publish
+          # job (and the Microsoft Store step below), never by electron-builder
+          # directly — so --publish is always "never" here.
+          npx electron-builder --config electron-builder.config.cjs --publish never
 
       - name: Verify Windows Store package was built
-        if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
           $packages = @(Get-ChildItem -Path 'release\*.appx', 'release\*.msix' -ErrorAction SilentlyContinue)
@@ -306,7 +188,6 @@ jobs:
           Write-Host "Found $($packages.Count) Store package(s) in release/"
 
       - name: Verify Windows NSIS installer was built
-        if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
           $installers = @(Get-ChildItem -Path 'release\*.exe' -ErrorAction SilentlyContinue)
@@ -318,7 +199,6 @@ jobs:
           Write-Host "Found NSIS installer: $($installers[0].Name) ($([math]::Round($installers[0].Length / 1MB, 1)) MB)"
 
       - name: Run WACK (Windows, best-effort)
-        if: matrix.os == 'windows-latest'
         shell: pwsh
         continue-on-error: true
         run: |
@@ -345,7 +225,7 @@ jobs:
 
       - name: Check Microsoft Store secrets (Windows)
         id: store-secrets
-        if: matrix.os == 'windows-latest' && inputs.dry_run != true
+        if: inputs.dry_run != true
         shell: pwsh
         env:
           PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
@@ -366,11 +246,11 @@ jobs:
           }
 
       - name: Install Microsoft Store CLI (Windows)
-        if: matrix.os == 'windows-latest' && inputs.dry_run != true && steps.store-secrets.outputs.configured == 'true'
+        if: inputs.dry_run != true && steps.store-secrets.outputs.configured == 'true'
         uses: microsoft/microsoft-store-apppublisher@v1.3
 
       - name: Submit to Microsoft Store (Windows)
-        if: matrix.os == 'windows-latest' && inputs.dry_run != true && steps.store-secrets.outputs.configured == 'true'
+        if: inputs.dry_run != true && steps.store-secrets.outputs.configured == 'true'
         shell: pwsh
         env:
           PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
@@ -394,38 +274,7 @@ jobs:
             exit $LASTEXITCODE
           }
 
-      - name: Validate update metadata (macOS)
-        if: startsWith(matrix.os, 'macos')
-        shell: bash
-        run: |
-          node scripts/ci/generate-update-metadata.mjs mac "release/${UPDATE_METADATA_PREFIX}-mac.yml"
-          if [ ! -f "release/${UPDATE_METADATA_PREFIX}-mac.yml" ]; then
-            echo "::error::Missing release/${UPDATE_METADATA_PREFIX}-mac.yml - macOS auto-update metadata was not generated"
-            exit 1
-          fi
-          DMG_COUNT=$(find release -maxdepth 1 -name '*.dmg' | wc -l | tr -d ' ')
-          ZIP_COUNT=$(find release -maxdepth 1 -name '*.zip' | wc -l | tr -d ' ')
-          if [ "$DMG_COUNT" -ne 3 ] || [ "$ZIP_COUNT" -ne 3 ]; then
-            echo "::error::Expected 3 DMGs and 3 ZIPs, got $DMG_COUNT DMGs and $ZIP_COUNT ZIPs"
-            find release -maxdepth 1 \( -name '*.dmg' -o -name '*.zip' \) -exec ls -la {} +
-            exit 1
-          fi
-          echo "✓ Found $DMG_COUNT DMGs, $ZIP_COUNT ZIPs, and ${UPDATE_METADATA_PREFIX}-mac.yml"
-          node scripts/ci/validate-update-metadata.mjs "release/${UPDATE_METADATA_PREFIX}-mac.yml"
-
-      - name: Validate update metadata (Linux)
-        if: matrix.os == 'ubuntu-22.04'
-        shell: bash
-        run: |
-          node scripts/ci/generate-update-metadata.mjs linux "release/${UPDATE_METADATA_PREFIX}-linux.yml"
-          if [ ! -f "release/${UPDATE_METADATA_PREFIX}-linux.yml" ]; then
-            echo "::error::Missing release/${UPDATE_METADATA_PREFIX}-linux.yml - Linux auto-update metadata was not generated"
-            exit 1
-          fi
-          node scripts/ci/validate-update-metadata.mjs "release/${UPDATE_METADATA_PREFIX}-linux.yml"
-
       - name: Validate update metadata (Windows NSIS)
-        if: matrix.os == 'windows-latest'
         shell: bash
         run: |
           # electron-updater on Windows polls `<channel>.yml` (no platform
@@ -443,15 +292,11 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: release-daintree-${{ matrix.os }}
+          name: release-daintree-windows-latest
           path: |
-            release/*.dmg
-            release/*.zip
             release/*.appx
             release/*.msix
             release/*.exe
-            release/*.AppImage
-            release/*.deb
             release/*.blockmap
             release/*.yml
           retention-days: 7
@@ -490,18 +335,6 @@ jobs:
             echo "UPDATE_METADATA_PREFIX=latest" >> "$GITHUB_ENV"
           fi
 
-      - name: Download macOS artifacts
-        uses: actions/download-artifact@v8
-        with:
-          name: release-daintree-macos-14
-          path: release/
-
-      - name: Download Linux artifacts
-        uses: actions/download-artifact@v8
-        with:
-          name: release-daintree-ubuntu-22.04
-          path: release/
-
       - name: Download Windows artifacts
         uses: actions/download-artifact@v8
         with:
@@ -519,6 +352,7 @@ jobs:
         shell: bash
         env:
           UPDATE_METADATA_PREFIX: ${{ env.UPDATE_METADATA_PREFIX }}
+          RELEASE_PLATFORMS: win
         run: node scripts/ci/check-version-monotonic.mjs
 
       - name: Upload binaries to R2
@@ -534,13 +368,9 @@ jobs:
             --endpoint-url "${R2_ENDPOINT}" \
             --no-progress \
             --exclude "*" \
-            --include "*.dmg" \
-            --include "*.zip" \
             --include "*.appx" \
             --include "*.msix" \
             --include "*.exe" \
-            --include "*.AppImage" \
-            --include "*.deb" \
             --include "*.blockmap" \
             --cache-control "public, max-age=31536000, immutable"
 
@@ -563,7 +393,7 @@ jobs:
             --endpoint-url "${R2_ENDPOINT}" \
             --no-progress \
             --exclude "*" \
-            --include "${UPDATE_METADATA_PREFIX}*.yml" \
+            --include "${UPDATE_METADATA_PREFIX}.yml" \
             --cache-control "no-cache, no-store, must-revalidate"
 
       - name: Notify website of new release

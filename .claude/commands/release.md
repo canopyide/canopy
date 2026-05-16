@@ -108,7 +108,7 @@ Before you do any of the actual release work (changelog, version bump, branching
 - Unit-test or check failures CI runs that you didn't run locally
 - Workflow-config drift (permissions, reusable-workflow inputs, etc.)
 
-The dry run exercises checks + unit tests + every E2E gate + build + sign + notarize on real runners, but **skips** publishing to R2, Microsoft Store, and the website refresh (see `release.yml:209-218`, `254-260`, `302`, `398`). It typically takes **30–40 minutes**.
+The dry run exercises checks + unit tests + every E2E gate + build + sign + notarize on real runners, but **skips** publishing to R2, Microsoft Store, and the website refresh (the `publish-daintree` job is gated by `startsWith(github.ref, 'refs/tags/v') && inputs.dry_run != true`, and Store submission by `inputs.dry_run != true`, in each of `release-macos.yml` / `release-linux.yml` / `release-windows.yml`). Since #8052 there are three independent per-OS workflows; a dry run means triggering and watching all three. It typically takes **30–40 minutes**.
 
 ### Checkpoint: Ask whether to dry-run
 
@@ -123,36 +123,43 @@ Use `AskUserQuestion`:
 
 ### If the user chose "Yes"
 
-1. Trigger the workflow against `develop`:
+1. Trigger all three per-OS workflows against `develop`:
 
    ```bash
-   gh workflow run release.yml --ref develop -f dry_run=true
+   gh workflow run release-macos.yml   --ref develop -f dry_run=true
+   gh workflow run release-linux.yml   --ref develop -f dry_run=true
+   gh workflow run release-windows.yml --ref develop -f dry_run=true
    ```
 
-2. Resolve the run ID. There's a brief delay before the run is queryable, so poll until one appears:
+2. Resolve the run IDs. There's a brief delay before runs are queryable, so poll until each appears:
 
    ```bash
    sleep 5
-   gh run list --workflow=release.yml --branch develop --limit 1 \
-     --json databaseId,status,event,url
+   for wf in release-macos.yml release-linux.yml release-windows.yml; do
+     gh run list --workflow="$wf" --branch develop --limit 1 \
+       --json databaseId,status,event,url
+   done
    ```
 
-   Confirm the most recent run is a `workflow_dispatch` event (not an older tag-push). Capture the `databaseId` as `<RUN_ID>` and surface the URL to the user so they can follow along.
+   Confirm each most-recent run is a `workflow_dispatch` event (not an older tag-push). Capture the three `databaseId`s and surface all three URLs to the user so they can follow along.
 
-3. Watch the run to completion non-interactively:
+3. Watch each run to completion non-interactively (run them in parallel — they're independent):
 
    ```bash
-   gh run watch <RUN_ID> --exit-status
+   gh run watch <MAC_RUN_ID>   --exit-status &
+   gh run watch <LINUX_RUN_ID> --exit-status &
+   gh run watch <WIN_RUN_ID>   --exit-status &
+   wait
    ```
 
-   This blocks for the full ~30–40 minutes and exits non-zero on failure.
+   This blocks for the full ~30–40 minutes and exits non-zero if any OS failed.
 
-4. On **success**: report the green run to the user and proceed to Phase 3.
+4. On **success** (all three green): report the green runs to the user and proceed to Phase 3.
 
-5. On **failure**: stop. Pull the failure context for the user and ask how to proceed:
+5. On **failure** (any OS): stop. Pull the failure context for the failed OS(es) and ask how to proceed. A failure in one OS does not invalidate the others — but all three must be green before tagging:
 
    ```bash
-   gh run view <RUN_ID> --log-failed | head -200
+   gh run view <FAILED_RUN_ID> --log-failed | head -200
    ```
 
    Typical recovery is: fix the issue on `develop`, push, then re-run the dry run. Do NOT proceed to Phase 3 until a dry run goes fully green — the whole point of this phase is to avoid the re-tag loop.
@@ -305,7 +312,7 @@ This is used for the very first release when gitflow hasn't been set up yet.
 
 ### Create the tag
 
-The tag MUST use the `v` prefix — the CI release workflow (`.github/workflows/release.yml`) triggers on `v*` tags. The workflow validates that the tag version matches `package.json`.
+The tag MUST use the `v` prefix — all three per-OS release workflows (`.github/workflows/release-macos.yml`, `release-linux.yml`, `release-windows.yml`) trigger on `v*` tags. Each workflow validates that the tag version matches `package.json`.
 
 Before creating the tag, use `AskUserQuestion` to confirm:
 
@@ -363,12 +370,16 @@ Tell the user they should set `develop` as the default branch in GitHub repo set
 
 ## Phase 7: Post-Release
 
-1. **Monitor CI:** Provide the command to watch the workflow:
+1. **Monitor CI:** The tag triggers all three per-OS workflows in parallel. Provide commands to watch them:
 
    ```bash
-   gh run list --limit 1 --workflow=release.yml
-   gh run watch
+   for wf in release-macos.yml release-linux.yml release-windows.yml; do
+     gh run list --limit 1 --workflow="$wf" --json databaseId,status,url
+   done
+   # then `gh run watch <RUN_ID> --exit-status` per OS (run in parallel)
    ```
+
+   Each OS publishes independently the moment its own pipeline goes green — a slow or failed OS does not hold back the others, and a failed OS is re-triggered on its own (`gh workflow run release-<os>.yml --ref main` is not valid for a tag-triggered run; use **Re-run failed jobs** on that OS's run, or re-push is unnecessary since the tag already exists).
 
 2. **GitHub Release:** Derive the release body from the new `CHANGELOG.md` section, transformed per `docs/release.md` → "Release Notes Format" → "GitHub Release notes":
    - Take the new `## [X.Y.Z] - YYYY-MM-DD` section from `CHANGELOG.md`.
@@ -402,9 +413,9 @@ Tell the user they should set `develop` as the default branch in GitHub repo set
 
 ## CI Workflow Permissions
 
-The release workflow (`.github/workflows/release.yml`) calls reusable workflows (`e2e-core.yml`, `e2e-online.yml`). GitHub Actions enforces that **reusable workflows cannot escalate permissions beyond the caller**. If any called workflow declares a permission not present in `release.yml`, the run will fail with `startup_failure` (0-second completion, no jobs created).
+Each per-OS release workflow (`release-macos.yml`, `release-linux.yml`, `release-windows.yml`) calls the reusable `e2e.yml`. GitHub Actions enforces that **reusable workflows cannot escalate permissions beyond the caller**. If `e2e.yml` declares a permission not present in a calling workflow, that workflow will fail with `startup_failure` (0-second completion, no jobs created).
 
-**Rule:** The `permissions` block in `release.yml` must be a superset of all permissions declared in any reusable workflow it calls. If a reusable workflow adds a new permission, update `release.yml` to match.
+**Rule:** The `permissions` block in **all three** per-OS release workflows must be a superset of every permission declared in any reusable workflow they call. If `e2e.yml` adds a new permission, update all three to match (they intentionally share an identical `permissions` block).
 
 ## Re-tagging Procedure
 

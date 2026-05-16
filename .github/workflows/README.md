@@ -80,7 +80,7 @@ The workflow will:
    - `APPLE_APP_SPECIFIC_PASSWORD` - App-specific password
    - `APPLE_TEAM_ID` - Team ID from developer account
 
-3. Uncomment the cert import step in `release.yml` (lines 56-62)
+3. The cert import + notarize steps already run unconditionally in `release-macos.yml`; once the secrets above are set they take effect on the next tagged release (no workflow edit needed)
 4. Set `forceCodeSigning: true` in `package.json`
 
 ### Windows Code Signing

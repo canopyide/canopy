@@ -1,8 +1,9 @@
 name: E2E Tests
 
 # Distinguish manual-dispatch runs in the Actions list. Reusable-workflow
-# callers (release.yml, nightly.yml) keep their own parent run title; the
-# matrix job names still make the suite visible inside the run.
+# callers (release-{macos,linux,windows}.yml, nightly.yml) keep their own
+# parent run title; the matrix job names still make the suite visible inside
+# the run.
 run-name: ${{ inputs.suite || 'core' }} · ${{ inputs.platform || 'all' }}${{ inputs.test_file && format(' · {0}', inputs.test_file) || '' }}
 
 # Unified runner for every E2E suite: core smoke, the six full-* domain

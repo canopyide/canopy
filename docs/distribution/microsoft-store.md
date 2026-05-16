@@ -2,7 +2,7 @@
 
 ## Overview
 
-Daintree's Windows distribution channel is the Microsoft Store. The `.github/workflows/release.yml` workflow builds a `.appx` package for Windows on tag push, archives it to Cloudflare R2 alongside the macOS / Linux binaries, and submits it to Microsoft Store certification via the [`msstore`](https://github.com/microsoft/msstore-cli) CLI.
+Daintree's Windows distribution channel is the Microsoft Store. The `.github/workflows/release-windows.yml` workflow (one of the three per-OS release workflows — #8052) builds a `.appx` package for Windows on tag push, archives it to Cloudflare R2 (the macOS / Linux binaries land there independently from their own workflows), and submits it to Microsoft Store certification via the [`msstore`](https://github.com/microsoft/msstore-cli) CLI.
 
 Microsoft re-signs the package after certification with a Microsoft-issued certificate, so no Authenticode certificate is needed. End-user updates are delivered through the Store, not electron-updater. Mac and Linux distribution paths are unchanged.
 
@@ -121,7 +121,7 @@ Microsoft Store screenshots and the website hero are produced by the [`Marketing
 
 macOS is the only GitHub-hosted runner OS whose virtual display honors the scale flag (Windows + Linux runners cap at the OS display's physical pixels, ~1080p). Since Daintree's window is frameless, no OS chrome is captured — screenshots are content-identical across platforms, only resolution differs — so we capture only on macOS.
 
-**Outputs.** PNGs land at `screenshots/<version>/` (e.g. `screenshots/0.9.2/01-hero-surge-checkout.png`) for tagged releases. Re-runs of the same version overwrite. The same set mirrors to `screenshots/latest/` on every push — the website pins to the `latest/` URLs and never needs to know the current version. PNGs are also attached as a workflow artifact for 90 days. The workflow fires automatically on every `v*` tag push (same trigger as `release.yml`).
+**Outputs.** PNGs land at `screenshots/<version>/` (e.g. `screenshots/0.9.2/01-hero-surge-checkout.png`) for tagged releases. Re-runs of the same version overwrite. The same set mirrors to `screenshots/latest/` on every push — the website pins to the `latest/` URLs and never needs to know the current version. PNGs are also attached as a workflow artifact for 90 days. The workflow fires automatically on every `v*` tag push (same trigger as the per-OS release workflows).
 
 Stable URLs:
 

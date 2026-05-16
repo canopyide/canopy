@@ -15,8 +15,9 @@ name: Marketing Screenshots
 run-name: screenshots · ${{ inputs.scale || '2' }}x · ${{ github.ref_name }}
 
 on:
-  # Canonical trigger: tagging a version. Mirrors release.yml so the
-  # marketing assets refresh in lockstep with the binaries on R2.
+  # Canonical trigger: tagging a version. Mirrors the per-OS release
+  # workflows so the marketing assets refresh in lockstep with the binaries
+  # on R2.
   push:
     tags:
       - "v*"
