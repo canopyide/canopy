@@ -13,7 +13,7 @@ const DEBOUNCE_MS = 200;
 export class ProjectStatsService {
   private intervalSlot = new MutableDisposable<IDisposable>();
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private unsubscribeAgentState: (() => void) | null = null;
+  private eventUnsubscribes: Array<() => void> = [];
   private started = false;
   private lastBroadcast: ProjectStatusMap = {};
   private pollIntervalMs = DEFAULT_POLL_INTERVAL_MS;
@@ -31,9 +31,19 @@ export class ProjectStatsService {
 
     this.armPollInterval();
 
-    this.unsubscribeAgentState = events.on("agent:state-changed", () => {
-      this.debouncedCompute();
-    });
+    // Recompute on agent state transitions and on the lifecycle events that
+    // actually cross the PTY-host → main bridge. `terminal:exited` is emitted
+    // inside the PTY host but is NOT in the `PtyHostEvent` union, so it never
+    // reaches the main process — subscribing here would be dead code.
+    // Direct-kill flows are already covered by `agent:state-changed` because
+    // `TerminalProcess.kill()` calls `updateAgentState({type:"kill"})` whenever
+    // `getLiveAgentId(terminal)` is set (i.e. any counted terminal).
+    const subscribe = (event: Parameters<typeof events.on>[0]) => {
+      this.eventUnsubscribes.push(events.on(event, () => this.debouncedCompute()));
+    };
+    subscribe("agent:state-changed");
+    subscribe("terminal:trashed");
+    subscribe("terminal:restored");
   }
 
   updatePollInterval(ms: number): void {
@@ -63,10 +73,10 @@ export class ProjectStatsService {
       this.debounceTimer = null;
     }
 
-    if (this.unsubscribeAgentState) {
-      this.unsubscribeAgentState();
-      this.unsubscribeAgentState = null;
+    for (const unsubscribe of this.eventUnsubscribes) {
+      unsubscribe();
     }
+    this.eventUnsubscribes = [];
   }
 
   private armPollInterval(): void {
