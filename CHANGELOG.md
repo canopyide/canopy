@@ -1,5 +1,178 @@
 # Changelog
 
+## [0.11.0] - 2026-05-16
+
+Windows reaches feature parity with macOS and Linux — NSIS and Store builds, native menu/keybinding gaps closed, UTF-8 in fallback shells, agent command-launch parity. Alongside the Windows push: a deeper resilience pass on pty-host, watchers, and crash recovery; destructive-action confirms widened to every remote push; the banner family converges on shared chrome; and another EmptyState / skeleton sweep removes the last full-area Spinners.
+
+### Features
+
+**Windows**
+
+- Non-Store NSIS installer with arm64 support (#7942)
+- In-app update notification for Windows Store builds (#7980)
+- Native application menu gaps closed (#7939)
+- Ctrl+F4 close-tab and Menu key context-menu shortcuts (#7943)
+- Agent command-launch parity with POSIX (#7945)
+- Dedicated scratch folder for the Daintree Assistant (#7947)
+
+**Sidebar & drag/drop**
+
+- Sortable sidebar row directional drop indicator and Alt+Arrow keyboard reorder (#7972)
+- canScroll and per-surface ARIA announcements on nested DndContexts (#8016)
+- Alt+Arrow worktree-name announcement and debounce for screen readers (#8013)
+- Snap-back motion on Escape-cancelled drags (#8019)
+- Trash hint repetition capped, popover flipped to LIFO (#7977)
+- Complete drop-armed visual on dock receptacles (#7978)
+
+**Destructive actions**
+
+- Commit-and-push confirm gate widened to every remote push (#8025)
+- Missing D1–D3 confirm dialogs wired across UI surfaces (#8023)
+- MCP rotate confirm tightened — rotate gate, severity, label (#8028)
+- Confirm dialog before worktree.restartService (#7909)
+
+**Banner family**
+
+- Seven banners converged on shared InlineStatusBanner chrome (#8026)
+- Extended severity, fixed duration drift (#7974)
+- Verb and icon drift fixed across Terminal banners (#7975)
+- Banner-swap height transitions smoothed to stop xterm jitter (#7976)
+
+**Panels & navigation**
+
+- Review registered as the fourth built-in panel kind (#7792)
+- Project switcher cross-view gate, numpad/shift+= support, directional MRU fix
+- Departing project lastOpened bumped for Alt+Tab MRU toggle
+- Dock density submenu surfaced in dock context menu (#7979)
+
+**Notifications**
+
+- Bell-blip throttle and divergent thread previews (#7967)
+
+**Voice & Assistant**
+
+- Microphone input device selector (#7902)
+
+**Keybindings**
+
+- Cmd/Ctrl shortcut collisions and AltGr swallowing resolved on Windows (#7941)
+
+### Bug Fixes
+
+**Terminal & PTY**
+
+- Working non-agent terminals stay streaming when unfocused (#7997)
+- Visible terminals wake on project view activation and worktree switch (#7999)
+- Restarting banner shown during pty-host auto-restart backoff (#7905)
+- Time-windowed crash-loop guard ported to pty-host (#7904)
+- ResourceGovernor surfaces flowStatus, warning band, triage, and profile awareness (#7910)
+- chcp banner suppressed with `>/dev/null` redirect
+- UTF-8 forced in Windows fallback shells (#7949)
+- chcp / fallback-shell mojibake on Windows resolved (#7949)
+
+**Windows platform**
+
+- Caption-button space reserved in toolbar and pre-React skeleton (#7951)
+- ms-windows-store: protocol allowlisted in openExternal
+- Build-type detection no longer treats every Windows build as Store (#7940)
+- WSL default distro identified by `*` marker, not list order (#7944)
+- Path normalizer treats UNC share as unescapable root (#7948)
+- Worktree-id inference normalizes mixed path separators (#7950)
+- Windows update metadata written to `<prefix>.yml` (no `-win` suffix)
+
+**Crash recovery & resilience**
+
+- Lazy overlay surfaces wrapped in ErrorBoundary, preventing fullscreen crash escalation (#7906)
+- Backup triggers wired into appState mutations and window blur (#7903)
+- focusPanelState clearing handled, partial-write resilience added (#7903)
+- Silent auto-restore surfaced via inline confirmation banner (#7913)
+- Watcher retry budget resets on refresh and wake (#7907)
+- pty stability timer cancelled on crash to preserve the sliding window
+
+**Errors & recovery**
+
+- Infinite retry loop stopped; cross-session error recurrence tracked (#7908)
+- Retry button flips to View errors after dock promotion; dedup keys normalized (#7914)
+- Missing recovery action IDs registered for git error CTAs (#7915)
+- IPC error classifier consolidated into a single-pass classifier (#7916)
+- isTransient boolean replaced with a retryability discriminant (#7912)
+
+**UI & EmptyState**
+
+- Picker dialog and combobox empty states routed through EmptyState (#8022)
+- Settings tabs keep section chrome visible during loading; empties routed through EmptyState (#8021)
+- Diagnostics dock empty states routed through canonical EmptyState (#8015)
+- ReviewHub completed states routed through user-cleared EmptyState (#8020)
+- Fleet picker popovers use canonical EmptyState (#8018)
+- Last full-area Spinners replaced with shape-faithful skeletons (#8014)
+- Scroll-shadow gradient, fade transitions, and scrollbar thumb minimum polished (#8010)
+- Tooltip primitive defaults polished, focus-visible filter added (#8008)
+- Shared ScrollPill chrome extracted (#8011)
+- Tooltip root remounts on visibility flip to clear stale Radix state
+- DRAG_GHOST_OPACITY threaded through outlier drag-source dim sites (#8017)
+- Whitespace-only sortable labels treated as missing with fallback coverage
+- Empty issue-search input trimmed before API query
+- Render-phase side effects moved into useEffect
+
+**GitHub**
+
+- prCiStatus drift between dropdown and sidebar resolved (#8006)
+- Stranded tooltips in keepMounted dropdowns cleaned up (#8001)
+- AnimatePresence replaced with plain conditional render in keepMounted dropdowns
+- Bulk-bar pointer-events and post-completion dismiss cleanup
+
+**Worktree & search**
+
+- Search bar clearing hardened against debounce race and focus loss (#7970)
+- Sidebar search clearing aligned with ARIA APG combobox pattern (#7970)
+- Restart confirm dialog state resets when the error clears
+- Blue chip and slate circle used for finished worktree card state (#7925)
+- Combined-axis empty state copy clarified; active-count contrast lifted
+
+**Project switcher**
+
+- Waiting state described instead of asserting review needed (#8002)
+- Dead 'open in background' affordance removed (#8027)
+- MRU switcher simplified to immediate-switch model
+
+**Sidebar accessibility**
+
+- Alt+Arrow reorder blocked when grouped or searching
+- List/grid keyboard contracts aligned with WAI-ARIA APG (#8012)
+- Tablist arrow nav bails out for non-tab focus anchors
+
+**Dock & layout**
+
+- Populated trash pill armed state gated on panel drag
+- Persisted dockDensity validated in v8 preferences migration
+- Trashed-items type assertion replaced with a type predicate
+
+**Agent panel & MCP**
+
+- Title edit input feels inline (#7926)
+- Double-confirm guard added; rotate disabled without suffix
+
+**Voice**
+
+- System-default microphone uses a sentinel value
+- Type errors and lint warnings resolved across voice surfaces
+
+### Performance
+
+- Idle relative-time labels no longer wake every second (#8009)
+
+### Other Changes
+
+- Notify() tier tightened on six audited surfaces (#8024)
+- Settings tab section titles converted to sentence case (#7968)
+- Notify timers cancelled on remove and context switch
+- Renderer path-string handling unified onto a shared utility (#7946)
+- Shared prCIStatus utility extracted; CI indicators aligned
+- projectMru moved to shared/utils
+- CI: job-level e2e retry with `--last-failed` scoping (#7952)
+- CI: shared retry gate centralized in one step
+- CI: release dry-run workflow stabilised
+
 ## [0.10.2] - 2026-05-14
 
 Patch release: stability and polish updates addressing WebGL terminal rendering, voice transcription, and UI sizing.
