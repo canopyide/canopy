@@ -33,7 +33,7 @@ export function setupTerminalAddons(
   webLinksHover?: WebLinksHoverHandlers
 ): TerminalAddons {
   // Base addons loaded for all terminals. WebGL is managed separately
-  // by TerminalWebGLManager (attached only to the focused terminal).
+  // by TerminalWebGLManager (attached only to focused/burst agent terminals).
 
   const fitAddon = new FitAddon();
   const serializeAddon = new SerializeAddon();

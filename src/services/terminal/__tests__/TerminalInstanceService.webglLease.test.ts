@@ -237,16 +237,12 @@ describe("onTierApplied handler — WebGL manager integration", () => {
   function simulateOnTierApplied(id: string, tier: TerminalRefreshTier, m: ManagedTerminal) {
     if (!m.runtimeAgentId) return;
 
-    if (
-      tier === TerminalRefreshTier.FOCUSED ||
-      tier === TerminalRefreshTier.BURST ||
-      tier === TerminalRefreshTier.VISIBLE
-    ) {
+    if (tier === TerminalRefreshTier.FOCUSED || tier === TerminalRefreshTier.BURST) {
       webGLManager.ensureContext(id, m);
-    } else if (!m.isVisible) {
+    } else {
       const hadWebGL = webGLManager.isActive(id);
       webGLManager.releaseContext(id);
-      if (hadWebGL && m.terminal.rows > 0) {
+      if (hadWebGL && m.isVisible && m.terminal.rows > 0) {
         m.terminal.refresh(0, m.terminal.rows - 1);
       }
     }
@@ -260,45 +256,46 @@ describe("onTierApplied handler — WebGL manager integration", () => {
     expect(webGLManager.isActive("t1")).toBe(true);
   });
 
-  it("FOCUSED → VISIBLE retains context", () => {
+  it("FOCUSED → VISIBLE releases context and repaints DOM", () => {
     simulateOnTierApplied("t1", TerminalRefreshTier.FOCUSED, managed);
     expect(webGLManager.isActive("t1")).toBe(true);
 
     simulateOnTierApplied("t1", TerminalRefreshTier.VISIBLE, managed);
-    expect(webGLManager.isActive("t1")).toBe(true);
+    expect(webGLManager.isActive("t1")).toBe(false);
+    expect(managed.terminal.refresh).toHaveBeenCalledWith(0, 23);
   });
 
-  it("VISIBLE terminal acquires its own context", () => {
+  it("VISIBLE terminal does not acquire its own context", () => {
     const managed2 = makeManagedTerminal();
     simulateOnTierApplied("t1", TerminalRefreshTier.FOCUSED, managed);
     expect(webGLManager.isActive("t1")).toBe(true);
 
     simulateOnTierApplied("t2", TerminalRefreshTier.VISIBLE, managed2);
     expect(webGLManager.isActive("t1")).toBe(true);
-    expect(webGLManager.isActive("t2")).toBe(true);
+    expect(webGLManager.isActive("t2")).toBe(false);
   });
 
-  it("BACKGROUND retains context while terminal is visible", () => {
+  it("BACKGROUND releases context while terminal is visible and repaints DOM", () => {
     const managed2 = makeManagedTerminal();
     simulateOnTierApplied("t1", TerminalRefreshTier.FOCUSED, managed);
-    simulateOnTierApplied("t2", TerminalRefreshTier.VISIBLE, managed2);
+    simulateOnTierApplied("t2", TerminalRefreshTier.FOCUSED, managed2);
 
-    // Visible agent terminal: tier alone must not release WebGL — that would
-    // cause a one-frame flicker on click while the terminal stays on screen.
     simulateOnTierApplied("t1", TerminalRefreshTier.BACKGROUND, managed);
-    expect(webGLManager.isActive("t1")).toBe(true);
+    expect(webGLManager.isActive("t1")).toBe(false);
     expect(webGLManager.isActive("t2")).toBe(true);
+    expect(managed.terminal.refresh).toHaveBeenCalledWith(0, 23);
   });
 
   it("BACKGROUND releases context when terminal is hidden", () => {
     const managed2 = makeManagedTerminal();
     simulateOnTierApplied("t1", TerminalRefreshTier.FOCUSED, managed);
-    simulateOnTierApplied("t2", TerminalRefreshTier.VISIBLE, managed2);
+    simulateOnTierApplied("t2", TerminalRefreshTier.FOCUSED, managed2);
 
     managed.isVisible = false;
     simulateOnTierApplied("t1", TerminalRefreshTier.BACKGROUND, managed);
     expect(webGLManager.isActive("t1")).toBe(false);
     expect(webGLManager.isActive("t2")).toBe(true);
+    expect(managed.terminal.refresh).not.toHaveBeenCalled();
   });
 
   it("focus switch A→B keeps both active when both visible", () => {
@@ -311,16 +308,16 @@ describe("onTierApplied handler — WebGL manager integration", () => {
     expect(webGLManager.isActive("t2")).toBe(true);
   });
 
-  it("A retains context at VISIBLE while B takes focus", () => {
+  it("A releases context at VISIBLE while B takes focus", () => {
     const managedB = makeManagedTerminal();
     simulateOnTierApplied("t1", TerminalRefreshTier.FOCUSED, managed);
 
     simulateOnTierApplied("t1", TerminalRefreshTier.VISIBLE, managed);
-    expect(webGLManager.isActive("t1")).toBe(true);
+    expect(webGLManager.isActive("t1")).toBe(false);
 
     simulateOnTierApplied("t2", TerminalRefreshTier.FOCUSED, managedB);
     expect(webGLManager.isActive("t2")).toBe(true);
-    expect(webGLManager.isActive("t1")).toBe(true);
+    expect(webGLManager.isActive("t1")).toBe(false);
   });
 
   it("standard terminal at FOCUSED never acquires WebGL context", () => {
@@ -370,19 +367,17 @@ describe("onTierApplied handler — WebGL manager integration", () => {
     expect(webGLManager.isActive("t-std")).toBe(false);
   });
 
-  it("agent terminal refresh is called after WebGL release", () => {
+  it("agent terminal refresh is called after visible WebGL release", () => {
     simulateOnTierApplied("t1", TerminalRefreshTier.FOCUSED, managed);
     expect(webGLManager.isActive("t1")).toBe(true);
 
-    managed.isVisible = false;
-    simulateOnTierApplied("t1", TerminalRefreshTier.BACKGROUND, managed);
+    simulateOnTierApplied("t1", TerminalRefreshTier.VISIBLE, managed);
     expect(webGLManager.isActive("t1")).toBe(false);
     expect(managed.terminal.refresh).toHaveBeenCalledWith(0, 23);
   });
 
   it("agent terminal refresh is NOT called when no WebGL was active", () => {
-    // Never acquired WebGL, go to BACKGROUND while hidden
-    managed.isVisible = false;
+    // Never acquired WebGL, go to BACKGROUND
     simulateOnTierApplied("t1", TerminalRefreshTier.BACKGROUND, managed);
     expect(managed.terminal.refresh).not.toHaveBeenCalled();
   });

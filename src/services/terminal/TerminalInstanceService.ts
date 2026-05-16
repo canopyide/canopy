@@ -246,8 +246,7 @@ class TerminalInstanceService {
         if (managed.runtimeAgentId) {
           if (isWebGLEligibleTier(tier)) {
             this.webGLManager.ensureContext(id, managed);
-          } else if (!managed.isVisible) {
-            // Keep WebGL while visible — releasing here causes a one-frame renderer gap.
+          } else {
             const hadWebGL = this.webGLManager.isActive(id);
             this.webGLManager.releaseContext(id);
             // Only refresh for a visible terminal — repainting an offscreen
