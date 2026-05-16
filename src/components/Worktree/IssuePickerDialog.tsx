@@ -2,7 +2,8 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { Button } from "@/components/ui/button";
 import { CircleDot, Search, Link, Unlink, CircleCheck } from "lucide-react";
-import { Spinner } from "@/components/ui/Spinner";
+import { Skeleton, SkeletonBone } from "@/components/ui/Skeleton";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { cn } from "@/lib/utils";
 import { githubClient } from "@/clients";
 import type { GitHubIssue } from "@shared/types/github";
@@ -95,7 +96,7 @@ export function IssuePickerDialog({
       try {
         const result = await githubClient.listIssues({
           cwd: worktree.path,
-          search: searchTerm || undefined,
+          search: searchTerm.trim() || undefined,
           state,
         });
         setIssues(result.items);
@@ -217,16 +218,32 @@ export function IssuePickerDialog({
 
       <div className="flex-1 overflow-y-auto min-h-0 px-6 pb-4">
         {isLoading && issues.length === 0 ? (
-          <div className="flex items-center justify-center py-8 text-daintree-text/50">
-            <Spinner size="lg" className="mr-2" />
-            <span className="text-sm">Loading issues...</span>
-          </div>
+          <Skeleton label="Loading issues" className="space-y-1">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="px-3 py-2.5 rounded-[var(--radius-md)] flex items-start gap-3"
+              >
+                <SkeletonBone className="w-4 h-4 rounded-full shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <SkeletonBone className={cn("h-4", i % 2 === 0 ? "w-3/4" : "w-1/2")} />
+                  <SkeletonBone className="h-3 w-12" />
+                </div>
+              </div>
+            ))}
+          </Skeleton>
         ) : error ? (
           <div className="text-center py-8 text-sm text-status-error">{error}</div>
         ) : issues.length === 0 ? (
-          <div className="text-center py-8 text-sm text-daintree-text/50">
-            {search ? "No issues match your search" : "No issues found"}
-          </div>
+          search.trim() ? (
+            <EmptyState
+              variant="filtered-empty"
+              scale="popover"
+              title={`No matches for "${search.trim()}"`}
+            />
+          ) : (
+            <EmptyState variant="zero-data" scale="popover" title="No issues found" />
+          )
         ) : (
           <div ref={listRef} className="space-y-1" role="listbox">
             {issues.map((issue, index) => (

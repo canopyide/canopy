@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 import { Spinner } from "@/components/ui/Spinner";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useProjectStore } from "@/store";
 import { useBranchForPath } from "@/hooks/useBranchForPath";
 
@@ -43,22 +44,28 @@ export function FileViewerModalHost() {
   if (!fileView) return null;
 
   return (
-    <Suspense
-      fallback={
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim-medium">
-          <Spinner size="xl" className="text-text-inverse" />
-        </div>
-      }
+    <ErrorBoundary
+      variant="component"
+      componentName="FileViewerModal"
+      resetKeys={[Number(fileView != null)]}
     >
-      <LazyFileViewerModal
-        isOpen={true}
-        filePath={fileView.path}
-        rootPath={effectiveRootPath}
-        branch={branch}
-        initialLine={fileView.line}
-        initialCol={fileView.col}
-        onClose={() => setFileView(null)}
-      />
-    </Suspense>
+      <Suspense
+        fallback={
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim-medium">
+            <Spinner size="xl" className="text-text-inverse" />
+          </div>
+        }
+      >
+        <LazyFileViewerModal
+          isOpen={true}
+          filePath={fileView.path}
+          rootPath={effectiveRootPath}
+          branch={branch}
+          initialLine={fileView.line}
+          initialCol={fileView.col}
+          onClose={() => setFileView(null)}
+        />
+      </Suspense>
+    </ErrorBoundary>
   );
 }

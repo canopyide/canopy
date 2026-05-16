@@ -17,7 +17,7 @@ import type {
   BranchInfo,
 } from "../../shared/types/workspace-host.js";
 import { invalidateGitStatusCache } from "../utils/git.js";
-import { detectWslPath, listFirstWslDistro } from "../utils/wsl.js";
+import { detectWslPath, getDefaultWslDistro } from "../utils/wsl.js";
 import {
   getGitDir,
   getGitCommonDir,
@@ -432,10 +432,10 @@ export class WorkspaceService {
     if (!detected) return wt;
 
     if (!this.wslDefaultDistroPromise) {
-      this.wslDefaultDistroPromise = listFirstWslDistro().catch(() => null);
+      this.wslDefaultDistroPromise = getDefaultWslDistro().catch(() => null);
     }
     const defaultDistro = await this.wslDefaultDistroPromise;
-    // UNC paths are case-insensitive on Windows; `wsl --list --quiet` returns
+    // UNC paths are case-insensitive on Windows; `wsl --list --verbose` returns
     // the canonical case (e.g. "Ubuntu"). Normalize before comparing so a
     // worktree opened via `\\wsl$\ubuntu\...` still matches the default.
     const eligible =
@@ -999,7 +999,7 @@ export class WorkspaceService {
       const promises = Array.from(this.monitors.values()).map((monitor) =>
         wakeQueue.add(async () => {
           try {
-            await monitor.updateGitStatus(true);
+            await monitor.refresh();
           } finally {
             if (monitor.isRunning && this.pollingEnabled) {
               monitor.reschedulePolling();
@@ -1060,7 +1060,7 @@ export class WorkspaceService {
     const promises = Array.from(this.monitors.values()).map((monitor) =>
       this.pollQueue.add(async () => {
         try {
-          await monitor.updateGitStatus(true);
+          await monitor.refresh();
         } finally {
           if (monitor.isRunning && this.pollingEnabled) {
             monitor.reschedulePolling();

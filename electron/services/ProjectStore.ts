@@ -558,8 +558,17 @@ export class ProjectStore {
       (tx) => {
         if (previousProjectId && previousProjectId !== projectId) {
           console.log(`[ProjectStore] Marking previous project ${previousProjectId} as background`);
+          // Bump the departing project's lastOpened to just before `now` so it
+          // becomes the top MRU candidate on the next switch — gives the
+          // Cmd+Alt+= shortcut Alt+Tab-style toggle behavior.
+          const previousUpdate: { status: "background"; lastOpened?: number } = {
+            status: "background",
+          };
+          if (!writesSuppressed) {
+            previousUpdate.lastOpened = now - 1;
+          }
           tx.update(projectsTable)
-            .set({ status: "background" })
+            .set(previousUpdate)
             .where(eq(projectsTable.id, previousProjectId))
             .run();
         }

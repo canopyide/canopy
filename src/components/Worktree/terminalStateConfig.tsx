@@ -16,7 +16,7 @@ export const STATE_COLORS = {
   waiting: "text-state-waiting",
   directing: "text-category-blue",
   idle: "text-daintree-text/40",
-  completed: "text-status-info",
+  completed: "text-category-slate",
   exited: "text-daintree-text/40",
 } as const satisfies Record<AgentState, string>;
 

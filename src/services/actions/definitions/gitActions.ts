@@ -221,6 +221,40 @@ export function registerGitActions(actions: ActionRegistry, _callbacks: ActionCa
     },
   }));
 
+  actions.set("git.pullRebase", () => ({
+    id: "git.pullRebase",
+    title: "Pull and Rebase",
+    description: "Pull remote changes and rebase local commits",
+    category: "git",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({ cwd: z.string().optional() }).optional(),
+    run: async (args: unknown, ctx: ActionContext) => {
+      const { cwd } = (args ?? {}) as { cwd?: string };
+      const resolvedCwd = cwd ?? ctx.activeWorktreePath;
+      if (!resolvedCwd) throw new Error("No active worktree");
+      await window.electron.git.pullRebase(resolvedCwd);
+    },
+  }));
+
+  actions.set("git.markSafeDirectory", () => ({
+    id: "git.markSafeDirectory",
+    title: "Trust Repository",
+    description: "Mark a repository directory as safe for git operations",
+    category: "git",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z.object({ path: z.string().optional(), cwd: z.string().optional() }).optional(),
+    run: async (args: unknown, ctx: ActionContext) => {
+      const merged = (args ?? {}) as { path?: string; cwd?: string };
+      const resolvedPath = merged.path ?? merged.cwd ?? ctx.activeWorktreePath;
+      if (!resolvedPath) throw new Error("No active worktree");
+      await window.electron.git.markSafeDirectory(resolvedPath);
+    },
+  }));
+
   actions.set("git.getStagingStatus", () => ({
     id: "git.getStagingStatus",
     title: "Get Staging Status",

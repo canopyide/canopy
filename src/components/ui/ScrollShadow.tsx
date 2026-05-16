@@ -10,19 +10,21 @@ import {
 import { cn } from "@/lib/utils";
 import { useVerticalScrollShadows } from "@/hooks/useVerticalScrollShadows";
 
-const TOP_SHADOW = (
-  <div
-    aria-hidden="true"
-    className="pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-gradient-to-b from-black/15 to-transparent"
-  />
-);
-
-const BOTTOM_SHADOW = (
-  <div
-    aria-hidden="true"
-    className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-8 bg-gradient-to-t from-black/15 to-transparent"
-  />
-);
+function ScrollShadowOverlay({ edge, visible }: { edge: "top" | "bottom"; visible: boolean }) {
+  return (
+    <div
+      aria-hidden="true"
+      data-visible={visible}
+      className={cn(
+        "pointer-events-none absolute inset-x-0 z-10 h-8 transition-opacity duration-150 ease-out",
+        edge === "top"
+          ? "top-0 bg-gradient-to-b from-[var(--scroll-shadow-color)] to-transparent"
+          : "bottom-0 bg-gradient-to-t from-[var(--scroll-shadow-color)] to-transparent",
+        visible ? "opacity-100" : "opacity-0"
+      )}
+    />
+  );
+}
 
 function mergeRefs<T>(...refs: (Ref<T> | undefined)[]) {
   return (el: T | null) => {
@@ -49,7 +51,7 @@ export const ScrollShadow = forwardRef<HTMLDivElement, ScrollShadowProps>(
 
     return (
       <div className={cn("relative overflow-hidden min-h-0 flex flex-col", className)}>
-        {canScrollUp && TOP_SHADOW}
+        <ScrollShadowOverlay edge="top" visible={canScrollUp} />
         <div
           ref={mergeRefs(internalRef, forwardedRef)}
           className={cn("flex-1 overflow-y-auto", scrollClassName)}
@@ -57,7 +59,7 @@ export const ScrollShadow = forwardRef<HTMLDivElement, ScrollShadowProps>(
         >
           {children}
         </div>
-        {canScrollDown && BOTTOM_SHADOW}
+        <ScrollShadowOverlay edge="bottom" visible={canScrollDown} />
       </div>
     );
   }
@@ -86,9 +88,13 @@ export function useScrollShadowOverlays(externalRef?: Ref<HTMLElement>) {
     }
   }, []);
 
+  // Conditional rendering here is load-bearing: `useVerticalScrollShadows`
+  // observes `el.firstElementChild` to detect content-size changes. If the
+  // top overlay were always mounted as the first child, the ResizeObserver
+  // would track a fixed-height overlay instead of the actual content.
   return {
     ref,
-    topShadow: canScrollUp ? TOP_SHADOW : null,
-    bottomShadow: canScrollDown ? BOTTOM_SHADOW : null,
+    topShadow: canScrollUp ? <ScrollShadowOverlay edge="top" visible /> : null,
+    bottomShadow: canScrollDown ? <ScrollShadowOverlay edge="bottom" visible /> : null,
   };
 }

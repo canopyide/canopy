@@ -58,7 +58,7 @@ export function escapeShellArg(arg: string, platform?: "windows" | "posix"): str
  * - Escape internal double quotes by doubling them (" → "")
  * - Backslashes before quotes need special handling
  */
-function escapeWindowsArg(arg: string): string {
+export function escapeWindowsArg(arg: string): string {
   // Replace double quotes with escaped double quotes
   // Windows uses "" to escape a double quote inside a double-quoted string
   let escaped = arg.replace(/"/g, '""');
@@ -73,6 +73,82 @@ function escapeWindowsArg(arg: string): string {
   }
 
   return `"${escaped}"`;
+}
+
+/**
+ * Escapes a string for PowerShell `-Command` / `-EncodedCommand` script input.
+ * Wraps the value in single quotes and escapes embedded single quotes by
+ * doubling them (PowerShell's literal-string escape rule). Single-quoted
+ * PowerShell strings are literal: no variable expansion, no subexpression
+ * evaluation. Use this for values interpolated into a PowerShell script body.
+ *
+ * @example
+ *   quotePowerShellArg("C:\\Users\\O'Brien\\config.json")
+ *   // "'C:\\Users\\O''Brien\\config.json'"
+ */
+export function quotePowerShellArg(arg: string): string {
+  return `'${arg.replace(/'/g, "''")}'`;
+}
+
+/**
+ * Returns true if `shellPath` resolves to a PowerShell host (`pwsh` or
+ * `powershell`, with or without the `.exe` suffix). Basename-exact match —
+ * never substring — so paths like `C:\src\tools\powerwash.exe` don't false-
+ * match. Platform-agnostic: the caller decides whether to gate on Windows.
+ */
+export function isPowerShellShell(shellPath: string): boolean {
+  const name =
+    shellPath
+      .split(/[\\/]/)
+      .pop()
+      ?.toLowerCase()
+      .replace(/\.exe$/, "") ?? "";
+  return name === "pwsh" || name === "powershell";
+}
+
+/**
+ * Returns true if `shellPath` resolves to Windows cmd.exe. Basename-exact
+ * match — never substring — so paths like `C:\tools\cmder\bin\bash.exe`
+ * don't false-match. Platform-agnostic: the caller decides whether to gate
+ * on Windows.
+ */
+export function isCmdShell(shellPath: string): boolean {
+  const name =
+    shellPath
+      .split(/[\\/]/)
+      .pop()
+      ?.toLowerCase()
+      .replace(/\.exe$/, "") ?? "";
+  return name === "cmd";
+}
+
+/**
+ * Platform- and shell-aware quoting for values interpolated into a launch
+ * command string. The returned token is safe to splice into a command line
+ * that will be executed by `shellPath` on `process.platform`:
+ *
+ * - POSIX (any shell): POSIX single-quote escaping.
+ * - Windows + PowerShell (pwsh / powershell): PowerShell single-quote
+ *   escaping (single quotes doubled).
+ * - Windows + cmd.exe: cmd-style double-quote escaping.
+ * - Windows + unknown shell: POSIX-style as a least-bad fallback. Callers
+ *   should validate the shell against {@link isPowerShellShell} /
+ *   {@link isCmdShell} upstream when correctness matters.
+ *
+ * Use this at every site that previously called a hand-rolled POSIX
+ * `shellQuote` to embed an internal app-controlled value (config path,
+ * subcommand flag) into a command that may run on Windows.
+ */
+export function quoteCommandArg(value: string, shellPath: string): string {
+  if (typeof process !== "undefined" && process.platform === "win32") {
+    if (isPowerShellShell(shellPath)) {
+      return quotePowerShellArg(value);
+    }
+    if (isCmdShell(shellPath)) {
+      return escapeWindowsArg(value);
+    }
+  }
+  return escapePosixArg(value);
 }
 
 /**

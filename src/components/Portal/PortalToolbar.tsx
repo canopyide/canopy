@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from "react";
 import { ArrowLeft, ArrowRight, RotateCw, X, Plus, ExternalLink, Link2 } from "lucide-react";
 import {
   DndContext,
@@ -7,6 +8,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type UniqueIdentifier,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -15,6 +17,7 @@ import {
   horizontalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { makeSortableAnnouncements } from "@/components/DragDrop/sortableAnnouncements";
 import type { PortalTab, PortalLink } from "@shared/types";
 import { cn } from "@/lib/utils";
 import { createTooltipContent } from "@/lib/tooltipShortcut";
@@ -232,6 +235,15 @@ export function PortalToolbar({
     }
   };
 
+  const getBrowserTabLabel = useCallback(
+    (id: UniqueIdentifier) => tabs.find((t) => t.id === id)?.title,
+    [tabs]
+  );
+  const browserTabAnnouncements = useMemo(
+    () => makeSortableAnnouncements(getBrowserTabLabel, "browser tab"),
+    [getBrowserTabLabel]
+  );
+
   return (
     <div className="flex flex-col bg-daintree-bg border-b border-daintree-border">
       {/* Top Row: Navigation Controls */}
@@ -325,7 +337,12 @@ export function PortalToolbar({
 
       {/* Bottom Row: Tab Pills */}
       <div className="px-2 pb-2">
-        <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragEnd={handleDragEnd}
+          accessibility={{ announcements: browserTabAnnouncements }}
+        >
           <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
             <div
               className="flex flex-wrap gap-2 items-center"

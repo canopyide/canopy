@@ -1,6 +1,6 @@
 import type { Terminal, ILinkProvider, ILink, IBufferRange } from "@xterm/xterm";
 import { systemClient } from "@/clients";
-import * as path from "path-browserify";
+import { isAbsolute, resolve } from "@shared/utils/path";
 import { actionService } from "@/services/ActionService";
 import { logError } from "@/utils/logger";
 
@@ -99,7 +99,7 @@ export class FileLinksAddon implements ILinkProvider {
 
     let absolutePath: string;
 
-    if (path.isAbsolute(pathPart) || WINDOWS_ABS.test(pathPart)) {
+    if (isAbsolute(pathPart)) {
       absolutePath = pathPart;
     } else {
       const cwd = this._getCwd();
@@ -110,7 +110,7 @@ export class FileLinksAddon implements ILinkProvider {
         const sep = cwd.includes("\\") ? "\\" : "/";
         absolutePath = `${cwd.replace(/[\\/]+$/, "")}${sep}${pathPart.replace(/[\\/]+/g, sep)}`;
       } else {
-        absolutePath = path.resolve(cwd, pathPart);
+        absolutePath = resolve(cwd, pathPart);
       }
     }
 

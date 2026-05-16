@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { ChevronRight, RotateCcw, Power, PowerOff, AlertCircle, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Skeleton, SkeletonBone } from "@/components/ui/Skeleton";
 import { commandsClient } from "@/clients/commandsClient";
 import type { CommandManifestEntry, CommandOverride } from "@shared/types/commands";
 import { cn } from "@/lib/utils";
@@ -239,17 +241,11 @@ export function CommandOverridesTab({ projectId, overrides, onChange }: CommandO
     });
   }, [commands, searchQuery, filterMode, hasOverride, isDisabledCommand]);
 
-  if (isLoading) {
-    return (
-      <div className="text-sm text-daintree-text/60 text-center py-8">Loading commands...</div>
-    );
-  }
-
-  if (commands.length === 0) {
-    return (
-      <div className="text-sm text-daintree-text/60 text-center py-8">No commands available</div>
-    );
-  }
+  const filteredEmptyTitle = searchQuery.trim()
+    ? `No commands match "${searchQuery.trim()}"`
+    : filterMode === "overridden"
+      ? "No overridden commands yet"
+      : "No disabled commands";
 
   return (
     <div className="space-y-2">
@@ -275,7 +271,8 @@ export function CommandOverridesTab({ projectId, overrides, onChange }: CommandO
             placeholder="Search commands..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-daintree-bg border border-border-strong rounded text-sm text-daintree-text placeholder:text-text-muted focus:outline-hidden focus:border-daintree-accent"
+            disabled={isLoading}
+            className="w-full pl-9 pr-3 py-2 bg-daintree-bg border border-border-strong rounded text-sm text-daintree-text placeholder:text-text-muted focus:outline-hidden focus:border-daintree-accent disabled:opacity-60 disabled:cursor-not-allowed"
             aria-label="Search commands"
           />
         </div>
@@ -284,11 +281,13 @@ export function CommandOverridesTab({ projectId, overrides, onChange }: CommandO
             <button
               key={mode}
               onClick={() => setFilterMode(mode)}
+              disabled={isLoading}
               className={cn(
                 "px-3 py-1.5 text-xs font-medium rounded transition-colors capitalize border",
                 filterMode === mode
                   ? "border-border-strong bg-overlay-medium text-daintree-text"
-                  : "border-transparent bg-daintree-sidebar text-daintree-text/70 hover:bg-daintree-border"
+                  : "border-transparent bg-daintree-sidebar text-daintree-text/70 hover:bg-daintree-border",
+                "disabled:opacity-60 disabled:cursor-not-allowed"
               )}
             >
               {mode}
@@ -298,223 +297,224 @@ export function CommandOverridesTab({ projectId, overrides, onChange }: CommandO
       </div>
 
       <div className="space-y-1">
-        {filteredCommands.length === 0 && (
-          <div className="text-sm text-daintree-text/60 text-center py-8">
-            {searchQuery.trim()
-              ? `No commands match "${searchQuery.trim()}"`
-              : filterMode === "overridden"
-                ? "No overridden commands yet"
-                : filterMode === "disabled"
-                  ? "No disabled commands"
-                  : "No commands available"}
-          </div>
-        )}
-        {filteredCommands.map((command) => {
-          const override = getOverride(command.id);
-          const isDisabled = override?.disabled === true;
-          const isExpanded = expandedCommands.has(command.id);
-          const hasArgs = !!(command.args && command.args.length > 0);
-          const canExpand = !isDisabled;
-          const currentMode = getOverrideMode(command.id, hasArgs);
+        {isLoading ? (
+          <Skeleton label="Loading commands" className="space-y-1">
+            <SkeletonBone className="h-12 w-full" />
+            <SkeletonBone className="h-12 w-full" />
+            <SkeletonBone className="h-12 w-full" />
+          </Skeleton>
+        ) : commands.length === 0 ? (
+          <EmptyState variant="zero-data" scale="sidebar" title="No commands available" />
+        ) : filteredCommands.length === 0 ? (
+          <EmptyState variant="filtered-empty" scale="sidebar" title={filteredEmptyTitle} />
+        ) : (
+          filteredCommands.map((command) => {
+            const override = getOverride(command.id);
+            const isDisabled = override?.disabled === true;
+            const isExpanded = expandedCommands.has(command.id);
+            const hasArgs = !!(command.args && command.args.length > 0);
+            const canExpand = !isDisabled;
+            const currentMode = getOverrideMode(command.id, hasArgs);
 
-          return (
-            <div
-              key={command.id}
-              className={cn(
-                "rounded-[var(--radius-md)] border transition-colors",
-                hasOverride(command.id)
-                  ? "border-border-strong bg-overlay-subtle"
-                  : "border-daintree-border bg-daintree-bg"
-              )}
-            >
-              <div className="flex items-center gap-2 p-3">
-                {canExpand && (
-                  <button
-                    onClick={() => toggleExpanded(command.id)}
-                    className="p-0.5 rounded hover:bg-daintree-border/50 transition-colors"
-                    aria-label={isExpanded ? "Collapse" : "Expand"}
-                  >
-                    <ChevronRight
-                      data-animated-chevron
-                      className={cn(
-                        "h-4 w-4 text-daintree-text/60 transition-transform duration-150 ease-[var(--ease-out-expo)] motion-reduce:transition-none",
-                        isExpanded && "rotate-90"
-                      )}
-                    />
-                  </button>
+            return (
+              <div
+                key={command.id}
+                className={cn(
+                  "rounded-[var(--radius-md)] border transition-colors",
+                  hasOverride(command.id)
+                    ? "border-border-strong bg-overlay-subtle"
+                    : "border-daintree-border bg-daintree-bg"
                 )}
-                {!canExpand && <div className="w-5" />}
+              >
+                <div className="flex items-center gap-2 p-3">
+                  {canExpand && (
+                    <button
+                      onClick={() => toggleExpanded(command.id)}
+                      className="p-0.5 rounded hover:bg-daintree-border/50 transition-colors"
+                      aria-label={isExpanded ? "Collapse" : "Expand"}
+                    >
+                      <ChevronRight
+                        data-animated-chevron
+                        className={cn(
+                          "h-4 w-4 text-daintree-text/60 transition-transform duration-150 ease-[var(--ease-out-expo)] motion-reduce:transition-none",
+                          isExpanded && "rotate-90"
+                        )}
+                      />
+                    </button>
+                  )}
+                  {!canExpand && <div className="w-5" />}
 
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={cn(
+                          "text-sm font-medium font-mono",
+                          isDisabled ? "text-daintree-text/40 line-through" : "text-daintree-text"
+                        )}
+                      >
+                        {command.id}
+                      </span>
+                      {hasOverride(command.id) && (
+                        <span className="text-[11px] text-daintree-text/70 bg-overlay-medium px-1.5 py-0.5 rounded font-medium">
+                          {override?.prompt ? "Custom Prompt" : "Modified"}
+                        </span>
+                      )}
+                    </div>
+                    <p
                       className={cn(
-                        "text-sm font-medium font-mono",
-                        isDisabled ? "text-daintree-text/40 line-through" : "text-daintree-text"
+                        "text-xs mt-0.5 select-text",
+                        isDisabled ? "text-daintree-text/30" : "text-daintree-text/60"
                       )}
                     >
-                      {command.id}
-                    </span>
-                    {hasOverride(command.id) && (
-                      <span className="text-[11px] text-daintree-text/70 bg-overlay-medium px-1.5 py-0.5 rounded font-medium">
-                        {override?.prompt ? "Custom Prompt" : "Modified"}
-                      </span>
-                    )}
+                      {command.description}
+                    </p>
                   </div>
-                  <p
-                    className={cn(
-                      "text-xs mt-0.5 select-text",
-                      isDisabled ? "text-daintree-text/30" : "text-daintree-text/60"
-                    )}
-                  >
-                    {command.description}
-                  </p>
-                </div>
 
-                <div className="flex items-center gap-1 shrink-0">
-                  {hasOverride(command.id) && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    {hasOverride(command.id) && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => resetToDefaults(command.id)}
+                            className="h-7 px-2"
+                            aria-label="Reset to defaults"
+                          >
+                            <RotateCcw />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Reset to defaults</TooltipContent>
+                      </Tooltip>
+                    )}
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => resetToDefaults(command.id)}
-                          className="h-7 px-2"
-                          aria-label="Reset to defaults"
-                        >
-                          <RotateCcw />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">Reset to defaults</TooltipContent>
-                    </Tooltip>
-                  )}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={() => toggleDisabled(command.id)}
-                        className={cn(
-                          "p-1.5 rounded transition-colors",
-                          isDisabled
-                            ? "text-status-error hover:bg-status-error/10"
-                            : "text-status-success hover:bg-status-success/10"
-                        )}
-                        aria-label={
-                          isDisabled ? "Command disabled for this project" : "Command enabled"
-                        }
-                      >
-                        {isDisabled ? (
-                          <PowerOff className="h-4 w-4" />
-                        ) : (
-                          <Power className="h-4 w-4" />
-                        )}
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      {isDisabled ? "Command disabled for this project" : "Command enabled"}
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-              </div>
-
-              {isExpanded && !isDisabled && (
-                <div className="px-3 pb-3 pt-0 border-t border-daintree-border/50 mt-2">
-                  <div className="space-y-3 mt-3">
-                    {/* Mode selector */}
-                    <div className="flex gap-2">
-                      {hasArgs && (
                         <button
-                          onClick={() => setOverrideMode(command.id, "defaults")}
+                          onClick={() => toggleDisabled(command.id)}
+                          className={cn(
+                            "p-1.5 rounded transition-colors",
+                            isDisabled
+                              ? "text-status-error hover:bg-status-error/10"
+                              : "text-status-success hover:bg-status-success/10"
+                          )}
+                          aria-label={
+                            isDisabled ? "Command disabled for this project" : "Command enabled"
+                          }
+                        >
+                          {isDisabled ? (
+                            <PowerOff className="h-4 w-4" />
+                          ) : (
+                            <Power className="h-4 w-4" />
+                          )}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        {isDisabled ? "Command disabled for this project" : "Command enabled"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </div>
+
+                {isExpanded && !isDisabled && (
+                  <div className="px-3 pb-3 pt-0 border-t border-daintree-border/50 mt-2">
+                    <div className="space-y-3 mt-3">
+                      {/* Mode selector */}
+                      <div className="flex gap-2">
+                        {hasArgs && (
+                          <button
+                            onClick={() => setOverrideMode(command.id, "defaults")}
+                            className={cn(
+                              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors border",
+                              currentMode === "defaults"
+                                ? "border-border-strong bg-overlay-medium text-daintree-text"
+                                : "border-transparent bg-daintree-sidebar text-daintree-text/70 hover:bg-daintree-border"
+                            )}
+                          >
+                            Default Values
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setOverrideMode(command.id, "prompt")}
                           className={cn(
                             "px-3 py-1.5 text-xs font-medium rounded-md transition-colors border",
-                            currentMode === "defaults"
+                            currentMode === "prompt"
                               ? "border-border-strong bg-overlay-medium text-daintree-text"
                               : "border-transparent bg-daintree-sidebar text-daintree-text/70 hover:bg-daintree-border"
                           )}
                         >
-                          Default Values
+                          Custom Prompt
                         </button>
-                      )}
-                      <button
-                        onClick={() => setOverrideMode(command.id, "prompt")}
-                        className={cn(
-                          "px-3 py-1.5 text-xs font-medium rounded-md transition-colors border",
-                          currentMode === "prompt"
-                            ? "border-border-strong bg-overlay-medium text-daintree-text"
-                            : "border-transparent bg-daintree-sidebar text-daintree-text/70 hover:bg-daintree-border"
-                        )}
-                      >
-                        Custom Prompt
-                      </button>
-                    </div>
+                      </div>
 
-                    {/* Default Values Mode */}
-                    {currentMode === "defaults" && hasArgs && (
-                      <div className="space-y-3">
-                        <p className="text-xs text-daintree-text/60 select-text">
-                          Set default values for command arguments. These values will be used when
-                          the argument is not provided.
-                        </p>
-                        {command.args?.map((arg) => {
-                          const currentValue = (override?.defaults?.[arg.name] as string) ?? "";
-                          const hasDefaultValue =
-                            override?.defaults && arg.name in override.defaults;
+                      {/* Default Values Mode */}
+                      {currentMode === "defaults" && hasArgs && (
+                        <div className="space-y-3">
+                          <p className="text-xs text-daintree-text/60 select-text">
+                            Set default values for command arguments. These values will be used when
+                            the argument is not provided.
+                          </p>
+                          {command.args?.map((arg) => {
+                            const currentValue = (override?.defaults?.[arg.name] as string) ?? "";
+                            const hasDefaultValue =
+                              override?.defaults && arg.name in override.defaults;
 
-                          return (
-                            <div key={arg.name} className="space-y-1.5">
-                              <div className="flex items-center gap-2">
-                                <label
-                                  htmlFor={`${command.id}-${arg.name}`}
-                                  className="text-xs font-medium text-daintree-text/80"
-                                >
-                                  {arg.name}
-                                  {arg.required && (
-                                    <span className="text-status-error ml-1">*</span>
+                            return (
+                              <div key={arg.name} className="space-y-1.5">
+                                <div className="flex items-center gap-2">
+                                  <label
+                                    htmlFor={`${command.id}-${arg.name}`}
+                                    className="text-xs font-medium text-daintree-text/80"
+                                  >
+                                    {arg.name}
+                                    {arg.required && (
+                                      <span className="text-status-error ml-1">*</span>
+                                    )}
+                                  </label>
+                                  {hasDefaultValue && (
+                                    <span className="text-[10px] text-daintree-text/70 bg-overlay-medium px-1.5 py-0.5 rounded">
+                                      Custom
+                                    </span>
                                   )}
-                                </label>
-                                {hasDefaultValue && (
-                                  <span className="text-[10px] text-daintree-text/70 bg-overlay-medium px-1.5 py-0.5 rounded">
-                                    Custom
-                                  </span>
+                                </div>
+                                <input
+                                  id={`${command.id}-${arg.name}`}
+                                  type="text"
+                                  value={currentValue}
+                                  onChange={(e) =>
+                                    updateDefault(command.id, arg.name, e.target.value)
+                                  }
+                                  className="w-full bg-daintree-sidebar border border-border-strong rounded px-2 py-1.5 text-sm text-daintree-text font-mono focus:outline-hidden focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
+                                  placeholder={
+                                    arg.default ? `Default: ${arg.default}` : `Enter ${arg.name}`
+                                  }
+                                />
+                                {arg.description && (
+                                  <p className="text-xs text-daintree-text/50 select-text">
+                                    {arg.description}
+                                  </p>
                                 )}
                               </div>
-                              <input
-                                id={`${command.id}-${arg.name}`}
-                                type="text"
-                                value={currentValue}
-                                onChange={(e) =>
-                                  updateDefault(command.id, arg.name, e.target.value)
-                                }
-                                className="w-full bg-daintree-sidebar border border-border-strong rounded px-2 py-1.5 text-sm text-daintree-text font-mono focus:outline-hidden focus:border-daintree-accent focus:ring-1 focus:ring-daintree-accent/30"
-                                placeholder={
-                                  arg.default ? `Default: ${arg.default}` : `Enter ${arg.name}`
-                                }
-                              />
-                              {arg.description && (
-                                <p className="text-xs text-daintree-text/50 select-text">
-                                  {arg.description}
-                                </p>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                            );
+                          })}
+                        </div>
+                      )}
 
-                    {/* Custom Prompt Mode */}
-                    {currentMode === "prompt" && (
-                      <PromptEditor
-                        commandId={command.id}
-                        args={command.args || []}
-                        value={override?.prompt || ""}
-                        onChange={(prompt) => updatePrompt(command.id, prompt)}
-                      />
-                    )}
+                      {/* Custom Prompt Mode */}
+                      {currentMode === "prompt" && (
+                        <PromptEditor
+                          commandId={command.id}
+                          args={command.args || []}
+                          value={override?.prompt || ""}
+                          onChange={(prompt) => updatePrompt(command.id, prompt)}
+                        />
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
+                )}
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

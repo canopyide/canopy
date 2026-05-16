@@ -32,83 +32,8 @@ import {
 } from "../../../services/pty/agentSessionHistory.js";
 import { getDefaultShell } from "../../../services/pty/terminalShell.js";
 import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`;
-}
-
-const MACOS_COMMAND_LAUNCH_STARTUP_DELAY_SECONDS = "0.05";
-
-function supportsCommandLaunchShell(shell: string): boolean {
-  const name = shell.split(/[\\/]/).pop()?.toLowerCase() ?? "";
-  return (
-    name === "zsh" ||
-    name === "bash" ||
-    name === "sh" ||
-    name.endsWith("zsh") ||
-    name.endsWith("bash") ||
-    name.endsWith("sh")
-  );
-}
-
-// Trust boundary: `command` is interpolated raw into the shell script below.
-// Shell metacharacters (pipes, redirects, env-var expansion, $()) are
-// intentional — QuickRun and resource-connect commands rely on them. Defenses
-// upstream of this point: (1) TerminalSpawnOptionsSchema rejects control
-// characters at the IPC boundary; (2) the multiline guard in the spawn handler
-// drops embedded \n / \r as defense-in-depth; (3) WorktreeLifecycleService.
-// substituteVariables shell-quotes every templated fragment via
-// shellEscapeValue before it reaches the command field. Anyone adding a new
-// call site that interpolates user-controlled data into `command` MUST quote
-// the substituted fragment, not rely on this layer.
-function buildCommandLaunchShell(
-  command: string,
-  configuredShell: string | undefined
-): { shell: string; args: string[] } | null {
-  if (process.platform === "win32" || command.length === 0) {
-    return null;
-  }
-
-  const shell = configuredShell || getDefaultShell();
-  if (!supportsCommandLaunchShell(shell)) {
-    return null;
-  }
-
-  const name = shell.split(/[\\/]/).pop()?.toLowerCase() ?? "";
-  const execInteractiveShell =
-    name.includes("zsh") || name.includes("bash")
-      ? `exec ${shellQuote(shell)} -l`
-      : `exec ${shellQuote(shell)}`;
-
-  // Run the command as interactive shell startup work instead of typing it into
-  // the PTY. This prevents the tail of long absolute launch commands from being
-  // echoed while preserving job control: zsh/bash only move the launched CLI
-  // into the PTY foreground process group when the shell is interactive. The
-  // foreground-pgid detector relies on that, and agent CLIs rely on it for raw
-  // input. The wrapper shell traps SIGINT so Ctrl-C reaches the foreground
-  // agent without killing the wrapper before it can exec the follow-up shell.
-  // Use a no-op trap rather than SIG_IGN so child CLIs don't inherit ignored
-  // SIGINT.
-  const script = `trap : INT\n${command}\ntrap - INT\n${execInteractiveShell}`;
-  const interactiveArgs =
-    name.includes("zsh") || name.includes("bash")
-      ? `-lic ${shellQuote(script)}`
-      : `-i -c ${shellQuote(script)}`;
-  // macOS CI can emit the first shell/agent bytes before node-pty returns
-  // from spawn. Defer the interactive shell by one tick so the PTY data
-  // handoff listener is installed before startup output begins.
-  const args =
-    process.platform === "darwin"
-      ? [
-          "-c",
-          `sleep ${MACOS_COMMAND_LAUNCH_STARTUP_DELAY_SECONDS}\nexec ${shellQuote(shell)} ${interactiveArgs}`,
-        ]
-      : name.includes("zsh") || name.includes("bash")
-        ? ["-lic", script]
-        : ["-i", "-c", script];
-
-  return { shell, args };
-}
+import { quoteCommandArg } from "../../../../shared/utils/shellEscape.js";
+import { buildCommandLaunchShell } from "./commandLaunch.js";
 
 export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): () => void {
   const { ptyClient } = deps;
@@ -231,6 +156,21 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
     let safeCommand = hasMultilineCommand ? "" : trimmedCommand;
     let spawnEnv: Record<string, string> | undefined = validatedOptions.env;
 
+    // Resolve a shell identity early for quoting decisions only. Every
+    // `quoteCommandArg` call below feeds into `safeCommand`, which will
+    // eventually run inside this shell (POSIX `sh -lic`, PowerShell
+    // `-EncodedCommand`, or `cmd /K`). Each shell parses single/double
+    // quotes and backslashes differently, so quoting must match. We fall
+    // back to `getDefaultShell()` here so the quoter always sees a concrete
+    // shell — even when neither the request nor the project sets one.
+    //
+    // IMPORTANT: this value is *not* what we pass into `ptyClient.spawn`.
+    // For plain terminals the PTY pool only matches when `options.shell` is
+    // undefined (see `acquirePtyProcess` in `terminalSpawn.ts`); promoting
+    // `getDefaultShell()` into the spawn options would silently disable the
+    // pool for every spawn. The spawn-side fallback stays absent below.
+    const quotingShell = validatedOptions.shell || projectShell || getDefaultShell();
+
     // Help-assistant launches arrive with a pre-provisioned session dir whose
     // .mcp.json is already in cwd, baked with the literal session token, and
     // a .claude/settings.json that sets `enableAllProjectMcpServers: true` so
@@ -311,7 +251,7 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
           );
         }
         if (codexArgs.length > 0) {
-          safeCommand = `${safeCommand} ${codexArgs.map(shellQuote).join(" ")}`;
+          safeCommand = `${safeCommand} ${codexArgs.map((arg) => quoteCommandArg(arg, quotingShell)).join(" ")}`;
         }
       }
       // Gemini help sessions are pinned to `--approval-mode=plan` (strict
@@ -340,7 +280,8 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
           .replace(/\s{2,}/g, " ")
           .trim();
         if (geminiArgs.length > 0) {
-          safeCommand = `${safeCommand} ${geminiArgs.map(shellQuote).join(" ")}`.trim();
+          safeCommand =
+            `${safeCommand} ${geminiArgs.map((arg) => quoteCommandArg(arg, quotingShell)).join(" ")}`.trim();
         }
         // Merge any per-agent env returned by `getGeminiSpawnEnv` into the
         // PTY spawn env. Today this is a no-op (Gemini's MCP isolation is
@@ -375,8 +316,21 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
           .replace(/\s{2,}/g, " ")
           .trim();
         if (copilotArgs.length > 0) {
-          safeCommand = `${safeCommand} ${copilotArgs.map(shellQuote).join(" ")}`.trim();
+          safeCommand =
+            `${safeCommand} ${copilotArgs.map((arg) => quoteCommandArg(arg, quotingShell)).join(" ")}`.trim();
         }
+      }
+
+      // Inject the per-session assistant scratch dir into the PTY spawn env
+      // for every help-session agent (Claude, Codex, Gemini, Copilot).
+      // Paired with the markdown addendum written into the session dir at
+      // provision time so the agent has both a literal path in its
+      // instruction surface and an env var for shell substitution. Merged
+      // unconditionally — the path is cleared on every app start and stays
+      // valid for the lifetime of this process.
+      const scratchEnv = helpSessionService.getAssistantScratchEnv(helpToken);
+      if (scratchEnv) {
+        spawnEnv = { ...(spawnEnv ?? {}), ...scratchEnv };
       }
 
       // Bind this terminalId to the help session so HelpSessionService can
@@ -414,7 +368,7 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
               port,
               tier,
             });
-            safeCommand = `${safeCommand} --mcp-config ${shellQuote(configPath)}`;
+            safeCommand = `${safeCommand} --mcp-config ${quoteCommandArg(configPath, quotingShell)}`;
             spawnEnv = { ...(spawnEnv ?? {}), DAINTREE_MCP_TOKEN: token };
           }
         }
@@ -426,13 +380,18 @@ export function registerTerminalLifecycleHandlers(deps: HandlerDependencies): ()
       }
     }
 
-    // Resolve shell and args: project overrides > spawn options > defaults.
-    // For command launches on POSIX, run the command through the shell's
-    // startup script instead of echoing it into the PTY.
-    const resolvedShell = validatedOptions.shell || projectShell;
-    const commandLaunchShell = buildCommandLaunchShell(safeCommand, resolvedShell);
+    // Resolve spawn shell and args: project overrides > spawn options >
+    // defaults. For command launches, run the command through the shell's
+    // startup arguments (POSIX `-lic` trap-wrap, PowerShell `-EncodedCommand`,
+    // or cmd `/K`) instead of echoing it into the PTY. Plain terminals
+    // intentionally leave `spawnShell` as the original undefined-when-unset
+    // value (no `getDefaultShell()` fallback) so the PTY pool can match —
+    // see `acquirePtyProcess` in `terminalSpawn.ts`.
+    const commandLaunchShell = buildCommandLaunchShell(safeCommand, quotingShell);
     const resolvedArgs = commandLaunchShell ? commandLaunchShell.args : projectArgs;
-    const spawnShell = commandLaunchShell ? commandLaunchShell.shell : resolvedShell;
+    const spawnShell = commandLaunchShell
+      ? commandLaunchShell.shell
+      : validatedOptions.shell || projectShell;
 
     try {
       // Every terminal is an interactive shell. Agent launches inject their

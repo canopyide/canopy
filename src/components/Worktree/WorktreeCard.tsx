@@ -305,6 +305,10 @@ export function WorktreeCard({
   const hasPauseCommand = !!worktree.hasPauseCommand;
   const hasResumeCommand = !!worktree.hasResumeCommand;
   const hasTeardownCommand = !!worktree.hasTeardownCommand;
+  const teardownCommands =
+    worktree.worktreeMode && worktree.worktreeMode !== "local"
+      ? (resourceEnvironments?.[worktree.worktreeMode]?.teardown ?? [])
+      : [];
   const hasStatusCommand = !!worktree.hasStatusCommand;
   const hasProvisionCommand = !!worktree.hasProvisionCommand;
 
@@ -323,9 +327,11 @@ export function WorktreeCard({
     handleSelectWorkingAgents,
     handleCloseAll,
     handleTerminateAll,
+    handleResourceTeardown,
   } = useWorktreeActions({
     worktree,
     onCopyTree,
+    teardownCommands,
   });
 
   const handleOpenIssuePortal = () => {
@@ -397,14 +403,6 @@ export function WorktreeCard({
   const handleResourceProvision = () => {
     void actionService.dispatch(
       "worktree.resource.provision",
-      { worktreeId: worktree.id },
-      { source: "context-menu" }
-    );
-  };
-
-  const handleResourceTeardown = () => {
-    void actionService.dispatch(
-      "worktree.resource.teardown",
       { worktreeId: worktree.id },
       { source: "context-menu" }
     );
@@ -666,7 +664,7 @@ export function WorktreeCard({
                     "absolute w-3 h-3 z-10 cursor-default",
                     chipState === "waiting" && "bg-activity-waiting",
                     chipState === "cleanup" && "bg-github-merged",
-                    chipState === "complete" && "bg-github-open",
+                    chipState === "complete" && "bg-category-blue",
                     variant === "sidebar" ? "top-0 left-[1px]" : "top-0 left-0 rounded-tl-lg"
                   )}
                   style={{ clipPath: "polygon(0 0, 100% 0, 0 100%)" }}

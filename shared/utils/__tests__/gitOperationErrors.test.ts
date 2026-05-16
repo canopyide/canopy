@@ -272,19 +272,20 @@ describe("getGitRecoveryAction", () => {
   it("returns structured CTA for key reasons", () => {
     expect(getGitRecoveryAction("auth-failed")).toEqual({
       label: "Sign in with GitHub",
-      actionId: "github.auth",
+      actionId: "app.settings.openTab",
+      args: { tab: "github" },
     });
     expect(getGitRecoveryAction("push-rejected-outdated")).toEqual({
       label: "Pull and rebase",
-      actionId: "git.pull",
+      actionId: "git.pullRebase",
     });
     expect(getGitRecoveryAction("conflict-unresolved")).toEqual({
       label: "Resolve conflicts",
-      actionId: "git.resolveConflicts",
+      actionId: "worktree.openReviewHub",
     });
     expect(getGitRecoveryAction("dubious-ownership")).toEqual({
       label: "Trust this repo",
-      actionId: "git.trustRepository",
+      actionId: "git.markSafeDirectory",
     });
   });
 

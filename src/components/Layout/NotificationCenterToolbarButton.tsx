@@ -9,7 +9,7 @@ import { useNotificationSettingsStore } from "@/store/notificationSettingsStore"
 import { useUIStore } from "@/store/uiStore";
 import { useShallow } from "zustand/react/shallow";
 import { isScheduledQuietNow } from "@shared/utils/quietHours";
-import { DURATION_200 } from "@/lib/animationUtils";
+import { DURATION_200, DURATION_250 } from "@/lib/animationUtils";
 
 const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text";
 
@@ -131,18 +131,29 @@ export function NotificationCenterToolbarButton({
   // cleanup (matching AgentStatusIndicator) instead of key-based remounting, so
   // no will-change layer hint lingers on the long-lived toolbar element.
   const prevEvictedRef = useRef(evictedToInboxCount);
+  const lastBellBumpTimeRef = useRef(0);
   const [isBellBlipping, setIsBellBlipping] = useState(false);
   useEffect(() => {
     const prev = prevEvictedRef.current;
     prevEvictedRef.current = evictedToInboxCount;
 
-    // Count decreased — clear any in-flight animation state.
+    // Count decreased — clear any in-flight animation state and reset the
+    // throttle clock so the next burst animates immediately. Acknowledging the
+    // inbox should not gate a fresh arrival behind a stale throttle window.
     if (evictedToInboxCount < prev) {
       setIsBellBlipping(false);
+      lastBellBumpTimeRef.current = 0;
       return;
     }
 
     if (evictedToInboxCount > prev && !isDndActive) {
+      // Leading-edge throttle: drop bumps that arrive inside the previous
+      // animation window so rapid-fire evictions don't strobe the bell. The
+      // ref is only advanced when a blip actually fires, so DND-suppressed
+      // increments don't consume the throttle window.
+      const now = Date.now();
+      if (now - lastBellBumpTimeRef.current < DURATION_250) return;
+      lastBellBumpTimeRef.current = now;
       setIsBellBlipping(true);
     }
   }, [evictedToInboxCount, isDndActive]);

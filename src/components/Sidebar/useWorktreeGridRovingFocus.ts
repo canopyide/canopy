@@ -37,6 +37,16 @@ function computeGridPageSize(
   return Math.max(1, Math.floor(viewportHeight / sampleHeight));
 }
 
+export interface UseWorktreeGridRovingFocusOptions {
+  /**
+   * Called when the user presses Alt+ArrowUp/ArrowDown on a focused row.
+   * The hook resolves the row element and the move delta; the caller owns
+   * the reorder mutation (Alt+Arrow is a sidebar-specific shortcut, not a
+   * generic roving-focus concern).
+   */
+  onKeyboardReorder?: (rowElement: HTMLElement, delta: -1 | 1) => void;
+}
+
 export interface UseWorktreeGridRovingFocusReturn {
   gridRef: React.RefObject<HTMLDivElement | null>;
   handleGridKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
@@ -44,12 +54,22 @@ export interface UseWorktreeGridRovingFocusReturn {
 }
 
 export function useWorktreeGridRovingFocus(
-  scrollContainerRef?: React.RefObject<HTMLDivElement | null>
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>,
+  options?: UseWorktreeGridRovingFocusOptions
 ): UseWorktreeGridRovingFocusReturn {
   const gridRef = useRef<HTMLDivElement | null>(null);
   const modeRef = useRef<GridMode>("list");
   const activeRowIndexRef = useRef<number>(0);
   const activeToolbarIndexRef = useRef<number>(0);
+  // Stash the callback in a ref so a fresh `options` identity each render
+  // doesn't re-create handleGridKeyDown (which would re-run useEffect deps
+  // and rebind tab stops unnecessarily).
+  const onKeyboardReorderRef = useRef<UseWorktreeGridRovingFocusOptions["onKeyboardReorder"]>(
+    options?.onKeyboardReorder
+  );
+  useEffect(() => {
+    onKeyboardReorderRef.current = options?.onKeyboardReorder;
+  });
 
   const getRows = useCallback((): HTMLElement[] => {
     if (!gridRef.current) return [];
@@ -241,7 +261,14 @@ export function useWorktreeGridRovingFocus(
 
   const handleGridKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (e.metaKey || e.altKey) return;
+      if (e.metaKey) return;
+      // Carve Alt+ArrowUp / Alt+ArrowDown through the modifier guard so a
+      // focused row can be reordered without leaving the keyboard. Every
+      // other Alt combo still bails so global shortcuts keep firing. Arrow
+      // keys don't get Option-transformed on macOS (lesson #1678), so
+      // checking e.key is safe cross-platform.
+      const isAltArrowReorder = e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown");
+      if (e.altKey && !isAltArrowReorder) return;
       // Allow Ctrl+Home / Ctrl+End through (mandatory APG grid shortcuts);
       // bail on every other Ctrl combo so global shortcuts (Ctrl+C, Ctrl+T,
       // Ctrl+W, …) still reach their handlers.
@@ -261,6 +288,23 @@ export function useWorktreeGridRovingFocus(
         if (!isOnRow) return;
 
         const currentIdx = Math.min(activeRowIndexRef.current, rows.length - 1);
+
+        if (isAltArrowReorder) {
+          // Reorder the focused row in place. The hook stays unaware of
+          // worktrees — it just hands the focused row element + direction
+          // back to the caller, which owns the persistence mutation. Always
+          // preventDefault so Alt+Arrow never falls through to row navigation
+          // (which would move focus and confuse the user) even if no
+          // reorder handler is wired.
+          e.preventDefault();
+          e.stopPropagation();
+          const row = rows[currentIdx];
+          if (row && onKeyboardReorderRef.current) {
+            onKeyboardReorderRef.current(row, e.key === "ArrowDown" ? 1 : -1);
+          }
+          return;
+        }
+
         let newIdx: number | null = null;
 
         if (e.key === "Enter" || e.key === "ArrowRight") {

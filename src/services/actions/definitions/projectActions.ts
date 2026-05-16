@@ -4,44 +4,10 @@ import { z } from "zod";
 import { projectClient } from "@/clients";
 import { useProjectStore } from "@/store/projectStore";
 import { useProjectSettingsStore } from "@/store/projectSettingsStore";
-import { getMruProjects } from "@/lib/projectMru";
 import { notify, EVENT_KIND_TO_SETTING_KEY, EVENT_KIND_LABEL } from "@/lib/notify";
 import type { NotificationEventKind } from "@/lib/notify";
+import { switchProjectByMruDirection } from "@/lib/projectMruSwitch";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
-
-async function runMruFallbackSwitch(): Promise<void> {
-  const state = useProjectStore.getState();
-  const currentId = state.currentProject?.id ?? null;
-  const sorted = getMruProjects(state.projects);
-  const otherProjects = sorted.filter((p) => p.id !== currentId);
-  if (otherProjects.length === 0) return;
-
-  const target = otherProjects[0];
-  if (!target) return;
-
-  try {
-    if (target.status === "background") {
-      await state.reopenProject(target.id);
-    } else {
-      await state.switchProject(target.id);
-    }
-  } catch (error) {
-    notify({
-      type: "error",
-      title: "Failed to switch project",
-      message: formatErrorMessage(error, "Failed to switch project"),
-      actions: [
-        {
-          label: "Try again",
-          variant: "primary",
-          onClick: () => {
-            void runMruFallbackSwitch();
-          },
-        },
-      ],
-    });
-  }
-}
 
 export function registerProjectActions(actions: ActionRegistry, callbacks: ActionCallbacks): void {
   actions.set("project.switcherPalette", () => ({
@@ -61,23 +27,23 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
   actions.set("project.mruCycleOlder", () => ({
     id: "project.mruCycleOlder",
     title: "Switch Down Project List",
-    description: "Switch to the next project; hold to scrub down the MRU list",
+    description: "Switch to the next project in MRU order",
     category: "project",
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    run: () => runMruFallbackSwitch(),
+    run: () => switchProjectByMruDirection("older"),
   }));
 
   actions.set("project.mruCycleNewer", () => ({
     id: "project.mruCycleNewer",
     title: "Switch Up Project List",
-    description: "Switch to the next project; hold to scrub up the MRU list",
+    description: "Switch to the previous project in MRU order",
     category: "project",
     kind: "command",
     danger: "safe",
     scope: "renderer",
-    run: () => runMruFallbackSwitch(),
+    run: () => switchProjectByMruDirection("newer"),
   }));
 
   actions.set("project.add", () => ({

@@ -4,7 +4,12 @@ import type {
   KeybindingConflict,
   KeybindingResolutionResult,
 } from "./keybindingUtils";
-import { CHORD_TIMEOUT_MS, normalizeKeyForBinding, parseCombo } from "./keybindingUtils";
+import {
+  CHORD_TIMEOUT_MS,
+  combosFieldsEqual,
+  normalizeKeyForBinding,
+  parseCombo,
+} from "./keybindingUtils";
 import { DEFAULT_KEYBINDINGS } from "./defaultKeybindings";
 import { isMac } from "@/lib/platform";
 
@@ -13,18 +18,6 @@ export * from "./defaultKeybindings";
 
 function scopesConflict(a: KeyScope, b: KeyScope): boolean {
   return a === b || a === "global" || b === "global";
-}
-
-function combosFieldsEqual(a: string, b: string): boolean {
-  const pa = parseCombo(a);
-  const pb = parseCombo(b);
-  return (
-    pa.cmd === pb.cmd &&
-    pa.ctrl === pb.ctrl &&
-    pa.shift === pb.shift &&
-    pa.alt === pb.alt &&
-    pa.key.toLowerCase() === pb.key.toLowerCase()
-  );
 }
 
 class KeybindingService {
@@ -129,9 +122,8 @@ class KeybindingService {
     scope: KeyScope = "global"
   ): KeybindingConflict[] {
     const conflicts: KeybindingConflict[] = [];
-    const normalizedCombo = combo.trim().toLowerCase();
-    if (!normalizedCombo) return conflicts;
-    const candidateParts = normalizedCombo.split(" ");
+    const candidateParts = combo.trim().split(/\s+/).filter(Boolean);
+    if (candidateParts.length === 0) return conflicts;
 
     for (const arr of this.bindings.values()) {
       for (const binding of arr) {
@@ -144,21 +136,22 @@ class KeybindingService {
 
         let matched: "conflict" | "shadowed" | null = null;
         for (const existingCombo of effectiveCombos) {
-          const normalizedExisting = existingCombo.trim().toLowerCase();
-          if (!normalizedExisting) continue;
-
-          if (normalizedExisting === normalizedCombo) {
+          const existingParts = existingCombo.trim().split(/\s+/).filter(Boolean);
+          if (existingParts.length === 0) continue;
+          if (
+            existingParts.length === candidateParts.length &&
+            existingParts.every((p, i) => combosFieldsEqual(p, candidateParts[i]!))
+          ) {
             matched = "conflict";
             break;
           }
 
-          const existingParts = normalizedExisting.split(" ");
           const candidateIsPrefix =
             candidateParts.length < existingParts.length &&
-            candidateParts.every((p, i) => p === existingParts[i]);
+            candidateParts.every((p, i) => combosFieldsEqual(p, existingParts[i]!));
           const existingIsPrefix =
             existingParts.length < candidateParts.length &&
-            existingParts.every((p, i) => p === candidateParts[i]);
+            existingParts.every((p, i) => combosFieldsEqual(p, candidateParts[i]!));
           if (candidateIsPrefix || existingIsPrefix) {
             matched = "shadowed";
             // Don't break: a later combo on the same binding might be an exact
@@ -244,6 +237,12 @@ class KeybindingService {
     // On Windows/Linux, Ctrl is the primary modifier
     const mac = isMac();
     const hasCmd = mac ? event.metaKey : event.ctrlKey;
+
+    // AltGr on Windows synthesizes ctrlKey+altKey on the keyboard event. Reject
+    // the match early so international character input (€, @, {, etc.) is never
+    // swallowed by a Cmd/Ctrl+Alt binding that happens to share the produced
+    // character or the underlying physical key. (#7941)
+    if (!mac && event.getModifierState?.("AltGraph")) return false;
 
     // Check modifiers
     if (parsed.cmd && !hasCmd) return false;
@@ -424,12 +423,11 @@ class KeybindingService {
 
   registerBinding(config: KeybindingConfig): void {
     if (config.combo) {
-      const normalized = config.combo.trim().toLowerCase();
       for (const arr of this.bindings.values()) {
         for (const existing of arr) {
           if (existing.actionId === config.actionId) continue;
           if (!existing.combo) continue;
-          if (existing.combo.trim().toLowerCase() !== normalized) continue;
+          if (!combosFieldsEqual(existing.combo, config.combo)) continue;
           if (!scopesConflict(existing.scope, config.scope)) continue;
           console.warn(
             `[KeybindingService] Skipping binding for "${config.actionId}" (${config.combo}, scope=${config.scope}) — combo already registered to "${existing.actionId}" (scope=${existing.scope}). Use setOverride() to rebind.`

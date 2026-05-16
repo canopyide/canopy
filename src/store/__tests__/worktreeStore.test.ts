@@ -4,6 +4,7 @@ import { TerminalRefreshTier } from "@shared/types/panel";
 const {
   appSetStateMock,
   applyRendererPolicyMock,
+  wakeMock,
   recordMruMock,
   setFocusedMock,
   logErrorWithContextMock,
@@ -14,6 +15,7 @@ const {
 } = vi.hoisted(() => ({
   appSetStateMock: vi.fn().mockResolvedValue(undefined),
   applyRendererPolicyMock: vi.fn(),
+  wakeMock: vi.fn(),
   recordMruMock: vi.fn(),
   setFocusedMock: vi.fn(),
   logErrorWithContextMock: vi.fn(),
@@ -30,8 +32,10 @@ const {
 
 type MockTerminal = {
   id: string;
+  kind?: "terminal" | "browser" | "dev-preview" | "notes";
   worktreeId?: string;
   location?: "grid" | "dock" | "trash" | "background";
+  hasPty?: boolean;
 };
 const terminalStoreState = {
   panelsById: {} as Record<string, MockTerminal>,
@@ -65,6 +69,7 @@ vi.mock("@/clients", () => ({
 vi.mock("@/services/TerminalInstanceService", () => ({
   terminalInstanceService: {
     applyRendererPolicy: applyRendererPolicyMock,
+    wake: wakeMock,
   },
 }));
 
@@ -358,6 +363,8 @@ describe("worktreeStore", () => {
       ["term-b", TerminalRefreshTier.BACKGROUND],
       ["dock-global", TerminalRefreshTier.BACKGROUND],
     ]);
+    expect(wakeMock).toHaveBeenCalledTimes(1);
+    expect(wakeMock).toHaveBeenCalledWith("term-a");
   });
 
   it("ignores stale renderer policy work from an earlier selection", async () => {
@@ -377,6 +384,25 @@ describe("worktreeStore", () => {
       ["term-a", TerminalRefreshTier.BACKGROUND],
       ["term-b", TerminalRefreshTier.VISIBLE],
     ]);
+    expect(wakeMock).toHaveBeenCalledTimes(1);
+    expect(wakeMock).toHaveBeenCalledWith("term-b");
+  });
+
+  it("wakes active worktree PTY terminals even when policy tier is already visible", async () => {
+    setMockTerminals([
+      { id: "agent-a", worktreeId: "wt-a", location: "grid", kind: "terminal" },
+      { id: "plain-a", worktreeId: "wt-a", location: "grid", kind: "terminal" },
+      { id: "browser-a", worktreeId: "wt-a", location: "grid", kind: "browser" },
+      { id: "dead-a", worktreeId: "wt-a", location: "grid", kind: "terminal", hasPty: false },
+      { id: "term-b", worktreeId: "wt-b", location: "grid", kind: "terminal" },
+    ]);
+
+    useWorktreeSelectionStore.getState().selectWorktree("wt-a");
+    await vi.waitFor(() => {
+      expect(applyRendererPolicyMock).toHaveBeenCalledTimes(5);
+    });
+
+    expect(wakeMock.mock.calls).toEqual([["agent-a"], ["plain-a"]]);
   });
 
   it("setActiveWorktree syncs focusedWorktreeId to clear stale focus", () => {
@@ -705,6 +731,9 @@ describe("worktreeStore", () => {
         "term-idle-remote",
         TerminalRefreshTier.BACKGROUND
       );
+      expect(wakeMock).toHaveBeenCalledWith("term-active");
+      expect(wakeMock).toHaveBeenCalledWith("term-armed-remote");
+      expect(wakeMock).not.toHaveBeenCalledWith("term-idle-remote");
       armedIdsForFleet = new Set();
     });
   });

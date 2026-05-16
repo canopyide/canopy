@@ -1352,6 +1352,24 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
     result: number | null;
   };
 
+  // Windows Store update notification channels
+  "store-update:get-latest": {
+    args: [];
+    result: { version: string; storeUrl: string } | null;
+  };
+  "store-update:dismiss": {
+    args: [version: string];
+    result: void;
+  };
+  "store-update:get-settings": {
+    args: [];
+    result: { enabled: boolean };
+  };
+  "store-update:set-settings": {
+    args: [enabled: boolean];
+    result: { enabled: boolean };
+  };
+
   // Agent Capabilities channels
   "agent-capabilities:get-registry": {
     args: [];
@@ -2042,6 +2060,12 @@ export interface IpcEventMap {
     signal: string | null;
     timestamp: number;
   };
+  "terminal:backend-recovering": {
+    crashType: string;
+    code: number | null;
+    signal: string | null;
+    timestamp: number;
+  };
   "terminal:backend-ready": void;
   "terminal:reduce-scrollback": { terminalIds: string[]; targetLines: number };
   "terminal:restore-scrollback": { terminalIds: string[] };
@@ -2187,6 +2211,10 @@ export interface IpcEventMap {
   "update:available": { version: string };
   "update:download-progress": { percent: number };
   "update:downloaded": { version: string };
+
+  // Windows Store update notification events — fired only on Windows Store
+  // builds when a newer version is detected on the CDN feed.
+  "store-update:available": { version: string; storeUrl: string };
 
   // Dev Preview events
   "dev-preview:state-changed": DevPreviewStateChangedPayload;
@@ -2355,6 +2383,7 @@ export type IpcEventBusMap = Pick<
   // Terminal lifecycle (non-data) — exit, spawn-result, backend crash/ready
   | "terminal:exit"
   | "terminal:backend-crashed"
+  | "terminal:backend-recovering"
   | "terminal:backend-ready"
   | "terminal:spawn-result"
   // Terminal observability

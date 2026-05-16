@@ -9,6 +9,7 @@ import {
   PointerSensor,
   TouchSensor,
   type DragEndEvent,
+  type UniqueIdentifier,
 } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
@@ -54,11 +55,16 @@ import {
   isGroupDeprioritized,
 } from "./useDockBlockedState";
 import { SortableTabButton } from "@/components/Panel/SortableTabButton";
+import { makeSortableAnnouncements } from "@/components/DragDrop/sortableAnnouncements";
 import type { TabGroup } from "@/types";
 import { buildPanelDuplicateOptions } from "@/services/terminal/panelDuplicationService";
 import { handleDockInteractOutside, handleDockEscapeKeyDown } from "./dockPopoverGuard";
 import { usePreferencesStore } from "@/store";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+// Defer terminal focus by one frame's worth so Radix Popover finishes its
+// open animation before we steal focus into the PTY.
+const TERMINAL_FOCUS_DELAY_MS = 50;
 
 interface DockedTabGroupProps {
   group: TabGroup;
@@ -292,6 +298,30 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
     [panels, group.id, reorderPanelsInGroup]
   );
 
+  // Surface-specific ARIA announcements for the dock tab strip. Without this
+  // dnd-kit reads the generic English defaults ("Picked up draggable item"),
+  // which obscures which tab the user grabbed when multiple groups are docked.
+  const getPanelTabLabel = useCallback(
+    (id: UniqueIdentifier) => {
+      const panel = panels.find((p) => p.id === id);
+      return panel ? getBaseTitle(panel.title) : null;
+    },
+    [panels]
+  );
+  const tabAnnouncements = useMemo(
+    () => makeSortableAnnouncements(getPanelTabLabel, "panel tab"),
+    [getPanelTabLabel]
+  );
+
+  // Restrict dnd-kit's autoscroller to the horizontal tab strip itself. The
+  // DndContext lives inside a Radix Popover portaled to document.body, so its
+  // scrollable-ancestor walk would otherwise reach `body`/`html` and scroll
+  // the page when the user drags a tab near the popover edge.
+  const tabAutoScroll = useMemo(
+    () => ({ canScroll: (el: Element) => el === tabListEl }),
+    [tabListEl]
+  );
+
   const handleTabRename = useCallback(
     (tabId: string, newTitle: string) => {
       updateTitle(tabId, newTitle);
@@ -299,12 +329,31 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
     [updateTitle]
   );
 
-  // Arrow key navigation for tabs (standard tablist behavior)
+  // APG manual activation: arrow keys move focus only; Space/Enter activates.
+  // Activation triggers PTY refit + buffering-state work, so following
+  // automatic-activation would re-run that on every arrow press while skimming.
+  // Space/Enter activation is handled by `TabButton.handleKeyDown` on each tab
+  // (it calls `onClick` which routes to `handleTabClick`), so we intentionally
+  // do not handle those keys here — doing so would double-activate.
   const handleTabListKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (panels.length < 2) return;
 
-      const currentIndex = panels.findIndex((p) => p.id === activeTabId);
+      // Anchor arrow movement to the currently focused tab when one is
+      // focused (so successive arrows roam without activating), else to the
+      // active tab (first arrow after entering the tablist via Tab).
+      //
+      // The `+` (duplicate) button lives inside the tablist container but is
+      // not itself a tab. If focus is on a non-tab element in the tablist
+      // (i.e. the `+` button), bail out so arrows don't yank focus back into
+      // the tab strip from the user's current position.
+      const focused = document.activeElement as HTMLElement | null;
+      const focusedTabId = focused?.getAttribute("data-tab-id");
+      if (!focusedTabId && focused && tabListEl?.contains(focused)) {
+        return;
+      }
+      const anchorId = focusedTabId ?? activeTabId;
+      const currentIndex = panels.findIndex((p) => p.id === anchorId);
       let nextIndex: number | undefined;
 
       switch (e.key) {
@@ -326,16 +375,20 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
 
       e.preventDefault();
       const nextPanel = panels[nextIndex];
-      if (nextPanel) {
-        handleTabClick(nextPanel.id);
-        // Focus the new tab button
-        const tabButton = tabListEl?.querySelector(
-          `[data-tab-id="${nextPanel.id}"]`
-        ) as HTMLElement | null;
-        tabButton?.focus();
+      if (nextPanel && tabListEl) {
+        // Iterate rather than build a `[data-tab-id="${id}"]` selector so we
+        // don't need to escape panel IDs containing quotes or other CSS-special
+        // characters (and so the lookup works in jsdom, which lacks CSS.escape).
+        const tabs = tabListEl.querySelectorAll<HTMLElement>("[data-tab-id]");
+        for (const el of tabs) {
+          if (el.getAttribute("data-tab-id") === nextPanel.id) {
+            el.focus();
+            break;
+          }
+        }
       }
     },
-    [panels, activeTabId, handleTabClick, tabListEl]
+    [panels, activeTabId, tabListEl]
   );
 
   // Handle add tab - duplicate the current panel as a new tab
@@ -522,7 +575,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
             return;
           }
 
-          setTimeout(() => terminalInstanceService.focus(activePanel.id), 50);
+          setTimeout(() => terminalInstanceService.focus(activePanel.id), TERMINAL_FOCUS_DELAY_MS);
         }}
       >
         {/* Tab bar at top of popover */}
@@ -531,13 +584,15 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
           collisionDetection={closestCenter}
           onDragEnd={handleTabDragEnd}
           modifiers={[restrictToHorizontalAxis, restrictToParentElement]}
+          autoScroll={tabAutoScroll}
+          accessibility={{ announcements: tabAnnouncements }}
         >
           <SortableContext items={tabIds} strategy={horizontalListSortingStrategy}>
             <LayoutGroup id={`dock-tabs-${group.id}`}>
               <div className="flex items-stretch border-b border-divider bg-daintree-sidebar shrink-0">
                 <div
                   ref={setTabListEl}
-                  className="flex items-center min-w-0 flex-1 overflow-x-auto scrollbar-none"
+                  className="flex items-center min-w-0 flex-1 overflow-x-auto overscroll-x-none scrollbar-none"
                   role="tablist"
                   aria-label="Dock panel tabs"
                   onKeyDown={handleTabListKeyDown}

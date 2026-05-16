@@ -258,6 +258,15 @@ export function routeHostEvent(event: PtyHostEvent, deps: PtyEventRouterDeps): b
       return true;
     }
 
+    case "host-memory-warning": {
+      emitter.emit("host-memory-warning", {
+        isWarning: event.isWarning,
+        utilizationPercent: event.utilizationPercent,
+        timestamp: event.timestamp,
+      });
+      return true;
+    }
+
     case "fd-leak-warning": {
       const flwEvent: FdLeakWarningPayload = {
         fdCount: event.fdCount,

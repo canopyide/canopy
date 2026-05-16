@@ -64,6 +64,7 @@ import {
   getWorkspaceClientRef,
   setAutoUpdaterServiceRef,
   setAgentNotificationServiceRef,
+  setWindowsStoreNotifierServiceRef,
   setGlobalServicesInitialized,
 } from "./serviceRefs.js";
 
@@ -241,6 +242,19 @@ export async function initGlobalServices(
       const { autoUpdaterService } = await import("../services/AutoUpdaterService.js");
       setAutoUpdaterServiceRef(autoUpdaterService);
       autoUpdaterService.initialize();
+    },
+  });
+
+  // Windows Store update notifier — parallel path to electron-updater for
+  // builds where the Store owns the install but the user still wants to know
+  // a newer version is available.
+  registerDeferredTask({
+    name: "windows-store-notifier",
+    run: async () => {
+      const { windowsStoreNotifierService } =
+        await import("../services/WindowsStoreNotifierService.js");
+      setWindowsStoreNotifierServiceRef(windowsStoreNotifierService);
+      windowsStoreNotifierService.initialize();
     },
   });
 

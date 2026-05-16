@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { TerminalInfoDialog } from "./TerminalInfoDialog";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 export function TerminalInfoDialogHost() {
   const [isOpen, setIsOpen] = useState(false);
@@ -23,10 +24,16 @@ export function TerminalInfoDialogHost() {
   }, []);
 
   return (
-    <TerminalInfoDialog
-      isOpen={isOpen}
-      onClose={() => setIsOpen(false)}
-      terminalId={terminalId ?? ""}
-    />
+    <ErrorBoundary
+      variant="component"
+      componentName="TerminalInfoDialog"
+      resetKeys={[Number(isOpen)]}
+    >
+      <TerminalInfoDialog
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        terminalId={terminalId ?? ""}
+      />
+    </ErrorBoundary>
   );
 }

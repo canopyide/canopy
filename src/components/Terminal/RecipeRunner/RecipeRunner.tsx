@@ -1,4 +1,4 @@
-import { AlertTriangle, Info, RotateCcw } from "lucide-react";
+import { Info, RotateCcw, XCircle } from "lucide-react";
 import { useRecipeRunner, type SpawnFailureSummary } from "./useRecipeRunner";
 import { RecipeRunnerGrid } from "./RecipeRunnerGrid";
 import { RecipeRunnerList } from "./RecipeRunnerList";
@@ -44,7 +44,7 @@ export function RecipeRunner({ activeWorktreeId, defaultCwd }: RecipeRunnerProps
       {runner.spawnFailureSummary && (
         <div className="mb-3" data-testid="recipe-spawn-failure-banner">
           <InlineStatusBanner
-            icon={AlertTriangle}
+            icon={XCircle}
             title={formatFailureTitle(runner.spawnFailureSummary)}
             description={runner.spawnFailureSummary.failures[0]?.error}
             severity="error"

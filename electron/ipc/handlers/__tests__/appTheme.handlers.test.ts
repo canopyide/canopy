@@ -491,6 +491,57 @@ describe("appTheme handlers", () => {
     expect(mockWindow.setBackgroundColor).not.toHaveBeenCalled();
   });
 
+  it("nativeTheme updated re-applies Windows titleBarOverlay at 48px height — issue #7951", () => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    try {
+      const mockWindow = {
+        isDestroyed: () => false,
+        setBackgroundColor: vi.fn(),
+        setTitleBarOverlay: vi.fn(),
+      };
+      storeState.data.appTheme = { colorSchemeId: "daintree", followSystem: true };
+      nativeThemeMock.shouldUseDarkColors = true;
+
+      registerAppThemeHandlers(mockWindow as never);
+
+      const themeHandler = getNativeThemeHandler();
+      themeHandler();
+      vi.advanceTimersByTime(300);
+
+      expect(mockWindow.setTitleBarOverlay).toHaveBeenCalledWith({
+        color: "#1a1a2e",
+        symbolColor: "#a1a1aa",
+        height: 48,
+      });
+    } finally {
+      Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
+    }
+  });
+
+  it("nativeTheme updated does not call setTitleBarOverlay on non-Windows platforms", () => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+    try {
+      const mockWindow = {
+        isDestroyed: () => false,
+        setBackgroundColor: vi.fn(),
+        setTitleBarOverlay: vi.fn(),
+      };
+      storeState.data.appTheme = { colorSchemeId: "daintree", followSystem: true };
+
+      registerAppThemeHandlers(mockWindow as never);
+
+      const themeHandler = getNativeThemeHandler();
+      themeHandler();
+      vi.advanceTimersByTime(300);
+
+      expect(mockWindow.setTitleBarOverlay).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
+    }
+  });
+
   it("nativeTheme updated persists new colorSchemeId to store", () => {
     const mockWindow = {
       isDestroyed: () => false,

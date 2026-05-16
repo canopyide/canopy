@@ -19,6 +19,10 @@ import path from "path";
 
 const PANEL_IDS = ["panel-term-1", "panel-agent-1"] as const;
 
+async function expectMainUiReady(page: Page, timeout = T_LONG): Promise<void> {
+  await expect(page.getByRole("toolbar", { name: "Main toolbar" })).toBeVisible({ timeout });
+}
+
 interface MarkerFile {
   sessionStartMs: number;
   appVersion: string;
@@ -225,9 +229,7 @@ test.describe.serial("Core: Crash Recovery", () => {
       timeout: T_LONG,
     });
 
-    await expect(window.locator(SEL.toolbar.openSettings)).toBeVisible({
-      timeout: T_LONG,
-    });
+    await expectMainUiReady(window);
   });
 });
 
@@ -407,9 +409,7 @@ test.describe.serial("Core: Crash Recovery — Panel Restoration", () => {
 
     // Dialog should dismiss and main UI should appear
     await expect(window.locator(SEL.crashRecovery.dialog)).not.toBeVisible({ timeout: T_LONG });
-    await expect(window.getByRole("toolbar", { name: "Main toolbar" })).toBeVisible({
-      timeout: T_LONG,
-    });
+    await expectMainUiReady(window);
 
     // Wait for at least one panel with data-panel-id to appear
     await expect(window.locator(SEL.panel.anyPanel)).toHaveCount(2, { timeout: T_LONG });

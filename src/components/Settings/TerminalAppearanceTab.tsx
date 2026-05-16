@@ -152,7 +152,7 @@ export function TerminalAppearanceTab({
           <>
             <SettingsSection
               icon={Palette}
-              title="App Theme"
+              title="App theme"
               description="Choose the overall visual theme for the application."
             >
               <AppThemePicker onClose={onClose} />
@@ -160,7 +160,7 @@ export function TerminalAppearanceTab({
 
             <SettingsSection
               icon={Eye}
-              title="Color Vision"
+              title="Color vision"
               description="Adjust colors for color vision deficiency. Affects status indicators and default terminal palette."
             >
               <ColorVisionPicker />
@@ -168,7 +168,7 @@ export function TerminalAppearanceTab({
 
             <SettingsSection
               icon={PanelBottom}
-              title="Dock Density"
+              title="Dock density"
               description="Control the height and spacing of items in the dock bar."
             >
               <DockDensityPicker />
@@ -180,7 +180,7 @@ export function TerminalAppearanceTab({
           <>
             <SettingsSection
               icon={Palette}
-              title="Terminal Color Scheme"
+              title="Terminal color scheme"
               description="Colors used for terminal output and ANSI escape sequences."
             >
               <ColorSchemePicker />
@@ -188,7 +188,7 @@ export function TerminalAppearanceTab({
 
             <SettingsSection
               icon={Type}
-              title="Font Size"
+              title="Font size"
               description="Terminal font size in pixels. Smaller fonts reduce the number of cells on screen and can improve performance."
             >
               <div className="flex items-center gap-3">
@@ -223,7 +223,7 @@ export function TerminalAppearanceTab({
 
             <SettingsSection
               icon={CaseSensitive}
-              title="Font Family"
+              title="Font family"
               description="JetBrains Mono is bundled with Daintree. If it is not available on your system, the terminal will fall back to your platform's monospace font."
             >
               <Select

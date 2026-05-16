@@ -1,5 +1,7 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import type { McpConfirmationDecision } from "@shared/types/ipc/mcpServer";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useMcpConfirmStore } from "@/store/mcpConfirmStore";
 
 /**
@@ -20,50 +22,77 @@ const CONFIRMATION_TIMEOUT_MS = 28_000;
 export function McpConfirmDialog() {
   const current = useMcpConfirmStore((state) => state.current);
   const resolveCurrent = useMcpConfirmStore((state) => state.resolveCurrent);
+  const resetKey = current?.requestId ?? "null";
+
+  // `resolveCurrent` is synchronous: it resolves the promise and advances the
+  // queue so `current` becomes the next item before React re-renders. A rapid
+  // double-click would otherwise fire a second `resolveCurrent("approved")`
+  // that lands on the freshly-promoted queued item — silently approving a
+  // destructive action the user never saw. Gate every resolution on the
+  // requestId we've already handled so a given dialog can resolve exactly once.
+  const handledRequestIdRef = useRef<string | null>(null);
+  const resolveOnce = useCallback(
+    (requestId: string, decision: McpConfirmationDecision) => {
+      if (handledRequestIdRef.current === requestId) return;
+      handledRequestIdRef.current = requestId;
+      resolveCurrent(decision);
+    },
+    [resolveCurrent]
+  );
 
   useEffect(() => {
     if (current === null) return;
+    const { requestId, enqueuedAt } = current;
     // Subtract time the request already spent queued behind a prior modal so
     // every dispatch races against the same wall-clock budget; otherwise a
     // queued item could outlive main's 30s deadline and degrade to a generic
     // timeout error instead of `CONFIRMATION_TIMEOUT`.
-    const elapsed = Date.now() - current.enqueuedAt;
+    const elapsed = Date.now() - enqueuedAt;
     const remaining = Math.max(500, CONFIRMATION_TIMEOUT_MS - elapsed);
     const timer = setTimeout(() => {
-      resolveCurrent("timeout");
+      resolveOnce(requestId, "timeout");
     }, remaining);
     return () => clearTimeout(timer);
-  }, [current, resolveCurrent]);
+  }, [current, resolveOnce]);
 
   if (current === null) {
     return (
-      <ConfirmDialog
-        isOpen={false}
-        title=""
-        confirmLabel="Run action"
-        onConfirm={() => {}}
-        variant="destructive"
-      />
+      <ErrorBoundary variant="component" componentName="McpConfirmDialog" resetKeys={[resetKey]}>
+        <ConfirmDialog
+          isOpen={false}
+          title=""
+          confirmLabel="Run"
+          onConfirm={() => {}}
+          variant="default"
+        />
+      </ErrorBoundary>
     );
   }
 
+  // Severity follows the action's registry classification, not the fact that
+  // an MCP client dispatched it. Provenance is already conveyed by the
+  // "Run '…'?" framing; only genuinely destructive dispatches earn red.
+  const variant = current.danger === "confirm" ? "destructive" : "default";
+
   return (
-    <ConfirmDialog
-      isOpen={true}
-      onClose={() => resolveCurrent("rejected")}
-      title={`Run '${current.actionTitle}'?`}
-      description={current.actionDescription}
-      confirmLabel="Run action"
-      cancelLabel="Cancel"
-      onConfirm={() => resolveCurrent("approved")}
-      variant="destructive"
-    >
-      <div className="space-y-2">
-        <div className="text-xs text-daintree-text/60 uppercase tracking-wide">Arguments</div>
-        <pre className="text-xs font-mono whitespace-pre-wrap break-words bg-overlay-subtle rounded px-2 py-1.5 text-daintree-text/80">
-          {current.argsSummary || "(none)"}
-        </pre>
-      </div>
-    </ConfirmDialog>
+    <ErrorBoundary variant="component" componentName="McpConfirmDialog" resetKeys={[resetKey]}>
+      <ConfirmDialog
+        isOpen={true}
+        onClose={() => resolveOnce(current.requestId, "rejected")}
+        title={`Run '${current.actionTitle}'?`}
+        description={current.actionDescription}
+        confirmLabel={current.actionTitle}
+        cancelLabel="Cancel"
+        onConfirm={() => resolveOnce(current.requestId, "approved")}
+        variant={variant}
+      >
+        <div className="space-y-2">
+          <div className="text-xs text-daintree-text/60 uppercase tracking-wide">Arguments</div>
+          <pre className="text-xs font-mono whitespace-pre-wrap break-words bg-overlay-subtle rounded px-2 py-1.5 text-daintree-text/80">
+            {current.argsSummary || "(none)"}
+          </pre>
+        </div>
+      </ConfirmDialog>
+    </ErrorBoundary>
   );
 }

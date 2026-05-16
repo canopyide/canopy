@@ -753,8 +753,13 @@ test.describe.serial("Full: Worktree Resource Lifecycle", () => {
     const forceCheckbox = window.locator("text=Force delete");
     if (await forceCheckbox.isVisible({ timeout: 1000 }).catch(() => false)) {
       await forceCheckbox.click();
+      const confirmInput = window.locator(SEL.worktree.deleteConfirmInput);
+      if (await confirmInput.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await confirmInput.fill(BRANCH);
+      }
     }
 
+    await expect(confirmBtn).toBeEnabled({ timeout: T_MEDIUM });
     await confirmBtn.click();
 
     // Worktree card should disappear

@@ -1,5 +1,5 @@
 import { classifyGitError, extractGitErrorMessage } from "../../shared/utils/gitOperationErrors.js";
-import type { GitOperationReason } from "../../shared/types/ipc/errors.js";
+import type { ErrorRetryability, GitOperationReason } from "../../shared/types/ipc/errors.js";
 import type { AppErrorCode } from "../../shared/types/appError.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 
@@ -162,6 +162,44 @@ export function isTransientError(error: unknown): boolean {
   // EMFILE, ENOMEM, ENXIO intentionally excluded — resource exhaustion
   // requires user remediation before retry (close terminals, free memory).
   return ["EBUSY", "EAGAIN", "ETIMEDOUT", "ECONNRESET", "ENOTFOUND"].includes(code || "");
+}
+
+/**
+ * Classify an error into one of the {@link ErrorRetryability} buckets. The
+ * git-reason check runs first so a classified git failure (e.g.
+ * `repository-not-found`) is never reclassified as "auto" by an unrelated
+ * errno on the cause chain. The errno fallback mirrors {@link isTransientError}.
+ *
+ * "exhausted" is never derived from intrinsics — it is a retry-loop state
+ * set explicitly by the caller via the `createErrorRecord` override.
+ */
+export function getRetryability(error: unknown, gitReason?: GitOperationReason): ErrorRetryability {
+  const reason = gitReason ?? (error instanceof GitOperationError ? error.reason : undefined);
+  if (reason) {
+    switch (reason) {
+      case "auth-failed":
+      case "config-missing":
+      case "dubious-ownership":
+        return "user-gated";
+      case "network-unavailable":
+      case "system-io-error":
+        return "auto";
+      case "repository-not-found":
+      case "not-a-repository":
+      case "worktree-dirty":
+      case "conflict-unresolved":
+      case "push-rejected-outdated":
+      case "push-rejected-policy":
+      case "pathspec-invalid":
+      case "lfs-missing":
+      case "lfs-quota-exceeded":
+      case "hook-rejected":
+        return "none";
+      case "unknown":
+        break;
+    }
+  }
+  return isTransientError(error) ? "auto" : "none";
 }
 
 export function getUserMessage(error: unknown): string {

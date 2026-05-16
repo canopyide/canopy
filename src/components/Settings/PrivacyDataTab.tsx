@@ -247,7 +247,7 @@ export function PrivacyDataTab({ activeSubtab, onSubtabChange }: PrivacyDataTabP
       {currentSubtab === "telemetry" && (
         <SettingsSection
           icon={Signal}
-          title="Telemetry & Diagnostics"
+          title="Telemetry & diagnostics"
           description="Control what data Daintree collects. No personal data, file contents, or credentials are ever collected."
         >
           <div className="contents">
@@ -359,7 +359,7 @@ export function PrivacyDataTab({ activeSubtab, onSubtabChange }: PrivacyDataTabP
         <>
           <SettingsSection
             icon={FolderOpen}
-            title="Data Folder"
+            title="Data folder"
             description="Location where Daintree stores settings, logs, and session data."
           >
             <div className="flex items-center gap-3">
@@ -380,7 +380,7 @@ export function PrivacyDataTab({ activeSubtab, onSubtabChange }: PrivacyDataTabP
 
           <SettingsSection
             icon={Clock}
-            title="Log Retention"
+            title="Log retention"
             description="Automatically prune log files older than the selected period on startup."
           >
             <div className="flex gap-2">
@@ -408,7 +408,7 @@ export function PrivacyDataTab({ activeSubtab, onSubtabChange }: PrivacyDataTabP
 
           <SettingsSection
             icon={HardDrive}
-            title="Clear Cache"
+            title="Clear cache"
             description="Clear the HTTP disk cache and code caches. This does not affect your settings or data."
           >
             <Button
@@ -425,7 +425,7 @@ export function PrivacyDataTab({ activeSubtab, onSubtabChange }: PrivacyDataTabP
 
           <SettingsSection
             icon={AlertTriangle}
-            title="Reset All App Data"
+            title="Reset all app data"
             description="Permanently delete all settings, session data, and logs. The app will restart with factory defaults."
             iconColor="text-status-error"
           >

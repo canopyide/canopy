@@ -39,6 +39,12 @@ type BackendCrashedHandler = (data: {
   signal: string | null;
   timestamp: number;
 }) => void;
+type BackendRecoveringHandler = (data: {
+  crashType: string;
+  code: number | null;
+  signal: string | null;
+  timestamp: number;
+}) => void;
 type BackendReadyHandler = () => void;
 type SpawnResultHandler = (id: string, result: { success: boolean; error?: unknown }) => void;
 
@@ -52,6 +58,7 @@ const handlers: {
   exit?: ExitHandler;
   status?: StatusHandler;
   backendCrashed?: BackendCrashedHandler;
+  backendRecovering?: BackendRecoveringHandler;
   backendReady?: BackendReadyHandler;
   spawnResult?: SpawnResultHandler;
 } = {};
@@ -66,6 +73,7 @@ const unsubs = {
   exit: vi.fn(),
   status: vi.fn(),
   backendCrashed: vi.fn(),
+  backendRecovering: vi.fn(),
   backendReady: vi.fn(),
   spawnResult: vi.fn(),
 };
@@ -106,6 +114,10 @@ const onBackendCrashedMock = vi.fn((cb: BackendCrashedHandler) => {
   handlers.backendCrashed = cb;
   return unsubs.backendCrashed;
 });
+const onBackendRecoveringMock = vi.fn((cb: BackendRecoveringHandler) => {
+  handlers.backendRecovering = cb;
+  return unsubs.backendRecovering;
+});
 const onBackendReadyMock = vi.fn((cb: BackendReadyHandler) => {
   handlers.backendReady = cb;
   return unsubs.backendReady;
@@ -142,6 +154,7 @@ vi.mock("@/clients", () => ({
     onRestored: onRestoredMock,
     onStatus: onStatusMock,
     onBackendCrashed: onBackendCrashedMock,
+    onBackendRecovering: onBackendRecoveringMock,
     onBackendReady: onBackendReadyMock,
     onSpawnResult: onSpawnResultMock,
     onReduceScrollback: vi.fn(() => vi.fn()),

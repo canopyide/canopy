@@ -76,6 +76,18 @@ function selectArtifacts(platform, fileNames) {
     return zips;
   }
 
+  if (platform === "windows") {
+    // NSIS produces a single combined installer covering all selected archs;
+    // `.appx` artifacts are routed through the Store and must be excluded here.
+    const installers = fileNames.filter((fileName) => fileName.endsWith(".exe")).sort();
+    if (installers.length !== 1) {
+      throw new Error(
+        `Expected exactly 1 Windows NSIS .exe artifact, found ${installers.length}: ${installers.join(", ") || "(none)"}`
+      );
+    }
+    return installers;
+  }
+
   throw new Error(`Unsupported platform "${platform}"`);
 }
 
@@ -115,7 +127,7 @@ export async function generateUpdateMetadata({
 async function main() {
   const [platform, metadataPath, releaseDir = "release"] = process.argv.slice(2);
   if (!platform || !metadataPath) {
-    fail("Usage: generate-update-metadata.mjs <mac|linux> <metadata-path> [release-dir]");
+    fail("Usage: generate-update-metadata.mjs <mac|linux|windows> <metadata-path> [release-dir]");
   }
 
   try {

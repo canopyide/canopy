@@ -9,7 +9,7 @@ import { useFleetArmingStore, isFleetArmEligible } from "@/store/fleetArmingStor
 import { isValidBrowserUrl } from "@/components/Browser/browserUtils";
 import { actionService } from "@/services/ActionService";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
-import { isBrowserPanel, isDevPreviewPanel } from "@shared/types/panel";
+import { isBrowserPanel, isDevPreviewPanel, isReviewPanel } from "@shared/types/panel";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import {
   ArrowDownFromLine,
@@ -114,7 +114,9 @@ export function TerminalContextMenu({
     [terminalId]
   );
 
-  const isPaused = terminal?.flowStatus === "paused-backpressure";
+  const isPaused =
+    terminal?.flowStatus === "paused-backpressure" ||
+    terminal?.flowStatus === "paused-resource-governor";
 
   const currentLocation: PanelLocation = forceLocation ?? terminal?.location ?? "grid";
 
@@ -299,6 +301,7 @@ export function TerminalContextMenu({
 
   const isBrowser = isBrowserPanel(terminal);
   const isDevPreview = isDevPreviewPanel(terminal);
+  const isReview = isReviewPanel(terminal);
   const hasPty = terminal.kind ? panelKindHasPty(terminal.kind) : true;
 
   const layoutSection = (
@@ -462,6 +465,43 @@ export function TerminalContextMenu({
           <ContextMenuItem destructive onSelect={() => handleAction("kill")}>
             <OctagonX className={ICON_CLASS} aria-hidden="true" />
             Stop Dev Server
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+    );
+  }
+
+  if (isReview) {
+    return (
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div className="contents" data-context-trigger={terminalId}>
+            {children}
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent onCloseAutoFocus={handleCloseAutoFocus}>
+          {layoutSection}
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => handleAction("duplicate")}>
+            <CopyPlus className={ICON_CLASS} aria-hidden="true" />
+            Duplicate Review
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => handleAction("rename")}>
+            <Pencil className={ICON_CLASS} aria-hidden="true" />
+            Rename Review
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => handleAction("background")}>
+            <ArrowDownFromLine className={ICON_CLASS} aria-hidden="true" />
+            Send to Background
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => handleAction("trash")}>
+            <Trash2 className={ICON_CLASS} aria-hidden="true" />
+            Close Review
+          </ContextMenuItem>
+          <ContextMenuItem destructive onSelect={() => handleAction("kill")}>
+            <OctagonX className={ICON_CLASS} aria-hidden="true" />
+            Remove Review
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>

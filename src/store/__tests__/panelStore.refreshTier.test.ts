@@ -121,11 +121,158 @@ describe("getTerminalRefreshTier - runtime agent identity", () => {
     expect(getTerminalRefreshTier(undefined, false)).toBe(TerminalRefreshTier.VISIBLE);
   });
 
-  it("drops a plain non-agent terminal to BACKGROUND when unfocused", () => {
+  it("keeps a live plain non-agent terminal VISIBLE when unfocused", () => {
     const terminal = makeTerminal({
       kind: "terminal",
       detectedAgentId: undefined,
       agentState: "idle",
+      hasPty: true,
+      runtimeStatus: "running",
+    });
+    expect(getTerminalRefreshTier(terminal, false)).toBe(TerminalRefreshTier.VISIBLE);
+  });
+
+  it("keeps a working non-agent terminal VISIBLE when unfocused", () => {
+    // Regression guard for #7997 — long-running commands (builds, dev servers)
+    // in plain shells must keep streaming after the user moves focus away.
+    const terminal = makeTerminal({
+      kind: "terminal",
+      detectedAgentId: undefined,
+      agentState: "idle",
+      hasPty: true,
+      runtimeStatus: "running",
+      activityStatus: "working",
+    });
+    expect(getTerminalRefreshTier(terminal, false)).toBe(TerminalRefreshTier.VISIBLE);
+  });
+
+  it("drops a working non-agent terminal once its process has exited", () => {
+    const terminal = makeTerminal({
+      kind: "terminal",
+      detectedAgentId: undefined,
+      agentState: "idle",
+      hasPty: true,
+      runtimeStatus: "exited",
+      activityStatus: "working",
+    });
+    expect(getTerminalRefreshTier(terminal, false)).toBe(TerminalRefreshTier.BACKGROUND);
+  });
+
+  it("drops a working non-agent terminal in error state", () => {
+    const terminal = makeTerminal({
+      kind: "terminal",
+      detectedAgentId: undefined,
+      agentState: "idle",
+      hasPty: true,
+      runtimeStatus: "error",
+      activityStatus: "working",
+    });
+    expect(getTerminalRefreshTier(terminal, false)).toBe(TerminalRefreshTier.BACKGROUND);
+  });
+
+  it("drops a working non-agent terminal without a PTY", () => {
+    const terminal = makeTerminal({
+      kind: "terminal",
+      detectedAgentId: undefined,
+      agentState: "idle",
+      hasPty: false,
+      activityStatus: "working",
+    });
+    expect(getTerminalRefreshTier(terminal, false)).toBe(TerminalRefreshTier.BACKGROUND);
+  });
+
+  it("drops a working non-agent terminal located in trash", () => {
+    const terminal = makeTerminal({
+      kind: "terminal",
+      location: "trash",
+      detectedAgentId: undefined,
+      agentState: "idle",
+      hasPty: true,
+      runtimeStatus: "running",
+      activityStatus: "working",
+    });
+    expect(getTerminalRefreshTier(terminal, false)).toBe(TerminalRefreshTier.BACKGROUND);
+  });
+
+  it("drops a working non-agent terminal located in background", () => {
+    const terminal = makeTerminal({
+      kind: "terminal",
+      location: "background",
+      detectedAgentId: undefined,
+      agentState: "idle",
+      hasPty: true,
+      runtimeStatus: "running",
+      activityStatus: "working",
+    });
+    expect(getTerminalRefreshTier(terminal, false)).toBe(TerminalRefreshTier.BACKGROUND);
+  });
+
+  it("keeps a live non-agent terminal VISIBLE even when activityStatus is waiting", () => {
+    const terminal = makeTerminal({
+      kind: "terminal",
+      detectedAgentId: undefined,
+      agentState: "idle",
+      hasPty: true,
+      runtimeStatus: "running",
+      activityStatus: "waiting",
+    });
+    expect(getTerminalRefreshTier(terminal, false)).toBe(TerminalRefreshTier.VISIBLE);
+  });
+
+  it("drops an offscreen live terminal to BACKGROUND", () => {
+    const terminal = makeTerminal({
+      kind: "terminal",
+      detectedAgentId: undefined,
+      agentState: "idle",
+      hasPty: true,
+      isVisible: false,
+      runtimeStatus: "background",
+      activityStatus: "working",
+    });
+    expect(getTerminalRefreshTier(terminal, false)).toBe(TerminalRefreshTier.BACKGROUND);
+  });
+
+  it("drops a working terminal located in dock to BACKGROUND", () => {
+    // Mirrors the fleet-armed guard above — docked panels stay hibernation-eligible
+    // regardless of activity state, so hidden dock entries don't consume render budget.
+    const terminal = makeTerminal({
+      kind: "terminal",
+      location: "dock",
+      detectedAgentId: undefined,
+      agentState: "idle",
+      hasPty: true,
+      runtimeStatus: "running",
+      activityStatus: "working",
+    });
+    expect(getTerminalRefreshTier(terminal, false)).toBe(TerminalRefreshTier.BACKGROUND);
+  });
+
+  it("drops a completed agent shell to BACKGROUND even when activityStatus is stale 'working'", () => {
+    // The activity backend can lag the agent-state machine — a completed agent
+    // shell with a still-running PTY must not bypass hibernation through the
+    // working-terminal guard.
+    const terminal = makeTerminal({
+      kind: "terminal",
+      launchAgentId: "claude",
+      detectedAgentId: "claude",
+      agentState: "completed",
+      hasPty: true,
+      runtimeStatus: "running",
+      activityStatus: "working",
+    });
+    expect(getTerminalRefreshTier(terminal, false)).toBe(TerminalRefreshTier.BACKGROUND);
+  });
+
+  it("drops an exited agent shell to BACKGROUND even when activityStatus is stale 'working'", () => {
+    const terminal = makeTerminal({
+      kind: "terminal",
+      launchAgentId: "claude",
+      detectedAgentId: undefined,
+      everDetectedAgent: true,
+      agentState: "exited",
+      hasPty: true,
+      runtimeStatus: "running",
+      activityStatus: "working",
     });
     expect(getTerminalRefreshTier(terminal, false)).toBe(TerminalRefreshTier.BACKGROUND);
   });

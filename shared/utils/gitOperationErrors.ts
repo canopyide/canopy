@@ -145,10 +145,14 @@ export function getGitRecoveryHint(reason: GitOperationReason): string | undefin
 }
 
 const RECOVERY_ACTIONS: Partial<Record<GitOperationReason, RecoveryAction>> = {
-  "auth-failed": { label: "Sign in with GitHub", actionId: "github.auth" },
-  "push-rejected-outdated": { label: "Pull and rebase", actionId: "git.pull" },
-  "conflict-unresolved": { label: "Resolve conflicts", actionId: "git.resolveConflicts" },
-  "dubious-ownership": { label: "Trust this repo", actionId: "git.trustRepository" },
+  "auth-failed": {
+    label: "Sign in with GitHub",
+    actionId: "app.settings.openTab",
+    args: { tab: "github" },
+  },
+  "push-rejected-outdated": { label: "Pull and rebase", actionId: "git.pullRebase" },
+  "conflict-unresolved": { label: "Resolve conflicts", actionId: "worktree.openReviewHub" },
+  "dubious-ownership": { label: "Trust this repo", actionId: "git.markSafeDirectory" },
 };
 
 export function getGitRecoveryAction(reason: GitOperationReason): RecoveryAction | undefined {

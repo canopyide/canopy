@@ -582,7 +582,7 @@ describe("useProjectSwitcherPalette", () => {
     });
   });
 
-  describe("toggle advances selection", () => {
+  describe("toggle for repeated Cmd+Alt+P", () => {
     const threeProjects = [
       {
         id: "project-1",
@@ -615,6 +615,26 @@ describe("useProjectSwitcherPalette", () => {
         status: "active" as const,
       },
     ];
+
+    it("opens from closed and selects the most recent non-current project", async () => {
+      projectState.projects = threeProjects;
+      projectState.currentProject = { id: "project-1" };
+      getBulkStatsMock.mockResolvedValue(emptyBulkStats(threeProjects.map((p) => p.id)));
+
+      const { result } = renderHook(() => useProjectSwitcherPalette());
+
+      expect(result.current.isOpen).toBe(false);
+
+      await act(async () => {
+        result.current.toggle();
+      });
+
+      await waitFor(() => {
+        expect(result.current.isOpen).toBe(true);
+        expect(result.current.results).toHaveLength(3);
+        expect(result.current.selectedIndex).toBe(1);
+      });
+    });
 
     it("advances selection when toggled while open", async () => {
       projectState.projects = threeProjects;

@@ -189,7 +189,9 @@ describe("PtyHostLifecycle", () => {
   let mockChild: MockUtilityProcess;
 
   beforeEach(() => {
-    vi.useFakeTimers();
+    // Fake `Date` alongside the timer functions so the time-windowed crash
+    // counter's `Date.now()` comparisons advance with `vi.advanceTimersByTimeAsync`.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setImmediate", "Date"] });
     vi.clearAllMocks();
     shared.appMock.removeAllListeners();
     mockChild = createMockChild();
@@ -201,13 +203,13 @@ describe("PtyHostLifecycle", () => {
     vi.restoreAllMocks();
   });
 
-  function makeLifecycle(maxRestarts = 3): {
+  function makeLifecycle(): {
     lifecycle: PtyHostLifecycle;
     callbacks: ReturnType<typeof createCallbacks>;
   } {
     const callbacks = createCallbacks();
     const lifecycle = new PtyHostLifecycle(
-      { maxRestartAttempts: maxRestarts, memoryLimitMb: 256, electronDir: "/tmp/electron" },
+      { memoryLimitMb: 256, electronDir: "/tmp/electron" },
       callbacks.callbacks
     );
     return { lifecycle, callbacks };
@@ -272,7 +274,6 @@ describe("PtyHostLifecycle", () => {
     expect(lifecycle.markReady()).toBe(true);
 
     expect(lifecycle.isInitialized).toBe(true);
-    expect(lifecycle.restartAttempts).toBe(0);
     await expect(lifecycle.waitForReady()).resolves.toBeUndefined();
   });
 
@@ -415,15 +416,15 @@ describe("PtyHostLifecycle", () => {
   });
 
   it("schedules a restart with full-jitter backoff", async () => {
-    const { lifecycle, callbacks } = makeLifecycle(3);
+    const { lifecycle, callbacks } = makeLifecycle();
     lifecycle.start();
     lifecycle.markReady();
-    expect(lifecycle.restartAttempts).toBe(0);
+    expect(lifecycle.crashTimestamps).toHaveLength(0);
 
     // First crash: schedules restart attempt 1
     mockChild.emit("exit", 1);
     await vi.advanceTimersByTimeAsync(0);
-    expect(lifecycle.restartAttempts).toBe(1);
+    expect(lifecycle.crashTimestamps).toHaveLength(1);
 
     // Restart timer is scheduled
     expect(lifecycle.restartTimer).not.toBeNull();
@@ -440,27 +441,102 @@ describe("PtyHostLifecycle", () => {
     expect(lifecycle.child).toBe(newChild);
   });
 
-  it("calls onMaxRestartsReached when restart cap is hit", async () => {
-    const { lifecycle, callbacks } = makeLifecycle(1); // only 1 restart allowed
+  it("calls onMaxRestartsReached when three crashes occur within the window", async () => {
+    const { lifecycle, callbacks } = makeLifecycle();
     lifecycle.start();
     lifecycle.markReady();
 
     // Crash 1 — restart scheduled
     mockChild.emit("exit", 1);
     await vi.advanceTimersByTimeAsync(0);
-    expect(lifecycle.restartAttempts).toBe(1);
+    expect(lifecycle.crashTimestamps).toHaveLength(1);
+    expect(callbacks.log.onMaxRestartsCalls).toHaveLength(0);
 
-    // Fire the restart timer
+    // Fire restart timer with new child
+    const child2 = createMockChild();
+    shared.forkMock.mockReturnValueOnce(child2);
+    await vi.advanceTimersByTimeAsync(4_001);
+    lifecycle.waitForReady().catch(() => undefined);
+    // Don't markReady — these are rapid crashes before the host ever stabilizes
+
+    // Crash 2 — still under threshold
+    child2.emit("exit", 1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(lifecycle.crashTimestamps).toHaveLength(2);
+    expect(callbacks.log.onMaxRestartsCalls).toHaveLength(0);
+
+    // Fire restart timer with another child
+    const child3 = createMockChild();
+    shared.forkMock.mockReturnValueOnce(child3);
+    await vi.advanceTimersByTimeAsync(8_001);
+    lifecycle.waitForReady().catch(() => undefined);
+
+    // Crash 3 — threshold reached
+    child3.emit("exit", 1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(lifecycle.crashTimestamps).toHaveLength(3);
+    expect(callbacks.log.onMaxRestartsCalls).toEqual([1]);
+  });
+
+  it("does not trip the cap when crashes are spread beyond the window", async () => {
+    const { lifecycle, callbacks } = makeLifecycle();
+    lifecycle.start();
+    lifecycle.markReady();
+
+    // Crash 1
+    mockChild.emit("exit", 1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(lifecycle.crashTimestamps).toHaveLength(1);
+
+    // Fire the restart timer and advance well past the 5-minute window.
+    // Use advanceTimersToNextTimerAsync to drain whatever restart delay was
+    // scheduled with jitter, then advance past the window for the next crash.
     const child2 = createMockChild();
     shared.forkMock.mockReturnValueOnce(child2);
     await vi.advanceTimersByTimeAsync(4_001);
     lifecycle.waitForReady().catch(() => undefined);
 
-    // Crash 2 — max reached
+    // Advance 6 minutes — the first crash timestamp is now outside the window
+    await vi.advanceTimersByTimeAsync(360_000);
+
+    // Crash 2: filter drops the stale timestamp, length becomes 1 again
     child2.emit("exit", 1);
     await vi.advanceTimersByTimeAsync(0);
+    expect(lifecycle.crashTimestamps).toHaveLength(1);
+    expect(callbacks.log.onMaxRestartsCalls).toHaveLength(0);
+  });
 
-    expect(callbacks.log.onMaxRestartsCalls).toEqual([1]);
+  it("stability timer clears the crash window after a quiet interval", async () => {
+    const { lifecycle, callbacks } = makeLifecycle();
+    lifecycle.start();
+    lifecycle.markReady();
+
+    // Crash 1 within window
+    mockChild.emit("exit", 1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(lifecycle.crashTimestamps).toHaveLength(1);
+
+    // Restart fires, host comes up, markReady starts a fresh stability timer
+    const child2 = createMockChild();
+    shared.forkMock.mockReturnValueOnce(child2);
+    await vi.advanceTimersByTimeAsync(4_001);
+    lifecycle.waitForReady().catch(() => undefined);
+    lifecycle.markReady();
+
+    // Window still has the crash recorded immediately after ready (this is
+    // critical — clearing on ready would defeat the sliding window).
+    expect(lifecycle.crashTimestamps).toHaveLength(1);
+
+    // After STABILITY_TIMEOUT_MS of clean running, the timer fires and clears
+    // the history.
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(lifecycle.crashTimestamps).toHaveLength(0);
+
+    // A subsequent crash gets a fresh budget and does not trip the cap.
+    child2.emit("exit", 1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(lifecycle.crashTimestamps).toHaveLength(1);
+    expect(callbacks.log.onMaxRestartsCalls).toHaveLength(0);
   });
 
   it("manualRestart no-ops when child is still alive", () => {
@@ -491,12 +567,94 @@ describe("PtyHostLifecycle", () => {
     lifecycle.waitForReady().catch(() => undefined);
 
     expect(lifecycle.child).toBe(child2);
-    expect(lifecycle.restartAttempts).toBe(0);
+    expect(lifecycle.crashTimestamps).toHaveLength(0);
     // Auto-restart's onBeforeRestart fired once when the timer was scheduled,
     // and manualRestart fires it again — but the auto-restart timer is a
     // pending setTimeout that hasn't fired yet, so only manualRestart
     // contributes here.
     expect(callbacks.log.onBeforeRestartCalls).toBe(1);
+  });
+
+  it("manualRestart clears the crash window so a fresh budget is given", async () => {
+    const { lifecycle, callbacks } = makeLifecycle();
+    lifecycle.start();
+    lifecycle.markReady();
+
+    // Two rapid crashes — one short of the threshold. After the second crash
+    // the child is null and a restart is scheduled; manualRestart cancels the
+    // pending auto-restart and clears the window.
+    mockChild.emit("exit", 1);
+    await vi.advanceTimersByTimeAsync(0);
+    const child2 = createMockChild();
+    shared.forkMock.mockReturnValueOnce(child2);
+    await vi.advanceTimersByTimeAsync(4_001);
+    lifecycle.waitForReady().catch(() => undefined);
+    child2.emit("exit", 1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(lifecycle.crashTimestamps).toHaveLength(2);
+    expect(lifecycle.child).toBeNull();
+
+    // User intervenes with a manual restart before the auto-restart timer
+    // fires — clears the window and the pending restart.
+    const child3 = createMockChild();
+    shared.forkMock.mockReturnValueOnce(child3);
+    lifecycle.manualRestart();
+    lifecycle.waitForReady().catch(() => undefined);
+
+    expect(lifecycle.crashTimestamps).toHaveLength(0);
+    expect(lifecycle.restartTimer).toBeNull();
+    // The new host gets a fresh three-crash budget; the prior crashes don't
+    // contribute to the next threshold check.
+    expect(callbacks.log.onMaxRestartsCalls).toHaveLength(0);
+  });
+
+  it("manualRestart cancels a pending stability timer", async () => {
+    const { lifecycle } = makeLifecycle();
+    lifecycle.start();
+    // markReady starts the stability timer.
+    lifecycle.markReady();
+
+    // Record one crash so the window is non-empty before the host exits again.
+    mockChild.emit("exit", 1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(lifecycle.crashTimestamps).toHaveLength(1);
+
+    // manualRestart clears both the window and any pending stability timer.
+    const child2 = createMockChild();
+    shared.forkMock.mockReturnValueOnce(child2);
+    lifecycle.manualRestart();
+    lifecycle.waitForReady().catch(() => undefined);
+    expect(lifecycle.crashTimestamps).toHaveLength(0);
+
+    // Record a new crash AFTER the manual restart, then advance past the
+    // original stability deadline. If the old timer had survived, it would
+    // fire here and wipe the freshly recorded crash. Asserting the entry
+    // survives proves the old timer was cancelled.
+    child2.emit("exit", 1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(lifecycle.crashTimestamps).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(300_001);
+    expect(lifecycle.crashTimestamps).toHaveLength(1);
+  });
+
+  it("stability timer from a prior ready is cancelled on crash", async () => {
+    const { lifecycle, callbacks } = makeLifecycle();
+    lifecycle.start();
+    lifecycle.markReady();
+
+    // Run almost to the stability deadline, then crash. The stability timer
+    // is now ~100ms from firing; if it weren't cancelled it would wipe the
+    // crash window after the crash, defeating the three-strike guard for any
+    // crash-near-ready pattern.
+    await vi.advanceTimersByTimeAsync(299_900);
+    mockChild.emit("exit", 1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(lifecycle.crashTimestamps).toHaveLength(1);
+
+    // Advance past the stale deadline — the crash entry must survive.
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(lifecycle.crashTimestamps).toHaveLength(1);
+    expect(callbacks.log.onMaxRestartsCalls).toHaveLength(0);
   });
 
   it("dispose removes the child-process-gone listener", () => {
@@ -534,13 +692,13 @@ describe("PtyHostLifecycle timer hygiene", () => {
     vi.restoreAllMocks();
   });
 
-  function makeLifecycle(maxRestarts = 3): {
+  function makeLifecycle(): {
     lifecycle: PtyHostLifecycle;
     callbacks: ReturnType<typeof createCallbacks>;
   } {
     const callbacks = createCallbacks();
     const lifecycle = new PtyHostLifecycle(
-      { maxRestartAttempts: maxRestarts, memoryLimitMb: 256, electronDir: "/tmp/electron" },
+      { memoryLimitMb: 256, electronDir: "/tmp/electron" },
       callbacks.callbacks
     );
     return { lifecycle, callbacks };
@@ -592,7 +750,7 @@ describe("PtyHostLifecycle timer hygiene", () => {
   });
 
   it("auto-restart timer is unref'd to avoid pinning the event loop", async () => {
-    const { lifecycle } = makeLifecycle(3);
+    const { lifecycle } = makeLifecycle();
     lifecycle.start();
     lifecycle.markReady();
 
@@ -613,6 +771,21 @@ describe("PtyHostLifecycle timer hygiene", () => {
         clearTimeout(lifecycle.restartTimer);
         lifecycle.restartTimer = null;
       }
+      restore();
+    }
+  });
+
+  it("stability timer is unref'd so it never pins the event loop", () => {
+    const { lifecycle } = makeLifecycle();
+    lifecycle.start();
+
+    const { unrefSpies, restore } = instrumentSetTimeoutUnref();
+    try {
+      // markReady() schedules the stability setTimeout.
+      lifecycle.markReady();
+      expect(unrefSpies).toHaveLength(1);
+      expect(unrefSpies[0]).toHaveBeenCalledTimes(1);
+    } finally {
       restore();
     }
   });

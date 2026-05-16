@@ -24,11 +24,13 @@
 .toolbar-agent-button {
   --_hover-fg: var(--toolbar-control-hover-fg, var(--theme-accent-primary));
   --_hover-shadow: var(--toolbar-control-hover-shadow, none);
+  /* Press-scale is owned by the base Button cva (`active:scale-[0.98] active:duration-[1ms]`),
+   * so transform is intentionally absent from this transition list — adding it would slow
+   * the snap to 150ms and override the cva's intent. */
   transition:
     color 150ms ease,
     background-color 150ms ease,
-    box-shadow 150ms ease,
-    transform 150ms ease;
+    box-shadow 150ms ease;
 }
 
 .toolbar-icon-button:hover {
@@ -44,21 +46,21 @@
   box-shadow: var(--_hover-shadow);
 }
 
-.toolbar-icon-button:focus-visible {
-  outline: 2px solid var(--theme-accent-primary);
-  outline-offset: 2px;
-  background: var(--toolbar-control-hover-bg, var(--theme-overlay-elevated));
-}
-
+/* Keyboard focus reads against the idle surface — the 2px accent outline is the
+ * sole signal. Painting the hover background here makes focus-visible look
+ * identical to mouse hover apart from the ring. */
+.toolbar-icon-button:focus-visible,
 .toolbar-agent-button:focus-visible {
   outline: 2px solid var(--theme-accent-primary);
   outline-offset: 2px;
-  background: var(
-    --toolbar-agent-hover-bg,
-    var(--toolbar-control-hover-bg, var(--theme-overlay-elevated))
-  );
 }
 
+/* Armed state ("anchored" — dropdown open, toggle on) gets an inset shadow on top
+ * of the emphasis background. The inset cue reads as pressed-into-surface and
+ * distinguishes armed from hover (which only differs by an overlay tier). The
+ * accent color is reserved per CLAUDE.md, so the directional cue carries the
+ * signal instead. Comes after :hover in source order so the inset shadow
+ * survives hover-over-armed (equal specificity, later wins). */
 .toolbar-icon-button[aria-pressed="true"],
 .toolbar-icon-button[aria-expanded="true"],
 .toolbar-icon-button[data-state="open"],
@@ -66,11 +68,14 @@
 .toolbar-agent-button[aria-expanded="true"],
 .toolbar-agent-button[data-state="open"] {
   background: var(--toolbar-control-armed-bg, var(--theme-overlay-emphasis));
+  box-shadow: var(--toolbar-control-armed-shadow, inset 0 1px 2px rgba(0, 0, 0, 0.15));
 }
 
+/* The press snap (transform: scale(0.98) at 1ms) comes from the base Button cva.
+ * This rule only contributes the momentary click background for non-armed
+ * buttons. */
 .toolbar-icon-button:active,
 .toolbar-agent-button:active {
-  transform: scale(0.98);
   background: var(--toolbar-control-active-bg, var(--theme-overlay-emphasis));
 }
 
@@ -211,17 +216,28 @@ html[data-shortcut-reveal] .shortcut-reveal-chip {
     transform 120ms ease;
 }
 
+/* WCAG 1.4.1: non-color shape differentiator per tier. Critical reads as a
+ * square (border-radius: 0), warning as a slightly rounded square, info as a
+ * pill — color still carries primary semantic weight but is no longer the sole
+ * cue. The ring (box-shadow) lives here too so shape and ring always match —
+ * a round ring on a square dot would look like a bug. */
 .toolbar-overflow-badge[data-severity="critical"] {
   --overflow-badge-color: var(--color-status-error);
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .toolbar-overflow-badge[data-severity="warning"] {
   --overflow-badge-color: var(--color-state-waiting);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgb(from var(--color-daintree-bg) r g b / 0.6);
 }
 
 .toolbar-overflow-badge[data-severity="info"] {
   --overflow-badge-color: var(--color-daintree-text, #94a3b8);
   opacity: 0.5;
+  border-radius: 9999px;
+  box-shadow: 0 0 0 1px rgb(from var(--color-daintree-bg) r g b / 0.6);
 }
 
 /* ── Problems dot ──

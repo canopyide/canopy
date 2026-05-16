@@ -426,8 +426,11 @@ describe("WorktreeDeleteDialog — medium tier (no name confirmation)", () => {
     cleanup();
   });
 
-  it("non-protected branch + force does not require name confirmation", () => {
-    const worktree = makeWorktree(makeChanges([{ path: "src/app.ts", status: "modified" }]));
+  it("non-protected branch + force with only untracked files does not require name confirmation", () => {
+    // Untracked-only force-delete loses no committed/tracked work, so it stays
+    // medium tier — escalating here would train users to dismiss the gate
+    // (#4927: escalate on hasTrackedChanges, not hasChanges).
+    const worktree = makeWorktree(makeChanges([{ path: "new.txt", status: "untracked" }]));
     render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
 
     const forceCheckbox = screen.getByRole("checkbox", { name: /force delete/i });
@@ -499,6 +502,29 @@ describe("WorktreeDeleteDialog — high tier (name confirmation)", () => {
     const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
     expect(button.textContent).toBe("Delete worktree");
     expect(button.disabled).toBe(true);
+  });
+
+  it("renders type-to-confirm input when force-deleting with uncommitted tracked changes", () => {
+    // #8023: force-delete + tracked changes is catastrophic enough (loses
+    // uncommitted work git can't recover) to warrant the typed-name gate
+    // even on a non-protected, non-main worktree.
+    const worktree = makeWorktree(makeChanges([{ path: "src/app.ts", status: "modified" }]), {
+      branch: "feature/x",
+      name: "feature/x",
+    });
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    expect(screen.queryByTestId("delete-worktree-confirm-input")).toBeNull();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /force delete/i }));
+
+    expect(screen.getByTestId("delete-worktree-confirm-input")).toBeDefined();
+    const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+
+    const input = screen.getByTestId("delete-worktree-confirm-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "feature/x" } });
+    expect(button.disabled).toBe(false);
   });
 
   it("renders type-to-confirm input when force-deleting the main worktree", () => {

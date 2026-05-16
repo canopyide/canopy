@@ -15,6 +15,7 @@ import {
   ChevronDown,
   ChevronUp,
   FileSearch,
+  RotateCcw,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ import { SettingsTextarea } from "./SettingsTextarea";
 import { useSettingsTabValidation } from "./SettingsValidationRegistry";
 import { dispatchVoiceInputSettingsChanged } from "@/lib/voiceInputSettingsEvents";
 import { logWarn } from "@/utils/logger";
+import { useAudioDevices, SYSTEM_DEFAULT_VALUE } from "@/hooks/useAudioDevices";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { CORE_CORRECTION_PROMPT } from "@shared/config/voiceCorrection";
 import type {
@@ -76,6 +78,7 @@ const DEFAULT_SETTINGS: VoiceInputSettings = {
   correctionCustomInstructions: "",
   paragraphingStrategy: "spoken-command",
   resolveFileLinks: true,
+  deviceId: "",
 };
 
 type LoadState = "loading" | "ready" | "error";
@@ -88,6 +91,13 @@ export function VoiceInputSettingsTab() {
   const [isRequestingMic, setIsRequestingMic] = useState(false);
   const [newDictionaryWord, setNewDictionaryWord] = useState("");
   const dictionaryInputRef = useRef<HTMLInputElement>(null);
+
+  const {
+    devices,
+    loading: devicesLoading,
+    error: devicesError,
+    refresh: refreshDevices,
+  } = useAudioDevices();
 
   useEffect(() => {
     let settled = false;
@@ -194,13 +204,13 @@ export function VoiceInputSettingsTab() {
       {/* ── Speech-to-Text ── */}
       <SettingsSection
         icon={Mic}
-        title="Speech-to-Text"
+        title="Speech-to-text"
         description="Real-time transcription. Requires an OpenAI API key and microphone access."
         id="voice-speech-to-text"
       >
         <SettingsSwitchCard
           icon={Mic}
-          title="Voice Input"
+          title="Voice input"
           subtitle="Dictate commands using your microphone"
           isEnabled={settings.enabled}
           onChange={() => update({ enabled: !settings.enabled })}
@@ -216,6 +226,32 @@ export function VoiceInputSettingsTab() {
               onOpenSettings={handleOpenMicSettings}
               onRefresh={handleRefreshMicPermission}
             />
+
+            <div className="flex items-center justify-between">
+              <SettingsSelect
+                label="Microphone"
+                description={
+                  devicesError
+                    ? devicesError
+                    : devicesLoading
+                      ? "Detecting devices..."
+                      : "Select which microphone to use for dictation"
+                }
+                error={devicesError ?? undefined}
+                value={settings.deviceId || SYSTEM_DEFAULT_VALUE}
+                onValueChange={(v) => update({ deviceId: v === SYSTEM_DEFAULT_VALUE ? "" : v })}
+                options={devices}
+                disabled={devicesLoading && devices.length <= 1}
+              />
+              <button
+                type="button"
+                onClick={refreshDevices}
+                className="mt-0.5 p-1.5 rounded-sm text-daintree-text/40 hover:text-daintree-text/70 transition-colors"
+                aria-label="Refresh microphone list"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            </div>
 
             <ApiKeyRow
               label="OpenAI API Key"
@@ -256,13 +292,13 @@ export function VoiceInputSettingsTab() {
       {settings.enabled && (
         <SettingsSection
           icon={Sparkles}
-          title="AI Text Correction"
+          title="AI text correction"
           description="Post-process transcriptions with a GPT-5 reasoning model to fix technical terms, punctuation, and filler words. Optional."
           id="voice-ai-correction"
         >
           <SettingsSwitchCard
             icon={Sparkles}
-            title="AI Text Correction"
+            title="AI text correction"
             subtitle="Clean up transcriptions automatically after dictation"
             isEnabled={settings.correctionEnabled}
             onChange={() => update({ correctionEnabled: !settings.correctionEnabled })}
@@ -286,7 +322,7 @@ export function VoiceInputSettingsTab() {
                 <>
                   <SettingsSwitchCard
                     icon={FileSearch}
-                    title="Resolve File References"
+                    title="Resolve file references"
                     subtitle={
                       'Voice commands like "link to the input component" insert @file references'
                     }

@@ -3,11 +3,19 @@ import { launchApp, closeApp, waitForProcessExit, type AppContext } from "../hel
 import { removePathSync } from "../helpers/fixtures";
 import { SEL } from "../helpers/selectors";
 import { T_MEDIUM, T_SETTLE } from "../helpers/timeouts";
+import { openSettings } from "../helpers/panels";
 import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 
 const FIRST_RUN_ENV = { DAINTREE_E2E_SKIP_FIRST_RUN_DIALOGS: "0" };
+
+async function verifySettingsAccessible(window: AppContext["window"]): Promise<void> {
+  await openSettings(window, T_MEDIUM);
+  await expect(window.locator(SEL.settings.heading)).toBeVisible({ timeout: T_MEDIUM });
+  await window.locator(SEL.settings.closeButton).click();
+  await expect(window.locator(SEL.settings.heading)).not.toBeVisible({ timeout: T_MEDIUM });
+}
 
 test.describe.serial("First-run onboarding flow", () => {
   let userDataDir: string;
@@ -39,8 +47,7 @@ test.describe.serial("First-run onboarding flow", () => {
       // The welcome screen should render and the toolbar should be interactive
       // simultaneously — no blocking modal prevents access to the app.
       await expect(window.locator(SEL.firstRun.welcomeTitle)).toBeVisible({ timeout: T_MEDIUM });
-      await expect(window.locator(SEL.toolbar.openSettings)).toBeVisible({ timeout: T_MEDIUM });
-      await expect(window.locator(SEL.toolbar.openSettings)).toBeEnabled();
+      await verifySettingsAccessible(window);
     });
 
     await test.step("Verify wizard does not auto-open and banner is visible", async () => {
@@ -69,7 +76,7 @@ test.describe.serial("First-run onboarding flow", () => {
       await expect(window.locator(SEL.firstRun.agentSetupDialog)).not.toBeVisible({
         timeout: T_SETTLE,
       });
-      await expect(window.locator(SEL.toolbar.openSettings)).toBeVisible();
+      await verifySettingsAccessible(window);
     });
 
     await test.step("Close app cleanly to persist onboarding state for the next test", async () => {
@@ -88,8 +95,8 @@ test.describe.serial("First-run onboarding flow", () => {
       });
       const { window } = ctx;
 
-      // Toolbar should be visible (first-run completed previously).
-      await expect(window.locator(SEL.toolbar.openSettings)).toBeVisible({ timeout: T_MEDIUM });
+      // Settings remains reachable after the first-run state has persisted.
+      await verifySettingsAccessible(window);
 
       // Allow onboarding hydration to complete.
       await window.waitForTimeout(T_SETTLE);

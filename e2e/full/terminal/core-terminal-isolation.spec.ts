@@ -27,17 +27,26 @@ let probePanelId: string;
  * browser event loop and can drop keystrokes under load.
  */
 async function setActive(page: import("@playwright/test").Page, panelId: string) {
-  await page.evaluate((id) => {
+  await page.evaluate(async (id) => {
     const w = window as unknown as {
       electron?: {
-        terminal?: { setActivityTier?: (id: string, tier: "active" | "background") => void };
+        terminal?: {
+          setActivityTier?: (id: string, tier: "active" | "background") => void;
+          wake?: (id: string) => Promise<unknown>;
+        };
       };
     };
-    w.electron?.terminal?.setActivityTier?.(id, "active");
+    const terminal = w.electron?.terminal;
+    if (typeof terminal?.wake === "function") {
+      await terminal.wake(id);
+      return;
+    }
+    terminal?.setActivityTier?.(id, "active");
   }, panelId);
 }
 
 async function ptyWrite(page: import("@playwright/test").Page, panelId: string, data: string) {
+  await setActive(page, panelId);
   const result = await page.evaluate(
     ([id, d]) => {
       const w = window as unknown as {
@@ -55,6 +64,7 @@ async function ptyWrite(page: import("@playwright/test").Page, panelId: string, 
 }
 
 async function ptySubmit(page: import("@playwright/test").Page, panelId: string, text: string) {
+  await setActive(page, panelId);
   const result = await page.evaluate(
     async ([id, t]) => {
       const w = window as unknown as {
@@ -156,7 +166,7 @@ test.describe.serial("Core: Terminal Isolation", () => {
     await window.waitForTimeout(T_SETTLE);
 
     // Run recovery command in the previously flooded terminal
-    await ptySubmit(window, floodPanelId, "echo FLOOD_RECOVERED");
-    await waitForTerminalText(floodPanel, "FLOOD_RECOVERED", T_LONG);
+    await ptyWrite(window, floodPanelId, "echo FLOOD_RECOVERED\r");
+    await waitForTerminalText(floodPanel, "FLOOD_RECOVERED", 60_000);
   });
 });

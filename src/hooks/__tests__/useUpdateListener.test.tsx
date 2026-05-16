@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useUpdateListener } from "../useUpdateListener";
+import { useDistributionStore } from "@/store/distributionStore";
 import type { NotifyPayload } from "@/lib/notify";
 
 interface MockNotification {
@@ -86,6 +87,9 @@ describe("useUpdateListener", () => {
 
   beforeEach(() => {
     Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+    // Reset the renderer's Windows-Store flag so each test starts from the
+    // NSIS / non-Windows default; the Store-specific test sets it explicitly.
+    useDistributionStore.setState({ isWindowsStore: false });
     capturedAvailable = null;
     capturedProgress = null;
     capturedDownloaded = null;
@@ -165,6 +169,10 @@ describe("useUpdateListener", () => {
 
   it("does not subscribe to update events on Windows Store builds", () => {
     Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    // isWindowsStoreBuild() now keys off process.windowsStore (set by Electron
+    // only inside MSIX/AppX containers); the renderer reads the bridged value
+    // from useDistributionStore. NSIS Windows builds leave it false.
+    useDistributionStore.setState({ isWindowsStore: true });
 
     renderHook(() => useUpdateListener());
 

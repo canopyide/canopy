@@ -209,7 +209,11 @@ describe("WorkspaceService.fetchPRBranch", () => {
         requestId: "req-auth",
         success: false,
         gitReason: "auth-failed",
-        recoveryAction: { label: "Sign in with GitHub", actionId: "github.auth" },
+        recoveryAction: {
+          label: "Sign in with GitHub",
+          actionId: "app.settings.openTab",
+          args: { tab: "github" },
+        },
       })
     );
   });

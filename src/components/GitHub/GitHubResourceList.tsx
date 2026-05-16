@@ -13,14 +13,7 @@ import {
 } from "lucide-react";
 import { isTokenRelatedError, isTransientNetworkError } from "@/lib/githubErrors";
 import { Button } from "@/components/ui/button";
-import { AnimatePresence, m } from "framer-motion";
 import { EmptyState } from "@/components/ui/EmptyState";
-import {
-  UI_ENTER_DURATION,
-  UI_EXIT_DURATION,
-  UI_ENTER_EASING_FM,
-  UI_EXIT_EASING_FM,
-} from "@/lib/animationUtils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { actionService } from "@/services/ActionService";
@@ -867,110 +860,96 @@ export function GitHubResourceList({
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col relative">
-        <AnimatePresence mode="popLayout">
-          {loading && !data.length ? (
-            <m.div
-              key="github-skeleton"
-              initial={false}
-              exit={{ opacity: 0 }}
-              transition={{ duration: UI_EXIT_DURATION / 1000, ease: UI_EXIT_EASING_FM }}
-              className="overflow-y-auto flex-1 min-h-0"
-            >
-              <GitHubResourceRowsSkeleton
-                count={initialCount && initialCount > 0 ? initialCount : MAX_SKELETON_ITEMS}
-              />
-            </m.div>
-          ) : data.length > 0 ? (
-            <m.div
-              key="github-content"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{
-                opacity: 0,
-                transition: { duration: UI_EXIT_DURATION / 1000, ease: UI_EXIT_EASING_FM },
-              }}
-              transition={{ duration: UI_ENTER_DURATION / 1000, ease: UI_ENTER_EASING_FM }}
-              className="flex-1 min-h-0 flex flex-col"
-            >
-              {error && (
-                <div className="px-3 py-2 border-b border-[var(--border-divider)] flex items-center gap-2 text-muted-foreground bg-overlay-soft shrink-0">
-                  <WifiOff className="h-3.5 w-3.5 shrink-0" />
-                  <span className="text-xs truncate">
-                    {isTransientNetworkError(error)
-                      ? "Couldn't reach GitHub. Showing last known results."
-                      : sanitizeIpcError(error)}
+        {/* Plain conditional render — AnimatePresence is unsafe here because
+            this subtree lives inside a `keepMounted` dropdown wrapped in
+            <Activity mode="hidden">. Exit lifecycles get stuck under Activity,
+            leaving stale DOM trees with stale closures. See BulkActionBar. */}
+        {loading && !data.length ? (
+          <div key="github-skeleton" className="overflow-y-auto flex-1 min-h-0">
+            <GitHubResourceRowsSkeleton
+              count={initialCount && initialCount > 0 ? initialCount : MAX_SKELETON_ITEMS}
+            />
+          </div>
+        ) : data.length > 0 ? (
+          <div key="github-content" className="flex-1 min-h-0 flex flex-col">
+            {error && (
+              <div className="px-3 py-2 border-b border-[var(--border-divider)] flex items-center gap-2 text-muted-foreground bg-overlay-soft shrink-0">
+                <WifiOff className="h-3.5 w-3.5 shrink-0" />
+                <span className="text-xs truncate">
+                  {isTransientNetworkError(error)
+                    ? "Couldn't reach GitHub. Showing last known results."
+                    : sanitizeIpcError(error)}
+                </span>
+                {lastUpdatedAt != null && !debouncedSearch && (
+                  <span className="text-xs text-muted-foreground/70 shrink-0 whitespace-nowrap">
+                    · Updated <LiveTimeAgo timestamp={lastUpdatedAt} />
                   </span>
-                  {lastUpdatedAt != null && !debouncedSearch && (
-                    <span className="text-xs text-muted-foreground/70 shrink-0 whitespace-nowrap">
-                      · Updated <LiveTimeAgo timestamp={lastUpdatedAt} />
-                    </span>
-                  )}
-                  {isTokenError ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleOpenGitHubSettings}
-                      className="ml-auto h-6 text-xs text-muted-foreground hover:text-daintree-text shrink-0"
-                    >
-                      <Settings className="h-3 w-3" />
-                      Settings
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleRetry}
-                      className="ml-auto h-6 text-xs text-muted-foreground hover:text-daintree-text shrink-0"
-                    >
-                      <RefreshCw className="h-3 w-3" />
-                      Retry
-                    </Button>
-                  )}
-                </div>
-              )}
-              <div
-                id={listId}
-                role="listbox"
-                aria-multiselectable={selection.isSelectionActive}
-                aria-busy={loading || refreshing}
-                className="flex-1 min-h-0"
-              >
-                <Virtuoso
-                  ref={virtuosoRef}
-                  data={data}
-                  context={footerContext}
-                  style={{ height: "100%" }}
-                  fixedItemHeight={RESOURCE_ITEM_HEIGHT_PX}
-                  computeItemKey={(_, item) => item.number}
-                  increaseViewportBy={{ top: 0, bottom: 200 }}
-                  endReached={() => {
-                    if (!loadingMore && !loading && hasMore) handleLoadMore();
-                  }}
-                  components={{ Footer: LoadMoreFooter }}
-                  itemContent={(index, item) => (
-                    <GitHubListItem
-                      item={item}
-                      type={type}
-                      onCreateWorktree={handleCreateWorktree}
-                      onSwitchToWorktree={handleSwitchToWorktree}
-                      optionId={`github-${type}-option-${item.number}`}
-                      isActive={activeIndex === index}
-                      isSelected={selection.selectedIds.has(item.number)}
-                      isSelectionActive={selection.isSelectionActive}
-                      onToggleSelect={(e: React.MouseEvent) => {
-                        if (e.shiftKey) {
-                          selection.toggleRange(index, (i) => data[i]!.number);
-                        } else {
-                          selection.toggle(item.number, index);
-                        }
-                      }}
-                    />
-                  )}
-                />
+                )}
+                {isTokenError ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleOpenGitHubSettings}
+                    className="ml-auto h-6 text-xs text-muted-foreground hover:text-daintree-text shrink-0"
+                  >
+                    <Settings className="h-3 w-3" />
+                    Settings
+                  </Button>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRetry}
+                    className="ml-auto h-6 text-xs text-muted-foreground hover:text-daintree-text shrink-0"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    Retry
+                  </Button>
+                )}
               </div>
-            </m.div>
-          ) : null}
-        </AnimatePresence>
+            )}
+            <div
+              id={listId}
+              role="listbox"
+              aria-multiselectable={selection.isSelectionActive}
+              aria-busy={loading || refreshing}
+              className="flex-1 min-h-0"
+            >
+              <Virtuoso
+                ref={virtuosoRef}
+                data={data}
+                context={footerContext}
+                style={{ height: "100%" }}
+                fixedItemHeight={RESOURCE_ITEM_HEIGHT_PX}
+                computeItemKey={(_, item) => item.number}
+                increaseViewportBy={{ top: 0, bottom: 200 }}
+                endReached={() => {
+                  if (!loadingMore && !loading && hasMore) handleLoadMore();
+                }}
+                components={{ Footer: LoadMoreFooter }}
+                itemContent={(index, item) => (
+                  <GitHubListItem
+                    item={item}
+                    type={type}
+                    onCreateWorktree={handleCreateWorktree}
+                    onSwitchToWorktree={handleSwitchToWorktree}
+                    optionId={`github-${type}-option-${item.number}`}
+                    isActive={activeIndex === index}
+                    isSelected={selection.selectedIds.has(item.number)}
+                    isSelectionActive={selection.isSelectionActive}
+                    onToggleSelect={(e: React.MouseEvent) => {
+                      if (e.shiftKey) {
+                        selection.toggleRange(index, (i) => data[i]!.number);
+                      } else {
+                        selection.toggle(item.number, index);
+                      }
+                    }}
+                  />
+                )}
+              />
+            </div>
+          </div>
+        ) : null}
         {!loading && !data.length && error && (
           <div className="p-8 text-center text-muted-foreground">
             <WifiOff className="h-5 w-5 mx-auto mb-2 opacity-50" />

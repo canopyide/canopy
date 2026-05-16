@@ -18,7 +18,7 @@ interface ErrorPayload {
   details?: string;
   source?: string;
   context?: Record<string, unknown>;
-  isTransient: boolean;
+  retryability: "auto" | "user-gated" | "exhausted" | "none";
   dismissed: boolean;
   retryAction?: string;
   retryArgs?: Record<string, unknown>;
@@ -35,7 +35,7 @@ function buildError(overrides: Partial<ErrorPayload> = {}): ErrorPayload {
     timestamp: Date.now(),
     type: "unknown",
     message: "E2E test error",
-    isTransient: false,
+    retryability: "none",
     dismissed: false,
     ...overrides,
   };
@@ -136,7 +136,7 @@ test.describe.serial("Core: IPC Error Propagation", () => {
       type: "git",
       message: "Authentication failed for repository",
       source: "GitService",
-      isTransient: true,
+      retryability: "auto",
       retryAction: "git",
       recoveryHint: "Check your Git credentials or SSH key configuration.",
     });
@@ -203,7 +203,7 @@ test.describe.serial("Core: IPC Error Propagation", () => {
       type: "git",
       message: "ETIMEDOUT: connection timed out",
       source: "GitService",
-      isTransient: true,
+      retryability: "auto",
       retryAction: "git",
     });
 
@@ -212,7 +212,7 @@ test.describe.serial("Core: IPC Error Propagation", () => {
       type: "config",
       message: "Invalid configuration file",
       source: "ConfigService",
-      isTransient: false,
+      retryability: "none",
     });
 
     const panel = ctx.window.locator(SEL.diagnostics.panel("problems"));
@@ -233,7 +233,7 @@ test.describe.serial("Core: IPC Error Propagation", () => {
       type: "git",
       message: "E2E dedup test error",
       source: "DeduplicationTest",
-      isTransient: false,
+      retryability: "none",
     });
 
     // Send 5 identical errors in a single evaluate to ensure they arrive within 500ms
@@ -271,7 +271,7 @@ test.describe.serial("Core: IPC Error Propagation", () => {
       type: "git",
       message: "E2E dedup test error",
       source: "DeduplicationTest",
-      isTransient: false,
+      retryability: "none",
     });
 
     await ctx.window.waitForTimeout(300);

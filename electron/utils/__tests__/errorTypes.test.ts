@@ -8,6 +8,7 @@ import {
   isAppError,
   toGitOperationError,
   getUserMessage,
+  getRetryability,
 } from "../errorTypes.js";
 import { serializeError, deserializeError } from "../../../shared/utils/ipcErrorSerialization.js";
 
@@ -168,5 +169,70 @@ describe("getUserMessage", () => {
   it("falls back to AppError.message when userMessage is absent", () => {
     const err = new AppError({ code: "VALIDATION", message: "Invalid payload" });
     expect(getUserMessage(err)).toBe("Invalid payload");
+  });
+});
+
+describe("getRetryability", () => {
+  it("classifies transient errno codes as 'auto'", () => {
+    for (const code of ["EBUSY", "EAGAIN", "ETIMEDOUT", "ECONNRESET", "ENOTFOUND"]) {
+      const err = Object.assign(new Error("net"), { code });
+      expect(getRetryability(err)).toBe("auto");
+    }
+  });
+
+  it("classifies non-transient errno codes as 'none'", () => {
+    for (const code of ["ENOENT", "EACCES", "EMFILE", "ENOMEM", "ENXIO"]) {
+      const err = Object.assign(new Error("permanent"), { code });
+      expect(getRetryability(err)).toBe("none");
+    }
+  });
+
+  it("maps git auth/config reasons to 'user-gated'", () => {
+    for (const reason of ["auth-failed", "config-missing", "dubious-ownership"] as const) {
+      const err = new GitOperationError(reason, "boom");
+      expect(getRetryability(err)).toBe("user-gated");
+    }
+  });
+
+  it("maps git transient reasons to 'auto'", () => {
+    for (const reason of ["network-unavailable", "system-io-error"] as const) {
+      const err = new GitOperationError(reason, "boom");
+      expect(getRetryability(err)).toBe("auto");
+    }
+  });
+
+  it("maps git terminal-policy reasons to 'none'", () => {
+    for (const reason of [
+      "repository-not-found",
+      "not-a-repository",
+      "worktree-dirty",
+      "conflict-unresolved",
+      "push-rejected-outdated",
+      "push-rejected-policy",
+      "pathspec-invalid",
+      "lfs-missing",
+      "lfs-quota-exceeded",
+      "hook-rejected",
+    ] as const) {
+      const err = new GitOperationError(reason, "boom");
+      expect(getRetryability(err)).toBe("none");
+    }
+  });
+
+  it("falls through to errno when gitReason is 'unknown'", () => {
+    const err = new GitOperationError("unknown", "boom");
+    Object.assign(err, { code: "ETIMEDOUT" });
+    expect(getRetryability(err)).toBe("auto");
+  });
+
+  it("prefers explicit gitReason argument over instance reason", () => {
+    const err = new GitOperationError("auth-failed", "boom");
+    expect(getRetryability(err, "network-unavailable")).toBe("auto");
+  });
+
+  it("returns 'none' for unknown shapes", () => {
+    expect(getRetryability(null)).toBe("none");
+    expect(getRetryability(undefined)).toBe("none");
+    expect(getRetryability(new Error("plain"))).toBe("none");
   });
 });

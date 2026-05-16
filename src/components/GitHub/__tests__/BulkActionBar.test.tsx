@@ -3,7 +3,6 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
-import React from "react";
 import type { GitHubIssue, GitHubPR } from "@shared/types/github";
 
 const openBulkCreateDialog = vi.fn();
@@ -13,27 +12,6 @@ vi.mock("@/store/worktreeStore", () => ({
   useWorktreeSelectionStore: (selector: (s: unknown) => unknown) =>
     selector({ openBulkCreateDialog, openBulkCreateDialogForPRs }),
 }));
-
-vi.mock("framer-motion", () => {
-  const MotionDiv = React.forwardRef<
-    HTMLDivElement,
-    React.HTMLAttributes<HTMLDivElement> & {
-      exit?: Record<string, unknown>;
-      initial?: unknown;
-      animate?: unknown;
-      transition?: unknown;
-    }
-  >(({ children, exit, initial, animate, transition, ...rest }, ref) => (
-    <div ref={ref} data-exit={exit ? JSON.stringify(exit) : undefined} {...rest}>
-      {children}
-    </div>
-  ));
-  return {
-    AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-    m: { div: MotionDiv },
-    motion: { div: MotionDiv },
-  };
-});
 
 import { BulkActionBar } from "../BulkActionBar";
 
@@ -84,7 +62,11 @@ describe("BulkActionBar", () => {
   });
 
   it("does not render when selection is empty", () => {
-    render(
+    // Plain conditional render (no AnimatePresence) — when count flips to 0
+    // the bar must unmount immediately so it can't get stuck inside the
+    // dropdown's Activity-hidden subtree. See `fixed-dropdown.tsx` invariant
+    // comment.
+    const { container } = render(
       <BulkActionBar
         mode="issue"
         selectedIssues={[]}
@@ -95,24 +77,7 @@ describe("BulkActionBar", () => {
     );
 
     expect(screen.queryByRole("toolbar", { name: /bulk actions/i })).toBeNull();
-  });
-
-  it("disables pointer events on the exiting bar to prevent dead-click during exit animation", () => {
-    render(
-      <BulkActionBar
-        mode="issue"
-        selectedIssues={[makeIssue(1)]}
-        selectedPRs={[]}
-        selectedCount={1}
-        onClear={vi.fn()}
-      />
-    );
-
-    const toolbar = screen.getByRole("toolbar", { name: /bulk actions/i });
-    const exitProp = toolbar.getAttribute("data-exit");
-    expect(exitProp).toBeTruthy();
-    const exit = JSON.parse(exitProp!) as Record<string, unknown>;
-    expect(exit.pointerEvents).toBe("none");
+    expect(container.firstChild).toBeNull();
   });
 
   it("calls onClear when the X button is clicked", () => {

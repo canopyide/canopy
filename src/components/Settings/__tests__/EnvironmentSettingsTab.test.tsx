@@ -42,7 +42,7 @@ describe("EnvironmentSettingsTab", () => {
     renderTab();
 
     await waitFor(() => {
-      expect(screen.getByText("Environment Variables")).toBeTruthy();
+      expect(screen.getByText("Environment variables")).toBeTruthy();
     });
     expect(screen.queryByText("No project open")).toBeNull();
   });

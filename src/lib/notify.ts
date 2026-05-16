@@ -12,7 +12,8 @@ import {
 } from "@/store/slices/notificationHistorySlice";
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
 import { isScheduledQuietNow, nextOccurrenceTimestamp } from "@shared/utils/quietHours";
-import type { ErrorType } from "@/store/errorStore";
+import { normalizeForDedup } from "@shared/utils/normalizeErrorMessage";
+import type { ErrorRetryability, ErrorType } from "@/store/errorStore";
 import type { NotificationSettings } from "@shared/types/ipc/api";
 
 export type NotificationEventKind = "completed" | "waiting" | "workingPulse" | "uiFeedback";
@@ -228,7 +229,7 @@ function classifyErrorType(type: ErrorType): EscalationProfile {
 }
 
 function buildEscalationKey(error: { type: ErrorType; message: string; source?: string }): string {
-  return `${error.type}|${error.source ?? ""}|${error.message}`;
+  return `${error.type}|${error.source ?? ""}|${normalizeForDedup(error.message)}`;
 }
 
 const _escalationTrackers = new Map<string, EscalationTracker>();
@@ -253,9 +254,9 @@ export function shouldEscalateTransientError(error: {
   type: ErrorType;
   message: string;
   source?: string;
-  isTransient: boolean;
+  retryability: ErrorRetryability;
 }): boolean {
-  if (!error.isTransient) return false;
+  if (error.retryability !== "auto") return false;
 
   const key = buildEscalationKey(error);
   const now = Date.now();
@@ -296,9 +297,9 @@ export function consumeEscalation(error: {
   type: ErrorType;
   message: string;
   source?: string;
-  isTransient: boolean;
+  retryability: ErrorRetryability;
 }): void {
-  if (!error.isTransient) return;
+  if (error.retryability !== "auto") return;
 
   const key = buildEscalationKey(error);
   const tracker = _escalationTrackers.get(key);

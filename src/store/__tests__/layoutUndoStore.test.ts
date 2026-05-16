@@ -12,6 +12,7 @@ vi.mock("@/controllers", () => ({
     onExit: vi.fn(() => vi.fn()),
     onStatus: vi.fn(() => vi.fn()),
     onBackendCrashed: vi.fn(() => vi.fn()),
+    onBackendRecovering: vi.fn(() => vi.fn()),
     onBackendReady: vi.fn(() => vi.fn()),
     onSpawnResult: vi.fn(() => vi.fn()),
     onReduceScrollback: vi.fn(() => vi.fn()),

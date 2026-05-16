@@ -230,6 +230,28 @@ describe("QuickStateFilterBar", () => {
     }
   });
 
+  it("renders the active count at full text opacity and inactive counts at /50 — issue #7971", () => {
+    // The count digit is the load-bearing signal in icon-only segments — the
+    // active segment must read at full neutral text opacity (no /N suffix);
+    // inactive segments stay muted at /50 to preserve the active hierarchy.
+    renderBar(
+      <QuickStateFilterBar
+        value="working"
+        onChange={() => {}}
+        counts={{ all: 9, working: 3, waiting: 1, finished: 2 }}
+      />
+    );
+    const working = screen.getByRole("button", { name: /Working/ });
+    const waiting = screen.getByRole("button", { name: /Waiting/ });
+    const activeCount = within(working).getByText("3");
+    const inactiveCount = within(waiting).getByText("1");
+    const activeClass = activeCount.getAttribute("class") ?? "";
+    const inactiveClass = inactiveCount.getAttribute("class") ?? "";
+    expect(activeClass).toContain("text-daintree-text");
+    expect(activeClass).not.toContain("text-daintree-text/");
+    expect(inactiveClass).toContain("text-daintree-text/50");
+  });
+
   it("renders the optional trailing slot past a divider", () => {
     renderBar(
       <QuickStateFilterBar

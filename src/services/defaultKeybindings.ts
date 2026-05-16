@@ -1,6 +1,7 @@
+import { isWindows } from "@/lib/platform";
 import type { KeybindingConfig } from "./keybindingUtils";
 
-export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
+const CORE_KEYBINDINGS: KeybindingConfig[] = [
   {
     actionId: "terminal.close",
     combo: "Cmd+W",
@@ -596,14 +597,6 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     category: "Panels",
   },
   {
-    actionId: "panel.diagnosticsEvents",
-    combo: "Ctrl+Shift+E",
-    scope: "global",
-    priority: 0,
-    description: "Open diagnostics dock to Events tab",
-    category: "Panels",
-  },
-  {
     actionId: "panel.diagnosticsMessages",
     combo: "Ctrl+Shift+M",
     scope: "global",
@@ -792,15 +785,15 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     combo: "Cmd+Alt+=",
     scope: "global",
     priority: 10,
-    description: "Switch project (hold to scrub down)",
+    description: "Switch project forward",
     category: "Project",
   },
   {
-    actionId: "project.mruCycleNewer",
-    combo: "Cmd+Alt+-",
+    actionId: "project.mruCycleOlder",
+    combo: "Cmd+Shift+Alt+=",
     scope: "global",
     priority: 10,
-    description: "Switch project (hold to scrub up)",
+    description: "Switch project forward",
     category: "Project",
   },
   {
@@ -1005,6 +998,14 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     description: "Open focused panel context menu",
     category: "Panels",
   },
+  {
+    actionId: "terminal.contextMenu",
+    combo: "ContextMenu",
+    scope: "global",
+    priority: 0,
+    description: "Open focused panel context menu",
+    category: "Panels",
+  },
   // Git write operations (Cmd+K chord prefix)
   {
     actionId: "git.stageAll",
@@ -1055,4 +1056,30 @@ export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
     description: "Reset renderers for all sessions in active worktree",
     category: "Worktree Sessions",
   },
+];
+
+const WINDOWS_KEYBINDINGS: KeybindingConfig[] = isWindows()
+  ? [
+      {
+        actionId: "terminal.close",
+        combo: "Ctrl+F4",
+        scope: "global",
+        priority: 10,
+        description: "Close focused terminal",
+        category: "Terminal",
+      },
+      {
+        actionId: "portal.closeTab",
+        combo: "Ctrl+F4",
+        scope: "portal",
+        priority: 20,
+        description: "Close active portal tab",
+        category: "Portal",
+      },
+    ]
+  : [];
+
+export const DEFAULT_KEYBINDINGS: KeybindingConfig[] = [
+  ...CORE_KEYBINDINGS,
+  ...WINDOWS_KEYBINDINGS,
 ];

@@ -688,22 +688,6 @@ export function BulkCreateWorktreeDialog({
       }
 
       dispatchProgress({ type: "DONE" });
-
-      const sCount = succeededItems.size;
-      const fCount = failedItems.size;
-      if (fCount === 0) {
-        notify({
-          type: "success",
-          title: "Worktrees created",
-          message: `Created ${sCount} worktree${sCount !== 1 ? "s" : ""}`,
-        });
-      } else {
-        notify({
-          type: "error",
-          title: "Some worktrees couldn't be created",
-          message: `${sCount} created, ${fCount} failed`,
-        });
-      }
     },
     [selectedRecipeId, assignWorktreeToSelf, currentProject?.path]
   );
@@ -714,14 +698,9 @@ export function BulkCreateWorktreeDialog({
     try {
       const toCreate = planned.filter((p) => !p.skipped);
       if (toCreate.length === 0) {
-        notify({
-          type: "info",
-          title: "Nothing to create",
-          message:
-            mode === "pr"
-              ? "All selected PRs already have worktrees or are ineligible"
-              : "All selected issues already have worktrees or are closed",
-        });
+        console.warn(
+          "[BulkCreateWorktreeDialog] handleCreate called with no creatable items — guard fired"
+        );
         return;
       }
 
@@ -741,7 +720,6 @@ export function BulkCreateWorktreeDialog({
     }
   }, [
     planned,
-    mode,
     selectedRecipeId,
     projectId,
     recipeSelectionTouchedRef,
@@ -790,17 +768,28 @@ export function BulkCreateWorktreeDialog({
   }, [progress.items, planned, runBatch]);
 
   const handleClose = useCallback(() => {
-    // Cancel/Escape/backdrop dismissal preserves bulk selection so the user
-    // can reopen the dropdown and finish picking. Selection only clears via
-    // handleDone after worktrees are actually created.
+    // Cancel/Escape/backdrop while idle or mid-execution preserves the bulk
+    // selection so the user can reopen the dropdown and finish picking.
+    // Once the run has completed, dismissing via X/Escape/backdrop must run
+    // the same selection cleanup as the Done button — otherwise the bulk
+    // bar stays visible with the now-stale selection.
     if (isExecuting) {
       runIdRef.current++;
       queueRef.current?.clear();
       queueRef.current = null;
     }
     isExecutingRef.current = false;
+
+    // Capture before onClose() — onClose is wired to closeBulkCreateDialog
+    // upstream, which zeroes out the stored callback as part of its reset.
+    const storedOnComplete =
+      progress.phase === "done"
+        ? useWorktreeSelectionStore.getState().bulkCreateDialog.onComplete
+        : undefined;
+
     onClose();
-  }, [isExecuting, onClose]);
+    storedOnComplete?.();
+  }, [isExecuting, onClose, progress.phase]);
 
   const handleDone = useCallback(() => {
     // Capture before onComplete()/onClose() — both are wired to closeBulkCreateDialog

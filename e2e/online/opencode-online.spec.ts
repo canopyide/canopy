@@ -46,6 +46,90 @@ async function focusHybridEditor(page: Page, agentPanel: Locator): Promise<void>
   throw lastError instanceof Error ? lastError : new Error("Failed to focus hybrid editor");
 }
 
+async function openFixtureProject(): Promise<void> {
+  const { app, window } = ctx;
+
+  await mockOpenDialog(app, fixtureDir);
+  await window.getByRole("button", { name: "Open Folder" }).click();
+
+  // Re-acquire window after open — ProjectViewManager creates a new
+  // WebContentsView for the project — then dismiss the telemetry consent
+  // dialog if it appears.
+  ctx.window = await refreshActiveWindow(ctx.app, ctx.window);
+  await dismissTelemetryConsent(ctx.window);
+}
+
+async function launchOpenCodeAgent(): Promise<Locator> {
+  const { window } = ctx;
+
+  // Agents are unpinned by default, so the toolbar shows the Agent Tray
+  // rather than a direct "Start OpenCode Agent" button. Open the tray and
+  // click the OpenCode entry under "Launch".
+  await window.locator(SEL.agent.trayButton).click();
+  await window.getByRole("menuitem", { name: "OpenCode" }).click();
+
+  const agentPanel = window.locator(SEL.opencodeAgent.panel);
+  await expect(agentPanel).toBeVisible({ timeout: 30_000 });
+  return agentPanel;
+}
+
+async function waitForOpenCodeReady(agentPanel: Locator): Promise<"ready" | "needs-restart"> {
+  const { window } = ctx;
+
+  // Windows GitHub runners take significantly longer to bring up the
+  // OpenCode CLI (Node spawn + provider probe + render) — extend the
+  // ready-state polling budget so we don't trip the deadline on cold-start.
+  const deadline = Date.now() + (process.platform === "win32" ? 360_000 : 120_000);
+
+  while (Date.now() < deadline) {
+    await dismissTelemetryConsent(window);
+
+    const text = await getTerminalText(agentPanel);
+    const lower = text.toLowerCase();
+
+    if (lower.includes("update complete") && lower.includes("restart the application")) {
+      return "needs-restart";
+    }
+
+    if (
+      lower.includes("ask anything") ||
+      /build\s+opencode/i.test(text) ||
+      /\d+\.\d+\.\d+$/.test(text.trim())
+    ) {
+      return "ready";
+    } else if (lower.includes("provider") || lower.includes("/connect")) {
+      await focusHybridEditor(window, agentPanel);
+      await window.keyboard.press("Enter");
+      await window.waitForTimeout(2_000);
+    } else if (lower.includes("api key")) {
+      await focusHybridEditor(window, agentPanel);
+      await window.keyboard.press("ArrowUp");
+      await window.keyboard.press("Enter");
+      await window.waitForTimeout(2_000);
+    } else {
+      await window.waitForTimeout(1_000);
+    }
+  }
+
+  throw new Error("OpenCode did not reach ready state before timeout");
+}
+
+async function launchOpenCodeReady(): Promise<Locator> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const agentPanel = await launchOpenCodeAgent();
+    const state = await waitForOpenCodeReady(agentPanel);
+    if (state === "ready") return agentPanel;
+
+    // OpenCode can self-update on first launch and require the embedding app
+    // to restart before the new CLI process will accept input.
+    await closeApp(ctx.app);
+    ctx = await launchApp();
+    await openFixtureProject();
+  }
+
+  throw new Error("OpenCode required restart more than once");
+}
+
 test.describe("OpenCode Online Flow", () => {
   test.beforeAll(async () => {
     const { dir, cleanup } = createFixtureRepo({ name: "opencode-online" });
@@ -64,68 +148,11 @@ test.describe("OpenCode Online Flow", () => {
     });
 
     await test.step("open folder", async () => {
-      const { app, window } = ctx;
-
-      await mockOpenDialog(app, fixtureDir);
-      await window.getByRole("button", { name: "Open Folder" }).click();
+      await openFixtureProject();
     });
-
-    // Re-acquire window after open — ProjectViewManager creates a new
-    // WebContentsView for the project — then dismiss the telemetry consent
-    // dialog if it appears.
-    ctx.window = await refreshActiveWindow(ctx.app, ctx.window);
-    await dismissTelemetryConsent(ctx.window);
 
     await test.step("launch OpenCode agent", async () => {
-      const { window } = ctx;
-
-      // Agents are unpinned by default, so the toolbar shows the Agent Tray
-      // rather than a direct "Start OpenCode Agent" button. Open the tray and
-      // click the OpenCode entry under "Launch".
-      await window.locator(SEL.agent.trayButton).click();
-      await window.getByRole("menuitem", { name: "OpenCode" }).click();
-
-      const agentPanel = window.locator(SEL.opencodeAgent.panel);
-      await expect(agentPanel).toBeVisible({ timeout: 30_000 });
-    });
-
-    await test.step("handle prompts and wait for ready state", async () => {
-      const { window } = ctx;
-      const agentPanel = window.locator(SEL.opencodeAgent.panel);
-
-      // Windows GitHub runners take significantly longer to bring up the
-      // OpenCode CLI (Node spawn + provider probe + render) — extend the
-      // ready-state polling budget so we don't trip the deadline on cold-start.
-      const deadline = Date.now() + (process.platform === "win32" ? 360_000 : 120_000);
-      let reachedReady = false;
-
-      while (Date.now() < deadline && !reachedReady) {
-        await dismissTelemetryConsent(window);
-
-        const text = await getTerminalText(agentPanel);
-        const lower = text.toLowerCase();
-
-        if (
-          lower.includes("ask anything") ||
-          /build\s+opencode/i.test(text) ||
-          /\d+\.\d+\.\d+$/.test(text.trim())
-        ) {
-          reachedReady = true;
-        } else if (lower.includes("provider") || lower.includes("/connect")) {
-          await focusHybridEditor(window, agentPanel);
-          await window.keyboard.press("Enter");
-          await window.waitForTimeout(2_000);
-        } else if (lower.includes("api key")) {
-          await focusHybridEditor(window, agentPanel);
-          await window.keyboard.press("ArrowUp");
-          await window.keyboard.press("Enter");
-          await window.waitForTimeout(2_000);
-        } else {
-          await window.waitForTimeout(1_000);
-        }
-      }
-
-      expect(reachedReady).toBe(true);
+      await launchOpenCodeReady();
     });
 
     await test.step("send hello world command", async () => {

@@ -15,7 +15,6 @@ import { useState } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, screen } from "@testing-library/react";
 import { EnvVarEditor } from "../EnvVarEditor";
-import { notify } from "@/lib/notify";
 
 vi.mock("lucide-react", () => ({
   X: () => <span data-testid="x-icon" />,
@@ -36,10 +35,6 @@ vi.mock("@/components/ui/popover", () => ({
   PopoverAnchor: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   PopoverTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   PopoverContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-}));
-
-vi.mock("@/lib/notify", () => ({
-  notify: vi.fn(),
 }));
 
 interface DialogAction {
@@ -930,12 +925,7 @@ describe("EnvVarEditor", () => {
         clipboardData: { getData: () => "  bar  " },
       });
 
-      expect(notify).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "info",
-          transient: true,
-        })
-      );
+      expect(screen.getByTestId("env-editor-normalized")).toBeTruthy();
       expect(execCommandSpy).toHaveBeenCalledWith("insertText", false, "bar");
     });
 
@@ -947,12 +937,7 @@ describe("EnvVarEditor", () => {
         clipboardData: { getData: () => "‘val’" },
       });
 
-      expect(notify).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "info",
-          transient: true,
-        })
-      );
+      expect(screen.getByTestId("env-editor-normalized")).toBeTruthy();
       expect(execCommandSpy).toHaveBeenCalledWith("insertText", false, "'val'");
     });
 
@@ -964,12 +949,7 @@ describe("EnvVarEditor", () => {
         clipboardData: { getData: () => "“val”" },
       });
 
-      expect(notify).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "info",
-          transient: true,
-        })
-      );
+      expect(screen.getByTestId("env-editor-normalized")).toBeTruthy();
       expect(execCommandSpy).toHaveBeenCalledWith("insertText", false, '"val"');
     });
 
@@ -981,16 +961,11 @@ describe("EnvVarEditor", () => {
         clipboardData: { getData: () => "′x″–y—" },
       });
 
-      expect(notify).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "info",
-          transient: true,
-        })
-      );
+      expect(screen.getByTestId("env-editor-normalized")).toBeTruthy();
       expect(execCommandSpy).toHaveBeenCalledWith("insertText", false, "'x\"-y-");
     });
 
-    it("does not notify or prevent default for already-clean text", () => {
+    it("does not show indicator or prevent default for already-clean text", () => {
       renderEditor({ FOO: "old" });
       const input = screen.getAllByTestId("env-editor-value")[0]!;
 
@@ -998,7 +973,7 @@ describe("EnvVarEditor", () => {
         clipboardData: { getData: () => "clean value" },
       });
 
-      expect(notify).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("env-editor-normalized")).toBeNull();
       expect(execCommandSpy).not.toHaveBeenCalled();
     });
 
@@ -1010,12 +985,7 @@ describe("EnvVarEditor", () => {
         clipboardData: { getData: () => "   " },
       });
 
-      expect(notify).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "info",
-          transient: true,
-        })
-      );
+      expect(screen.getByTestId("env-editor-normalized")).toBeTruthy();
       expect(execCommandSpy).toHaveBeenCalledWith("insertText", false, "");
     });
 
@@ -1031,12 +1001,7 @@ describe("EnvVarEditor", () => {
       });
 
       expect(execCommandSpy).toHaveBeenCalledWith("insertText", false, "fixed");
-      expect(notify).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "info",
-          transient: true,
-        })
-      );
+      expect(screen.getByTestId("env-editor-normalized")).toBeTruthy();
       // Splice preserves surrounding text: "o" + "fixed" + "" = "ofixed"
       expect(input.value).toBe("ofixed");
       expect(onChange).not.toHaveBeenCalled(); // blur hasn't happened yet
@@ -1065,7 +1030,7 @@ describe("EnvVarEditor", () => {
       });
 
       expect(execCommandSpy).toHaveBeenCalledWith("insertText", false, '"smart"');
-      expect(notify).toHaveBeenCalled();
+      expect(screen.getByTestId("env-editor-normalized")).toBeTruthy();
 
       // Simulate the React state update that execCommand triggers in real DOM
       fireEvent.change(input, { target: { value: '"smart"' } });
@@ -1083,14 +1048,10 @@ describe("EnvVarEditor", () => {
         clipboardData: { getData: () => "  should-not-fire  " },
       });
 
-      // Inherited inputs are disabled, so paste fires but the input's disabled
-      // state blocks actual editing. The paste handler still runs (React events
-      // fire on disabled inputs), but the normalized value shouldn't land.
-      // Since the input is disabled, execCommand may still fire — the key
-      // defense is that disabled inputs don't accept changes from execCommand.
-      // Verify notify still fires only because normalization occurred; the
-      // disabled attribute on the DOM prevents the value from persisting.
-      expect(notify).not.toHaveBeenCalled();
+      // Inherited inputs are disabled, so the paste handler short-circuits
+      // before normalizing — no indicator should appear and execCommand
+      // should not fire.
+      expect(screen.queryByTestId("env-editor-normalized")).toBeNull();
     });
 
     it("lets default paste through when clipboardData is missing", () => {
@@ -1100,7 +1061,7 @@ describe("EnvVarEditor", () => {
       // Simulate paste with no clipboardData
       fireEvent.paste(input);
 
-      expect(notify).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("env-editor-normalized")).toBeNull();
       expect(execCommandSpy).not.toHaveBeenCalled();
     });
   });

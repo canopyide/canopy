@@ -3,7 +3,15 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ErrorBanner } from "../ErrorBanner";
 import type { ErrorRecord } from "@/store/errorStore";
+import { useErrorStore } from "@/store/errorStore";
 import { useDiagnosticsStore } from "@/store/diagnosticsStore";
+
+const mockDispatch = vi.fn().mockResolvedValue({ ok: true });
+vi.mock("@/services/ActionService", () => ({
+  actionService: {
+    dispatch: (...args: unknown[]) => mockDispatch(...args),
+  },
+}));
 
 vi.mock("@/lib/utils", () => ({
   cn: (...args: unknown[]) => args.filter(Boolean).join(" "),
@@ -15,7 +23,7 @@ function makeError(overrides: Partial<ErrorRecord> = {}): ErrorRecord {
     timestamp: Date.now(),
     type: "unknown",
     message: "Something failed",
-    isTransient: false,
+    retryability: "none",
     dismissed: false,
     ...overrides,
   };
@@ -117,7 +125,7 @@ describe("ErrorBanner", () => {
     it("does not render 'View errors' when retry is available", () => {
       render(
         <ErrorBanner
-          error={makeError({ isTransient: true, retryAction: "git" })}
+          error={makeError({ retryability: "auto", retryAction: "git" })}
           onDismiss={onDismiss}
           onRetry={vi.fn()}
           compact
@@ -127,10 +135,10 @@ describe("ErrorBanner", () => {
       expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     });
 
-    it("renders 'View errors' when isTransient is true but onRetry is missing", () => {
+    it("renders 'View errors' when retryability is 'auto' but onRetry is missing", () => {
       render(
         <ErrorBanner
-          error={makeError({ isTransient: true, retryAction: "git" })}
+          error={makeError({ retryability: "auto", retryAction: "git" })}
           onDismiss={onDismiss}
           compact
         />
@@ -178,7 +186,7 @@ describe("ErrorBanner", () => {
     it("does not render 'View errors' when retry is available", () => {
       render(
         <ErrorBanner
-          error={makeError({ isTransient: true, retryAction: "git" })}
+          error={makeError({ retryability: "auto", retryAction: "git" })}
           onDismiss={onDismiss}
           onRetry={vi.fn()}
         />
@@ -209,10 +217,10 @@ describe("ErrorBanner", () => {
       expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
     });
 
-    it("renders 'View errors' when isTransient is true but onRetry is missing", () => {
+    it("renders 'View errors' when retryability is 'auto' but onRetry is missing", () => {
       render(
         <ErrorBanner
-          error={makeError({ isTransient: true, retryAction: "git" })}
+          error={makeError({ retryability: "auto", retryAction: "git" })}
           onDismiss={onDismiss}
         />
       );
@@ -221,11 +229,62 @@ describe("ErrorBanner", () => {
     });
   });
 
+  describe("retryability-driven action slot", () => {
+    afterEach(() => {
+      useDiagnosticsStore.getState().reset();
+    });
+
+    it("renders Retry for 'auto' + retryAction + onRetry", () => {
+      render(
+        <ErrorBanner
+          error={makeError({ retryability: "auto", retryAction: "git" })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+        />
+      );
+      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "View errors" })).toBeNull();
+    });
+
+    it("renders 'View errors' for 'exhausted' even when retryAction is wired", () => {
+      render(
+        <ErrorBanner
+          error={makeError({ retryability: "exhausted", retryAction: "git" })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+        />
+      );
+      expect(screen.getByRole("button", { name: "View errors" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    });
+
+    it("renders the recovery CTA for 'user-gated' + recoveryAction", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            retryability: "user-gated",
+            recoveryAction: { label: "Reconnect", actionId: "github.connect" },
+          })}
+          onDismiss={onDismiss}
+        />
+      );
+      expect(screen.getByRole("button", { name: "Reconnect" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "View errors" })).toBeNull();
+    });
+
+    it("falls back to 'View errors' for 'user-gated' without recoveryAction", () => {
+      render(
+        <ErrorBanner error={makeError({ retryability: "user-gated" })} onDismiss={onDismiss} />
+      );
+      expect(screen.getByRole("button", { name: "View errors" })).toBeTruthy();
+    });
+  });
+
   describe("retry button styling", () => {
     it("does not use success-green classes on the compact retry button", () => {
       render(
         <ErrorBanner
-          error={makeError({ isTransient: true, retryAction: "git" })}
+          error={makeError({ retryability: "auto", retryAction: "git" })}
           onDismiss={onDismiss}
           onRetry={vi.fn()}
           compact
@@ -239,7 +298,7 @@ describe("ErrorBanner", () => {
     it("does not use success-green classes on the full retry button", () => {
       render(
         <ErrorBanner
-          error={makeError({ isTransient: true, retryAction: "git" })}
+          error={makeError({ retryability: "auto", retryAction: "git" })}
           onDismiss={onDismiss}
           onRetry={vi.fn()}
         />
@@ -247,6 +306,95 @@ describe("ErrorBanner", () => {
       const retry = screen.getByRole("button", { name: "Retry" });
       expect(retry.className).not.toMatch(/status-success/);
       expect(retry.className).toMatch(/status-error/);
+    });
+  });
+
+  describe("retryExhausted and occurrenceCount gating", () => {
+    afterEach(() => {
+      useDiagnosticsStore.getState().reset();
+    });
+
+    it("shows 'View errors' not 'Retry' when retryExhausted is true (compact)", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            retryability: "auto",
+            retryAction: "git",
+            retryExhausted: true,
+          })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+          compact
+        />
+      );
+      expect(screen.getByRole("button", { name: "View errors" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    });
+
+    it("shows 'View errors' not 'Retry' when retryExhausted is true (full)", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            retryability: "auto",
+            retryAction: "git",
+            retryExhausted: true,
+          })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+        />
+      );
+      expect(screen.getByRole("button", { name: "View errors" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    });
+
+    it("shows 'View errors' not 'Retry' when occurrenceCount reaches threshold 5 (compact)", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            retryability: "auto",
+            retryAction: "git",
+            occurrenceCount: 5,
+          })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+          compact
+        />
+      );
+      expect(screen.getByRole("button", { name: "View errors" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    });
+
+    it("still shows 'Retry' when occurrenceCount is below threshold 5", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            retryability: "auto",
+            retryAction: "git",
+            occurrenceCount: 4,
+          })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+          compact
+        />
+      );
+      expect(screen.queryByRole("button", { name: "View errors" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    });
+
+    it("remains non-retryable (0 occurrenceCount) when retryability is 'none'", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            retryability: "none",
+            occurrenceCount: 0,
+            retryAction: undefined,
+          })}
+          onDismiss={onDismiss}
+          compact
+        />
+      );
+      expect(screen.getByRole("button", { name: "View errors" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     });
   });
 
@@ -359,6 +507,201 @@ describe("ErrorBanner", () => {
         vi.advanceTimersByTime(600);
       });
       expect(screen.queryByText("Ref: Copied")).toBeNull();
+    });
+  });
+
+  describe("promotedToDock", () => {
+    beforeEach(() => {
+      useErrorStore.getState().reset();
+      useDiagnosticsStore.getState().reset();
+    });
+
+    it("does not show Retry button in compact when promotedToDock is true", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            retryability: "auto",
+            retryAction: "git",
+            promotedToDock: true,
+          })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+          compact
+        />
+      );
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+      expect(screen.getByRole("button", { name: "View errors" })).toBeTruthy();
+    });
+
+    it("does not show Retry button in full when promotedToDock is true", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            retryability: "auto",
+            retryAction: "git",
+            promotedToDock: true,
+          })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+        />
+      );
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+      expect(screen.getByRole("button", { name: "View errors" })).toBeTruthy();
+    });
+
+    it("full variant with promotedToDock and details does not show View errors", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            retryability: "auto",
+            retryAction: "git",
+            promotedToDock: true,
+            details: "stack trace here",
+          })}
+          onDismiss={onDismiss}
+          onRetry={vi.fn()}
+        />
+      );
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "View errors" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Details" })).toBeTruthy();
+    });
+
+    it("handleViewErrors opens dock and promotes error", () => {
+      // Add an error to the store first, then promote via View errors
+      const id = useErrorStore.getState().addError({
+        type: "git",
+        message: "push rejected",
+        source: "git",
+        retryability: "none",
+      });
+
+      render(
+        <ErrorBanner
+          error={makeError({ id, retryability: "none" })}
+          onDismiss={onDismiss}
+          compact
+        />
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "View errors" }));
+      expect(useDiagnosticsStore.getState().isOpen).toBe(true);
+      expect(useDiagnosticsStore.getState().activeTab).toBe("problems");
+
+      const storeErrors = useErrorStore.getState().errors;
+      const promoted = storeErrors.find((e) => e.id === id);
+      expect(promoted?.promotedToDock).toBe(true);
+    });
+  });
+
+  describe("recovery action CTA", () => {
+    const recoveryAction = {
+      label: "Pull and rebase",
+      actionId: "git.pullRebase",
+    };
+
+    beforeEach(() => {
+      mockDispatch.mockClear();
+    });
+
+    it("renders recovery button with correct label in compact variant", () => {
+      render(
+        <ErrorBanner
+          error={makeError({ retryability: "user-gated", recoveryAction })}
+          onDismiss={onDismiss}
+          compact
+        />
+      );
+      expect(screen.getByRole("button", { name: "Pull and rebase" })).toBeTruthy();
+    });
+
+    it("renders recovery button with correct label in full variant", () => {
+      render(
+        <ErrorBanner
+          error={makeError({ retryability: "user-gated", recoveryAction })}
+          onDismiss={onDismiss}
+        />
+      );
+      expect(screen.getByRole("button", { name: "Pull and rebase" })).toBeTruthy();
+    });
+
+    it("dispatches via actionService with correct args on click", async () => {
+      render(
+        <ErrorBanner
+          error={makeError({ retryability: "user-gated", recoveryAction })}
+          onDismiss={onDismiss}
+        />
+      );
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Pull and rebase" }));
+      });
+      expect(mockDispatch).toHaveBeenCalledWith("git.pullRebase", undefined, {
+        source: "user",
+      });
+    });
+
+    it("dispatches with recoveryAction.args when present", async () => {
+      const actionWithArgs = {
+        label: "Sign in with GitHub",
+        actionId: "app.settings.openTab",
+        args: { tab: "github" },
+      };
+      render(
+        <ErrorBanner
+          error={makeError({ retryability: "user-gated", recoveryAction: actionWithArgs })}
+          onDismiss={onDismiss}
+        />
+      );
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Sign in with GitHub" }));
+      });
+      expect(mockDispatch).toHaveBeenCalledWith(
+        "app.settings.openTab",
+        { tab: "github" },
+        { source: "user" }
+      );
+    });
+
+    it("hides 'View errors' when recovery action is present in compact variant", () => {
+      render(
+        <ErrorBanner
+          error={makeError({ retryability: "user-gated", recoveryAction })}
+          onDismiss={onDismiss}
+          compact
+        />
+      );
+      expect(screen.queryByRole("button", { name: "View errors" })).toBeNull();
+    });
+
+    it("hides 'View errors' when recovery action is present in full variant", () => {
+      render(
+        <ErrorBanner
+          error={makeError({ retryability: "user-gated", recoveryAction })}
+          onDismiss={onDismiss}
+        />
+      );
+      expect(screen.queryByRole("button", { name: "View errors" })).toBeNull();
+    });
+
+    it("hides recovery button while retry is in progress", () => {
+      render(
+        <ErrorBanner
+          error={makeError({
+            retryability: "user-gated",
+            recoveryAction,
+            retryProgress: { attempt: 1, maxAttempts: 3 },
+          })}
+          onDismiss={onDismiss}
+          onCancelRetry={vi.fn()}
+        />
+      );
+      expect(screen.queryByRole("button", { name: "Pull and rebase" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+    });
+
+    it("does not throw when recovery action is absent", () => {
+      const { container } = render(<ErrorBanner error={makeError()} onDismiss={onDismiss} />);
+      expect(container).toBeTruthy();
     });
   });
 });

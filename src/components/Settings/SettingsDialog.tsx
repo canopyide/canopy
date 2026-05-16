@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/select";
 import { appClient } from "@/clients";
 import { AppDialog } from "@/components/ui/AppDialog";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { GeneralTab } from "./GeneralTab";
 import {
   SETTINGS_REGISTRY,
@@ -74,6 +75,14 @@ let rememberedProjectTab: SettingsTab = "project:general";
 // before the class is removed. Long enough to read, short enough not to draw
 // attention after the user has oriented.
 const SETTINGS_HIGHLIGHT_DECAY_MS = 1500;
+
+// Lowercase the first letter so the label reads naturally mid-sentence
+// ("Requires voice input"), unless it starts with an initialism like
+// MCP / AI / API — those stay uppercase.
+function midSentenceLabel(label: string): string {
+  if (/^[A-Z]{2,}/.test(label)) return label;
+  return label.charAt(0).toLowerCase() + label.slice(1);
+}
 
 export interface SettingsNavTarget {
   tab: SettingsTab;
@@ -681,7 +690,7 @@ function SettingsDialogInner({
                             }
                           }}
                         >
-                          {hiddenSettingBanner.label}
+                          {midSentenceLabel(hiddenSettingBanner.label)}
                         </button>{" "}
                         is enabled.
                       </span>
@@ -1186,18 +1195,20 @@ function SearchResults({
   }, [activeIndex]);
 
   if (results.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <Search className="w-8 h-8 text-daintree-text/20 mb-3" />
-        <p className="text-sm text-daintree-text/50">
-          No results for <span className="font-medium text-daintree-text/70">"{query}"</span>
-        </p>
-        <p className="text-xs text-daintree-text/40 mt-1">
-          {cleanQuery
-            ? "Try different keywords or check spelling"
-            : "No settings have been modified from their defaults"}
-        </p>
-      </div>
+    return cleanQuery ? (
+      <EmptyState
+        variant="filtered-empty"
+        scale="canvas"
+        title={`No results for "${query}"`}
+        description="Try different keywords or check spelling"
+      />
+    ) : (
+      <EmptyState
+        variant="zero-data"
+        scale="canvas"
+        title="No modified settings"
+        description="No settings have been changed from their defaults"
+      />
     );
   }
 
@@ -1248,7 +1259,7 @@ function SearchResults({
                 {result.requiresEnabled && (
                   <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-status-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-status-warning shrink-0">
                     <AlertTriangle className="w-3 h-3" />
-                    Requires {result.requiresEnabled.label}
+                    Requires {midSentenceLabel(result.requiresEnabled.label)}
                   </span>
                 )}
               </div>

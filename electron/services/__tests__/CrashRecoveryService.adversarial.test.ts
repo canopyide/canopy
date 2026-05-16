@@ -17,10 +17,13 @@ const appMock = vi.hoisted(() => ({
   getPath: vi.fn(() => "/fake/userData"),
   getVersion: vi.fn(() => "1.0.0"),
   isPackaged: false as boolean,
+  on: vi.fn(),
+  removeListener: vi.fn(),
 }));
 
 const browserWindowMock = vi.hoisted(() => ({
   getAllWindows: vi.fn(() => [{}]),
+  getFocusedWindow: vi.fn(() => null),
 }));
 
 const utilsMock = vi.hoisted(() => ({

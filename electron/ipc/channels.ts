@@ -422,6 +422,15 @@ export const CHANNELS = {
   UPDATE_DISMISS_TOAST: "update:dismiss-toast",
   UPDATE_GET_LAST_CHECK: "update:get-last-check",
 
+  // Windows Store update notification channels (separate from electron-updater
+  // because Store builds can't auto-install — these power a notify-only path
+  // that polls the existing CDN feeds and deep-links to the Microsoft Store).
+  STORE_UPDATE_AVAILABLE: "store-update:available",
+  STORE_UPDATE_GET_LATEST: "store-update:get-latest",
+  STORE_UPDATE_DISMISS: "store-update:dismiss",
+  STORE_UPDATE_GET_SETTINGS: "store-update:get-settings",
+  STORE_UPDATE_SET_SETTINGS: "store-update:set-settings",
+
   SLASH_COMMANDS_LIST: "slash-commands:list",
 
   GEMINI_GET_STATUS: "gemini:get-status",

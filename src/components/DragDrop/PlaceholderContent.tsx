@@ -24,6 +24,8 @@ export function PlaceholderContent({ kind, agentId, compact = false }: Placehold
       return <BrowserPlaceholder color={color} compact={compact} />;
     case "dev-preview":
       return <DevPreviewPlaceholder color={color} compact={compact} />;
+    case "review":
+      return <ReviewPlaceholder color={color} compact={compact} />;
     default:
       return <TerminalPlaceholder color={color} compact={compact} />;
   }
@@ -195,6 +197,93 @@ function BrowserPlaceholder({ color, compact }: PlaceholderProps) {
             style={{
               height: 5,
               width: "80%",
+              backgroundColor: `color-mix(in srgb, ${color} 8%, transparent)`,
+              borderRadius: "var(--radius-sm)",
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Review placeholder: Two-column diff view (file list + diff hunks)
+ */
+function ReviewPlaceholder({ color, compact }: PlaceholderProps) {
+  const lineHeight = compact ? 4 : 5;
+
+  return (
+    <div style={{ display: "flex", gap: compact ? 4 : 6, width: "100%" }}>
+      {/* File list (narrower, left) */}
+      <div
+        style={{
+          width: "32%",
+          display: "flex",
+          flexDirection: "column",
+          gap: compact ? 3 : 4,
+        }}
+      >
+        <div
+          style={{
+            height: lineHeight,
+            width: "85%",
+            backgroundColor: `color-mix(in srgb, ${color} 12%, transparent)`,
+            borderRadius: "var(--radius-sm)",
+          }}
+        />
+        <div
+          style={{
+            height: lineHeight,
+            width: "70%",
+            backgroundColor: `color-mix(in srgb, ${color} 10%, transparent)`,
+            borderRadius: "var(--radius-sm)",
+          }}
+        />
+        {!compact && (
+          <div
+            style={{
+              height: lineHeight,
+              width: "60%",
+              backgroundColor: `color-mix(in srgb, ${color} 8%, transparent)`,
+              borderRadius: "var(--radius-sm)",
+            }}
+          />
+        )}
+      </div>
+      {/* Diff hunks (wider, right) */}
+      <div
+        style={{
+          flex: 1,
+          padding: compact ? 3 : 4,
+          backgroundColor: `color-mix(in srgb, ${color} 5%, transparent)`,
+          borderRadius: "var(--radius-sm)",
+          display: "flex",
+          flexDirection: "column",
+          gap: compact ? 2 : 3,
+        }}
+      >
+        <div
+          style={{
+            height: lineHeight,
+            width: "90%",
+            backgroundColor: `color-mix(in srgb, ${color} 10%, transparent)`,
+            borderRadius: "var(--radius-sm)",
+          }}
+        />
+        <div
+          style={{
+            height: lineHeight,
+            width: "75%",
+            backgroundColor: `color-mix(in srgb, ${color} 10%, transparent)`,
+            borderRadius: "var(--radius-sm)",
+          }}
+        />
+        {!compact && (
+          <div
+            style={{
+              height: lineHeight,
+              width: "65%",
               backgroundColor: `color-mix(in srgb, ${color} 8%, transparent)`,
               borderRadius: "var(--radius-sm)",
             }}

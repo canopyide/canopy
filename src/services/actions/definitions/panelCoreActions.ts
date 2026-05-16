@@ -1,6 +1,7 @@
 import type { ActionCallbacks, ActionRegistry } from "../actionTypes";
 import { z } from "zod";
 import { useDiagnosticsStore } from "@/store/diagnosticsStore";
+import { useErrorStore } from "@/store/errorStore";
 import { usePortalStore } from "@/store/portalStore";
 import { usePanelStore, type TerminalInstance } from "@/store/panelStore";
 
@@ -160,6 +161,7 @@ export function registerPanelCoreActions(
     keywords: ["errors", "warnings", "issues", "lint"],
     run: async () => {
       useDiagnosticsStore.getState().openDock("problems");
+      useErrorStore.getState().promoteErrors();
     },
   }));
 

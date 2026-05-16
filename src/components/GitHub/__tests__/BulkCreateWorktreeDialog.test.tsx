@@ -3,6 +3,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, act } from "@testing-library/react";
+import React from "react";
 import type { GitHubIssue, GitHubPR } from "@shared/types/github";
 
 vi.stubGlobal(
@@ -186,12 +187,33 @@ vi.mock("@/components/Worktree/hooks/useNewWorktreeProjectSettings", () => ({
   }),
 }));
 
+// Bridge the dialog's onClose prop down to the mocked CloseButton via React
+// context, so tests can drive handleClose by clicking the header X just like
+// the real AppDialog wires it.
+const DialogCloseContext = React.createContext<(() => void) | null>(null);
+
 vi.mock("@/components/ui/AppDialog", () => {
-  const Dialog = ({ children, isOpen }: { children: React.ReactNode; isOpen: boolean }) =>
-    isOpen ? <div data-testid="bulk-create-worktree-dialog">{children}</div> : null;
+  const Dialog = ({
+    children,
+    isOpen,
+    onClose,
+  }: {
+    children: React.ReactNode;
+    isOpen: boolean;
+    onClose?: () => void;
+  }) =>
+    isOpen ? (
+      <DialogCloseContext.Provider value={onClose ?? null}>
+        <div data-testid="bulk-create-worktree-dialog">{children}</div>
+      </DialogCloseContext.Provider>
+    ) : null;
   Dialog.Header = ({ children }: { children: React.ReactNode }) => <div>{children}</div>;
   Dialog.Title = ({ children }: { children: React.ReactNode }) => <div>{children}</div>;
-  Dialog.CloseButton = () => <button aria-label="Close" />;
+  const CloseButton = () => {
+    const onClose = React.useContext(DialogCloseContext);
+    return <button aria-label="Close dialog" onClick={() => onClose?.()} />;
+  };
+  Dialog.CloseButton = CloseButton;
   Dialog.Body = ({ children }: { children: React.ReactNode }) => <div>{children}</div>;
   Dialog.Footer = ({ children }: { children: React.ReactNode }) => <div>{children}</div>;
   return { AppDialog: Dialog };
@@ -885,7 +907,7 @@ describe("BulkCreateWorktreeDialog", () => {
     expect(screen.queryByText(/failed/)).toBeNull();
   });
 
-  it("notification counts match UI counts after recipe verification", async () => {
+  it("done-phase counts match UI after recipe verification with mixed outcomes", async () => {
     const { notify: mockNotify } = await import("@/lib/notify");
     mockSelectedRecipeId = "test-recipe";
 
@@ -912,17 +934,10 @@ describe("BulkCreateWorktreeDialog", () => {
     });
     await advanceTimersGradually(5000);
 
-    // UI shows correct counts
     expect(screen.getByText(/1 of 2 created/)).toBeTruthy();
     expect(screen.getByText(/1 failed/)).toBeTruthy();
-
-    // Notification was called with matching counts
-    expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "error",
-        message: "1 created, 1 failed",
-      })
-    );
+    // Done-phase body conveys the result; no toast should fire.
+    expect(mockNotify).not.toHaveBeenCalled();
   });
 
   it("recipe verification with multiple crashed terminals reports correct count", async () => {
@@ -1326,9 +1341,9 @@ describe("BulkCreateWorktreeDialog", () => {
   });
 
   it("does not invoke stored bulkCreateDialog.onComplete when dialog is cancelled", async () => {
-    // Cancel/Escape/backdrop must preserve bulk selection so the user can
-    // reopen the dropdown and finish picking. Selection is only cleared via
-    // handleDone, after worktrees are actually created.
+    // Cancel/Escape/backdrop pre-completion must preserve bulk selection so
+    // the user can reopen the dropdown and finish picking. Selection only
+    // clears once worktrees are actually created.
     const storedOnComplete = vi.fn();
     mockBulkCreateDialog.onComplete = storedOnComplete;
     const propOnClose = vi.fn(() => {
@@ -1342,6 +1357,33 @@ describe("BulkCreateWorktreeDialog", () => {
     });
 
     expect(storedOnComplete).not.toHaveBeenCalled();
+    expect(propOnClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("invokes stored bulkCreateDialog.onComplete when dialog is dismissed after completion", async () => {
+    // After the batch is done, dismissing via header X / Escape / backdrop
+    // must run the same selection cleanup as the Done button — otherwise
+    // the bulk-action bar stays visible with the now-stale selection.
+    const storedOnComplete = vi.fn();
+    mockBulkCreateDialog.onComplete = storedOnComplete;
+    const propOnClose = vi.fn(() => {
+      mockBulkCreateDialog.onComplete = undefined;
+    });
+
+    render(<BulkCreateWorktreeDialog {...defaultProps} onClose={propOnClose} />);
+
+    await act(async () => {
+      screen.getByTestId("bulk-create-confirm-button").click();
+    });
+    await advanceTimersGradually(5000);
+    expect(screen.getByText(/3 of 3 created/)).toBeTruthy();
+
+    // Dismiss via header close button (routes through handleClose, not handleDone)
+    await act(async () => {
+      screen.getByLabelText("Close dialog").click();
+    });
+
+    expect(storedOnComplete).toHaveBeenCalledTimes(1);
     expect(propOnClose).toHaveBeenCalledTimes(1);
   });
 
@@ -1898,7 +1940,6 @@ describe("BulkCreateWorktreeDialog — PR mode", () => {
   });
 
   it("fails all PRs when shared listBranches snapshot rejects", async () => {
-    const { notify: mockNotify } = await import("@/lib/notify");
     mockListBranches.mockRejectedValueOnce(new Error("git ls-remote failed"));
 
     render(<BulkCreateWorktreeDialog {...prProps} />);
@@ -1913,12 +1954,6 @@ describe("BulkCreateWorktreeDialog — PR mode", () => {
     expect(screen.getAllByText(/git ls-remote failed/).length).toBeGreaterThanOrEqual(1);
     expect(mockWorktreeCreate).not.toHaveBeenCalled();
     expect(mockFetchPRBranch).not.toHaveBeenCalled();
-    expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "error",
-        message: "0 created, 3 failed",
-      })
-    );
   });
 
   it("fails when branch cannot be fetched from remote", async () => {

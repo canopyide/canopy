@@ -278,6 +278,14 @@ describe("ErrorBoundary", () => {
       expect.objectContaining({
         type: "info",
         title: "Error details copied",
+        transient: true,
+      })
+    );
+    // Success branch is transient — no inbox entry should be written.
+    expect(notify).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Error details copied",
+        inboxMessage: expect.anything(),
       })
     );
 
@@ -319,6 +327,14 @@ describe("ErrorBoundary", () => {
       expect.objectContaining({
         type: "info",
         title: "Error details too long",
+        inboxMessage: expect.any(String),
+      })
+    );
+    // Failure branch must NOT be transient — the user needs the inbox entry.
+    expect(notify).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Error details too long",
+        transient: true,
       })
     );
     expect(actionService.dispatch).toHaveBeenCalledWith("system.openExternal", expect.any(Object), {

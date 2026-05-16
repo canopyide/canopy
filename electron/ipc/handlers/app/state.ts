@@ -9,6 +9,19 @@ import {
 } from "../../../schemas/ipc.js";
 import { getCrashRecoveryService } from "../../../services/CrashRecoveryService.js";
 
+export const CRASH_CRITICAL_FIELDS = new Set([
+  "terminals",
+  "panelGridConfig",
+  "focusMode",
+  "focusPanelState",
+  "activeWorktreeId",
+  "recipes",
+  "mruList",
+  "actionMruList",
+  "developerMode",
+  "fleetScopeMode",
+]);
+
 import { getGpuFeatureStatus, isWebGLHardwareAccelerated } from "../../../utils/gpuDetection.js";
 import { isGpuDisabledByFlag } from "../../../services/GpuCrashMonitorService.js";
 import { getCrashLoopGuard } from "../../../services/CrashLoopGuardService.js";
@@ -279,6 +292,8 @@ export function registerAppStateHandlers(deps?: HandlerDependencies): () => void
       gpuWebGLHardware,
       gpuHardwareAccelerationDisabled: isGpuDisabledByFlag(app.getPath("userData")),
       safeMode: inSafeMode,
+      isWindowsStore:
+        (process as NodeJS.Process & { windowsStore?: boolean }).windowsStore === true,
       skippedPanelCount,
       crashCount: guard.getCrashCount(),
       lastCrashAt: guard.getLastCrashTimestamp(),
@@ -355,11 +370,9 @@ export function registerAppStateHandlers(deps?: HandlerDependencies): () => void
 
       if ("focusPanelState" in partialState) {
         const panelState = partialState.focusPanelState;
-        if (
-          panelState &&
-          typeof panelState === "object" &&
-          typeof panelState.sidebarWidth === "number"
-        ) {
+        if (panelState === undefined || panelState === null) {
+          updates.focusPanelState = undefined;
+        } else if (typeof panelState === "object" && typeof panelState.sidebarWidth === "number") {
           if ("diagnosticsOpen" in panelState && typeof panelState.diagnosticsOpen === "boolean") {
             updates.focusPanelState = {
               sidebarWidth: panelState.sidebarWidth,
@@ -506,15 +519,20 @@ export function registerAppStateHandlers(deps?: HandlerDependencies): () => void
         }
       }
 
-      for (const [field, value] of Object.entries(updates)) {
-        if (value === undefined) {
-          // electron-store v11 throws on `set(key, undefined)`. Use delete to
-          // clear the field — matches the prior bulk-spread behavior, where
-          // `JSON.stringify` silently omitted undefined values from the slice.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (store.delete as (k: string) => void)(`appState.${field}` as any);
-        } else {
-          store.set(`appState.${field}`, value);
+      const hasCriticalField = Object.keys(updates).some((k) => CRASH_CRITICAL_FIELDS.has(k));
+
+      try {
+        for (const [field, value] of Object.entries(updates)) {
+          if (value === undefined) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (store.delete as (k: string) => void)(`appState.${field}` as any);
+          } else {
+            store.set(`appState.${field}`, value);
+          }
+        }
+      } finally {
+        if (hasCriticalField) {
+          getCrashRecoveryService().scheduleBackup();
         }
       }
 

@@ -70,7 +70,6 @@ export interface ProjectSwitcherPaletteProps {
   onLocateProject?: (projectId: string) => void;
   onTogglePinProject?: (projectId: string) => void;
   onCopyPath?: (path: string) => void;
-  onSelectBackground?: (project: SearchableProject) => void;
   onSelectNewWindow?: (project: SearchableProject) => void;
   /** Pointer-enter callback used to schedule a hover prefetch of the project's hydrate payload. */
   onHoverProject?: (projectId: string, pointerType: string) => void;
@@ -183,7 +182,7 @@ function ProjectListItem({
     if (project.activeAgentCount > 0)
       return { secondaryText: "Agent working\u2026", secondaryClass: "text-activity-working" };
     if (project.waitingAgentCount > 0)
-      return { secondaryText: "Needs review", secondaryClass: "text-status-warning/80" };
+      return { secondaryText: "Agent waiting…", secondaryClass: "text-activity-waiting" };
     if (project.lastOpened > 0)
       return {
         secondaryText: formatTimeAgo(project.lastOpened),
@@ -664,11 +663,9 @@ function ScratchSection({
 function ProjectSwitcherFooter({ mode }: { mode?: ProjectSwitcherMode }) {
   const modifiers = useModifierKeys();
 
-  const hint = modifiers.alt
-    ? { keys: "⌥↵", label: "Background" }
-    : modifiers.meta
-      ? { keys: "⌘↵", label: "New window" }
-      : { keys: "↵", label: "Switch" };
+  const hint = modifiers.meta
+    ? { keys: "⌘↵", label: "New window" }
+    : { keys: "↵", label: "Switch" };
 
   return (
     <div className="w-full flex items-center justify-between">
@@ -705,7 +702,6 @@ interface ProjectPaletteInnerProps {
   mode?: ProjectSwitcherMode;
   onQueryChange: (query: string) => void;
   onSelect: (project: SearchableProject) => void;
-  onSelectBackground?: (project: SearchableProject) => void;
   onSelectNewWindow?: (project: SearchableProject) => void;
   onClose: () => void;
   onSelectPrevious: () => void;
@@ -737,7 +733,6 @@ function ProjectPaletteInner({
   mode,
   onQueryChange,
   onSelect,
-  onSelectBackground,
   onSelectNewWindow,
   onClose,
   onSelectPrevious,
@@ -790,9 +785,7 @@ function ProjectPaletteInner({
           e.stopPropagation();
           if (results.length > 0 && selectedIndex >= 0 && selectedIndex < results.length) {
             const selected = results[selectedIndex]!;
-            if (e.altKey && onSelectBackground) {
-              onSelectBackground(selected);
-            } else if (
+            if (
               (e.metaKey || e.ctrlKey) &&
               onSelectNewWindow &&
               !selected.isActive &&
@@ -830,7 +823,6 @@ function ProjectPaletteInner({
       onSelectPrevious,
       onSelectNext,
       onSelect,
-      onSelectBackground,
       onSelectNewWindow,
       onClose,
       onCloseProject,
@@ -1063,7 +1055,6 @@ function ModalContent({
           onLocateProject={innerProps.onLocateProject}
           onTogglePinProject={innerProps.onTogglePinProject}
           onCopyPath={innerProps.onCopyPath}
-          onSelectBackground={innerProps.onSelectBackground}
           onSelectNewWindow={innerProps.onSelectNewWindow}
           onHoverProject={innerProps.onHoverProject}
           onHoverProjectEnd={innerProps.onHoverProjectEnd}
@@ -1152,7 +1143,6 @@ function DropdownContent({
           onLocateProject={innerProps.onLocateProject}
           onTogglePinProject={innerProps.onTogglePinProject}
           onCopyPath={innerProps.onCopyPath}
-          onSelectBackground={innerProps.onSelectBackground}
           onSelectNewWindow={innerProps.onSelectNewWindow}
           onHoverProject={innerProps.onHoverProject}
           onHoverProjectEnd={innerProps.onHoverProjectEnd}
@@ -1186,7 +1176,6 @@ export function ProjectSwitcherPalette({
   onLocateProject,
   onTogglePinProject,
   onCopyPath,
-  onSelectBackground,
   onSelectNewWindow,
   onHoverProject,
   onHoverProjectEnd,
@@ -1234,7 +1223,6 @@ export function ProjectSwitcherPalette({
         onLocateProject={onLocateProject}
         onTogglePinProject={onTogglePinProject}
         onCopyPath={onCopyPath}
-        onSelectBackground={onSelectBackground}
         onSelectNewWindow={onSelectNewWindow}
         onHoverProject={onHoverProject}
         onHoverProjectEnd={onHoverProjectEnd}
@@ -1268,7 +1256,6 @@ export function ProjectSwitcherPalette({
         onLocateProject={onLocateProject}
         onTogglePinProject={onTogglePinProject}
         onCopyPath={onCopyPath}
-        onSelectBackground={onSelectBackground}
         onSelectNewWindow={onSelectNewWindow}
         onHoverProject={onHoverProject}
         onHoverProjectEnd={onHoverProjectEnd}

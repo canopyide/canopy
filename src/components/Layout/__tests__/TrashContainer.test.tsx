@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, act } from "@testing-library/react";
 import { TrashContainer } from "../TrashContainer";
 import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
+import { UI_TRANSIENT_HINT_DWELL_MS } from "@/lib/animationUtils";
 import type { TerminalInstance } from "@/store";
 import type { TrashedTerminal } from "@/store/slices";
 
@@ -41,7 +42,17 @@ vi.mock("@/components/ui/button", () => ({
 }));
 
 vi.mock("@/components/ui/tooltip", () => ({
-  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  // Only the controlled (open-prop-driven) Tooltip — i.e. the trash hint —
+  // gets a testable wrapper. Uncontrolled Tooltips inside child components
+  // (TrashBinItem actions) stay transparent.
+  Tooltip: ({ children, open }: { children: React.ReactNode; open?: boolean }) =>
+    open !== undefined ? (
+      <div data-testid="trash-hint-tooltip" data-open={open ? "true" : "false"}>
+        {children}
+      </div>
+    ) : (
+      <>{children}</>
+    ),
   TooltipContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   TooltipProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   TooltipTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -57,7 +68,27 @@ vi.mock("@/components/DragDrop", () => ({
   TRASH_DROPPABLE_ID: "__trash-droppable__",
 }));
 
-function makeTrashedItem(id: string): {
+// TrashGroupItem pulls in panel/worktree stores and the second-ticker — mock
+// it to a minimal shape so we can assert TrashContainer's display-ordering
+// logic and prop-passing without the heavy dependency surface.
+vi.mock("../TrashGroupItem", () => ({
+  TrashGroupItem: ({
+    groupRestoreId,
+    earliestExpiry,
+  }: {
+    groupRestoreId: string;
+    earliestExpiry: number;
+  }) => (
+    <div data-testid={`trash-group-item-${groupRestoreId}`} data-earliest={String(earliestExpiry)}>
+      GROUP {groupRestoreId}
+    </div>
+  ),
+}));
+
+function makeTrashedItem(
+  id: string,
+  expiresAt: number = Date.now() + 10_000
+): {
   terminal: TerminalInstance;
   trashedInfo: TrashedTerminal;
 } {
@@ -65,8 +96,46 @@ function makeTrashedItem(id: string): {
     terminal: { id, title: `Terminal ${id}` } as TerminalInstance,
     trashedInfo: {
       id,
-      expiresAt: Date.now() + 10_000,
+      expiresAt,
       originalLocation: "grid",
+    },
+  };
+}
+
+function makeGroupAnchor(
+  id: string,
+  groupRestoreId: string,
+  expiresAt: number
+): { terminal: TerminalInstance; trashedInfo: TrashedTerminal } {
+  return {
+    terminal: { id, title: `Terminal ${id}` } as TerminalInstance,
+    trashedInfo: {
+      id,
+      expiresAt,
+      originalLocation: "grid",
+      groupRestoreId,
+      groupMetadata: {
+        panelIds: [id],
+        activeTabId: id,
+        location: "grid",
+        worktreeId: null,
+      },
+    },
+  };
+}
+
+function makeGroupMember(
+  id: string,
+  groupRestoreId: string,
+  expiresAt: number
+): { terminal: TerminalInstance; trashedInfo: TrashedTerminal } {
+  return {
+    terminal: { id, title: `Terminal ${id}` } as TerminalInstance,
+    trashedInfo: {
+      id,
+      expiresAt,
+      originalLocation: "grid",
+      groupRestoreId,
     },
   };
 }
@@ -114,6 +183,7 @@ describe("TrashContainer", () => {
     const ghost = getByTestId("trash-container-ghost");
     expect(ghost.className).toContain("bg-overlay-soft");
     expect(ghost.className).toContain("ring-border-default");
+    expect(ghost.className).toContain("cursor-copy");
     expect(ghost.className).not.toContain("daintree-accent");
   });
 
@@ -124,6 +194,7 @@ describe("TrashContainer", () => {
     const pill = getByTestId("trash-container");
     expect(pill.className).toContain("bg-overlay-soft");
     expect(pill.className).toContain("ring-border-default");
+    expect(pill.className).toContain("cursor-copy");
     expect(pill.className).not.toContain("daintree-accent");
   });
 
@@ -132,6 +203,17 @@ describe("TrashContainer", () => {
     dndMocks.isWorktreeSortDragging = true;
     const { container } = render(<TrashContainer trashedTerminals={[]} />);
     expect(container.innerHTML).toBe("");
+  });
+
+  it("does not apply armed classes on populated pill during worktree-sort drags", () => {
+    dndMocks.isDragging = true;
+    dndMocks.isWorktreeSortDragging = true;
+    dndMocks.isOver = true;
+    const { getByTestId } = render(<TrashContainer trashedTerminals={[makeTrashedItem("1")]} />);
+    const pill = getByTestId("trash-container");
+    expect(pill.className).not.toContain("cursor-copy");
+    expect(pill.className).not.toContain("bg-overlay-soft");
+    expect(pill.className).not.toContain("ring-border-default");
   });
 
   it("does not pulse on initial mount", () => {
@@ -227,5 +309,91 @@ describe("TrashContainer", () => {
       vi.advanceTimersByTime(300);
     });
     expect(container.querySelector(".animate-trash-pulse")).toBeNull();
+  });
+
+  it("caps the 'Moved to trash' hint after three shows", () => {
+    const items = [makeTrashedItem("1")];
+    const { getByTestId, rerender } = render(<TrashContainer trashedTerminals={items} />);
+
+    // Closes 1, 2, 3: hint shows each time. Advance past dwell between closes
+    // so the previous hint clears and we can assert a fresh open=true.
+    const next = [...items];
+    for (let i = 2; i <= 4; i++) {
+      next.push(makeTrashedItem(String(i)));
+      rerender(<TrashContainer trashedTerminals={next} />);
+      expect(getByTestId("trash-hint-tooltip").getAttribute("data-open")).toBe("true");
+      act(() => {
+        vi.advanceTimersByTime(UI_TRANSIENT_HINT_DWELL_MS + 10);
+      });
+      expect(getByTestId("trash-hint-tooltip").getAttribute("data-open")).toBe("false");
+    }
+
+    // Close 4: cap reached, hint must not re-open.
+    next.push(makeTrashedItem("5"));
+    rerender(<TrashContainer trashedTerminals={next} />);
+    expect(getByTestId("trash-hint-tooltip").getAttribute("data-open")).toBe("false");
+  });
+
+  it("continues announcing on every close after the hint cap is reached", () => {
+    const items = [makeTrashedItem("1")];
+    const { rerender } = render(<TrashContainer trashedTerminals={items} />);
+
+    // Burn through the cap (3 closes), advancing dwell between each.
+    const next = [...items];
+    for (let i = 2; i <= 4; i++) {
+      next.push(makeTrashedItem(String(i)));
+      rerender(<TrashContainer trashedTerminals={next} />);
+      act(() => {
+        vi.advanceTimersByTime(UI_TRANSIENT_HINT_DWELL_MS + 10);
+      });
+    }
+
+    // Clear announcer and trigger a post-cap close — aria-live must still fire.
+    useAnnouncerStore.setState({ polite: null });
+    next.push(makeTrashedItem("post-cap"));
+    rerender(<TrashContainer trashedTerminals={next} />);
+
+    const { polite } = useAnnouncerStore.getState();
+    expect(polite).not.toBeNull();
+    expect(polite!.msg).toMatch(/Panel closed/);
+  });
+
+  it("renders items in LIFO order (newest-trashed first)", () => {
+    const older = makeTrashedItem("older", 1_000);
+    const newer = makeTrashedItem("newer", 5_000);
+    const { container } = render(<TrashContainer trashedTerminals={[older, newer]} />);
+
+    const text = container.textContent ?? "";
+    const newerIdx = text.indexOf("Terminal newer");
+    const olderIdx = text.indexOf("Terminal older");
+    expect(newerIdx).toBeGreaterThanOrEqual(0);
+    expect(olderIdx).toBeGreaterThanOrEqual(0);
+    expect(newerIdx).toBeLessThan(olderIdx);
+  });
+
+  it("sorts groups by latestExpiry, not earliestExpiry, when interleaved with singles", () => {
+    // Group's members span expiry [1000, 9000]. A single sits at 5000.
+    // LIFO must use the group's latestExpiry (9000) so the group comes first.
+    const anchor = makeGroupAnchor("g-a", "grp", 1_000);
+    const member = makeGroupMember("g-b", "grp", 9_000);
+    const single = makeTrashedItem("solo", 5_000);
+    const { container } = render(<TrashContainer trashedTerminals={[anchor, member, single]} />);
+
+    const text = container.textContent ?? "";
+    const groupIdx = text.indexOf("GROUP grp");
+    const singleIdx = text.indexOf("Terminal solo");
+    expect(groupIdx).toBeGreaterThanOrEqual(0);
+    expect(singleIdx).toBeGreaterThanOrEqual(0);
+    expect(groupIdx).toBeLessThan(singleIdx);
+  });
+
+  it("passes earliestExpiry (not latestExpiry) to TrashGroupItem for the countdown", () => {
+    const anchor = makeGroupAnchor("g-a", "grp", 1_000);
+    const member = makeGroupMember("g-b", "grp", 9_000);
+    const { getByTestId } = render(<TrashContainer trashedTerminals={[anchor, member]} />);
+
+    // The countdown displayed by TrashGroupItem must use the soonest-to-expire
+    // member; the sortKey/LIFO change must not bleed into this prop.
+    expect(getByTestId("trash-group-item-grp").getAttribute("data-earliest")).toBe("1000");
   });
 });

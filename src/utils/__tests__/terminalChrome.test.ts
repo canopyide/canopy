@@ -88,6 +88,20 @@ describe("deriveTerminalChrome", () => {
     });
   });
 
+  it("returns panel chrome for review kind (not terminal)", () => {
+    // Regression guard: review must take the non-PTY panel-chrome branch so it
+    // does not inherit terminal/agent restart buttons or activity badges.
+    expect(deriveTerminalChrome({ kind: "review" })).toMatchObject({
+      iconId: "git-pull-request",
+      label: "Review",
+      isAgent: false,
+      agentId: null,
+      processId: null,
+      runtimeKind: "panel",
+      hasExited: false,
+    });
+  });
+
   it("returns agent chrome from live detection", () => {
     expect(deriveTerminalChrome({ detectedAgentId: "claude" })).toMatchObject({
       iconId: "claude",

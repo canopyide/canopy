@@ -186,4 +186,22 @@ describe("Radix overlay animation classes — wrapper source", () => {
     expectAllInString(src, TOOLTIP_CLASSES, "tooltip.tsx");
     expect(src).toContain("var(--radix-tooltip-content-transform-origin)");
   });
+
+  it("tooltip.tsx defaults to viewport-aware collisionPadding and width cap (issue #8008)", () => {
+    const src = readWrapperSource("tooltip.tsx");
+    expect(src).toContain("collisionPadding = 8");
+    expect(src).toContain("collisionPadding={collisionPadding}");
+    expect(src).toContain("max-w-xs");
+  });
+
+  it("tooltip.tsx wires a pointerActiveRef focus-visible filter (issue #8008)", () => {
+    const src = readWrapperSource("tooltip.tsx");
+    expect(src).toContain("pointerActiveRef");
+    expect(src).toContain("onPointerDown");
+    expect(src).toContain("onPointerUp");
+    // The focus-capture handler must early-return when the ref is set —
+    // otherwise the click-to-focus path opens the tooltip and it strands
+    // until the next pointer move.
+    expect(src).toMatch(/if \(pointerActiveRef\.current\) return/);
+  });
 });

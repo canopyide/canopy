@@ -79,7 +79,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         details: `${error.stack || ""}\n\nComponent Stack:${componentStack}`,
         source: componentName || "ErrorBoundary",
         context,
-        isTransient: false,
+        retryability: "none",
         correlationId,
       });
     } catch (storeError) {
@@ -183,16 +183,23 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             logError("Failed to copy crash report to clipboard", clipboardError);
           }
         }
-        notify({
-          type: "info",
-          title: clipboardOk ? "Error details copied" : "Error details too long",
-          message: clipboardOk
-            ? "The full crash report was copied to your clipboard — paste it into the issue body."
-            : "Couldn't copy the full report. Quote the Error ID shown above when filing the issue.",
-          inboxMessage: clipboardOk
-            ? "Crash report copied to clipboard for the issue body."
-            : "Couldn't copy crash report to clipboard.",
-        });
+        if (clipboardOk) {
+          notify({
+            type: "info",
+            title: "Error details copied",
+            message:
+              "The full crash report was copied to your clipboard — paste it into the issue body.",
+            transient: true,
+          });
+        } else {
+          notify({
+            type: "info",
+            title: "Error details too long",
+            message:
+              "Couldn't copy the full report. Quote the Error ID shown above when filing the issue.",
+            inboxMessage: "Couldn't copy crash report to clipboard.",
+          });
+        }
       }
 
       if (!window.electron?.system?.openExternal) return;

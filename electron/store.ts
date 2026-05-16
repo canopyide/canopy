@@ -189,6 +189,7 @@ export interface StoreSchema {
     correctionCustomInstructions: string;
     paragraphingStrategy: string;
     resolveFileLinks: boolean;
+    deviceId: string;
   };
   mcpServer: {
     enabled: boolean;
@@ -231,6 +232,7 @@ export interface StoreSchema {
     auditRetention: 7 | 30 | 0;
   };
   pendingErrors: ErrorRecord[];
+  errorFingerprints: Record<string, { count: number; firstSeen: number; lastSeen: number }>;
   gpu: {
     hardwareAccelerationDisabled: boolean;
   };
@@ -265,6 +267,14 @@ export interface StoreSchema {
   dismissedUpdateVersion?: string;
   dismissedUpdateAt?: number;
   lastUpdateCheck?: number | null;
+  /**
+   * Windows Store notifier state. All fields are optional and read with `??`
+   * fallbacks at the call site so an absent value behaves like a default —
+   * no migration entry required (mirrors `dismissedUpdateVersion` pattern).
+   */
+  storeUpdateNotificationsEnabled?: boolean;
+  lastNotifiedStoreVersion?: string;
+  storeNotifierEtag?: string;
   /**
    * Per-logger level overrides keyed by stable `"<process>:Module"` names (or
    * `"*"` / `"<process>:*"` wildcards). Values are `"debug" | "info" | "warn"
@@ -364,6 +374,7 @@ const storeOptions = {
       correctionCustomInstructions: "",
       paragraphingStrategy: "spoken-command",
       resolveFileLinks: true,
+      deviceId: "",
     },
     mcpServer: {
       enabled: false,
@@ -381,6 +392,7 @@ const storeOptions = {
       auditRetention: 7 as const,
     },
     pendingErrors: [],
+    errorFingerprints: {},
     gpu: {
       hardwareAccelerationDisabled: false,
     },

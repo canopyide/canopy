@@ -15,7 +15,7 @@ export function WorktreeCardErrorFallback({ error, resetError }: ErrorFallbackPr
         onClick={resetError}
         className="shrink-0 text-xs px-2 py-0.5 rounded bg-status-error/10 text-status-error hover:bg-status-error/20 transition-colors"
       >
-        Retry
+        Try again
       </button>
     </div>
   );

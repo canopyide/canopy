@@ -1,8 +1,17 @@
 import v8 from "node:v8";
-import type { PtyHostEvent } from "../../shared/types/pty-host.js";
+import type { AgentState } from "../../shared/types/agent.js";
+import type { PtyHostEvent, TerminalFlowStatus } from "../../shared/types/pty-host.js";
+import type { ResourceProfile } from "../../shared/types/resourceProfile.js";
 import { FdMonitor } from "./FdMonitor.js";
 import { metricsEnabled } from "./metrics.js";
 import type { PtyPauseCoordinator } from "./PtyPauseCoordinator.js";
+
+export interface TerminalActivityInfo {
+  id: string;
+  lastOutputTime: number;
+  lastInputTime: number;
+  agentState?: AgentState;
+}
 
 export interface ResourceGovernorDeps {
   getTerminalIds: () => string[];
@@ -10,6 +19,14 @@ export interface ResourceGovernorDeps {
   getTerminalPids: () => Array<{ id: string; pid: number | undefined }>;
   incrementPauseCount: (count: number) => void;
   sendEvent: (event: PtyHostEvent) => void;
+  emitTerminalStatus: (
+    id: string,
+    status: TerminalFlowStatus,
+    bufferUtilization?: number,
+    pauseDuration?: number,
+    reason?: string
+  ) => void;
+  getTerminalActivity: () => TerminalActivityInfo[];
   getPendingBytesSnapshot?: () => {
     totalPendingBytes: number;
     perTerminal: Array<{ terminalId: string; pendingBytes: number }>;
@@ -28,6 +45,13 @@ export class ResourceGovernor {
   private readonly RESUME_THRESHOLD_PERCENT = 60;
   private readonly FORCE_RESUME_MS = 10000;
   private readonly CHECK_INTERVAL_MS = 2000;
+  private readonly WARNING_THRESHOLD_PERCENT = 70;
+  private readonly WARNING_CLEAR_PERCENT = 65;
+  private readonly CRITICAL_PERCENT = 95;
+  private readonly EFFICIENCY_MEMORY_LIMIT_PERCENT = 70;
+  private readonly EFFICIENCY_RESUME_PERCENT = 50;
+  private readonly EFFICIENCY_WARNING_PERCENT = 55;
+  private readonly EFFICIENCY_WARNING_CLEAR_PERCENT = 45;
   private isThrottling = false;
   private checkInterval: NodeJS.Timeout | null = null;
   private throttleStartTime = 0;
@@ -36,6 +60,9 @@ export class ResourceGovernor {
   private readonly ORPHAN_GRACE_MS = 4000;
   private prevThroughputTimestamp = 0;
   private prevPauseCount = 0;
+  private readonly pausedTerminalIds = new Set<string>();
+  private isWarning = false;
+  private profileOverride: ResourceProfile | null = null;
 
   constructor(private readonly deps: ResourceGovernorDeps) {
     this.fdMonitor = new FdMonitor();
@@ -53,6 +80,43 @@ export class ResourceGovernor {
     this.killedPids.set(pid, Date.now());
   }
 
+  setResourceProfile(profile: ResourceProfile): void {
+    this.profileOverride = profile;
+    if (profile === "efficiency") {
+      console.log(
+        `[ResourceGovernor] Efficiency profile active — lowering thresholds ` +
+          `(throttle: ${this.EFFICIENCY_MEMORY_LIMIT_PERCENT}%, ` +
+          `warning: ${this.EFFICIENCY_WARNING_PERCENT}%)`
+      );
+    } else {
+      console.log(`[ResourceGovernor] Profile set to ${profile} — using default thresholds`);
+    }
+  }
+
+  private get memoryLimitPercent(): number {
+    return this.profileOverride === "efficiency"
+      ? this.EFFICIENCY_MEMORY_LIMIT_PERCENT
+      : this.MEMORY_LIMIT_PERCENT;
+  }
+
+  private get resumeThresholdPercent(): number {
+    return this.profileOverride === "efficiency"
+      ? this.EFFICIENCY_RESUME_PERCENT
+      : this.RESUME_THRESHOLD_PERCENT;
+  }
+
+  private get warningThresholdPercent(): number {
+    return this.profileOverride === "efficiency"
+      ? this.EFFICIENCY_WARNING_PERCENT
+      : this.WARNING_THRESHOLD_PERCENT;
+  }
+
+  private get warningClearPercent(): number {
+    return this.profileOverride === "efficiency"
+      ? this.EFFICIENCY_WARNING_CLEAR_PERCENT
+      : this.WARNING_CLEAR_PERCENT;
+  }
+
   private checkResources(): void {
     const memory = process.memoryUsage();
     const heapUsedMb = memory.heapUsed / 1024 / 1024;
@@ -60,12 +124,43 @@ export class ResourceGovernor {
     const heapLimitMb = heapStats.heap_size_limit / 1024 / 1024;
     const utilizationPercent = (heapUsedMb / heapLimitMb) * 100;
 
-    if (!this.isThrottling && utilizationPercent > this.MEMORY_LIMIT_PERCENT) {
+    // Warning band — fires once per transition, not per tick
+    const warnThreshold = this.warningThresholdPercent;
+    const warnClear = this.warningClearPercent;
+    if (!this.isWarning && utilizationPercent > warnThreshold) {
+      this.isWarning = true;
+      console.warn(
+        `[ResourceGovernor] Memory warning: ${utilizationPercent.toFixed(1)}% heap used ` +
+          `(threshold: ${warnThreshold}%).`
+      );
+      this.deps.sendEvent({
+        type: "host-memory-warning",
+        isWarning: true,
+        utilizationPercent: Math.round(utilizationPercent),
+        timestamp: Date.now(),
+      });
+    } else if (this.isWarning && utilizationPercent < warnClear) {
+      this.isWarning = false;
+      console.log(
+        `[ResourceGovernor] Memory warning cleared: ${utilizationPercent.toFixed(1)}% heap used.`
+      );
+      this.deps.sendEvent({
+        type: "host-memory-warning",
+        isWarning: false,
+        utilizationPercent: Math.round(utilizationPercent),
+        timestamp: Date.now(),
+      });
+    }
+
+    const limitPercent = this.memoryLimitPercent;
+    const resumePercent = this.resumeThresholdPercent;
+
+    if (!this.isThrottling && utilizationPercent > limitPercent) {
       this.engageThrottle(heapUsedMb, utilizationPercent);
     } else if (this.isThrottling) {
       const throttleDuration = Date.now() - this.throttleStartTime;
       const shouldForceResume = throttleDuration > this.FORCE_RESUME_MS;
-      const belowThreshold = utilizationPercent < this.RESUME_THRESHOLD_PERCENT;
+      const belowThreshold = utilizationPercent < resumePercent;
 
       if (shouldForceResume || belowThreshold) {
         this.disengageThrottle(heapUsedMb, utilizationPercent, shouldForceResume);
@@ -204,11 +299,49 @@ export class ResourceGovernor {
     this.throttleStartTime = Date.now();
 
     const ids = this.deps.getTerminalIds();
+    const isCritical = percent >= this.CRITICAL_PERCENT;
+
+    // Build ordered list: idle first, active-agent terminals last.
+    // At critical pressure (95%+), skip triage — pause everything immediately.
+    let orderedIds: string[];
+    if (!isCritical && ids.length > 1) {
+      const activity = new Map(this.deps.getTerminalActivity().map((a) => [a.id, a] as const));
+      orderedIds = [...ids].sort((a, b) => {
+        const aa = activity.get(a);
+        const bb = activity.get(b);
+        const aAgentActive = aa?.agentState === "working" || aa?.agentState === "directing";
+        const bAgentActive = bb?.agentState === "working" || bb?.agentState === "directing";
+        // Active-agent terminals sort last (paused last)
+        if (aAgentActive && !bAgentActive) return 1;
+        if (!aAgentActive && bAgentActive) return -1;
+        // Among peers, most recently active sorts last
+        const aTime = aa?.lastOutputTime ?? 0;
+        const bTime = bb?.lastOutputTime ?? 0;
+        return bTime - aTime;
+      });
+    } else {
+      orderedIds = ids;
+    }
+
+    if (isCritical) {
+      console.warn(
+        `[ResourceGovernor] Critical pressure (${percent.toFixed(1)}%) — pausing all terminals immediately.`
+      );
+    }
+
     let pausedCount = 0;
-    for (const id of ids) {
+    for (const id of orderedIds) {
       const coordinator = this.deps.getPauseCoordinator(id);
       if (coordinator) {
         coordinator.pause("resource-governor");
+        this.pausedTerminalIds.add(id);
+        this.deps.emitTerminalStatus(
+          id,
+          "paused-resource-governor",
+          undefined,
+          undefined,
+          `Memory pressure: ${Math.round(currentUsageMb)}MB (${percent.toFixed(1)}%)`
+        );
         pausedCount++;
       }
     }
@@ -237,10 +370,20 @@ export class ResourceGovernor {
     for (const id of ids) {
       const coordinator = this.deps.getPauseCoordinator(id);
       if (coordinator) {
-        coordinator.resume("resource-governor");
-        resumedCount++;
+        if (coordinator.hasToken("resource-governor")) {
+          coordinator.resume("resource-governor");
+          resumedCount++;
+        }
+      }
+      if (!coordinator?.isPaused) {
+        this.deps.emitTerminalStatus(id, "running", undefined, duration);
+      } else if (coordinator.hasToken("backpressure")) {
+        // Restore backpressure status — the governor's pause
+        // overwrote it in the dedup map during engage.
+        this.deps.emitTerminalStatus(id, "paused-backpressure", undefined, duration);
       }
     }
+    this.pausedTerminalIds.clear();
     console.log(`[ResourceGovernor] Resumed ${resumedCount}/${ids.length} terminals`);
 
     this.deps.sendEvent({
@@ -260,11 +403,18 @@ export class ResourceGovernor {
     }
     if (this.isThrottling) {
       for (const id of this.deps.getTerminalIds()) {
-        this.deps.getPauseCoordinator(id)?.resume("resource-governor");
+        const coordinator = this.deps.getPauseCoordinator(id);
+        coordinator?.resume("resource-governor");
+        if (!coordinator?.isPaused) {
+          this.deps.emitTerminalStatus(id, "running");
+        }
       }
       this.isThrottling = false;
       this.throttleStartTime = 0;
     }
+    this.pausedTerminalIds.clear();
+    this.isWarning = false;
+    this.profileOverride = null;
     this.killedPids.clear();
     console.log("[ResourceGovernor] Disposed");
   }

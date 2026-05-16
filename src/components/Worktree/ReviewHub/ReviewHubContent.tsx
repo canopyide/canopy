@@ -22,11 +22,8 @@ import {
   ExternalLink,
   Square,
   AlertTriangle,
-  CheckCircle2,
-  Clock,
   GitBranch,
   GitPullRequest,
-  XCircle,
   SlidersHorizontal,
   ChevronUp,
   ChevronDown,
@@ -34,7 +31,8 @@ import {
 } from "lucide-react";
 import { isProtectedBranch } from "@shared/utils/gitConstants";
 import { useUIStore } from "@/store/uiStore";
-import type { GitHubPRCIStatus } from "@shared/types/github";
+import { usePreferencesStore } from "@/store/preferencesStore";
+import { getPRCIStatusVisual } from "@/components/GitHub/prCIStatus";
 import { Spinner } from "@/components/ui/Spinner";
 import { FileStageRow, type FileStageRowSection } from "./FileStageRow";
 import { CommitPanel } from "./CommitPanel";
@@ -110,23 +108,6 @@ export interface ReviewHubContentProps {
    * yet. Fires once per open; reopening the hub re-evaluates.
    */
   autoStageOnOpen?: boolean;
-}
-
-function prCIStatusVisual(
-  status: GitHubPRCIStatus | undefined
-): { Icon: typeof CheckCircle2; className: string; label: string } | null {
-  switch (status) {
-    case "SUCCESS":
-      return { Icon: CheckCircle2, className: "text-status-success", label: "passing" };
-    case "FAILURE":
-    case "ERROR":
-      return { Icon: XCircle, className: "text-status-error", label: "failing" };
-    case "PENDING":
-    case "EXPECTED":
-      return { Icon: Clock, className: "text-status-warning", label: "pending" };
-    default:
-      return null;
-  }
 }
 
 interface BaseBranchFileRowProps {
@@ -285,6 +266,11 @@ export function ReviewHubContent({
 
   const fileListExpanded = useUIStore((s) => s.reviewHubFileListExpanded[worktreePath] ?? false);
   const setFileListExpanded = useUIStore((s) => s.setReviewHubFileListExpanded);
+
+  const skipPushConfirm = usePreferencesStore(
+    (s) => s.skipPushConfirmByWorktreePath[worktreePath] ?? false
+  );
+  const setSkipPushConfirmForWorktree = usePreferencesStore((s) => s.setSkipPushConfirmForWorktree);
 
   const [stagedView, setStagedView] = useState<SectionViewState>(DEFAULT_SECTION_STATE);
   const [changesView, setChangesView] = useState<SectionViewState>(DEFAULT_SECTION_STATE);
@@ -1180,7 +1166,7 @@ export function ReviewHubContent({
               worktreePR &&
               worktreePR.prUrl &&
               (() => {
-                const ciVisual = prCIStatusVisual(worktreePR.prCiStatus);
+                const ciVisual = getPRCIStatusVisual(worktreePR.prCiStatus);
                 const prStateLabel =
                   worktreePR.prState === "merged"
                     ? "merged"
@@ -1196,7 +1182,7 @@ export function ReviewHubContent({
                       )}
                       aria-label={
                         ciVisual
-                          ? `Pull request #${worktreePR.prNumber} ${prStateLabel} — CI ${ciVisual.label}`
+                          ? `Pull request #${worktreePR.prNumber} ${prStateLabel} — CI ${ciVisual.shortLabel}`
                           : `Pull request #${worktreePR.prNumber} ${prStateLabel}`
                       }
                     >
@@ -1226,12 +1212,28 @@ export function ReviewHubContent({
                       {ciVisual && (
                         <>
                           <span className="text-daintree-text/40">·</span>
-                          <span className="inline-flex items-center gap-0.5">
-                            <ciVisual.Icon
-                              className={cn("w-2.5 h-2.5 shrink-0", ciVisual.className)}
+                          <span className="inline-flex items-center gap-1">
+                            <span
+                              className="inline-flex items-center justify-center w-3 h-3 shrink-0"
                               aria-hidden="true"
-                            />
-                            <span className={ciVisual.className}>{ciVisual.label}</span>
+                            >
+                              {ciVisual.kind === "icon" ? (
+                                <ciVisual.Icon className={cn("w-3 h-3", ciVisual.colorClass)} />
+                              ) : (
+                                <span
+                                  className={cn("block w-2 h-2 rounded-full", ciVisual.colorClass)}
+                                />
+                              )}
+                            </span>
+                            <span
+                              className={
+                                ciVisual.kind === "icon"
+                                  ? ciVisual.colorClass
+                                  : "text-status-warning"
+                              }
+                            >
+                              {ciVisual.shortLabel}
+                            </span>
                           </span>
                         </>
                       )}
@@ -1786,9 +1788,11 @@ export function ReviewHubContent({
                             }
                           />
                         ) : (
-                          <div className="px-4 py-3 text-xs text-daintree-text/40 italic">
-                            No staged files
-                          </div>
+                          <EmptyState
+                            variant="user-cleared"
+                            scale="sidebar"
+                            title="Nothing staged"
+                          />
                         )}
                       </div>
 
@@ -1991,9 +1995,11 @@ export function ReviewHubContent({
                             }
                           />
                         ) : (
-                          <div className="px-4 py-3 text-xs text-daintree-text/40 italic">
-                            No unstaged changes
-                          </div>
+                          <EmptyState
+                            variant="user-cleared"
+                            scale="sidebar"
+                            title="All changes staged"
+                          />
                         )}
                       </div>
                     </div>
@@ -2025,6 +2031,8 @@ export function ReviewHubContent({
               isPushing={isPushing}
               pushProgress={pushProgress}
               pushTargetBranch={pushTargetBranch}
+              skipPushConfirm={skipPushConfirm}
+              onSetSkipPushConfirm={(value) => setSkipPushConfirmForWorktree(worktreePath, value)}
             />
           )}
       </div>

@@ -19,7 +19,7 @@ const projectMruMock = vi.hoisted(() => ({
 
 vi.mock("@/clients", () => ({ projectClient: projectClientMock }));
 vi.mock("@/store/projectStore", () => ({ useProjectStore: projectStoreMock }));
-vi.mock("@/lib/projectMru", () => projectMruMock);
+vi.mock("@shared/utils/projectMru", () => projectMruMock);
 vi.mock("@/lib/notify", () => ({ notify: vi.fn() }));
 
 import { registerProjectActions } from "../projectActions";
@@ -52,32 +52,45 @@ beforeEach(() => {
 
 describe("projectActions adversarial", () => {
   describe("MRU cycle fallbacks", () => {
-    it.each(["project.mruCycleOlder", "project.mruCycleNewer"])(
-      "%s switches to the most recent other project on direct dispatch",
-      async (actionId) => {
-        const switchProject = vi.fn().mockResolvedValue(undefined);
-        const reopenProject = vi.fn().mockResolvedValue(undefined);
-        const projects: Project[] = [
-          { id: "p-current", path: "/p-current", name: "Current", emoji: "tree", lastOpened: 500 },
-          { id: "p-recent", path: "/p-recent", name: "Recent", emoji: "leaf", lastOpened: 400 },
-          { id: "p-older", path: "/p-older", name: "Older", emoji: "branch", lastOpened: 300 },
-        ];
+    function mockMruState() {
+      const switchProject = vi.fn().mockResolvedValue(undefined);
+      const reopenProject = vi.fn().mockResolvedValue(undefined);
+      const projects: Project[] = [
+        { id: "p-current", path: "/p-current", name: "Current", emoji: "tree", lastOpened: 500 },
+        { id: "p-recent", path: "/p-recent", name: "Recent", emoji: "leaf", lastOpened: 400 },
+        { id: "p-older", path: "/p-older", name: "Older", emoji: "branch", lastOpened: 300 },
+      ];
 
-        projectStoreMock.getState.mockReturnValue({
-          currentProject: { id: "p-current" },
-          projects,
-          switchProject,
-          reopenProject,
-        });
-        projectMruMock.getMruProjects.mockReturnValue(projects);
+      projectStoreMock.getState.mockReturnValue({
+        currentProject: { id: "p-current" },
+        projects,
+        switchProject,
+        reopenProject,
+      });
+      projectMruMock.getMruProjects.mockReturnValue(projects);
 
-        const { run } = setupActions();
-        await run(actionId);
+      return { switchProject, reopenProject };
+    }
 
-        expect(switchProject).toHaveBeenCalledWith("p-recent");
-        expect(reopenProject).not.toHaveBeenCalled();
-      }
-    );
+    it("project.mruCycleOlder switches to the most recent other project", async () => {
+      const { switchProject, reopenProject } = mockMruState();
+
+      const { run } = setupActions();
+      await run("project.mruCycleOlder");
+
+      expect(switchProject).toHaveBeenCalledWith("p-recent");
+      expect(reopenProject).not.toHaveBeenCalled();
+    });
+
+    it("project.mruCycleNewer switches to the oldest other project", async () => {
+      const { switchProject, reopenProject } = mockMruState();
+
+      const { run } = setupActions();
+      await run("project.mruCycleNewer");
+
+      expect(switchProject).toHaveBeenCalledWith("p-older");
+      expect(reopenProject).not.toHaveBeenCalled();
+    });
   });
 
   describe("project.getSettings", () => {

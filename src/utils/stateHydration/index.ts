@@ -22,6 +22,7 @@ import {
 } from "@/utils/performance";
 import { isDaintreeEnvEnabled } from "@/utils/env";
 import { useSafeModeStore } from "@/store/safeModeStore";
+import { useDistributionStore } from "@/store/distributionStore";
 import type { AgentPreset } from "@/config/agents";
 import { splitSnapshotRestoreTasks } from "./batchScheduler";
 import type { HydrationBatchToken } from "@/store/slices/panelRegistry/types";
@@ -179,6 +180,8 @@ export async function hydrateAppState(
     if (!checkCurrent()) return;
 
     terminalInstanceService.setGPUHardwareAvailable(gpuWebGLHardware ?? true);
+
+    useDistributionStore.getState().setIsWindowsStore(Boolean(hydrateResult.isWindowsStore));
 
     if (hydrateResult.safeMode) {
       useSafeModeStore.getState().setSafeMode(true, {

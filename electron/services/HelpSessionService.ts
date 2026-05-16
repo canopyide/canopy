@@ -11,6 +11,7 @@ import { probeMcpServer, probeMcpSseServer } from "./mcp-server/readinessProbe.j
 import { getAssistantWiredAgentIds } from "../../shared/config/agentRegistry.js";
 import type { HelpAssistantTier } from "../../shared/types/ipc/maps.js";
 import type { PtyClient } from "./PtyClient.js";
+import { ASSISTANT_SCRATCH_ENV_VAR, getScratchDirForSession } from "./AssistantScratchService.js";
 
 // Narrow type so the test suite (and any future caller) can satisfy this
 // dependency without instantiating a full PtyClient. Only `kill` is needed —
@@ -83,6 +84,13 @@ interface HelpSessionRecord {
   geminiLaunchArgs?: string[];
   /** Computed at provision for copilot sessions; consumed by lifecycle.ts. */
   copilotLaunchArgs?: string[];
+  /**
+   * Per-session scratch directory under
+   * `userData/assistant-scratch/<instanceId>/<sessionId>/`. Cleared on every
+   * app start; injected into the PTY spawn env as `DAINTREE_ASSISTANT_SCRATCH_DIR`
+   * and mentioned in the per-agent CLAUDE.md / AGENTS.md / GEMINI.md addendum.
+   */
+  scratchPath: string;
 }
 
 interface SessionMeta {
@@ -430,6 +438,25 @@ export class HelpSessionService {
     }
     await fs.chmod(sessionPath, 0o700).catch(() => {});
 
+    // Per-session scratch dir under `userData/assistant-scratch/<instanceId>/`.
+    // Cleared on every app start by `AssistantScratchService`. Created
+    // unconditionally outside the template hash gate so the path is always
+    // valid for this provision — agents won't see a missing dir behind the
+    // `DAINTREE_ASSISTANT_SCRATCH_DIR` env var. Failure to create propagates
+    // (rather than being swallowed) because launching with a stale or missing
+    // scratch path is worse than a clean provision failure.
+    const scratchPath = getScratchDirForSession(sessionId);
+    await fs.mkdir(scratchPath, { recursive: true, mode: 0o700 });
+    await fs.chmod(scratchPath, 0o700).catch(() => {});
+
+    // Write the scratch-path addendum to each per-agent markdown file in the
+    // session dir. Unconditional — must run even when the template hash gate
+    // above skips `fs.cp`, otherwise a stale path from a prior session would
+    // persist (`scratchPath` changes every provision because `sessionId` does).
+    // Uses managed markers so re-provision replaces the block in place instead
+    // of accumulating duplicate stanzas.
+    await this.writeScratchAddendum(sessionPath, scratchPath);
+
     const port = await this.getMcpPort(settings.daintreeControl);
     if (input.agentId === "claude") {
       await this.writeMcpConfig(sessionPath, settings, port, token);
@@ -499,6 +526,7 @@ export class HelpSessionService {
       codexLaunchArgs,
       geminiLaunchArgs,
       copilotLaunchArgs,
+      scratchPath,
     };
 
     await this.writeSessionMeta(sessionPath, {
@@ -907,6 +935,22 @@ export class HelpSessionService {
   }
 
   /**
+   * Returns the per-session env vars for the assistant scratch folder.
+   * Injected into the PTY spawn env for every help-session agent — Claude,
+   * Codex, Gemini, and Copilot all read env vars from their PTY parent, so
+   * this single getter covers all four. Pairs with the markdown addendum
+   * written into the session dir at provision time, which tells the agent
+   * to use this dir for any temporary or scratch files. Returns null for
+   * unknown / revoked tokens so the spawn handler skips the merge.
+   */
+  getAssistantScratchEnv(token: string): Record<string, string> | null {
+    if (!token) return null;
+    const record = this.sessionsByToken.get(token);
+    if (!record || record.revoked) return null;
+    return { [ASSISTANT_SCRATCH_ENV_VAR]: record.scratchPath };
+  }
+
+  /**
    * Returns the snapshot of the user's CLI bypass preference taken at
    * provision time. `lifecycle.ts` reads this to decide whether to append
    * `--dangerously-skip-permissions` to the assistant spawn command —
@@ -1207,6 +1251,88 @@ export class HelpSessionService {
         deny: ["Write(**)", "Edit(**)", "MultiEdit(**)", "Bash(**)"],
       },
     };
+  }
+
+  /**
+   * Writes the assistant-scratch addendum block into each per-agent markdown
+   * file in the session dir (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`). The
+   * block is bracketed by `<!-- DAINTREE_ASSISTANT_SCRATCH_START -->` /
+   * `<!-- DAINTREE_ASSISTANT_SCRATCH_END -->` markers so re-provision replaces
+   * it in place instead of appending duplicates. We write to all three
+   * unconditionally rather than agent-specific because:
+   *
+   *   - The session dir is per-project and reused across launches, so the
+   *     same dir may have been provisioned for a different agent last time.
+   *     A stale addendum in the "wrong" file would point at a now-deleted
+   *     scratch dir (the cleanup sweep nukes prior-instance subdirs every
+   *     boot).
+   *   - The bundled help template has all three files in it anyway, so any
+   *     agent that happens to read the wrong file gets correct guidance.
+   *
+   * Copilot doesn't have a dedicated `COPILOT.md` and currently relies on
+   * env-only injection — recent Copilot CLI does read `AGENTS.md` from cwd,
+   * so the AGENTS.md addendum doubles as Copilot's instruction surface.
+   *
+   * The file MUST already exist (copied by `fs.cp` from the help template).
+   * If the template hash gate skipped the copy but the file is somehow
+   * missing (manual deletion), we log and skip rather than fabricating one.
+   */
+  private async writeScratchAddendum(sessionPath: string, scratchPath: string): Promise<void> {
+    const addendum = this.buildScratchAddendum(scratchPath);
+    const targets = ["CLAUDE.md", "AGENTS.md", "GEMINI.md"];
+    await Promise.all(
+      targets.map((name) =>
+        this.replaceOrAppendScratchBlock(path.join(sessionPath, name), addendum)
+      )
+    );
+  }
+
+  private buildScratchAddendum(scratchPath: string): string {
+    return [
+      "## Assistant Scratch Folder",
+      "",
+      `You have a dedicated scratch folder for any temporary or working files you need to create: \`${scratchPath}\`.`,
+      "",
+      `The same path is available in the environment variable \`${ASSISTANT_SCRATCH_ENV_VAR}\` for use in shell commands.`,
+      "",
+      "Use this folder — not the project workspace, not the system temp dir — for any notes, drafts, intermediate output, or other scratch work. The folder is cleared on every Daintree launch, so don't put anything you want to keep there.",
+      "",
+    ].join("\n");
+  }
+
+  private async replaceOrAppendScratchBlock(filePath: string, addendum: string): Promise<void> {
+    const start = "<!-- DAINTREE_ASSISTANT_SCRATCH_START -->";
+    const end = "<!-- DAINTREE_ASSISTANT_SCRATCH_END -->";
+    const block = `${start}\n${addendum}${end}\n`;
+
+    let existing: string;
+    try {
+      existing = await fs.readFile(filePath, "utf-8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        console.warn("[HelpSessionService] Scratch addendum target missing; skipping:", filePath);
+        return;
+      }
+      throw err;
+    }
+
+    // Replace existing block if present (preserves surrounding content);
+    // otherwise append with a leading blank line so the marker isn't glued
+    // to the end of the prior section.
+    const startIdx = existing.indexOf(start);
+    const endIdx = existing.indexOf(end);
+    let next: string;
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      const before = existing.slice(0, startIdx);
+      const after = existing.slice(endIdx + end.length).replace(/^\n/, "");
+      next = `${before}${block}${after}`;
+    } else {
+      const separator = existing.endsWith("\n") ? "\n" : "\n\n";
+      next = `${existing}${separator}${block}`;
+    }
+
+    if (next === existing) return;
+    await resilientAtomicWriteFile(filePath, next, "utf-8", { mode: 0o600 });
   }
 
   private async writeSessionMeta(sessionPath: string, meta: SessionMeta): Promise<void> {

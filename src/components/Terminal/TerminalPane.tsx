@@ -17,6 +17,7 @@ import type {
   PersistableFlowStatus,
 } from "@/types";
 import { cn } from "@/lib/utils";
+import { BANNER_ENTER_DURATION, BANNER_EXIT_DURATION } from "@/lib/animationUtils";
 import { XtermAdapter } from "./XtermAdapter";
 import { ArtifactOverlay } from "./ArtifactOverlay";
 
@@ -73,6 +74,105 @@ import type { TerminalRuntimeIdentity } from "@shared/types/panel";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
 export type {};
+
+export interface BannerSlotProps {
+  visible: boolean;
+  children: React.ReactNode;
+}
+
+/**
+ * Wraps a banner so swaps between siblings of different heights interpolate
+ * smoothly instead of jumping. Relies on `interpolate-size: allow-keywords`
+ * (set on :root in src/index.css) for the `0 ↔ auto` height transition, and
+ * caches the last visible children through the exit window so the collapse
+ * has content to measure from.
+ */
+export function BannerSlot({ visible, children }: BannerSlotProps) {
+  const [isVisible, setIsVisible] = useState(visible);
+  const [renderChildren, setRenderChildren] = useState(visible);
+  const [cachedChildren, setCachedChildren] = useState<React.ReactNode>(visible ? children : null);
+  const exitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const entryFrameRef = useRef<number | null>(null);
+  const hasMountedRef = useRef(false);
+
+  useEffect(() => {
+    if (visible) {
+      setCachedChildren(children);
+    }
+  }, [visible, children]);
+
+  useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
+
+    if (visible) {
+      if (exitTimeoutRef.current !== null) {
+        clearTimeout(exitTimeoutRef.current);
+        exitTimeoutRef.current = null;
+      }
+      setRenderChildren(true);
+      setIsVisible(false);
+      if (entryFrameRef.current !== null) {
+        cancelAnimationFrame(entryFrameRef.current);
+      }
+      entryFrameRef.current = requestAnimationFrame(() => {
+        entryFrameRef.current = null;
+        setIsVisible(true);
+      });
+      return;
+    }
+
+    if (entryFrameRef.current !== null) {
+      cancelAnimationFrame(entryFrameRef.current);
+      entryFrameRef.current = null;
+    }
+    setIsVisible(false);
+    if (exitTimeoutRef.current !== null) {
+      clearTimeout(exitTimeoutRef.current);
+    }
+    exitTimeoutRef.current = setTimeout(() => {
+      exitTimeoutRef.current = null;
+      setRenderChildren(false);
+    }, BANNER_EXIT_DURATION);
+  }, [visible]);
+
+  useEffect(
+    () => () => {
+      if (exitTimeoutRef.current !== null) {
+        clearTimeout(exitTimeoutRef.current);
+        exitTimeoutRef.current = null;
+      }
+      if (entryFrameRef.current !== null) {
+        cancelAnimationFrame(entryFrameRef.current);
+        entryFrameRef.current = null;
+      }
+    },
+    []
+  );
+
+  if (!renderChildren) {
+    return null;
+  }
+
+  return (
+    <div
+      className={cn(
+        "banner-slot shrink-0 overflow-hidden transition-[height]",
+        isVisible
+          ? "h-auto ease-[var(--ease-snappy)]"
+          : "h-0 ease-[var(--ease-exit)] pointer-events-none"
+      )}
+      style={{
+        transitionDuration: `${isVisible ? BANNER_ENTER_DURATION : BANNER_EXIT_DURATION}ms`,
+      }}
+      aria-hidden={isVisible ? undefined : true}
+    >
+      {visible ? children : cachedChildren}
+    </div>
+  );
+}
 
 export interface ActivityState {
   headline: string;
@@ -813,6 +913,22 @@ function TerminalPaneComponent({
     );
   })();
 
+  const restartBannerVariant = getRestartBannerVariant({
+    isExited,
+    exitCode,
+    dismissedRestartPrompt,
+    restartError,
+    isRestarting,
+    isAutoRestarting,
+    exitBehavior,
+    reconnectError,
+    spawnError,
+  });
+  const showRestartError = Boolean(restartError);
+  const showSpawnError = Boolean(spawnError) && !showRestartError;
+  const showReconnectError = Boolean(reconnectError) && !showRestartError && !showSpawnError;
+  const showRestartStatus = restartBannerVariant.type !== "none";
+
   return (
     <ContentPanel
       ref={containerRef}
@@ -901,54 +1017,52 @@ function TerminalPaneComponent({
         </div>
       )}
 
-      {restartError && (
-        <TerminalErrorBanner
-          terminalId={id}
-          error={restartError}
-          onUpdateCwd={handleUpdateCwd}
-          onRetry={handleRestart}
-          onTrash={handleTrash}
-          isRestarting={isRestarting}
-        />
-      )}
+      <BannerSlot visible={showRestartError}>
+        {restartError && (
+          <TerminalErrorBanner
+            terminalId={id}
+            error={restartError}
+            onUpdateCwd={handleUpdateCwd}
+            onRetry={handleRestart}
+            onTrash={handleTrash}
+            isRestarting={isRestarting}
+          />
+        )}
+      </BannerSlot>
 
-      {spawnError && !restartError && (
-        <SpawnErrorBanner
-          terminalId={id}
-          error={spawnError}
-          cwd={cwd}
-          onUpdateCwd={handleUpdateCwd}
-          onRetry={handleRestart}
-          onTrash={handleTrash}
-          isRestarting={isRestarting}
-        />
-      )}
+      <BannerSlot visible={showSpawnError}>
+        {spawnError && (
+          <SpawnErrorBanner
+            terminalId={id}
+            error={spawnError}
+            cwd={cwd}
+            onUpdateCwd={handleUpdateCwd}
+            onRetry={handleRestart}
+            onTrash={handleTrash}
+            isRestarting={isRestarting}
+          />
+        )}
+      </BannerSlot>
 
-      {reconnectError && !restartError && !spawnError && (
-        <ReconnectErrorBanner
-          terminalId={id}
-          error={reconnectError}
-          onDismiss={handleDismissReconnectError}
+      <BannerSlot visible={showReconnectError}>
+        {reconnectError && (
+          <ReconnectErrorBanner
+            terminalId={id}
+            error={reconnectError}
+            onDismiss={handleDismissReconnectError}
+            onRestart={handleRestart}
+            isRestarting={isRestarting}
+          />
+        )}
+      </BannerSlot>
+
+      <BannerSlot visible={showRestartStatus}>
+        <TerminalRestartStatusBanner
+          variant={restartBannerVariant}
           onRestart={handleRestart}
-          isRestarting={isRestarting}
+          onDismiss={() => setDismissedRestartPrompt(true)}
         />
-      )}
-
-      <TerminalRestartStatusBanner
-        variant={getRestartBannerVariant({
-          isExited,
-          exitCode,
-          dismissedRestartPrompt,
-          restartError,
-          isRestarting,
-          isAutoRestarting,
-          exitBehavior,
-          reconnectError,
-          spawnError,
-        })}
-        onRestart={handleRestart}
-        onDismiss={() => setDismissedRestartPrompt(true)}
-      />
+      </BannerSlot>
 
       <div className="flex-1 min-h-0 bg-daintree-bg flex flex-col">
         {spawnStatus === "missing-cli" && agentId ? (

@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { AlertTriangle, X } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { useSafeModeStore } from "@/store/safeModeStore";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { InlineStatusBanner } from "@/components/Terminal/InlineStatusBanner";
 import { logError } from "@/utils/logger";
 
 function formatRelativeTime(timestamp: number): string {
@@ -61,52 +62,48 @@ export function SafeModeBanner() {
     crashMetaText = `Last crash ${formatRelativeTime(crashTimestamp)}`;
   }
 
+  const detailsPopover = hasDetails ? (
+    <Popover>
+      <PopoverTrigger
+        type="button"
+        className="text-xs px-2 py-1 rounded border border-[var(--color-status-warning)]/30 hover:bg-[var(--color-status-warning)]/10 transition-colors shrink-0"
+      >
+        Show details
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={8}
+        className="p-3 text-xs max-w-xs space-y-2 text-daintree-text"
+      >
+        {crashMetaText && <p className="font-medium">{crashMetaText}</p>}
+        {skipped > 0 && (
+          <p className="text-daintree-text/70">
+            {skipped} {skipped === 1 ? "panel was" : "panels were"} skipped so you can recover the
+            app. Restart normally to reload them.
+          </p>
+        )}
+      </PopoverContent>
+    </Popover>
+  ) : undefined;
+
   return (
-    <div
+    <InlineStatusBanner
+      icon={AlertTriangle}
+      title="Safe mode — panels weren't restored"
+      severity="warning"
       role="status"
-      className="flex items-center gap-3 px-4 py-2 bg-[var(--color-status-warning)]/15 border-b border-[var(--color-status-warning)]/30 text-[var(--color-status-warning)] text-sm shrink-0"
-    >
-      <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
-      <span className="flex-1">Safe mode — panels weren't restored</span>
-      {hasDetails && (
-        <Popover>
-          <PopoverTrigger
-            type="button"
-            className="text-xs px-2 py-1 rounded border border-[var(--color-status-warning)]/30 hover:bg-[var(--color-status-warning)]/10 transition-colors shrink-0"
-          >
-            Show details
-          </PopoverTrigger>
-          <PopoverContent
-            align="end"
-            sideOffset={8}
-            className="p-3 text-xs max-w-xs space-y-2 text-daintree-text"
-          >
-            {crashMetaText && <p className="font-medium">{crashMetaText}</p>}
-            {skipped > 0 && (
-              <p className="text-daintree-text/70">
-                {skipped} {skipped === 1 ? "panel was" : "panels were"} skipped so you can recover
-                the app. Restart normally to reload them.
-              </p>
-            )}
-          </PopoverContent>
-        </Popover>
-      )}
-      <button
-        type="button"
-        onClick={handleRestart}
-        disabled={isRestarting}
-        className="text-xs px-2 py-1 rounded border border-[var(--color-status-warning)]/30 hover:bg-[var(--color-status-warning)]/10 transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {isRestarting ? "Restarting…" : "Restart normally"}
-      </button>
-      <button
-        type="button"
-        onClick={dismiss}
-        aria-label="Dismiss safe mode banner"
-        className="p-1 rounded hover:bg-[var(--color-status-warning)]/10 transition-colors shrink-0"
-      >
-        <X className="w-3.5 h-3.5" aria-hidden="true" />
-      </button>
-    </div>
+      trailingSlot={detailsPopover}
+      actions={[
+        {
+          id: "restart",
+          label: isRestarting ? "Restarting…" : "Restart normally",
+          variant: "primary",
+          onClick: handleRestart,
+          disabled: isRestarting,
+        },
+      ]}
+      onClose={dismiss}
+      closeAriaLabel="Dismiss safe mode banner"
+    />
   );
 }

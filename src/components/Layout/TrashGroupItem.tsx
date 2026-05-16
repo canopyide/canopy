@@ -7,7 +7,7 @@ import type { TrashedTerminal, TrashedTerminalGroupMetadata } from "@/store/slic
 import { TerminalIcon } from "@/components/Terminal/TerminalIcon";
 import { deriveTerminalChrome } from "@/utils/terminalChrome";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useGlobalSecondTicker } from "@/hooks/useGlobalSecondTicker";
+import { useVisibilityAwareInterval } from "@/hooks/useVisibilityAwareInterval";
 import { isUselessTitle } from "@shared/utils/isUselessTitle";
 import { getEffectiveAgentConfig } from "@shared/config/agentRegistry";
 import { cn } from "@/lib/utils";
@@ -42,9 +42,9 @@ export function TrashGroupItem({
   const isOrphan = !!groupMetadata.worktreeId && !worktreeName;
   const canRestore = !isOrphan || !!activeWorktreeId;
 
-  const tick = useGlobalSecondTicker();
-  void tick;
-  const timeRemaining = Math.max(0, earliestExpiry - Date.now());
+  const [now, setNow] = useState(() => Date.now());
+  useVisibilityAwareInterval(() => setNow(Date.now()), 1000);
+  const timeRemaining = Math.max(0, earliestExpiry - now);
   const seconds = Math.ceil(timeRemaining / 1000);
 
   const handleRestoreGroup = useCallback(() => {

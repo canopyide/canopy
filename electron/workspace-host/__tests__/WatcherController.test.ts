@@ -629,4 +629,149 @@ describe("WatcherController", () => {
     // Drain timer cleared on stop — no flush fires after teardown.
     expect(host.onTriggerUpdate).not.toHaveBeenCalled();
   });
+
+  describe("resetRetryBudget", () => {
+    it("resets exhausted budget so subsequent failure schedules a retry", () => {
+      mockRecursiveStartResult = false;
+      mockGitOnlyStartResult = true;
+      const host = makeHost({ isCurrent: true });
+      const ctrl = new WatcherController(host as WatcherControllerHost);
+
+      ctrl.start();
+      for (let i = 0; i < 6; i++) {
+        vi.advanceTimersByTime(31_000);
+      }
+      const startsAtExhaustion = watcherStartCallCount;
+      vi.advanceTimersByTime(120_000);
+      expect(watcherStartCallCount).toBe(startsAtExhaustion);
+
+      const result = ctrl.resetRetryBudget();
+      expect(result).toBe(true);
+
+      // update() tears down git-only and re-attempts recursive. Recursive
+      // fails → git-only installed + scheduleRetry() with fresh counter.
+      ctrl.update();
+      vi.advanceTimersByTime(31_000);
+      expect(watcherStartCallCount).toBeGreaterThan(startsAtExhaustion);
+    });
+
+    it("no-ops when watcherRetryCount is zero (does not consume cap)", () => {
+      const host = makeHost({ isCurrent: true });
+      const ctrl = new WatcherController(host as WatcherControllerHost);
+      const result = ctrl.resetRetryBudget();
+      expect(result).toBe(false);
+
+      // Should be able to reset after actual exhaustion.
+      mockRecursiveStartResult = false;
+      mockGitOnlyStartResult = true;
+      ctrl.start();
+      for (let i = 0; i < 6; i++) {
+        vi.advanceTimersByTime(31_000);
+      }
+      expect(ctrl.resetRetryBudget()).toBe(true);
+    });
+
+    it("capped at MAX_RESETS_PER_SESSION (3)", () => {
+      mockRecursiveStartResult = false;
+      mockGitOnlyStartResult = true;
+      const host = makeHost({ isCurrent: true });
+      const ctrl = new WatcherController(host as WatcherControllerHost);
+
+      ctrl.start();
+      for (let i = 0; i < 6; i++) {
+        vi.advanceTimersByTime(31_000);
+      }
+
+      // 3 resets allowed; update() re-arms after each reset so retries
+      // can burn through the fresh budget.
+      for (let r = 0; r < 3; r++) {
+        expect(ctrl.resetRetryBudget()).toBe(true);
+        ctrl.update();
+        for (let i = 0; i < 6; i++) {
+          vi.advanceTimersByTime(31_000);
+        }
+      }
+      // 4th reset denied.
+      expect(ctrl.resetRetryBudget()).toBe(false);
+    });
+
+    it("clears a pending retry timer", () => {
+      mockRecursiveStartResult = false;
+      mockGitOnlyStartResult = true;
+      const host = makeHost({ isCurrent: true });
+      const ctrl = new WatcherController(host as WatcherControllerHost);
+
+      ctrl.start();
+      // Let one retry fire so a new timer for retry 2 is pending.
+      vi.advanceTimersByTime(31_000);
+      const startsAfterOneRetry = watcherStartCallCount;
+
+      const result = ctrl.resetRetryBudget();
+      expect(result).toBe(true);
+
+      // The pending timer was cleared — advancing 30s should NOT fire a retry
+      // since the budget just reset (count=0) and nothing scheduled a new one.
+      vi.advanceTimersByTime(31_000);
+      expect(watcherStartCallCount).toBe(startsAfterOneRetry);
+    });
+
+    it("stop(true) resets both the retry budget and the session cap", () => {
+      mockRecursiveStartResult = false;
+      mockGitOnlyStartResult = true;
+      const host = makeHost({ isCurrent: true });
+      const ctrl = new WatcherController(host as WatcherControllerHost);
+
+      ctrl.start();
+      for (let i = 0; i < 6; i++) {
+        vi.advanceTimersByTime(31_000);
+      }
+      // Consume all 3 resets.
+      for (let r = 0; r < 3; r++) {
+        expect(ctrl.resetRetryBudget()).toBe(true);
+        ctrl.update();
+        for (let i = 0; i < 6; i++) {
+          vi.advanceTimersByTime(31_000);
+        }
+      }
+      expect(ctrl.resetRetryBudget()).toBe(false);
+
+      // Full teardown resets the session cap.
+      ctrl.stop(true);
+      // After stop(true), budget starts fresh. Re-arm and exhaust.
+      ctrl.start();
+      for (let i = 0; i < 6; i++) {
+        vi.advanceTimersByTime(31_000);
+      }
+      expect(ctrl.resetRetryBudget()).toBe(true);
+    });
+
+    it("stop(false) preserves both the retry count and the session cap", () => {
+      mockRecursiveStartResult = false;
+      mockGitOnlyStartResult = true;
+      const host = makeHost({ isCurrent: true });
+      const ctrl = new WatcherController(host as WatcherControllerHost);
+
+      ctrl.start();
+      for (let i = 0; i < 6; i++) {
+        vi.advanceTimersByTime(31_000);
+      }
+      expect(ctrl.resetRetryBudget()).toBe(true);
+      ctrl.update();
+      for (let i = 0; i < 6; i++) {
+        vi.advanceTimersByTime(31_000);
+      }
+      // 2nd reset — should succeed (2 of 3 consumed).
+      expect(ctrl.resetRetryBudget()).toBe(true);
+
+      // stop(false) should NOT restore the 2 already-consumed resets.
+      ctrl.stop(false);
+      ctrl.start();
+      for (let i = 0; i < 6; i++) {
+        vi.advanceTimersByTime(31_000);
+      }
+      const result = ctrl.resetRetryBudget();
+      // After 2 resets consumed, the 3rd (last) should succeed.
+      expect(result).toBe(true);
+    });
+  });
 });

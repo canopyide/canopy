@@ -12,6 +12,7 @@ function pendingFixture(overrides: { requestId?: string; actionId?: string } = {
     actionTitle: "Delete Worktree",
     actionDescription: "Permanently delete a worktree.",
     argsSummary: '{"worktreeId":"wt-1"}',
+    danger: "confirm" as const,
   };
 }
 

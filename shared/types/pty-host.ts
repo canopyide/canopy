@@ -259,6 +259,12 @@ export type PtyHostEvent =
       timestamp: number;
     }
   | {
+      type: "host-memory-warning";
+      isWarning: boolean;
+      utilizationPercent: number;
+      timestamp: number;
+    }
+  | {
       type: "host-throttled";
       isThrottled: boolean;
       reason?: string;

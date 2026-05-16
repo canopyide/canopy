@@ -248,14 +248,16 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
 vi.mock("@/components/ui/EmptyState", () => ({
   EmptyState: ({
     variant,
+    scale,
     title,
     action,
   }: {
     variant: string;
+    scale?: string;
     title: string;
     action?: ReactNode;
   }) => (
-    <div data-testid={`empty-state-${variant}`}>
+    <div data-testid={`empty-state-${variant}`} data-scale={scale}>
       <p>{title}</p>
       {action && <div>{action}</div>}
     </div>
@@ -264,6 +266,7 @@ vi.mock("@/components/ui/EmptyState", () => ({
 
 import { ReviewHub } from "../ReviewHub";
 import { useUIStore } from "@/store/uiStore";
+import { usePreferencesStore } from "@/store/preferencesStore";
 
 const WORKTREE_PATH = "/home/user/project";
 
@@ -305,6 +308,10 @@ describe("ReviewHub", () => {
     // #7886). Existing tests assume rows are visible — expand the disclosure
     // for the canonical worktree path so suite-wide assertions keep working.
     useUIStore.getState().setReviewHubFileListExpanded(WORKTREE_PATH, true);
+
+    // #8025: reset the per-worktree push-confirm opt-out so a previous test
+    // that pre-set it can't leak into the next one.
+    usePreferencesStore.getState().setSkipPushConfirmForWorktree(WORKTREE_PATH, false);
 
     worktreeStoreData.current = new Map([
       [
@@ -1182,6 +1189,24 @@ describe("ReviewHub", () => {
       );
     });
 
+    it("renders user-cleared empty state when all conflicts are resolved", async () => {
+      getStagingStatusMock.mockResolvedValue(
+        makeMergingStatus({
+          conflicted: [],
+          conflictedFiles: [],
+          staged: [{ path: "src/app.ts", status: "modified", insertions: 1, deletions: 1 }],
+        })
+      );
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByTestId("conflict-panel"));
+      const resolvedTitle = screen.getByText("All conflicts resolved");
+      const resolvedEmpty = resolvedTitle.closest('[data-testid="empty-state-user-cleared"]');
+      expect(resolvedEmpty).not.toBeNull();
+      expect(resolvedEmpty?.getAttribute("data-scale")).toBe("sidebar");
+    });
+
     it("stages a file when Mark resolved is clicked", async () => {
       getStagingStatusMock.mockResolvedValue(makeMergingStatus());
 
@@ -1593,6 +1618,12 @@ describe("ReviewHub", () => {
 
   describe("push error banner", () => {
     async function triggerCommitAndPush() {
+      // #8025: every remote push now opens a confirm dialog. These tests
+      // target push-error handling, not the confirm UI, so pre-set the
+      // per-worktree opt-out to bypass the dialog and exercise the push
+      // path directly.
+      usePreferencesStore.getState().setSkipPushConfirmForWorktree(WORKTREE_PATH, true);
+
       getStagingStatusMock.mockResolvedValue(makeStatus({ hasRemote: true }));
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
       await waitFor(() => screen.getByPlaceholderText("Commit message…"));
@@ -1932,6 +1963,9 @@ describe("ReviewHub", () => {
         })
       );
 
+      // #8025: bypass the per-push confirm dialog for this push-error test.
+      usePreferencesStore.getState().setSkipPushConfirmForWorktree(WORKTREE_PATH, true);
+
       getStagingStatusMock.mockResolvedValue(makeStatus({ hasRemote: true }));
       const { rerender } = render(
         <ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />
@@ -1956,6 +1990,9 @@ describe("ReviewHub", () => {
     it("does not call push when commit itself fails", async () => {
       commitMock.mockRejectedValueOnce(new Error("nothing to commit"));
       getStagingStatusMock.mockResolvedValue(makeStatus({ hasRemote: true }));
+
+      // #8025: bypass the per-push confirm dialog for this push-error test.
+      usePreferencesStore.getState().setSkipPushConfirmForWorktree(WORKTREE_PATH, true);
 
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
       await waitFor(() => screen.getByPlaceholderText("Commit message…"));
@@ -2486,7 +2523,10 @@ describe("ReviewHub", () => {
 
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
 
-      await waitFor(() => screen.getByText("No unstaged changes"));
+      const allStagedTitle = await screen.findByText("All changes staged");
+      const allStagedEmpty = allStagedTitle.closest('[data-testid="empty-state-user-cleared"]');
+      expect(allStagedEmpty).not.toBeNull();
+      expect(allStagedEmpty?.getAttribute("data-scale")).toBe("sidebar");
       // Stage all button (for Changes section) should be hidden when there are no unstaged files
       expect(screen.queryByTestId("review-hub-stage-section-button")).toBeNull();
       // Unstage all button (for Staged section) should be visible with 1 file
@@ -2509,7 +2549,7 @@ describe("ReviewHub", () => {
       expect((filters[0]! as HTMLInputElement).value).toBe("src");
     });
 
-    it("shows No staged files when section is empty but filter is not active", async () => {
+    it("shows Nothing staged user-cleared empty state when section is empty but filter is not active", async () => {
       getStagingStatusMock.mockResolvedValue(
         makeStatus({
           staged: [],
@@ -2520,9 +2560,15 @@ describe("ReviewHub", () => {
       render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
 
       await waitFor(() => {
-        screen.getByText("No staged files");
+        screen.getByText("Nothing staged");
         screen.getByText("b.ts");
       });
+      const nothingStagedTitle = screen.getByText("Nothing staged");
+      const nothingStagedEmpty = nothingStagedTitle.closest(
+        '[data-testid="empty-state-user-cleared"]'
+      );
+      expect(nothingStagedEmpty).not.toBeNull();
+      expect(nothingStagedEmpty?.getAttribute("data-scale")).toBe("sidebar");
     });
 
     it("renders files sorted by path ascending by default", async () => {

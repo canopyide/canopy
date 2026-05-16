@@ -279,4 +279,43 @@ describe("XtermAdapter lifecycle", () => {
     expect(secondOnExit).toHaveBeenCalledWith(7);
     expect(mocks.terminalInstanceService.detach).not.toHaveBeenCalled();
   });
+
+  it("re-applies renderer policy when a stable tier provider returns a new tier", async () => {
+    let tier = TerminalRefreshTier.BACKGROUND;
+    const getRefreshTier = vi.fn(() => tier);
+
+    const view = renderAdapter({ getRefreshTier });
+
+    await waitFor(() =>
+      expect(mocks.terminalInstanceService.applyRendererPolicy).toHaveBeenLastCalledWith(
+        "term-1",
+        TerminalRefreshTier.BACKGROUND
+      )
+    );
+
+    mocks.terminalInstanceService.applyRendererPolicy.mockClear();
+    tier = TerminalRefreshTier.VISIBLE;
+
+    view.rerender(
+      <Suspense fallback={null}>
+        <XtermAdapter
+          terminalId="term-1"
+          launchAgentId="claude"
+          onReady={vi.fn()}
+          onExit={vi.fn()}
+          onInput={vi.fn()}
+          getRefreshTier={getRefreshTier}
+          cwd="/repo/initial"
+        />
+      </Suspense>
+    );
+
+    await waitFor(() =>
+      expect(mocks.terminalInstanceService.applyRendererPolicy).toHaveBeenLastCalledWith(
+        "term-1",
+        TerminalRefreshTier.VISIBLE
+      )
+    );
+    expect(mocks.terminalInstanceService.attach).toHaveBeenCalledTimes(1);
+  });
 });

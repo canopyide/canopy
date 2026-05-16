@@ -127,6 +127,14 @@ describe("panelKindRegistry serialize hooks (co-located)", () => {
     });
   });
 
+  describe("review", () => {
+    it("serializes review panel as empty fragment (worktreeId carried by base)", () => {
+      const config = getPanelKindConfig("review");
+      const result = config!.serialize!(makePanel({ kind: "review", worktreeId: "wt-1" }));
+      expect(result).toEqual({});
+    });
+  });
+
   describe("unknown kind", () => {
     it("returns undefined config for unregistered kind", () => {
       const config = getPanelKindConfig("custom-ext");

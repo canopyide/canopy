@@ -30,6 +30,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { getWorktreeSortDragId } from "@/components/DragDrop/SortableWorktreeCard";
+import { applyManualWorktreeReorder } from "@/lib/worktreeReorder";
 import { usePanelStore, useWorktreeSelectionStore, useProjectStore } from "@/store";
 import { useFleetArmingStore, collectFilterArmEligibleIds } from "@/store/fleetArmingStore";
 import { useShallow } from "zustand/react/shallow";
@@ -51,6 +52,7 @@ import { computeChipState } from "@/components/Worktree/utils/computeChipState";
 import { parseExactNumber } from "@/lib/parseExactNumber";
 import type { WorktreeState } from "@/types";
 import { actionService } from "@/services/ActionService";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SidebarWorktreeRow } from "./SidebarWorktreeRow";
 import { StaticWorktreeRow } from "./StaticWorktreeRow";
 import { useScrollIndicator } from "./useScrollIndicator";
@@ -76,6 +78,14 @@ function formatButtonTitle(label: string, shortcut?: string | null): string {
 
 const NO_MATCH_QUERY_MAX = 40;
 
+const QUICK_STATE_LABELS: Record<"working" | "waiting" | "finished", string> = {
+  working: "Working",
+  waiting: "Waiting",
+  finished: "Finished",
+};
+
+const KEYBOARD_REORDER_ANNOUNCEMENT_DEBOUNCE_MS = 150;
+
 function truncateSearchQuery(trimmedQuery: string) {
   const codepoints = Array.from(trimmedQuery);
   return codepoints.length > NO_MATCH_QUERY_MAX
@@ -95,9 +105,58 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const refreshAriaShortcut = useAriaKeyshortcuts("worktree.refresh");
   const createWorktreeAriaShortcut = useAriaKeyshortcuts("worktree.createDialog.open");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const { gridRef, handleGridKeyDown, handleGridFocusCapture } =
-    useWorktreeGridRovingFocus(scrollContainerRef);
+  // Latest dragStartOrder + sort-disabled state captured in refs so the
+  // keyboard-reorder callback identity stays stable across renders without
+  // missing new visible orders or going stale on group/search toggles.
+  const dragStartOrderRef = useRef<readonly string[]>([]);
+  const isSortDisabledRef = useRef(false);
+  // Latest worktrees captured in a ref so the keyboard-reorder callback can
+  // resolve the moved row's display name for the announcement without taking
+  // `worktrees` as a dep (which would churn the callback identity every poll).
+  const worktreesRef = useRef<readonly WorktreeState[]>([]);
+  // Trailing debounce for the sr-only reorder announcement: OS key-repeat fires
+  // Alt+Arrow at ~30Hz, and NVDA/JAWS queue every intermediate position on a
+  // polite live region, so without this they keep reading stale slots long
+  // after the row settles. Only the final resting position is announced.
+  const reorderAnnouncementTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [keyboardReorderAnnouncement, setKeyboardReorderAnnouncement] = useState("");
+  const handleKeyboardReorder = useCallback((rowEl: HTMLElement, delta: -1 | 1) => {
+    // Grouped-by-type and active-search modes hide the drag handle; keyboard
+    // reorder must mirror that — writing to manualOrder here would silently
+    // mutate ordering the user can't see being applied.
+    if (isSortDisabledRef.current) return;
+    const worktreeId = rowEl.dataset.worktreeRow;
+    if (!worktreeId) return;
+    const visible = dragStartOrderRef.current;
+    const currentIdx = visible.indexOf(worktreeId);
+    if (currentIdx === -1) return;
+    const targetIdx = currentIdx + delta;
+    if (targetIdx < 0 || targetIdx >= visible.length) return;
+    const filterStore = useWorktreeFilterStore.getState();
+    const merged = applyManualWorktreeReorder(
+      filterStore.manualOrder,
+      visible,
+      currentIdx,
+      targetIdx
+    );
+    filterStore.setManualOrder(merged);
+    filterStore.setOrderBy("manual");
+    const name = worktreesRef.current.find((w) => w.id === worktreeId)?.name ?? worktreeId;
+    const message = `Moved '${name}' to position ${targetIdx + 1} of ${visible.length}`;
+    if (reorderAnnouncementTimerRef.current !== null) {
+      clearTimeout(reorderAnnouncementTimerRef.current);
+    }
+    reorderAnnouncementTimerRef.current = setTimeout(() => {
+      reorderAnnouncementTimerRef.current = null;
+      setKeyboardReorderAnnouncement(message);
+    }, KEYBOARD_REORDER_ANNOUNCEMENT_DEBOUNCE_MS);
+  }, []);
+  const { gridRef, handleGridKeyDown, handleGridFocusCapture } = useWorktreeGridRovingFocus(
+    scrollContainerRef,
+    { onKeyboardReorder: handleKeyboardReorder }
+  );
   const { worktrees, isLoading, isReconnecting, error, refresh } = useWorktrees();
+  worktreesRef.current = worktrees;
   const deferredWorktrees = useDeferredValue(worktrees);
   const [isRefreshing, startRefreshTransition] = useTransition();
   const showRefreshSpinner = useDeferredLoading(isRefreshing, UI_DOHERTY_THRESHOLD);
@@ -130,8 +189,12 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   }, [createDialog.isOpen]);
 
   const [isFleetPickerOpen, setIsFleetPickerOpen] = useState(false);
+  const [isRestartConfirmOpen, setIsRestartConfirmOpen] = useState(false);
   const openFleetPicker = useCallback(() => setIsFleetPickerOpen(true), []);
   const closeFleetPicker = useCallback(() => setIsFleetPickerOpen(false), []);
+  useEffect(() => {
+    if (!error) setIsRestartConfirmOpen(false);
+  }, [error]);
   const armedIds = useFleetArmingStore((s) => s.armedIds);
   const armedSize = armedIds.size;
 
@@ -171,6 +234,12 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const hasActiveFilters = useWorktreeFilterStore((state) => state.hasActiveFilters);
   const hasFacetFilters = useWorktreeFilterStore((state) => state.hasFacetFilters);
   const hasFacetFiltersActive = hasFacetFilters();
+  const activeFacetFilterCount =
+    statusFilters.size +
+    typeFilters.size +
+    githubFilters.size +
+    sessionFilters.size +
+    activityFilters.size;
   const collapsedWorktrees = useWorktreeFilterStore((state) => state.collapsedWorktrees);
   const pruneStaleWorktreeIds = useWorktreeFilterStore((state) => state.pruneStaleWorktreeIds);
   const setQuickStateFilter = useWorktreeFilterStore((state) => state.setQuickStateFilter);
@@ -534,6 +603,16 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   );
 
   const dragStartOrder = useMemo(() => filteredWorktrees.map((w) => w.id), [filteredWorktrees]);
+  dragStartOrderRef.current = dragStartOrder;
+
+  // Drop a pending reorder announcement if the sidebar unmounts mid-key-repeat.
+  useEffect(() => {
+    return () => {
+      if (reorderAnnouncementTimerRef.current !== null) {
+        clearTimeout(reorderAnnouncementTimerRef.current);
+      }
+    };
+  }, []);
 
   // Fleet-eligible terminals inside the currently visible worktrees, split so an
   // arm/disarm elsewhere only re-walks the unarmed tally rather than re-scanning
@@ -614,13 +693,23 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         <div className="px-4 py-4">
           <div className="text-[var(--color-status-error)] text-sm mb-2">{error}</div>
           <button
-            onClick={() => {
-              void actionService.dispatch("worktree.restartService", undefined, { source: "user" });
-            }}
+            onClick={() => setIsRestartConfirmOpen(true)}
             className="text-xs px-2 py-1 border border-divider rounded hover:bg-tint/[0.06] text-daintree-text"
           >
             Restart Service
           </button>
+          <ConfirmDialog
+            isOpen={isRestartConfirmOpen}
+            onClose={() => setIsRestartConfirmOpen(false)}
+            title="Restart workspace service?"
+            description="Restarts the workspace monitoring process. Git status and worktree data will be temporarily unavailable."
+            confirmLabel="Restart service"
+            variant="destructive"
+            onConfirm={() => {
+              void actionService.dispatch("worktree.restartService", undefined, { source: "user" });
+              setIsRestartConfirmOpen(false);
+            }}
+          />
         </div>
       </div>
     );
@@ -772,6 +861,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 
   const hasQuery = query.trim().length > 0;
   const isSortDisabled = isGroupedByType || hasQuery;
+  isSortDisabledRef.current = isSortDisabled;
 
   // 1-based aria-rowindex slots for the pinned rows.
   const mainRowIndex = mainVisible ? 1 : 0;
@@ -876,6 +966,12 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         <WorktreeSidebarSearchBar inputRef={searchInputRef} chipCounts={chipCounts} />
       )}
 
+      {/* SR-only live region for keyboard reorder announcements. dnd-kit's
+          built-in announcer can't see external mutations like Alt+Arrow, so
+          announce here. */}
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {keyboardReorderAnnouncement}
+      </div>
       {/* Worktree list — single role="grid" with roving tab stop spans pinned + scrollable rows */}
       <div
         ref={gridRef}
@@ -938,13 +1034,19 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                 <EmptyState
                   variant="filtered-empty"
                   scale="sidebar"
-                  title={`No ${quickStateFilter} worktrees`}
+                  title={
+                    hasFacetFiltersActive && activeFacetFilterCount > 0
+                      ? `No worktrees match ${QUICK_STATE_LABELS[quickStateFilter]} with ${activeFacetFilterCount} ${
+                          activeFacetFilterCount === 1 ? "filter" : "filters"
+                        }`
+                      : `No ${quickStateFilter} worktrees`
+                  }
                   action={
                     <button
                       onClick={clearAllFilters}
                       className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
                     >
-                      Clear filters
+                      Show all worktrees
                     </button>
                   }
                 />
@@ -965,7 +1067,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                       onClick={clearAllFilters}
                       className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
                     >
-                      Clear filters
+                      Show all worktrees
                     </button>
                   }
                 />

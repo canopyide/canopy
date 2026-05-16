@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useDeferredValue, useEffect, useRef, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { TABBABLE_SELECTOR } from "@/lib/accessibility";
@@ -203,12 +203,15 @@ export function AppPaletteDialog({
           isVisible ? "opacity-100 scale-100" : "opacity-0 scale-[0.96]",
           className
         )}
-        style={{
-          transitionDuration: isVisible
-            ? `${UI_PALETTE_ENTER_DURATION}ms`
-            : `${UI_PALETTE_EXIT_DURATION}ms`,
-          transitionTimingFunction: isVisible ? UI_ENTER_EASING : UI_EXIT_EASING,
-        }}
+        style={
+          {
+            transitionDuration: isVisible
+              ? `${UI_PALETTE_ENTER_DURATION}ms`
+              : `${UI_PALETTE_EXIT_DURATION}ms`,
+            transitionTimingFunction: isVisible ? UI_ENTER_EASING : UI_EXIT_EASING,
+            "--scroll-shadow-color": "var(--color-surface-canvas)",
+          } as CSSProperties
+        }
         onClick={(e) => e.stopPropagation()}
       >
         {children}
@@ -446,12 +449,18 @@ AppPaletteDialog.Empty = function AppPaletteEmpty({
   children,
 }: AppPaletteEmptyProps) {
   const trimmedQuery = query.trim();
+  // Defer the *displayed* query so the title doesn't redraw every keystroke
+  // while a fast typist is filling the input. The branch decision still uses
+  // the immediate `trimmedQuery` so clearing the input flips back to
+  // zero-data without a stale "No matches for ..." flash.
+  const deferredTrimmedQuery = useDeferredValue(trimmedQuery);
   if (trimmedQuery) {
+    const displayQuery = deferredTrimmedQuery || trimmedQuery;
     return (
       <EmptyState
         variant="filtered-empty"
         scale="popover"
-        title={noMatchMessage ?? defaultNoMatchTitle(trimmedQuery)}
+        title={noMatchMessage ?? defaultNoMatchTitle(displayQuery)}
         action={noMatchContent}
         className="px-3 py-8"
       />

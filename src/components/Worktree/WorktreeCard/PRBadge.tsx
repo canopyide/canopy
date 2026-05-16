@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, Clock, CornerDownRight, GitPullRequest, XCircle } from "lucide-react";
+import { CornerDownRight, GitPullRequest } from "lucide-react";
 import type { GitHubPRCIStatus } from "@shared/types/github";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import { usePRTooltip } from "@/hooks/useGitHubTooltip";
@@ -8,6 +8,7 @@ import { useGitHubBadgeTooltip } from "./hooks/useGitHubBadgeTooltip";
 import { useGitHubBadgeFreshness } from "./hooks/useGitHubBadgeFreshness";
 import { freshnessOpacityClass, freshnessSuffix } from "@/components/Layout/FreshnessUtils";
 import { PRTooltipContent, TooltipLoading, TokenMissingTooltip } from "./GitHubTooltipContent";
+import { getPRCIStatusVisual } from "@/components/GitHub/prCIStatus";
 
 interface PRBadgeProps {
   prNumber: number;
@@ -19,23 +20,6 @@ interface PRBadgeProps {
   isActive?: boolean;
   underlineOnHover?: boolean;
   rowLastUpdatedAt?: number;
-}
-
-function prCIStatusVisual(
-  status: GitHubPRCIStatus | undefined
-): { Icon: typeof CheckCircle2; className: string; label: string } | null {
-  switch (status) {
-    case "SUCCESS":
-      return { Icon: CheckCircle2, className: "text-status-success", label: "CI passing" };
-    case "FAILURE":
-    case "ERROR":
-      return { Icon: XCircle, className: "text-status-error", label: "CI failing" };
-    case "PENDING":
-    case "EXPECTED":
-      return { Icon: Clock, className: "text-status-warning", label: "CI pending" };
-    default:
-      return null;
-  }
 }
 
 export function PRBadge({
@@ -76,12 +60,12 @@ export function PRBadge({
 
   const prStateLabel = prState === "merged" ? "merged" : prState === "closed" ? "closed" : "open";
 
-  const ciVisual = prCIStatusVisual(prCiStatus);
+  const ciVisual = getPRCIStatusVisual(prCiStatus);
 
   const ariaLabel = missingToken
     ? "Configure GitHub token to see PR details"
     : ciVisual
-      ? `Open ${prStateLabel} pull request #${prNumber} on GitHub — ${ciVisual.label}`
+      ? `Open ${prStateLabel} pull request #${prNumber} on GitHub — ${ciVisual.ariaLabel}`
       : `Open ${prStateLabel} pull request #${prNumber} on GitHub`;
 
   const freshnessSuffixStr = useMemo(
@@ -126,10 +110,16 @@ export function PRBadge({
             #{prNumber}
           </span>
           {ciVisual && !missingToken && (
-            <ciVisual.Icon
-              className={cn("w-2.5 h-2.5 shrink-0", ciVisual.className)}
+            <span
+              className="inline-flex items-center justify-center w-3 h-3 shrink-0"
               aria-hidden="true"
-            />
+            >
+              {ciVisual.kind === "icon" ? (
+                <ciVisual.Icon className={cn("w-3 h-3", ciVisual.colorClass)} />
+              ) : (
+                <span className={cn("block w-2 h-2 rounded-full", ciVisual.colorClass)} />
+              )}
+            </span>
           )}
         </button>
       </TooltipTrigger>

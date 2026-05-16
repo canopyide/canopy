@@ -225,7 +225,7 @@ export function EnvironmentSettingsTab() {
     return (
       <SettingsSection
         icon={Key}
-        title="Environment Variables"
+        title="Environment variables"
         description="Global environment variables injected into all new terminals. Project-level variables override globals with the same name."
         id="environment-variables"
       >
@@ -240,7 +240,7 @@ export function EnvironmentSettingsTab() {
   return (
     <SettingsSection
       icon={Key}
-      title="Environment Variables"
+      title="Environment variables"
       description="Global environment variables injected into all new terminals. Project-level variables override globals with the same name."
       id="environment-variables"
     >

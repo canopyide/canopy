@@ -1,4 +1,5 @@
 import { logError } from "@/utils/logger";
+import type { ErrorRetryability } from "@shared/types/ipc/errors";
 
 export type ErrorCategory = "network" | "filesystem" | "validation" | "git" | "process" | "unknown";
 
@@ -160,4 +161,14 @@ export function isTransientError(error: unknown): boolean {
     message.includes("429") ||
     message.includes("503")
   );
+}
+
+/**
+ * Map a renderer-thrown error to its {@link ErrorRetryability} classification.
+ * Transient codes/phrases collapse to "auto"; everything else falls through
+ * to "none" because the renderer has no signal for `user-gated` or `exhausted`
+ * (those are produced by main-process error sources).
+ */
+export function getRetryabilityFromError(error: unknown): ErrorRetryability {
+  return isTransientError(error) ? "auto" : "none";
 }

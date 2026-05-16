@@ -153,7 +153,7 @@ export function EditorIntegrationTab() {
     <div className="space-y-6">
       <SettingsSection
         icon={Code2}
-        title="External Editor"
+        title="External editor"
         description="Choose the editor that opens when you click 'Open in editor' in the diff viewer or worktree cards."
       >
         <div className="contents">

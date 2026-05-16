@@ -12,7 +12,42 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ErrorRecord, RetryAction } from "@/store/errorStore";
+import { RECURRENCE_THRESHOLD, useErrorStore } from "@/store/errorStore";
 import { useDiagnosticsStore } from "@/store/diagnosticsStore";
+import { actionService } from "@/services/ActionService";
+
+/**
+ * Decide which CTA the banner should render. Pure function of `retryability`
+ * plus the optional wiring (`retryAction`, `recoveryAction`, `onRetry` prop):
+ *
+ *   - `"auto"` + retryAction + onRetry → Retry
+ *   - `"user-gated"` + recoveryAction  → run the structured recovery action
+ *   - everything else                  → View errors
+ */
+type BannerAction = "retry" | "recovery" | "view-errors";
+
+function bannerActionFor(error: ErrorRecord, hasOnRetry: boolean): BannerAction {
+  // Once an error has been promoted to the diagnostics dock, the dock owns
+  // recovery — flip the banner CTA to "View errors" so the user is routed
+  // to the dock instead of seeing a stale Retry next to the open dock.
+  if (error.promotedToDock) {
+    return "view-errors";
+  }
+  // Hard exit for runaway-retry conditions: the loop already gave up
+  // (retryExhausted) or the same fingerprint has fired ≥ RECURRENCE_THRESHOLD
+  // times across sessions. Either way, surfacing Retry would re-run a known
+  // failure path. Route to the dock instead so the user sees the full history.
+  if (error.retryExhausted || (error.occurrenceCount ?? 0) >= RECURRENCE_THRESHOLD) {
+    return "view-errors";
+  }
+  if (error.retryability === "auto" && error.retryAction && hasOnRetry) {
+    return "retry";
+  }
+  if (error.retryability === "user-gated" && error.recoveryAction) {
+    return "recovery";
+  }
+  return "view-errors";
+}
 
 export interface ErrorBannerProps {
   error: ErrorRecord;
@@ -91,7 +126,8 @@ export function ErrorBanner({
 
   const handleViewErrors = useCallback(() => {
     useDiagnosticsStore.getState().openDock("problems");
-  }, []);
+    useErrorStore.getState().promoteErrors([error.id]);
+  }, [error.id]);
 
   const handleCopyCorrelationId = useCallback(() => {
     if (!error.correlationId) return;
@@ -115,7 +151,21 @@ export function ErrorBanner({
 
   const typeLabel = ERROR_TYPE_LABELS[error.type] || "Error";
   const TypeIcon = ERROR_TYPE_ICONS[error.type] ?? XCircle;
-  const canRetry = error.isTransient && error.retryAction && onRetry;
+  const action = bannerActionFor(error, Boolean(onRetry));
+  const canRetry = action === "retry";
+  const showRecovery = action === "recovery";
+
+  const handleRecovery = useCallback(async () => {
+    if (!error.recoveryAction) return;
+    const result = await actionService.dispatch(
+      error.recoveryAction.actionId,
+      error.recoveryAction.args,
+      { source: "user" }
+    );
+    if (!result.ok) {
+      console.warn("Recovery action dispatch failed:", result.error);
+    }
+  }, [error.recoveryAction]);
 
   const retryLabel = error.retryProgress
     ? `Retrying ${error.retryProgress.attempt}/${error.retryProgress.maxAttempts}...`
@@ -149,7 +199,12 @@ export function ErrorBanner({
             Retry
           </Button>
         )}
-        {!isRetrying && !canRetry && (
+        {!isRetrying && showRecovery && error.recoveryAction && (
+          <Button variant="ghost-danger" size="xs" onClick={handleRecovery}>
+            {error.recoveryAction.label}
+          </Button>
+        )}
+        {!isRetrying && !canRetry && !showRecovery && (
           <Button variant="ghost-danger" size="xs" onClick={handleViewErrors}>
             View errors
           </Button>
@@ -226,7 +281,12 @@ export function ErrorBanner({
               Retry
             </Button>
           )}
-          {!isRetrying && !canRetry && !error.details && (
+          {!isRetrying && showRecovery && error.recoveryAction && (
+            <Button variant="ghost-danger" size="xs" onClick={handleRecovery}>
+              {error.recoveryAction.label}
+            </Button>
+          )}
+          {!isRetrying && !canRetry && !showRecovery && !error.details && (
             <Button variant="ghost-danger" size="xs" onClick={handleViewErrors}>
               View errors
             </Button>

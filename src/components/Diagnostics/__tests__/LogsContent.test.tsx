@@ -84,6 +84,29 @@ describe("LogsContent — filtered-empty recovery", () => {
     expect(queryByText("Clear filters")).toBeNull();
   });
 
+  it("shows user-cleared empty state when only the previous-session separator remains", async () => {
+    mockGetAll.mockResolvedValue([
+      makeLog("previous-session-separator", { context: { tail: "old log line" } }),
+    ]);
+    const { findByText, queryByText } = render(<LogsContent />);
+
+    expect(await findByText("No new logs this session")).toBeTruthy();
+    expect(queryByText("No logs yet")).toBeNull();
+    expect(queryByText("Clear filters")).toBeNull();
+  });
+
+  it("does not mistake the separator-only state for filtered-empty when a filter is active", async () => {
+    mockGetAll.mockResolvedValue([
+      makeLog("previous-session-separator", { context: { tail: "old log line" } }),
+    ]);
+    useLogsStore.setState({ filters: { levels: ["error"] } });
+    const { findByText, queryByText } = render(<LogsContent />);
+
+    expect(await findByText("No new logs this session")).toBeTruthy();
+    expect(queryByText("No logs match filters")).toBeNull();
+    expect(queryByText("Clear filters")).toBeNull();
+  });
+
   it("does not show the filtered-empty action when filters are inactive", async () => {
     mockGetAll.mockResolvedValue([makeLog("a", { level: "info" })]);
     useLogsStore.setState({ filters: {} });

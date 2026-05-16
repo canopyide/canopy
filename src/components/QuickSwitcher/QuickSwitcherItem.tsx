@@ -32,7 +32,7 @@ export function QuickSwitcherItem({
         "hover:bg-overlay-subtle hover:text-daintree-text",
         "aria-selected:bg-overlay-soft aria-selected:border-overlay aria-selected:text-daintree-text",
         "aria-selected:before:absolute aria-selected:before:left-0 aria-selected:before:top-2 aria-selected:before:bottom-2",
-        "aria-selected:before:w-[2px] aria-selected:before:rounded-r aria-selected:before:bg-daintree-accent aria-selected:before:content-['']"
+        "aria-selected:before:w-[2px] aria-selected:before:bg-daintree-accent aria-selected:before:content-['']"
       )}
       onClick={() => onSelect(item)}
       aria-selected={isSelected}
@@ -67,7 +67,9 @@ export function QuickSwitcherItem({
         {item.subtitle && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="text-xs text-daintree-text/50 truncate">{item.subtitle}</div>
+              <div className="text-xs text-daintree-text/50 truncate transition-colors group-aria-selected:text-daintree-text/60">
+                {item.subtitle}
+              </div>
             </TooltipTrigger>
             <TooltipContent side="bottom">{item.subtitle}</TooltipContent>
           </Tooltip>

@@ -1,8 +1,9 @@
 import { useMemo, useCallback, useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { useErrorStore, type ErrorRecord, type RetryAction } from "@/store";
+import { useErrorStore, type ErrorRecord, type RetryAction, RECURRENCE_THRESHOLD } from "@/store";
 import { Copy, Check, Lightbulb } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { logError } from "@/utils/logger";
 
 const ERROR_TYPE_LABELS: Record<string, string> = {
@@ -53,7 +54,12 @@ function ErrorRow({
   const typeLabel = ERROR_TYPE_LABELS[error.type] || "Error";
   const typeColor = ERROR_TYPE_COLORS[error.type] || "text-status-error";
   const isRetrying = !!error.retryProgress;
-  const canRetry = error.isTransient && error.retryAction && onRetry;
+  const canRetry =
+    error.retryability === "auto" &&
+    error.retryAction &&
+    onRetry &&
+    !error.retryExhausted &&
+    (error.occurrenceCount ?? 0) < RECURRENCE_THRESHOLD;
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -251,8 +257,12 @@ export function ProblemsContent({ onRetry, onCancelRetry, className }: ProblemsC
   return (
     <div className={cn("h-full overflow-auto", className)}>
       {activeErrors.length === 0 ? (
-        <div className="flex items-center justify-center h-full text-daintree-text/60 text-sm">
-          No problems detected
+        <div className="flex items-center justify-center h-full">
+          {errors.length > 0 ? (
+            <EmptyState variant="user-cleared" scale="sidebar" title="All problems resolved" />
+          ) : (
+            <EmptyState variant="zero-data" scale="sidebar" title="No problems detected" />
+          )}
         </div>
       ) : (
         <table className="w-full">

@@ -61,6 +61,14 @@ export function injectSkeletonCss(wc: WebContents): void {
   lines.push(`  --skeleton-sidebar-width: ${sidebarWidth}px;`);
   lines.push(`  --skeleton-focus-mode: ${focusMode ? "1" : "0"};`);
 
+  // Reserve space for Windows native caption buttons (minimize/maximize/close).
+  // Static 138px ≈ 3 × 46px backplates on Windows 11 @ 96 DPI; Electron 41 has
+  // no API to read actual geometry, so the trailing toolbar spacer in Toolbar.tsx
+  // uses this var with a 138px fallback. See issue #7951.
+  if (process.platform === "win32") {
+    lines.push("  --win-caption-width: 138px;");
+  }
+
   lines.push("}");
 
   // If focus mode is active, hide the skeleton sidebar

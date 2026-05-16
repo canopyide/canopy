@@ -97,4 +97,71 @@ describe("generate-update-metadata", () => {
       })
     ).rejects.toThrow("Expected exactly 1 Linux AppImage artifact");
   });
+
+  it("writes Windows metadata for the NSIS .exe and ignores .appx artifacts", async () => {
+    const dir = await tempDir();
+    const releaseDir = path.join(dir, "release");
+    await mkdir(releaseDir);
+    const packagePath = await writePackageJson(dir, "1.2.3");
+    await writeArtifact(releaseDir, "Daintree-1.2.3-setup.exe", "nsis-installer");
+    await writeArtifact(releaseDir, "Daintree-1.2.3-setup.exe.blockmap", "blockmap");
+    await writeArtifact(releaseDir, "Daintree-1.2.3.appx", "appx");
+
+    // electron-updater on Windows polls `<channel>.yml` (no platform suffix).
+    // Mirror the production filename so this test catches a regression that
+    // accidentally moves Windows metadata into `latest-win.yml` again.
+    const metadataPath = path.join(releaseDir, "latest.yml");
+    const metadata = await generateUpdateMetadata({
+      platform: "windows",
+      releaseDir,
+      metadataPath,
+      packagePath,
+      releaseDate: "2026-01-02T03:04:05.000Z",
+    });
+
+    const fromFile = load(await readFile(metadataPath, "utf8"));
+    expect(fromFile).toEqual(metadata);
+    expect(metadata.version).toBe("1.2.3");
+    expect(metadata.path).toBe("Daintree-1.2.3-setup.exe");
+    expect(metadata.files).toHaveLength(1);
+    expect(metadata.files[0]).toMatchObject({
+      url: "Daintree-1.2.3-setup.exe",
+      blockMapSize: 8,
+    });
+  });
+
+  it("fails when Windows packaging produced no NSIS .exe", async () => {
+    const dir = await tempDir();
+    const releaseDir = path.join(dir, "release");
+    await mkdir(releaseDir);
+    const packagePath = await writePackageJson(dir);
+    await writeArtifact(releaseDir, "Daintree-1.2.3.appx", "appx");
+
+    await expect(
+      generateUpdateMetadata({
+        platform: "windows",
+        releaseDir,
+        metadataPath: path.join(releaseDir, "latest.yml"),
+        packagePath,
+      })
+    ).rejects.toThrow("Expected exactly 1 Windows NSIS .exe artifact, found 0");
+  });
+
+  it("fails when Windows packaging produced more than one NSIS .exe", async () => {
+    const dir = await tempDir();
+    const releaseDir = path.join(dir, "release");
+    await mkdir(releaseDir);
+    const packagePath = await writePackageJson(dir);
+    await writeArtifact(releaseDir, "Daintree-1.2.3-x64.exe", "x64");
+    await writeArtifact(releaseDir, "Daintree-1.2.3-arm64.exe", "arm64");
+
+    await expect(
+      generateUpdateMetadata({
+        platform: "windows",
+        releaseDir,
+        metadataPath: path.join(releaseDir, "latest.yml"),
+        packagePath,
+      })
+    ).rejects.toThrow("Expected exactly 1 Windows NSIS .exe artifact, found 2");
+  });
 });

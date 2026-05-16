@@ -311,12 +311,17 @@ export function McpServerSettingsTab() {
 
   const sseUrl = status.port ? `http://127.0.0.1:${status.port}/sse` : null;
 
+  // Rotation is the revoke-all primitive — it invalidates every external
+  // client holding the current key in one shot (Tier D3). Gate it behind
+  // typing the last 4 characters, matching DaintreeAssistantSettingsTab.
+  const apiKeySuffix = status.apiKey && status.apiKey.length >= 8 ? status.apiKey.slice(-4) : "";
+
   return (
     <div className="space-y-6">
       <SettingsSwitchCard
         icon={McpServerIcon}
-        title="MCP Server"
-        subtitle="Start a local Model Context Protocol server so AI agents can discover and invoke Daintree actions directly."
+        title="MCP server"
+        subtitle="Start a local Model Context Protocol server so AI agents can discover and invoke Daintree actions directly"
         isEnabled={status.enabled}
         onChange={handleToggle}
         ariaLabel="Enable MCP server"
@@ -484,8 +489,9 @@ export function McpServerSettingsTab() {
                   </button>
                   <button
                     onClick={() => setShowRotateConfirm(true)}
-                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-[var(--radius-md)] border border-daintree-border text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft transition-colors"
-                    title="Rotate API key"
+                    disabled={!apiKeySuffix}
+                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-[var(--radius-md)] border border-daintree-border text-daintree-text/70 hover:text-daintree-text hover:bg-overlay-soft transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-daintree-text/70"
+                    title={apiKeySuffix ? "Rotate API key" : "Waiting for the MCP key to load…"}
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     Rotate API key
@@ -515,9 +521,7 @@ export function McpServerSettingsTab() {
                 variant="compact"
                 title="Capture audit log"
                 subtitle={
-                  auditEnabled
-                    ? "Recording every dispatch."
-                    : "New dispatches will not be recorded."
+                  auditEnabled ? "Recording every dispatch" : "New dispatches will not be recorded"
                 }
                 isEnabled={auditEnabled}
                 onChange={handleAuditEnabledToggle}
@@ -586,13 +590,29 @@ export function McpServerSettingsTab() {
         isOpen={showRotateConfirm}
         onClose={isRotating ? undefined : handleCancelRotate}
         title="Rotate API key?"
-        description="The current key will be invalidated immediately. External clients using this key will need to update their configuration."
+        description={
+          <>
+            The current key will be invalidated immediately. External clients using this key will
+            need to update their configuration.
+            {apiKeySuffix && (
+              <>
+                {" "}
+                Type the last 4 characters of the current key (
+                <code className="font-mono text-xs bg-daintree-bg/50 px-1.5 py-0.5 rounded border border-daintree-border">
+                  {apiKeySuffix}
+                </code>
+                ) to confirm.
+              </>
+            )}
+          </>
+        }
         confirmLabel="Rotate key"
         cancelLabel="Cancel"
         onConfirm={confirmRotateApiKey}
         isConfirmLoading={isRotating}
         variant="destructive"
         zIndex="nested"
+        typedNameTarget={apiKeySuffix || undefined}
       />
 
       <ConfirmDialog

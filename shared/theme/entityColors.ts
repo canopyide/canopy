@@ -3,6 +3,7 @@ export const PANEL_KIND_BRAND_COLORS = {
   agent: "var(--theme-accent-primary)",
   browser: "var(--theme-category-blue)",
   "dev-preview": "var(--theme-category-teal)",
+  review: "var(--theme-category-violet)",
 } as const;
 
 export const BRANCH_TYPE_COLOR_CLASSES = {

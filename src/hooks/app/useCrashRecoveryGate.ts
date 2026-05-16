@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { PendingCrash, CrashRecoveryAction, CrashRecoveryConfig } from "@shared/types/ipc";
 import { isElectronAvailable } from "../useElectron";
+import { useRestoreConfirmationStore } from "@/store/restoreConfirmationStore";
 
 export type CrashRecoveryGateState =
   | { status: "loading" }
@@ -30,10 +31,17 @@ export function useCrashRecoveryGate(): {
         }
 
         if (config.autoRestoreOnCrash && (pending.crashCount ?? 0) < 2) {
+          const suspectCount = (pending.panels ?? []).filter((p) => p.isSuspect).length;
+          const crashCount = pending.crashCount ?? 0;
           const allPanelIds = (pending.panels ?? []).map((p) => p.id);
           electron.crashRecovery
             .resolve({ kind: "restore", panelIds: allPanelIds })
-            .then(() => setState({ status: "none" }))
+            .then(() => {
+              useRestoreConfirmationStore
+                .getState()
+                .showRestoreConfirmation({ suspectCount, crashCount });
+              setState({ status: "none" });
+            })
             .catch(() => setState({ status: "none" }));
           return;
         }

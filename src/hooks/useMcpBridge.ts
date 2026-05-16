@@ -102,6 +102,7 @@ export function useMcpBridge(): void {
                   actionTitle: definition.title,
                   actionDescription: definition.description,
                   argsSummary: summarizeMcpArgs(args),
+                  danger: definition.danger,
                 });
               } finally {
                 inFlightConfirms.delete(requestId);

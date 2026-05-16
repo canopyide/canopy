@@ -11,7 +11,6 @@ import { useKeybindingDisplay } from "@/hooks/useKeybinding";
 import { useProjectSwitcherPalette } from "@/hooks";
 import { useCopyWithFeedback } from "@/hooks/useCopyWithFeedback";
 import { actionService } from "@/services/ActionService";
-import { notify } from "@/lib/notify";
 import { ProjectSwitcherPalette } from "./ProjectSwitcherPalette";
 import type { SearchableProject } from "@/hooks/useProjectSwitcherPalette";
 
@@ -95,20 +94,6 @@ export function ProjectSwitcher() {
     [copyProjectPath]
   );
 
-  const handleSelectBackground = useCallback(
-    (project: SearchableProject) => {
-      if (project.isActive || project.isMissing) return;
-      projectSwitcher.close();
-      notify({
-        type: "info",
-        title: "Background open",
-        message: "Background open is not yet available — coming soon",
-        duration: 3000,
-      });
-    },
-    [projectSwitcher]
-  );
-
   const handleSelectNewWindow = useCallback(
     (project: SearchableProject) => {
       if (project.isMissing) return;
@@ -173,7 +158,6 @@ export function ProjectSwitcher() {
             onLocateProject={handleLocateProject}
             onTogglePinProject={handleTogglePinProject}
             onCopyPath={handleCopyPath}
-            onSelectBackground={handleSelectBackground}
             onSelectNewWindow={handleSelectNewWindow}
             onHoverProject={projectSwitcher.onHoverProject}
             onHoverProjectEnd={projectSwitcher.onHoverProjectEnd}
@@ -243,7 +227,6 @@ export function ProjectSwitcher() {
         onTogglePinProject={handleTogglePinProject}
         onOpenProjectSettings={handleOpenSettings}
         onCopyPath={handleCopyPath}
-        onSelectBackground={handleSelectBackground}
         onHoverProject={projectSwitcher.onHoverProject}
         onHoverProjectEnd={projectSwitcher.onHoverProjectEnd}
         removeConfirmProject={projectSwitcher.removeConfirmProject}

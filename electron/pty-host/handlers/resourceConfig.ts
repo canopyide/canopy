@@ -14,13 +14,15 @@ export function createResourceConfigHandlers(ctx: HostContext): HandlerMap {
     },
 
     "set-resource-profile": (msg) => {
-      const profileConfig = RESOURCE_PROFILE_CONFIGS[msg.profile as ResourceProfile];
+      const profile = msg.profile as ResourceProfile;
+      const profileConfig = RESOURCE_PROFILE_CONFIGS[profile];
       if (profileConfig) {
         processTreeCache.setPollInterval(profileConfig.processTreePollInterval);
         console.log(
           `[PtyHost] Resource profile set to: ${msg.profile} (processTree poll: ${profileConfig.processTreePollInterval}ms)`
         );
       }
+      ctx.resourceGovernor.setResourceProfile(profile);
     },
 
     "set-process-tree-poll-interval": (msg) => {

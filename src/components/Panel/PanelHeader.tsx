@@ -364,6 +364,7 @@ function PanelHeaderComponent({
 
   const getAriaLabel = () => {
     if (kind === "browser") return "Edit browser title";
+    if (kind === "review") return "Edit review title";
     if (!chrome.isAgent && kind === "terminal") return "Edit terminal title";
     return "Edit agent title";
   };
@@ -372,9 +373,11 @@ function PanelHeaderComponent({
     const prefix =
       kind === "browser"
         ? "Browser title"
-        : !chrome.isAgent && kind === "terminal"
-          ? "Terminal title"
-          : "Agent title";
+        : kind === "review"
+          ? "Review title"
+          : !chrome.isAgent && kind === "terminal"
+            ? "Terminal title"
+            : "Agent title";
     return `${prefix}: ${title}. Press Enter or F2 to edit`;
   };
 
@@ -664,7 +667,7 @@ function PanelHeaderComponent({
               onChange={(e) => onEditingValueChange(e.target.value)}
               onKeyDown={onTitleInputKeyDown}
               onBlur={onTitleSave}
-              className="text-sm font-medium bg-daintree-bg/60 border border-border-strong px-1 h-5 min-w-32 text-daintree-text select-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
+              className="text-xs font-medium bg-overlay-soft border border-transparent px-1 h-5 min-w-32 text-daintree-text select-text transition-colors focus:outline-hidden"
               aria-label={getAriaLabel()}
             />
           ) : (

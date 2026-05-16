@@ -6,8 +6,9 @@
 // installed client until a hand-rolled republish — see #7573.
 //
 // Reads the new version from the local artifacts already downloaded into
-// `release/${UPDATE_METADATA_PREFIX}-{mac,linux}.yml`, fetches the same files
-// from https://updates.daintree.org/releases/, and compares with `semver.gt`.
+// `release/${UPDATE_METADATA_PREFIX}{,-mac,-linux}.yml` (Windows uses the
+// no-suffix file), fetches the same files from
+// https://updates.daintree.org/releases/, and compares with `semver.gt`.
 // Equal versions also fail (republishing the same version is the same footgun).
 //
 // Failure modes:
@@ -25,7 +26,19 @@ import semver from "semver";
 
 const FEED_BASE_URL = "https://updates.daintree.org/releases";
 const FETCH_TIMEOUT_MS = 15_000;
-const PLATFORMS = ["mac", "linux"];
+const PLATFORMS = ["mac", "linux", "win"];
+
+/**
+ * Map a platform identifier to the metadata filename electron-updater actually
+ * fetches. Windows is the historical odd-one-out: clients poll `<prefix>.yml`
+ * with no `-win` suffix (electron-updater Provider.getChannelFilePrefix()
+ * returns "" for win32). Using the wrong filename here means the gate checks
+ * a file no real client downloads.
+ */
+function platformFilename(prefix, platform) {
+  if (platform === "win") return `${prefix}.yml`;
+  return `${prefix}-${platform}.yml`;
+}
 const ALLOWED_PREFIXES = ["latest", "rc", "beta"];
 
 function fail(message) {
@@ -91,7 +104,7 @@ export function checkVersionMonotonic(liveVersion, newVersion) {
 }
 
 async function fetchLiveVersion(prefix, platform) {
-  const url = `${FEED_BASE_URL}/${prefix}-${platform}.yml`;
+  const url = `${FEED_BASE_URL}/${platformFilename(prefix, platform)}`;
   const controller = new AbortController();
   // Keep the abort signal armed across both the headers fetch and the body
   // read — a CDN that returns 200 then stalls the body would otherwise hang
@@ -137,7 +150,7 @@ async function fetchLiveVersion(prefix, platform) {
 }
 
 async function readLocalVersion(releaseDir, prefix, platform) {
-  const filePath = path.join(releaseDir, `${prefix}-${platform}.yml`);
+  const filePath = path.join(releaseDir, platformFilename(prefix, platform));
   let body;
   try {
     body = await readFile(filePath, "utf8");
@@ -176,16 +189,17 @@ async function main() {
     fail(error instanceof Error ? error.message : String(error));
   }
 
-  const [macLocal, linuxLocal] = locals;
-  if (macLocal.version !== linuxLocal.version) {
+  const newVersion = locals[0].version;
+  const mismatches = locals.filter((entry) => entry.version !== newVersion);
+  if (mismatches.length > 0) {
+    const summary = locals
+      .map((entry, idx) => `${PLATFORMS[idx]}=${entry.version} (${entry.filePath})`)
+      .join(" ");
     fail(
-      `mac and linux artifacts disagree on the new version: ` +
-        `mac=${macLocal.version} (${macLocal.filePath}) ` +
-        `linux=${linuxLocal.version} (${linuxLocal.filePath}) — ` +
+      `platform artifacts disagree on the new version: ${summary} — ` +
         `something went wrong in the matrix build.`
     );
   }
-  const newVersion = macLocal.version;
 
   // Fetch every channel feed in parallel so a transient mac error and a real
   // linux regression both surface in the same `::error::` annotation block,
@@ -206,7 +220,7 @@ async function main() {
     const live = settled.value;
     if (live.version === null) {
       console.log(
-        `[monotonic] ${platform}: no live ${prefix}-${platform}.yml (HTTP 404) — first release in channel, allowing.`
+        `[monotonic] ${platform}: no live ${platformFilename(prefix, platform)} (HTTP 404) — first release in channel, allowing.`
       );
       continue;
     }

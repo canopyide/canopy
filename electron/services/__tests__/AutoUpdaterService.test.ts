@@ -567,8 +567,15 @@ describe("AutoUpdaterService", () => {
   });
 
   describe("Windows Store updater guard", () => {
-    it("registers only channel-preference IPC handlers on Windows", () => {
+    afterEach(() => {
+      // isWindowsStoreBuild() now reads process.windowsStore. Reset it after
+      // each test so unrelated tests in this file start from the NSIS default.
+      Reflect.deleteProperty(process, "windowsStore");
+    });
+
+    it("registers only channel-preference IPC handlers on Windows Store builds", () => {
       Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+      Object.defineProperty(process, "windowsStore", { value: true, configurable: true });
 
       autoUpdaterService.initialize();
 
@@ -581,8 +588,9 @@ describe("AutoUpdaterService", () => {
       expect(autoUpdaterMock.checkForUpdatesAndNotify).not.toHaveBeenCalled();
     });
 
-    it("manual checks are no-ops on Windows", () => {
+    it("manual checks are no-ops on Windows Store builds", () => {
       Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+      Object.defineProperty(process, "windowsStore", { value: true, configurable: true });
 
       autoUpdaterService.initialize();
       autoUpdaterService.checkForUpdatesManually();

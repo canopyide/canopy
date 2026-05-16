@@ -99,7 +99,7 @@ export async function copyContextWithFeedback(
       details: e instanceof Error ? e.stack : undefined,
       source: "WorktreeCard",
       context: { worktreeId },
-      isTransient: true,
+      retryability: "auto",
       correlationId: crypto.randomUUID(),
     });
   }
@@ -168,7 +168,7 @@ export function useWorktreeActions({
           context: {
             worktreeId: worktree.id,
           },
-          isTransient: true,
+          retryability: "auto",
           correlationId: crypto.randomUUID(),
         });
 
@@ -216,7 +216,7 @@ export function useWorktreeActions({
           type: "config",
           message: "No active terminals to save in this worktree.",
           source: "Save Layout",
-          isTransient: true,
+          retryability: "auto",
           correlationId: crypto.randomUUID(),
         });
         return;

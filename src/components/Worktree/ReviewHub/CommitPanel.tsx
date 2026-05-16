@@ -17,7 +17,7 @@ interface CommitPanelProps {
   hasConflicts: boolean;
   hasRemote: boolean;
   worktreePath: string;
-  /** Current branch name from the staging status; used for the protected-branch confirm gate. */
+  /** Current branch name from the staging status; surfaced in the push confirm dialog. */
   currentBranch?: string | null;
   commitMessage: string;
   onCommitMessageChange: (message: string) => void;
@@ -27,6 +27,10 @@ interface CommitPanelProps {
   isPushing: boolean;
   pushProgress: Map<string, PushProgressEvent>;
   pushTargetBranch: string | null;
+  /** When true, the user has opted out of the push confirm dialog for this worktree. */
+  skipPushConfirm: boolean;
+  /** Persist the per-worktree opt-out preference. Called only when the user confirms the push. */
+  onSetSkipPushConfirm: (value: boolean) => void;
 }
 
 export function CommitPanel({
@@ -44,9 +48,12 @@ export function CommitPanel({
   isPushing,
   pushProgress,
   pushTargetBranch,
+  skipPushConfirm,
+  onSetSkipPushConfirm,
 }: CommitPanelProps) {
   const [isCommitting, setIsCommitting] = useState(false);
-  const [protectedConfirmOpen, setProtectedConfirmOpen] = useState(false);
+  const [pushConfirmOpen, setPushConfirmOpen] = useState(false);
+  const [dontAskChecked, setDontAskChecked] = useState(false);
 
   const isProtected = isProtectedBranch(currentBranch?.toLowerCase());
 
@@ -166,22 +173,41 @@ export function CommitPanel({
     }
     if (isBusy) return;
     if (hasRemote) {
-      if (isProtected) {
-        // D2 confirmation: pushing to a protected branch is shared-state
-        // mutation. Show the commit message preview before any IPC fires.
-        setProtectedConfirmOpen(true);
+      // D2 confirmation: every remote push is a shared-state mutation. Show
+      // the commit message + target branch preview unless the user has opted
+      // out for this worktree (#8025).
+      if (!skipPushConfirm) {
+        setPushConfirmOpen(true);
         return;
       }
       void handleCommitAndPush();
     } else {
       void handleCommit();
     }
-  }, [isBlocked, isBusy, hasRemote, isProtected, focusBlocker, handleCommitAndPush, handleCommit]);
+  }, [
+    isBlocked,
+    isBusy,
+    hasRemote,
+    skipPushConfirm,
+    focusBlocker,
+    handleCommitAndPush,
+    handleCommit,
+  ]);
 
-  const handleConfirmProtectedPush = useCallback(() => {
-    setProtectedConfirmOpen(false);
+  const handleConfirmPush = useCallback(() => {
+    // The opt-out is persisted on confirm regardless of whether the
+    // subsequent push succeeds — the user expressed a preference about the
+    // confirm dialog, which is orthogonal to network/rejection failure.
+    onSetSkipPushConfirm(dontAskChecked);
+    setPushConfirmOpen(false);
+    setDontAskChecked(false);
     void handleCommitAndPush();
-  }, [handleCommitAndPush]);
+  }, [dontAskChecked, onSetSkipPushConfirm, handleCommitAndPush]);
+
+  const handleClosePushConfirm = useCallback(() => {
+    setPushConfirmOpen(false);
+    setDontAskChecked(false);
+  }, []);
 
   const progressEntries = [...pushProgress.values()];
   const hasProgress = progressEntries.length > 0;
@@ -381,29 +407,53 @@ export function CommitPanel({
       )}
 
       <ConfirmDialog
-        isOpen={protectedConfirmOpen}
-        onClose={() => setProtectedConfirmOpen(false)}
+        isOpen={pushConfirmOpen}
+        onClose={handleClosePushConfirm}
         title={`Push to '${currentBranch ?? ""}'?`}
         description={
-          <span>
-            <span className="font-mono">{currentBranch ?? ""}</span> is a protected branch. Most
-            teams use pull requests instead. Review your commit message before pushing:
-          </span>
+          isProtected ? (
+            <span>
+              <span className="font-mono">{currentBranch ?? ""}</span> is a protected branch. Most
+              teams use pull requests instead. Review your commit message before pushing:
+            </span>
+          ) : (
+            <span>Review your commit message before pushing:</span>
+          )
         }
         confirmLabel={`Push to ${currentBranch ?? "branch"}`}
         variant="default"
         zIndex="nested"
-        onConfirm={handleConfirmProtectedPush}
+        onConfirm={handleConfirmPush}
       >
-        <pre
-          data-testid="commit-panel-protected-confirm-message"
-          className={cn(
-            "max-h-40 overflow-y-auto rounded-[var(--radius-md)] border border-divider",
-            "bg-surface-inset px-3 py-2 text-xs font-mono whitespace-pre-wrap break-words text-daintree-text"
-          )}
-        >
-          {commitMessage}
-        </pre>
+        <div className="flex flex-col gap-2">
+          <div>
+            <span
+              data-testid="commit-panel-push-confirm-branch"
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-tint/[0.07] border border-tint/[0.08] text-[11px] font-mono text-daintree-text"
+            >
+              {currentBranch ?? ""}
+            </span>
+          </div>
+          <pre
+            data-testid="commit-panel-push-confirm-message"
+            className={cn(
+              "max-h-40 overflow-y-auto rounded-[var(--radius-md)] border border-divider",
+              "bg-surface-inset px-3 py-2 text-xs font-mono whitespace-pre-wrap break-words text-daintree-text"
+            )}
+          >
+            {commitMessage}
+          </pre>
+          <label className="flex items-center gap-2 text-xs text-daintree-text/60 select-none">
+            <input
+              type="checkbox"
+              data-testid="commit-panel-push-confirm-dont-ask"
+              checked={dontAskChecked}
+              onChange={(e) => setDontAskChecked(e.target.checked)}
+              className="accent-daintree-accent"
+            />
+            Don't ask again for this worktree
+          </label>
+        </div>
       </ConfirmDialog>
 
       <div className="flex items-center gap-2">

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { ActionDanger } from "@shared/types/actions";
 import type { McpConfirmationDecision } from "@shared/types/ipc/mcpServer";
 
 /**
@@ -12,6 +13,12 @@ export interface PendingMcpConfirm {
   actionTitle: string;
   actionDescription: string;
   argsSummary: string;
+  /**
+   * The dispatched action's registry `danger` classification. Drives the
+   * confirm dialog's visual severity — only `"confirm"` renders destructive
+   * (red) styling; read-only/safe dispatches must not borrow that weight.
+   */
+  danger: ActionDanger;
   enqueuedAt: number;
 }
 

@@ -2,6 +2,7 @@ import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
+import { cn } from "@/lib/utils";
 
 export interface WorktreeSortDragData {
   type: "worktree-sort";
@@ -85,12 +86,29 @@ export const SortableWorktreeCard = React.memo(function SortableWorktreeCard({
     transform,
     transition,
     isDragging,
+    isOver,
+    active,
+    over,
   } = useSortable({
     id: getWorktreeSortDragId(worktreeId),
     data: dragData,
     disabled,
     animateLayoutChanges: () => false,
   });
+
+  // Directional insertion-line indicator: only fire for sort drags (a terminal
+  // or browser drag would also raise isOver on the inner droppable, but not on
+  // the sortable), and only when dnd-kit has measured the dragged rect.
+  // Compare midpoints — index comparison gives the optimistic visual slot, not
+  // the user's intent relative to the hovered row.
+  const isSortDragOver = isOver && active?.data.current?.type === "worktree-sort";
+  const translatedRect = active?.rect.current.translated;
+  let dropDirection: "above" | "below" | null = null;
+  if (isSortDragOver && translatedRect && over) {
+    const draggedMid = translatedRect.top + translatedRect.height / 2;
+    const overMid = over.rect.top + over.rect.height / 2;
+    dropDirection = draggedMid < overMid ? "above" : "below";
+  }
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -117,10 +135,22 @@ export const SortableWorktreeCard = React.memo(function SortableWorktreeCard({
       aria-roledescription="sortable worktree"
       aria-rowindex={ariaRowIndex}
       aria-current={isActive ? "true" : undefined}
+      aria-keyshortcuts={disabled ? undefined : "Alt+ArrowUp Alt+ArrowDown"}
       data-worktree-row={worktreeId}
       tabIndex={-1}
+      className="relative"
       {...filteredAttributes}
     >
+      {dropDirection !== null && (
+        <div
+          aria-hidden="true"
+          data-worktree-drop-indicator={dropDirection}
+          className={cn(
+            "pointer-events-none absolute inset-x-0 z-10 h-0.5 bg-border-strong",
+            dropDirection === "above" ? "-top-px" : "-bottom-px"
+          )}
+        />
+      )}
       <div role="gridcell">
         <div
           className={`h-full transition-opacity duration-150 motion-reduce:transition-none ${

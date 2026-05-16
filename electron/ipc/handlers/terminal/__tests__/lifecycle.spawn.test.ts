@@ -167,6 +167,10 @@ const mockUnbindTerminal = vi.hoisted(() => vi.fn<(terminalId: string) => void>(
 
 const mockGetBypassPermissions = vi.hoisted(() => vi.fn<(token: string) => boolean>(() => false));
 
+const mockGetAssistantScratchEnv = vi.hoisted(() =>
+  vi.fn<(token: string) => Record<string, string> | null>(() => null)
+);
+
 vi.mock("../../../../services/HelpSessionService.js", () => ({
   helpSessionService: {
     validateToken: (token: string) => mockValidateToken(token),
@@ -174,6 +178,7 @@ vi.mock("../../../../services/HelpSessionService.js", () => ({
     getGeminiLaunchArgs: (token: string) => mockGetGeminiLaunchArgs(token),
     getCopilotLaunchArgs: (token: string) => mockGetCopilotLaunchArgs(token),
     getGeminiSpawnEnv: (token: string) => mockGetGeminiSpawnEnv(token),
+    getAssistantScratchEnv: (token: string) => mockGetAssistantScratchEnv(token),
     getBypassPermissions: (token: string) => mockGetBypassPermissions(token),
     markTerminalForToken: (token: string, terminalId: string) =>
       mockMarkTerminalForToken(token, terminalId),
@@ -349,6 +354,67 @@ describe("terminal spawn handler - projectId resolution", () => {
     });
 
     expect(mockGetProjectSettings).toHaveBeenCalledWith("project-a-id");
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.shell).toBe("/bin/bash");
+  });
+});
+
+describe("terminal spawn handler - PTY pool eligibility (#7945 regression guard)", () => {
+  let ptyClient: {
+    spawn: ReturnType<typeof vi.fn>;
+    hasTerminal: ReturnType<typeof vi.fn>;
+    write: ReturnType<typeof vi.fn>;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ptyClient = {
+      spawn: vi.fn(),
+      hasTerminal: vi.fn(() => false),
+      write: vi.fn(),
+    };
+    mockGetCurrentProject.mockReturnValue({ id: "p1", path: "/tmp", name: "p" });
+    mockGetProjectById.mockReturnValue(null);
+    mockGetProjectSettings.mockResolvedValue({});
+  });
+
+  it("leaves shell undefined in the spawn options for plain terminals so the PTY pool can match", async () => {
+    // The PTY pool gate in `acquirePtyProcess` (terminalSpawn.ts) requires
+    // `!options.shell`. Promoting the renderer-side default into the spawn
+    // options would silently disable the pool for every plain terminal —
+    // including the cost of `where pwsh.exe` PATH probes on Windows.
+    // The renderer-side `getDefaultShell()` fallback that #7945 introduced
+    // is for quoting decisions only; it must not leak into spawnShell.
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler({} as Electron.IpcMainInvokeEvent, {
+      cwd: "/tmp",
+      cols: 80,
+      rows: 24,
+    });
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.shell).toBeUndefined();
+    expect(spawnArgs.command).toBeUndefined();
+  });
+
+  it("passes the explicit shell through to spawn options when one is set", async () => {
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cwd: "/tmp",
+        cols: 80,
+        rows: 24,
+        shell: "/bin/bash",
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
     const spawnArgs = ptyClient.spawn.mock.calls[0][1];
     expect(spawnArgs.shell).toBe("/bin/bash");
   });
@@ -664,6 +730,8 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
     mockMarkTerminalForToken.mockReset();
     mockMarkTerminalForToken.mockReturnValue(true);
     mockUnbindTerminal.mockReset();
+    mockGetAssistantScratchEnv.mockReset();
+    mockGetAssistantScratchEnv.mockReturnValue(null);
   });
 
   it("skips per-pane MCP injection when DAINTREE_MCP_TOKEN is a valid help token (session-dir owns the .mcp.json)", async () => {
@@ -1515,5 +1583,61 @@ describe("terminal spawn handler - help session detection (#6524)", () => {
     );
 
     expect(mockMarkTerminalForToken).not.toHaveBeenCalled();
+  });
+
+  it("merges DAINTREE_ASSISTANT_SCRATCH_DIR into spawn env for a help launch (#7947)", async () => {
+    mockValidateToken.mockImplementation((token) => (token === "help-token" ? "action" : false));
+    mockGetAssistantScratchEnv.mockImplementation((token) =>
+      token === "help-token"
+        ? { DAINTREE_ASSISTANT_SCRATCH_DIR: "/var/user-data/assistant-scratch/abc/sess-1" }
+        : null
+    );
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "claude",
+        launchAgentId: "claude",
+        env: { DAINTREE_MCP_TOKEN: "help-token" },
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    expect(ptyClient.spawn).toHaveBeenCalledTimes(1);
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.env?.DAINTREE_ASSISTANT_SCRATCH_DIR).toBe(
+      "/var/user-data/assistant-scratch/abc/sess-1"
+    );
+    // Original env keys (the help token) must be preserved.
+    expect(spawnArgs.env?.DAINTREE_MCP_TOKEN).toBe("help-token");
+  });
+
+  it("does not set DAINTREE_ASSISTANT_SCRATCH_DIR for a non-help launch", async () => {
+    mockValidateToken.mockReturnValue(false);
+
+    const deps = { ptyClient } as unknown as HandlerDependencies;
+    registerTerminalLifecycleHandlers(deps);
+
+    const handler = getSpawnHandler();
+    await handler(
+      {} as Electron.IpcMainInvokeEvent,
+      {
+        cols: 80,
+        rows: 24,
+        cwd: tmpDir,
+        command: "claude",
+        launchAgentId: "claude",
+      } as unknown as Parameters<typeof handler>[1]
+    );
+
+    const spawnArgs = ptyClient.spawn.mock.calls[0][1];
+    expect(spawnArgs.env?.DAINTREE_ASSISTANT_SCRATCH_DIR).toBeUndefined();
+    expect(mockGetAssistantScratchEnv).not.toHaveBeenCalled();
   });
 });

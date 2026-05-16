@@ -155,6 +155,23 @@ describe("KeybindingService", () => {
       expect(service.matchesEvent(event, "Ctrl+Alt+E")).toBe(false);
     });
 
+    it("rejects Ctrl+Alt+E on Linux AltGr when ctrlKey+altKey are also synthesized", () => {
+      // Some X11/Wayland setups synthesize ctrlKey+altKey alongside the
+      // AltGraph modifier. The explicit guard must still reject the match.
+      setPlatform("Linux x86_64");
+
+      const service = new KeybindingService();
+      const event = createKeyboardEvent({
+        key: "€",
+        code: "KeyE",
+        ctrlKey: true,
+        altKey: true,
+        getModifierState: altGraphModifierState(),
+      });
+
+      expect(service.matchesEvent(event, "Ctrl+Alt+E")).toBe(false);
+    });
+
     it("matches legitimate Ctrl+Alt+E on US-layout Windows (positive control)", () => {
       setPlatform("Win32");
 
@@ -494,12 +511,15 @@ describe("KeybindingService", () => {
     expect(service.getBinding("terminal.new")?.combo).toBe("Cmd+Alt+T");
   });
 
-  it("binds project MRU plus to down/older and minus to up/newer by default", () => {
+  it("binds project MRU plus by default and leaves minus unbound", () => {
     setPlatform("MacIntel");
     const service = new KeybindingService();
 
     expect(service.getBinding("project.mruCycleOlder")?.combo).toBe("Cmd+Alt+=");
-    expect(service.getBinding("project.mruCycleNewer")?.combo).toBe("Cmd+Alt+-");
+    expect(service.getBinding("project.mruCycleNewer")).toBeUndefined();
+    expect(
+      DEFAULT_KEYBINDINGS.filter((b) => b.actionId === "project.mruCycleOlder").map((b) => b.combo)
+    ).toContain("Cmd+Shift+Alt+=");
 
     const plus = createKeyboardEvent({
       key: "≠",
@@ -509,13 +529,22 @@ describe("KeybindingService", () => {
     });
     expect(service.findMatchingAction(plus)?.actionId).toBe("project.mruCycleOlder");
 
+    const shiftedPlus = createKeyboardEvent({
+      key: "+",
+      code: "Equal",
+      metaKey: true,
+      altKey: true,
+      shiftKey: true,
+    });
+    expect(service.findMatchingAction(shiftedPlus)?.actionId).toBe("project.mruCycleOlder");
+
     const minus = createKeyboardEvent({
       key: "–",
       code: "Minus",
       metaKey: true,
       altKey: true,
     });
-    expect(service.findMatchingAction(minus)?.actionId).toBe("project.mruCycleNewer");
+    expect(service.findMatchingAction(minus)).toBeUndefined();
   });
 
   it("matchesEvent returns true for Shift+F10", () => {
@@ -980,6 +1009,200 @@ describe("KeybindingService", () => {
     });
   });
 
+  describe("platform-aware Cmd/Ctrl conflict detection — issue #7941", () => {
+    it("findConflicts treats Cmd+Shift+E and Ctrl+Shift+E as the same combo on Windows", () => {
+      // terminal.sendToAgent defaults to "Cmd+Shift+E". The rebind UI must
+      // surface a conflict when a user tries to assign "Ctrl+Shift+E" on
+      // non-Mac because both map to the same physical key.
+      setPlatform("Win32");
+      const service = new KeybindingService();
+
+      const conflicts = service.findConflicts("Ctrl+Shift+E");
+      expect(
+        conflicts.some((c) => c.actionId === "terminal.sendToAgent" && c.kind === "conflict")
+      ).toBe(true);
+    });
+
+    it("findConflicts treats Cmd+Shift+E and Ctrl+Shift+E as the same combo on Linux", () => {
+      setPlatform("Linux x86_64");
+      const service = new KeybindingService();
+
+      const conflicts = service.findConflicts("Ctrl+Shift+E");
+      expect(
+        conflicts.some((c) => c.actionId === "terminal.sendToAgent" && c.kind === "conflict")
+      ).toBe(true);
+    });
+
+    it("findConflicts keeps Cmd+Shift+E and Ctrl+Shift+E distinct on macOS", () => {
+      // On macOS, Cmd and Ctrl are physically distinct keys — assigning
+      // Ctrl+Shift+E should NOT collide with the Cmd+Shift+E default.
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+
+      const conflicts = service.findConflicts("Ctrl+Shift+E");
+      expect(conflicts.some((c) => c.actionId === "terminal.sendToAgent")).toBe(false);
+    });
+
+    it("findConflicts surfaces a cross-form chord-prefix shadow on non-Mac", () => {
+      setPlatform("Win32");
+      const service = new KeybindingService();
+
+      // terminal.closeAll defaults to "Cmd+K Cmd+W". A non-chord "Ctrl+K"
+      // candidate should be reported as shadowed on non-Mac because Cmd+K
+      // and Ctrl+K map to the same physical key.
+      const conflicts = service.findConflicts("Ctrl+K");
+      expect(
+        conflicts.some((c) => c.actionId === "terminal.closeAll" && c.kind === "shadowed")
+      ).toBe(true);
+    });
+
+    it("registerBinding rejects Ctrl+Shift+E when Cmd+Shift+E is already registered on Windows", () => {
+      setPlatform("Win32");
+      const service = new KeybindingService();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      service.registerBinding({
+        actionId: "test.first",
+        combo: "Cmd+Shift+F4",
+        scope: "global",
+        priority: 0,
+      });
+      service.registerBinding({
+        actionId: "test.second",
+        combo: "Ctrl+Shift+F4",
+        scope: "global",
+        priority: 0,
+      });
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(service.getBinding("test.first")?.combo).toBe("Cmd+Shift+F4");
+      expect(service.getBinding("test.second")).toBeUndefined();
+
+      warnSpy.mockRestore();
+    });
+
+    it("registerBinding allows Ctrl+Shift+E alongside Cmd+Shift+E on macOS", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      service.registerBinding({
+        actionId: "test.first",
+        combo: "Cmd+Shift+F4",
+        scope: "global",
+        priority: 0,
+      });
+      service.registerBinding({
+        actionId: "test.second",
+        combo: "Ctrl+Shift+F4",
+        scope: "global",
+        priority: 0,
+      });
+
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(service.getBinding("test.first")?.combo).toBe("Cmd+Shift+F4");
+      expect(service.getBinding("test.second")?.combo).toBe("Ctrl+Shift+F4");
+
+      warnSpy.mockRestore();
+    });
+
+    it("DEFAULT_KEYBINDINGS has no silent platform-equivalent shadows on non-Mac", () => {
+      // Regression fence: any future default binding that collides cross-form
+      // on Windows/Linux will fail here. The constructor pushes defaults
+      // directly without going through registerBinding's guard, so this audit
+      // is the only place that catches built-in collisions.
+      //
+      // Intentional overlaps disambiguated by priority (e.g. terminal.close at
+      // priority 10 + portal.closeTab at priority 20 on "Cmd+W") are allowed
+      // because findMatchingAction picks the higher priority deterministically.
+      // A silent shadow is two defaults with overlapping scope + identical
+      // platform-normalized combo + identical priority — that's the failure
+      // mode this audit catches.
+      //
+      // Note: this filters to kind === "conflict" only. A future regression
+      // where a standalone `Cmd+K` default shadowed the entire `Cmd+K ...`
+      // chord namespace would surface as kind === "shadowed" and be missed
+      // here. No such standalone exists in defaults today.
+      setPlatform("Win32");
+      const service = new KeybindingService();
+      const silentShadows: string[] = [];
+
+      for (const binding of DEFAULT_KEYBINDINGS) {
+        if (!binding.combo) continue;
+
+        const conflicts = service
+          .findConflicts(binding.combo, binding.actionId, binding.scope)
+          .filter((c) => c.kind === "conflict" && c.priority === binding.priority);
+        for (const c of conflicts) {
+          // Pair-symmetric: only report each (a, b) once.
+          if (c.actionId < binding.actionId) continue;
+          silentShadows.push(
+            `${binding.actionId} (${binding.combo}, ${binding.scope}, p${binding.priority}) ↔ ${c.actionId} (${c.combo}, ${c.scope}, p${c.priority})`
+          );
+        }
+      }
+
+      expect(silentShadows).toEqual([]);
+    });
+
+    it("matchesEvent rejects matches when AltGr is the only Ctrl-source on Windows", () => {
+      setPlatform("Win32");
+      const service = new KeybindingService();
+      // Even if event.key were to coincide with the bound key, the AltGr
+      // early-return must reject the match so international input is never
+      // swallowed.
+      const event = createKeyboardEvent({
+        key: "E",
+        code: "KeyE",
+        ctrlKey: true,
+        altKey: true,
+        getModifierState: (key: string) => key === "AltGraph",
+      });
+
+      expect(service.matchesEvent(event, "Ctrl+Alt+E")).toBe(false);
+      expect(service.matchesEvent(event, "Cmd+Alt+E")).toBe(false);
+    });
+
+    it("findConflicts surfaces cross-form clashes against user-stored Cmd+ overrides on non-Mac", () => {
+      // A user has rebound some action to "Cmd+Shift+F4" via setOverride.
+      // When another rebind UI run queries findConflicts("Ctrl+Shift+F4")
+      // on Windows, the override must still surface as a conflict.
+      setPlatform("Win32");
+      const service = new KeybindingService();
+      service.registerBinding({
+        actionId: "test.target",
+        combo: "",
+        scope: "global",
+        priority: 0,
+      });
+      // Simulate an existing user override on test.target via direct map
+      // manipulation — bypasses the IPC layer the public setOverride uses.
+      (service as unknown as { overrides: Map<string, string[]> }).overrides.set("test.target", [
+        "Cmd+Shift+F4",
+      ]);
+
+      const conflicts = service.findConflicts("Ctrl+Shift+F4");
+      expect(conflicts.some((c) => c.actionId === "test.target" && c.kind === "conflict")).toBe(
+        true
+      );
+    });
+
+    it("matchesEvent ignores AltGr guard on macOS (AltGr does not exist there)", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      // Synthetic AltGraph state on macOS must not gate the matcher.
+      const event = createKeyboardEvent({
+        key: "e",
+        code: "KeyE",
+        metaKey: true,
+        altKey: true,
+        getModifierState: (key: string) => key === "AltGraph",
+      });
+
+      expect(service.matchesEvent(event, "Cmd+Alt+E")).toBe(true);
+    });
+  });
+
   describe("chord matching is modifier-order-independent — issue #7303", () => {
     // Use Cmd+Shift+Alt+J as the prefix — not bound to any default non-chord
     // action, so the chord prefix isn't shadowed by a competing non-chord match.
@@ -1211,6 +1434,90 @@ describe("KeybindingService", () => {
         createKeyboardEvent({ key: "+", code: "Equal", metaKey: true, shiftKey: true })
       );
       expect(match?.actionId).toBe("window.zoomIn");
+    });
+  });
+
+  describe("Windows shortcut conventions — issue #7943", () => {
+    it("registers both Shift+F10 and ContextMenu as defaults for terminal.contextMenu", () => {
+      const combos = DEFAULT_KEYBINDINGS.filter((b) => b.actionId === "terminal.contextMenu").map(
+        (b) => b.combo
+      );
+      expect(combos).toEqual(expect.arrayContaining(["Shift+F10", "ContextMenu"]));
+      expect(combos).toHaveLength(2);
+    });
+
+    it("resolves the ContextMenu key to terminal.contextMenu at runtime", () => {
+      setPlatform("Win32");
+      const service = new KeybindingService();
+      const match = service.findMatchingAction(
+        createKeyboardEvent({ key: "ContextMenu", code: "ContextMenu" })
+      );
+      expect(match?.actionId).toBe("terminal.contextMenu");
+    });
+
+    it("includes Ctrl+F4 entries in DEFAULT_KEYBINDINGS on Win32", async () => {
+      setPlatform("Win32");
+      vi.resetModules();
+      const { DEFAULT_KEYBINDINGS: WIN_BINDINGS } = await import("../defaultKeybindings");
+
+      const closeEntry = WIN_BINDINGS.find(
+        (b) => b.actionId === "terminal.close" && b.combo === "Ctrl+F4"
+      );
+      const portalEntry = WIN_BINDINGS.find(
+        (b) => b.actionId === "portal.closeTab" && b.combo === "Ctrl+F4"
+      );
+
+      expect(closeEntry?.scope).toBe("global");
+      expect(closeEntry?.priority).toBe(10);
+      expect(portalEntry?.scope).toBe("portal");
+      expect(portalEntry?.priority).toBe(20);
+    });
+
+    it("omits Ctrl+F4 entries from DEFAULT_KEYBINDINGS on macOS", async () => {
+      setPlatform("MacIntel");
+      vi.resetModules();
+      const { DEFAULT_KEYBINDINGS: MAC_BINDINGS } = await import("../defaultKeybindings");
+
+      const ctrlF4Entries = MAC_BINDINGS.filter((b) => b.combo === "Ctrl+F4");
+      expect(ctrlF4Entries).toEqual([]);
+    });
+
+    it("resolves Ctrl+F4 to terminal.close in global scope on Win32", async () => {
+      setPlatform("Win32");
+      vi.resetModules();
+      const { KeybindingService: WinKeybindingService } = await import("../KeybindingService");
+
+      const service = new WinKeybindingService();
+      const match = service.findMatchingAction(
+        createKeyboardEvent({ key: "F4", code: "F4", ctrlKey: true })
+      );
+      expect(match?.actionId).toBe("terminal.close");
+    });
+
+    it("resolves Ctrl+F4 to portal.closeTab (priority 20) over terminal.close (priority 10) in portal scope on Win32", async () => {
+      setPlatform("Win32");
+      vi.resetModules();
+      const { KeybindingService: WinKeybindingService } = await import("../KeybindingService");
+
+      const service = new WinKeybindingService();
+      service.setScope("portal");
+      const match = service.findMatchingAction(
+        createKeyboardEvent({ key: "F4", code: "F4", ctrlKey: true })
+      );
+      expect(match?.actionId).toBe("portal.closeTab");
+      expect(match?.priority).toBe(20);
+    });
+
+    it("does NOT resolve Ctrl+F4 to any action on macOS", async () => {
+      setPlatform("MacIntel");
+      vi.resetModules();
+      const { KeybindingService: MacKeybindingService } = await import("../KeybindingService");
+
+      const service = new MacKeybindingService();
+      const match = service.findMatchingAction(
+        createKeyboardEvent({ key: "F4", code: "F4", ctrlKey: true })
+      );
+      expect(match).toBeUndefined();
     });
   });
 });

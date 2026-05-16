@@ -1745,13 +1745,18 @@ describe("CliAvailabilityService", () => {
           (a): a is (err: unknown, stdout?: unknown) => void => typeof a === "function"
         );
 
-        // wsl.exe --list --quiet: return a UTF-16LE-encoded distro list
+        // wsl.exe --list --verbose: return a UTF-16LE-encoded distro list
         // with a BOM, simulating older Windows builds that don't honor
-        // WSL_UTF8=1.
+        // WSL_UTF8=1. The `*` marker on Ubuntu identifies it as the default;
+        // Debian is registered first but is not the default (issue #7944).
         if (argv?.[0] === "--list") {
+          const text =
+            "  NAME            STATE           VERSION\r\n" +
+            "  Debian          Stopped         2\r\n" +
+            "* Ubuntu          Running         2\r\n";
           const utf16 = Buffer.concat([
             Buffer.from([0xff, 0xfe]), // BOM
-            Buffer.from("Ubuntu\r\nDebian\r\n", "utf16le"),
+            Buffer.from(text, "utf16le"),
           ]);
           queueMicrotask(() => callback?.(null, utf16));
           return {} as never;

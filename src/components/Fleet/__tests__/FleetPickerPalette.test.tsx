@@ -269,9 +269,7 @@ describe("FleetPickerPalette", () => {
     ]);
     renderPalette([makeWorktreeSnap("wt-1", "main")]);
     await act(async () => {});
-    expect(screen.getByTestId("fleet-picker-cold-start-empty").textContent).toContain(
-      "No terminals available"
-    );
+    expect(screen.getByText("No terminals available")).toBeTruthy();
     const confirm = screen.getByTestId("fleet-picker-cold-start-confirm") as HTMLButtonElement;
     expect(confirm.disabled).toBe(true);
   });

@@ -1,4 +1,4 @@
-import { Clock, RotateCcw, AlertTriangle } from "lucide-react";
+import { Clock, RotateCcw, WifiOff } from "lucide-react";
 import { InlineStatusBanner } from "./InlineStatusBanner";
 import { boundedErrorText } from "@/utils/errorText";
 import type { TerminalReconnectError } from "@/types";
@@ -40,7 +40,7 @@ function getErrorIcon(type: TerminalReconnectError["type"]) {
     case "timeout":
       return Clock;
     default:
-      return AlertTriangle;
+      return WifiOff;
   }
 }
 
@@ -60,13 +60,13 @@ export function ReconnectErrorBanner({
       severity={getErrorSeverity(error.type)}
       actions={[
         {
-          id: "restart",
-          label: "Restart",
+          id: "retry",
+          label: "Retry",
           icon: RotateCcw,
           variant: "primary",
           onClick: () => onRestart(terminalId),
-          title: "Restart terminal",
-          ariaLabel: "Restart terminal",
+          title: "Retry reconnecting",
+          ariaLabel: "Retry reconnecting",
           loading: isRestarting,
         },
       ]}

@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { render, act } from "@testing-library/react";
-import { useState } from "react";
+import { useContext, useState } from "react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { FixedDropdown } from "../fixed-dropdown";
+import { FixedDropdown, FixedDropdownVisibleContext } from "../fixed-dropdown";
 import { _resetForTests } from "@/lib/escapeStack";
 import { useGlobalEscapeDispatcher } from "@/hooks/useGlobalEscapeDispatcher";
 
@@ -550,6 +550,124 @@ describe("FixedDropdown keepMounted behavior", () => {
     );
 
     expect(document.querySelector('[data-testid="body"]')).toBeNull();
+  });
+});
+
+describe("FixedDropdownVisibleContext tooltip strand gate (issue #8001)", () => {
+  // Regression coverage for the strand-in-top-left ghost: when a keepMounted
+  // FixedDropdown transitions to Activity-hidden, the shared `Tooltip`
+  // wrapper consumes this context to force `open={false}` on any Radix
+  // Tooltip whose dismiss path was skipped by the synchronous `display:none`.
+  // Portaled overlay content otherwise escapes Activity and falls back to
+  // (0,0) on document.body. These tests assert the context contract.
+  let onOpenChange: ReturnType<typeof vi.fn<(open: boolean) => void>>;
+  let anchorRef: React.RefObject<HTMLElement | null>;
+
+  beforeEach(() => {
+    _resetForTests();
+    setOverlayStackLength(0);
+    onOpenChange = vi.fn();
+    anchorRef = createAnchor();
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    _resetForTests();
+    vi.useRealTimers();
+  });
+
+  function ContextProbe({ id }: { id: string }) {
+    const visible = useContext(FixedDropdownVisibleContext);
+    return <span data-testid={id} data-visible={String(visible)} />;
+  }
+
+  it("provides context value `true` while a keepMounted dropdown is visible", () => {
+    render(
+      <FixedDropdown open={true} onOpenChange={onOpenChange} anchorRef={anchorRef} keepMounted>
+        <ContextProbe id="probe-open" />
+      </FixedDropdown>
+    );
+
+    const probe = document.querySelector('[data-testid="probe-open"]');
+    expect(probe?.getAttribute("data-visible")).toBe("true");
+  });
+
+  it("flips context value to `false` once the keepMounted dropdown closes", () => {
+    const { rerender } = render(
+      <FixedDropdown open={true} onOpenChange={onOpenChange} anchorRef={anchorRef} keepMounted>
+        <ContextProbe id="probe" />
+      </FixedDropdown>
+    );
+
+    expect(document.querySelector('[data-testid="probe"]')?.getAttribute("data-visible")).toBe(
+      "true"
+    );
+
+    rerender(
+      <FixedDropdown open={false} onOpenChange={onOpenChange} anchorRef={anchorRef} keepMounted>
+        <ContextProbe id="probe" />
+      </FixedDropdown>
+    );
+
+    // Body stays mounted (Activity hidden), but context value must flip so
+    // that descendant `Tooltip` wrappers force-close before any portaled
+    // overlay content can strand at (0,0).
+    expect(document.querySelector('[data-testid="probe"]')?.getAttribute("data-visible")).toBe(
+      "false"
+    );
+  });
+
+  it("restores context value to `true` when the keepMounted dropdown reopens", () => {
+    const { rerender } = render(
+      <FixedDropdown open={true} onOpenChange={onOpenChange} anchorRef={anchorRef} keepMounted>
+        <ContextProbe id="probe" />
+      </FixedDropdown>
+    );
+
+    rerender(
+      <FixedDropdown open={false} onOpenChange={onOpenChange} anchorRef={anchorRef} keepMounted>
+        <ContextProbe id="probe" />
+      </FixedDropdown>
+    );
+    expect(document.querySelector('[data-testid="probe"]')?.getAttribute("data-visible")).toBe(
+      "false"
+    );
+
+    rerender(
+      <FixedDropdown open={true} onOpenChange={onOpenChange} anchorRef={anchorRef} keepMounted>
+        <ContextProbe id="probe" />
+      </FixedDropdown>
+    );
+    expect(document.querySelector('[data-testid="probe"]')?.getAttribute("data-visible")).toBe(
+      "true"
+    );
+  });
+
+  it("defaults to `true` outside any FixedDropdown so standalone tooltips are unaffected", () => {
+    render(<ContextProbe id="probe-standalone" />);
+    expect(
+      document.querySelector('[data-testid="probe-standalone"]')?.getAttribute("data-visible")
+    ).toBe("true");
+  });
+
+  it("does not wrap non-keepMounted dropdowns in the provider (default `true` flows through)", () => {
+    // Non-keepMounted dropdowns unmount their body on close, so they don't
+    // need the gate. The provider must be scoped to the keepMounted branch
+    // only — otherwise the gate would fire during normal open/close cycles
+    // and pre-emptively close tooltips that are still in their fade-out.
+    render(
+      <FixedDropdown open={true} onOpenChange={onOpenChange} anchorRef={anchorRef}>
+        <ContextProbe id="probe-non-keep" />
+      </FixedDropdown>
+    );
+
+    // The default context value is `true`, so without an inner provider this
+    // probe reads `true`. Confirms the provider is correctly scoped to the
+    // keepMounted branch.
+    expect(
+      document.querySelector('[data-testid="probe-non-keep"]')?.getAttribute("data-visible")
+    ).toBe("true");
   });
 });
 

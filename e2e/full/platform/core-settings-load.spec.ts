@@ -258,10 +258,10 @@ test.describe.serial("Core: Settings Pages Load", () => {
 
     await window.locator(`${SEL.settings.navSidebar} button`, { hasText: "Integrations" }).click();
     // Integrations tab combines Editor and Image Viewer sections
-    await expect(window.locator("h4", { hasText: "External Editor" })).toBeVisible({
+    await expect(window.locator("h4", { hasText: "External editor" })).toBeVisible({
       timeout: T_SHORT,
     });
-    await expect(window.locator("h4", { hasText: "Image Viewer" })).toBeVisible({
+    await expect(window.locator("h4", { hasText: "Image viewer" })).toBeVisible({
       timeout: T_SHORT,
     });
   });

@@ -1050,6 +1050,9 @@ export function DndProvider({ children }: DndProviderProps) {
     dockRetryTimersRef.current.forEach(clearTimeout);
     dockRetryTimersRef.current.clear();
 
+    // Escape is an explicit user-cancel: use the snap-back settle (Tier 3)
+    // rather than the snappy default, matching cancelDrop-rejected drops.
+    setIsCancelDrop(true);
     setActiveId(null);
     setActiveData(null);
     setOverContainer(null);

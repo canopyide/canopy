@@ -8,7 +8,7 @@
  * dock terminal). The fix initializes wasJustOpenedRef = useRef(isOpen).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { act, render } from "@testing-library/react";
+import { act, fireEvent, render } from "@testing-library/react";
 import { useEffect } from "react";
 import type { TerminalInstance } from "@/store";
 import type { TabGroup } from "@/types";
@@ -175,7 +175,33 @@ vi.mock("@/components/ui/tooltip", () => ({
 }));
 
 vi.mock("@/components/Panel/SortableTabButton", () => ({
-  SortableTabButton: ({ id }: { id: string }) => <button data-testid={`tab-${id}`}>{id}</button>,
+  SortableTabButton: ({
+    id,
+    isActive,
+    onClick,
+  }: {
+    id: string;
+    isActive?: boolean;
+    onClick?: () => void;
+  }) => (
+    <button
+      data-testid={`tab-${id}`}
+      data-tab-id={id}
+      role="tab"
+      aria-selected={!!isActive}
+      tabIndex={isActive ? 0 : -1}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        // Mirror TabButton's own Space/Enter activation.
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick?.();
+        }
+      }}
+    >
+      {id}
+    </button>
+  ),
 }));
 
 vi.mock("@/components/ui/dropdown-menu", () => ({
@@ -356,5 +382,119 @@ describe("DockedTabGroup mount-time close guard (#6602)", () => {
 
     expect(preventDefault).toHaveBeenCalledOnce();
     expect(terminalInstanceService.focus).not.toHaveBeenCalled();
+  });
+
+  describe("tablist keyboard contract (APG manual activation)", () => {
+    it("ArrowRight moves DOM focus to next tab without activating it", () => {
+      mockActiveDockTerminalId = "t-1";
+      const panels = [makePanel({ id: "t-1" }), makePanel({ id: "t-2" })];
+      const { container } = render(
+        <DockedTabGroup group={makeGroup(["t-1", "t-2"], "t-1")} panels={panels} />
+      );
+
+      const tab1 = container.querySelector('[data-tab-id="t-1"]') as HTMLElement;
+      const tab2 = container.querySelector('[data-tab-id="t-2"]') as HTMLElement;
+      const tablist = container.querySelector('[role="tablist"]') as HTMLElement;
+      expect(tab1).not.toBeNull();
+      expect(tab2).not.toBeNull();
+
+      tab1.focus();
+      setActiveTabMock.mockClear();
+      openDockTerminalMock.mockClear();
+      setFocusedMock.mockClear();
+      fireEvent.keyDown(tablist, { key: "ArrowRight" });
+
+      expect(document.activeElement).toBe(tab2);
+      // No activation side effects fired by the arrow key itself.
+      expect(setActiveTabMock).not.toHaveBeenCalled();
+      expect(openDockTerminalMock).not.toHaveBeenCalled();
+      expect(setFocusedMock).not.toHaveBeenCalled();
+    });
+
+    it("Enter on a focused-but-not-active tab activates it", () => {
+      mockActiveDockTerminalId = "t-1";
+      const panels = [makePanel({ id: "t-1" }), makePanel({ id: "t-2" })];
+      const { container } = render(
+        <DockedTabGroup group={makeGroup(["t-1", "t-2"], "t-1")} panels={panels} />
+      );
+
+      const tab2 = container.querySelector('[data-tab-id="t-2"]') as HTMLElement;
+      tab2.focus();
+      setActiveTabMock.mockClear();
+      openDockTerminalMock.mockClear();
+      setFocusedMock.mockClear();
+
+      fireEvent.keyDown(tab2, { key: "Enter" });
+
+      expect(setActiveTabMock).toHaveBeenCalledWith("g-1", "t-2");
+      expect(openDockTerminalMock).toHaveBeenCalledWith("t-2");
+      expect(setFocusedMock).toHaveBeenCalledWith("t-2");
+    });
+
+    it("Space on a focused-but-not-active tab activates it and prevents default scroll", () => {
+      mockActiveDockTerminalId = "t-1";
+      const panels = [makePanel({ id: "t-1" }), makePanel({ id: "t-2" })];
+      const { container } = render(
+        <DockedTabGroup group={makeGroup(["t-1", "t-2"], "t-1")} panels={panels} />
+      );
+
+      const tab2 = container.querySelector('[data-tab-id="t-2"]') as HTMLElement;
+      tab2.focus();
+      setActiveTabMock.mockClear();
+      openDockTerminalMock.mockClear();
+
+      const event = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+      const dispatched = tab2.dispatchEvent(event);
+
+      // dispatchEvent returns false when defaultPrevented; activation should also fire.
+      expect(dispatched).toBe(false);
+      expect(setActiveTabMock).toHaveBeenCalledWith("g-1", "t-2");
+      expect(openDockTerminalMock).toHaveBeenCalledWith("t-2");
+    });
+
+    it("ArrowRight while the duplicate-as-new-tab (+) button is focused does not yank focus into the tab strip", () => {
+      mockActiveDockTerminalId = "t-1";
+      const panels = [makePanel({ id: "t-1" }), makePanel({ id: "t-2" })];
+      const { container } = render(
+        <DockedTabGroup group={makeGroup(["t-1", "t-2"], "t-1")} panels={panels} />
+      );
+
+      const addTabButton = container.querySelector(
+        '[aria-label="Duplicate panel as new tab"]'
+      ) as HTMLElement;
+      const tab1 = container.querySelector('[data-tab-id="t-1"]') as HTMLElement;
+      const tablist = container.querySelector('[role="tablist"]') as HTMLElement;
+      expect(addTabButton).not.toBeNull();
+
+      addTabButton.focus();
+      fireEvent.keyDown(tablist, { key: "ArrowRight" });
+
+      // Focus stays on the + button — the handler bails out for non-tab focus
+      // anchors inside the tablist.
+      expect(document.activeElement).toBe(addTabButton);
+      expect(document.activeElement).not.toBe(tab1);
+    });
+
+    it("Home moves focus to the first tab without activating", () => {
+      mockActiveDockTerminalId = "t-2";
+      const panels = [makePanel({ id: "t-1" }), makePanel({ id: "t-2" })];
+      const { container } = render(
+        <DockedTabGroup group={makeGroup(["t-1", "t-2"], "t-2")} panels={panels} />
+      );
+
+      const tab1 = container.querySelector('[data-tab-id="t-1"]') as HTMLElement;
+      const tab2 = container.querySelector('[data-tab-id="t-2"]') as HTMLElement;
+      const tablist = container.querySelector('[role="tablist"]') as HTMLElement;
+
+      tab2.focus();
+      setActiveTabMock.mockClear();
+      openDockTerminalMock.mockClear();
+
+      fireEvent.keyDown(tablist, { key: "Home" });
+
+      expect(document.activeElement).toBe(tab1);
+      expect(setActiveTabMock).not.toHaveBeenCalled();
+      expect(openDockTerminalMock).not.toHaveBeenCalled();
+    });
   });
 });

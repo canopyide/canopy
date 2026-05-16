@@ -70,6 +70,7 @@ interface MockMessagePortMain {
 interface PtyClientPrivateAccess {
   lifecycle: {
     child: MockUtilityProcess | null;
+    start(): void;
   };
   pendingMessagePorts: Map<number, MockMessagePortMain>;
   pendingKillCount: Map<string, number>;
@@ -358,12 +359,17 @@ describe("PtyClient adversarial", () => {
   });
 
   it("GRACEFUL_KILL_SKIPS_KILL_WHEN_TIMEOUT_FIRES_AFTER_HOST_GONE", async () => {
-    // When the host exits and restarts are exhausted, a subsequent gracefulKill
-    // will time out with a plain Error('Request timeout: …') — not a
-    // BrokerError. Without the null-child guard, the catch would fall through
-    // to this.kill() and mutate local state on a dead client.
-    const client = createReadyClient({ maxRestartAttempts: 0 });
+    // When the host exits and the restart timer hasn't yet refilled `child`,
+    // a subsequent gracefulKill will time out with a plain Error('Request
+    // timeout: …') — not a BrokerError. Without the null-child guard, the
+    // catch would fall through to this.kill() and mutate local state on a
+    // dead client.
+    const client = createReadyClient();
     const privateAccess = client as unknown as PtyClientPrivateAccess;
+    // Neutralize the auto-restart so `child` stays null for the duration of
+    // the broker timeout — this scenario covers "host gone, no restart in
+    // flight, gracefulKill arrives anyway".
+    const startSpy = vi.spyOn(privateAccess.lifecycle, "start").mockImplementation(() => {});
 
     mockChild.emit("exit", 1);
     expect(privateAccess.lifecycle.child).toBeNull();
@@ -376,6 +382,7 @@ describe("PtyClient adversarial", () => {
 
     expect(shared.tracker.removeTrashed).not.toHaveBeenCalled();
     expect(privateAccess.pendingKillCount.get("t1") ?? 0).toBe(0);
+    startSpy.mockRestore();
   });
 
   it("GRACEFUL_KILL_CALLS_KILL_ON_TIMEOUT_WHEN_HOST_STILL_ALIVE", async () => {

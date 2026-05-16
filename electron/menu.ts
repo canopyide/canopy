@@ -181,6 +181,16 @@ export function createApplicationMenu(
           submenu: buildRecentProjectsMenu(getTargetBrowserWindow, cliAvailabilityService),
         },
         { type: "separator" },
+        ...(process.platform !== "darwin"
+          ? [
+              {
+                label: "Settings...",
+                accelerator: "CommandOrControl+,",
+                click: (_item: Electron.MenuItem, browserWindow: Electron.BaseWindow | undefined) =>
+                  sendAction("open-settings", getTargetBrowserWindow(browserWindow)),
+              },
+            ]
+          : []),
         {
           label: "Project Settings",
           click: (_item, browserWindow) =>
@@ -201,6 +211,9 @@ export function createApplicationMenu(
           role: "close",
           registerAccelerator: false,
         },
+        ...(process.platform !== "darwin"
+          ? [{ type: "separator" as const }, { label: "Exit", role: "quit" as const }]
+          : []),
       ],
     },
     {
@@ -426,7 +439,10 @@ export function createApplicationMenu(
     },
     {
       label: "Window",
-      submenu: [{ role: "minimize" }, { role: "zoom" }, { type: "separator" }, { role: "front" }],
+      submenu:
+        process.platform === "darwin"
+          ? [{ role: "minimize" }, { role: "zoom" }, { type: "separator" }, { role: "front" }]
+          : [{ role: "minimize" }, { role: "close" }],
     },
     {
       role: "help",
@@ -467,6 +483,9 @@ export function createApplicationMenu(
           : []),
         ...(buildPluginMenuItems("help").length > 0
           ? [{ type: "separator" as const }, ...buildPluginMenuItems("help")]
+          : []),
+        ...(process.platform !== "darwin"
+          ? [{ type: "separator" as const }, { role: "about" as const }]
           : []),
       ],
     },
