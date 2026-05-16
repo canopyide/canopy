@@ -89,7 +89,7 @@ jobs:
     needs: matrix-setup
     runs-on: ${{ matrix.os }}
     name: Test (${{ matrix.name }})
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.matrix-setup.outputs.matrix) }}

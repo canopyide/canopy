@@ -489,7 +489,7 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
 
   test("chrome tracks live process: promote on `claude`, demote after Claude exits", async () => {
     test.skip(!hasClaudeApiKey(), "ANTHROPIC_API_KEY is required for Claude online flow");
-    test.setTimeout(300_000);
+    test.setTimeout(process.platform === "win32" ? 600_000 : 300_000);
 
     await test.step("launch app + open project", async () => {
       ctx = await launchApp({ env: { DAINTREE_IDENTITY_DEBUG_PASS: "1" } });

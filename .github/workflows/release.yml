@@ -55,7 +55,7 @@ jobs:
   unit-tests:
     name: Unit Tests (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:

@@ -102,7 +102,7 @@ test.describe.serial("Core: Review Hub Workflow", () => {
     await expect(stageBtn).toBeHidden({ timeout: T_SHORT });
 
     // Unstaged section should show empty placeholder
-    await expect(hub.locator("text=No unstaged changes")).toBeVisible({ timeout: T_SHORT });
+    await expect(hub.locator(SEL.reviewHub.noUnstagedChanges)).toBeVisible({ timeout: T_SHORT });
   });
 
   test("commit message input appears and commit button becomes enabled", async () => {

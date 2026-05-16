@@ -49,7 +49,12 @@ test.describe.serial("Core: Bondi Visual Review", () => {
 
     async function capturePage(filename: string) {
       const p = testInfo.outputPath(filename);
-      await page.screenshot({ path: p });
+      await page.screenshot({
+        path: p,
+        animations: "disabled",
+        caret: "hide",
+        timeout: 60_000,
+      });
       await testInfo.attach(filename.replace(/\.png$/, ""), {
         path: p,
         contentType: "image/png",
@@ -64,6 +69,9 @@ test.describe.serial("Core: Bondi Visual Review", () => {
       const p = testInfo.outputPath(filename);
       await page.screenshot({
         path: p,
+        animations: "disabled",
+        caret: "hide",
+        timeout: 60_000,
         clip: {
           x: Math.max(0, box.x - padding),
           y: Math.max(0, box.y - padding),

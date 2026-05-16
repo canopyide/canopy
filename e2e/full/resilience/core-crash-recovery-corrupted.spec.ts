@@ -7,6 +7,10 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 
+async function expectMainUiReady(page: AppContext["window"], timeout = T_LONG): Promise<void> {
+  await expect(page.getByRole("toolbar", { name: "Main toolbar" })).toBeVisible({ timeout });
+}
+
 function seedCorruptedMarker(userDataDir: string): void {
   writeFileSync(path.join(userDataDir, "running.lock"), '{"sessionStartMs":1234');
 }
@@ -122,9 +126,7 @@ test.describe.serial("Core: Crash Recovery — corrupted running.lock", () => {
   });
 
   test("app launches normally without crash dialog", async () => {
-    await expect(ctx.window.locator(SEL.toolbar.openSettings)).toBeVisible({
-      timeout: T_SHORT,
-    });
+    await expectMainUiReady(ctx.window, T_SHORT);
     await expect(ctx.window.locator(SEL.crashRecovery.dialog)).toHaveCount(0);
   });
 });
@@ -165,9 +167,7 @@ test.describe.serial("Core: Crash Recovery — corrupted session backup", () => 
     await expect(ctx.window.locator(SEL.crashRecovery.dialog)).not.toBeVisible({
       timeout: T_LONG,
     });
-    await expect(ctx.window.locator(SEL.toolbar.openSettings)).toBeVisible({
-      timeout: T_LONG,
-    });
+    await expectMainUiReady(ctx.window);
   });
 });
 
@@ -194,9 +194,7 @@ test.describe.serial("Core: Crash Recovery — stale tmp file", () => {
   });
 
   test("app launches normally ignoring stale tmp file", async () => {
-    await expect(ctx.window.locator(SEL.toolbar.openSettings)).toBeVisible({
-      timeout: T_SHORT,
-    });
+    await expectMainUiReady(ctx.window, T_SHORT);
     await expect(ctx.window.locator(SEL.crashRecovery.dialog)).toHaveCount(0);
   });
 });
@@ -248,8 +246,6 @@ test.describe.serial("Core: Crash Recovery — panel with non-existent worktreeI
     await expect(ctx.window.locator(SEL.crashRecovery.dialog)).not.toBeVisible({
       timeout: T_LONG,
     });
-    await expect(ctx.window.locator(SEL.toolbar.openSettings)).toBeVisible({
-      timeout: T_LONG,
-    });
+    await expectMainUiReady(ctx.window);
   });
 });

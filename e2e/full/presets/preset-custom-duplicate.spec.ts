@@ -148,20 +148,20 @@ test.describe.serial("Presets: Custom Duplicate (35–44)", () => {
   test("42. Deleting original does not affect duplicate", async () => {
     await goToClaudeSettings();
     await addCustomPreset(ctx.window);
-    await ctx.window.waitForTimeout(T_SETTLE);
 
-    const dupBtn = ctx.window
-      .locator(SEL.preset.section)
-      .locator(SEL.preset.duplicateButton)
-      .last();
-    await dupBtn.click();
+    const dupBtn = await getVisibleDuplicateButton();
+    await dupBtn.scrollIntoViewIfNeeded().catch(() => undefined);
+    await dupBtn.click({ force: true, noWaitAfter: true });
     await ctx.window.waitForTimeout(T_SETTLE);
+    await goToClaudeSettings();
 
     const countBefore = await countPresetOptions(ctx.window);
 
     const delBtn = ctx.window.locator(SEL.preset.section).locator(SEL.preset.deleteButton).last();
-    await delBtn.click();
+    await expect(delBtn).toBeVisible({ timeout: T_SHORT });
+    await delBtn.click({ force: true, noWaitAfter: true });
     await ctx.window.waitForTimeout(T_SETTLE);
+    await goToClaudeSettings();
 
     const countAfter = await countPresetOptions(ctx.window);
     expect(countAfter).toBe(countBefore - 1);

@@ -73,6 +73,41 @@ async function readPvmSnapshot(app: AppContext["app"]): Promise<PvmSnapshot> {
   });
 }
 
+async function ensureAllProjectViewsRegistered(): Promise<void> {
+  let lastSnapshot: PvmSnapshot | null = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await setPvmCacheLimit(ctx.app, 4);
+
+    // If CI pressure already evicted a setup view, rebuild the precondition by
+    // cold-loading each known project once under the widened cache limit.
+    for (const projectName of [PROJECT_A, PROJECT_B, PROJECT_C]) {
+      ctx.window = await selectExistingProjectAndRefresh(ctx.app, ctx.window, projectName);
+      await setPvmCacheLimit(ctx.app, 4);
+    }
+
+    try {
+      await expect
+        .poll(
+          async () => {
+            lastSnapshot = await readPvmSnapshot(ctx.app);
+            return lastSnapshot.viewProjectIds.length;
+          },
+          { timeout: 15_000, intervals: [200, 400, 800, 1600] }
+        )
+        .toBeGreaterThanOrEqual(3);
+      return;
+    } catch {
+      // Retry the rebuild loop; throw a diagnostic snapshot after the final
+      // attempt so remote failures explain which views survived.
+    }
+  }
+
+  throw new Error(
+    `[port-rebind] expected 3 registered project views after setup, got ${JSON.stringify(lastSnapshot)}`
+  );
+}
+
 test.describe.serial("Core: Worktree Port Rebinding", () => {
   test.beforeAll(async () => {
     // beforeAll opens 3 projects and runs several project switches through
@@ -103,15 +138,7 @@ test.describe.serial("Core: Worktree Port Rebinding", () => {
     projectIdC = (await readPvmSnapshot(ctx.app)).activeProjectId ?? "";
     expect(projectIdC).not.toBe("");
 
-    // Wait for all three views to be registered before tests run. Project
-    // switching is async — `addAndSwitchToProject` returning doesn't guarantee
-    // the previous project's view has been moved to the cache map yet.
-    await expect
-      .poll(async () => (await readPvmSnapshot(ctx.app)).viewProjectIds.length, {
-        timeout: 15_000,
-        intervals: [200, 400, 800, 1600],
-      })
-      .toBeGreaterThanOrEqual(3);
+    await ensureAllProjectViewsRegistered();
   });
 
   test.afterAll(async () => {

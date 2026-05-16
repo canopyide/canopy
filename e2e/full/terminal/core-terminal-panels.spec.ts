@@ -132,10 +132,14 @@ test.describe.serial("Core: Terminal & Panels", () => {
       const titleBtn = panel.locator('[role="button"][aria-label*="Terminal title"]').first();
       await expect(titleBtn).toBeVisible({ timeout: T_MEDIUM });
 
-      await titleBtn.click();
-      await window.keyboard.press("Enter");
+      try {
+        await titleBtn.dblclick({ force: true, timeout: T_SHORT });
+      } catch {
+        await titleBtn.click({ force: true });
+        await window.keyboard.press("Enter");
+      }
 
-      const titleInput = panel.locator("input").first();
+      const titleInput = panel.locator('input[aria-label="Edit terminal title"]').first();
       await expect(titleInput).toBeVisible({ timeout: T_SHORT });
 
       await titleInput.fill("My Custom Terminal");
