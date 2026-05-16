@@ -195,6 +195,10 @@ export interface GeneratedIpcInvokeMap {
     args: [sessionId: string];
     result: void;
   };
+  "help:take-pending-hibernation": {
+    args: [projectId: string];
+    result: { agentId: string; agentSessionId: string; cwd: string } | null;
+  };
   "help:unmark-terminal": {
     args: [terminalId: string];
     result: void;

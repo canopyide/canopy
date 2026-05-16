@@ -127,6 +127,7 @@ describe("HelpSessionService", () => {
   let helpFolder: string;
   let service: HelpSessionService;
   let mockPtyKill: ReturnType<typeof vi.fn<(id: string, reason?: string) => void>>;
+  let mockPtyGracefulKill: ReturnType<typeof vi.fn<(id: string) => Promise<string | null>>>;
 
   beforeEach(async () => {
     tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "help-session-svc-"));
@@ -161,7 +162,10 @@ describe("HelpSessionService", () => {
     // by overriding to a different fakeRegistry.
     service.setMcpRegistry({} as never);
     mockPtyKill = vi.fn();
-    service.setPtyClient({ kill: mockPtyKill });
+    // Default: no agent session captured. Tests for capture-on-eviction
+    // override this with a real resume ID per-case.
+    mockPtyGracefulKill = vi.fn().mockResolvedValue(null);
+    service.setPtyClient({ kill: mockPtyKill, gracefulKill: mockPtyGracefulKill });
     vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
@@ -800,7 +804,217 @@ describe("HelpSessionService", () => {
 
       await service.revokeByWebContentsId(99);
 
+      // Default mockPtyGracefulKill returns null (no resume captured), so the
+      // existing kill path still fires as a fallback.
+      expect(mockPtyGracefulKill).toHaveBeenCalledWith("term-99");
       expect(mockPtyKill).toHaveBeenCalledWith("term-99", "help-session-revoked");
+    });
+  });
+
+  describe("hibernation capture on eviction (project-switch persistence)", () => {
+    let hibernationStore: {
+      get: ReturnType<typeof vi.fn>;
+      set: ReturnType<typeof vi.fn>;
+      clear: ReturnType<typeof vi.fn>;
+    };
+
+    beforeEach(() => {
+      hibernationStore = {
+        get: vi.fn().mockReturnValue(null),
+        set: vi.fn().mockResolvedValue(undefined),
+        clear: vi.fn().mockResolvedValue(undefined),
+      };
+      service.setPendingHibernationStore(hibernationStore as never);
+    });
+
+    it("gracefulKills the bound PTY before revoke and writes the captured resume ID", async () => {
+      mockPtyGracefulKill.mockResolvedValueOnce("agent-resume-id-123");
+
+      const result = await service.provisionSession({
+        ...provisionInput(),
+        projectViewWebContentsId: 99,
+        projectId: "proj-evicted",
+      });
+      if (!result) throw new Error("expected provision");
+      expect(service.markTerminalForToken(result.token, "term-evicted")).toBe(true);
+
+      await service.revokeByWebContentsId(99);
+      // setPendingHibernationStore writes via void Promise — let it settle.
+      await Promise.resolve();
+
+      expect(mockPtyGracefulKill).toHaveBeenCalledWith("term-evicted");
+      // Hard kill is skipped because gracefulKill captured a real ID.
+      expect(mockPtyKill).not.toHaveBeenCalled();
+      expect(hibernationStore.set).toHaveBeenCalledWith(
+        "proj-evicted",
+        expect.objectContaining({
+          agentId: "claude",
+          agentSessionId: "agent-resume-id-123",
+          cwd: result.sessionPath,
+        })
+      );
+      expect(service.validateToken(result.token)).toBe(false);
+    });
+
+    it("falls back to hard kill when gracefulKill returns null and skips writing a pending entry", async () => {
+      mockPtyGracefulKill.mockResolvedValueOnce(null);
+
+      const result = await service.provisionSession({
+        ...provisionInput(),
+        projectViewWebContentsId: 99,
+        projectId: "proj-no-resume",
+      });
+      if (!result) throw new Error("expected provision");
+      expect(service.markTerminalForToken(result.token, "term-no-resume")).toBe(true);
+
+      await service.revokeByWebContentsId(99);
+      await Promise.resolve();
+
+      expect(mockPtyKill).toHaveBeenCalledWith("term-no-resume", "help-session-revoked");
+      expect(hibernationStore.set).not.toHaveBeenCalled();
+    });
+
+    it("does NOT capture on a user-driven revokeSession (newSession / explicit close)", async () => {
+      mockPtyGracefulKill.mockResolvedValueOnce("never-called");
+
+      const result = await service.provisionSession(provisionInput());
+      if (!result) throw new Error("expected provision");
+      expect(service.markTerminalForToken(result.token, "term-user-close")).toBe(true);
+
+      // Renderer-driven revoke goes through the bare revokeSession (no
+      // captureHibernation flag), so user-discard intent is honoured.
+      await service.revokeSession(result.sessionId);
+
+      expect(mockPtyGracefulKill).not.toHaveBeenCalled();
+      expect(mockPtyKill).toHaveBeenCalledWith("term-user-close", "help-session-revoked");
+      expect(hibernationStore.set).not.toHaveBeenCalled();
+    });
+
+    it("captures on revokeByWindowId so multi-window close still preserves the conversation", async () => {
+      mockPtyGracefulKill.mockResolvedValueOnce("win-close-resume-id");
+
+      const result = await service.provisionSession({ ...provisionInput(), windowId: 42 });
+      if (!result) throw new Error("expected provision");
+      expect(service.markTerminalForToken(result.token, "term-win")).toBe(true);
+
+      await service.revokeByWindowId(42);
+      await Promise.resolve();
+
+      expect(mockPtyGracefulKill).toHaveBeenCalledWith("term-win");
+      expect(hibernationStore.set).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ agentSessionId: "win-close-resume-id" })
+      );
+    });
+
+    it("revokeAll (app shutdown) skips capture to avoid blocking on gracefulKill round-trips", async () => {
+      mockPtyGracefulKill.mockResolvedValueOnce("never-called");
+
+      const result = await service.provisionSession(provisionInput());
+      if (!result) throw new Error("expected provision");
+      expect(service.markTerminalForToken(result.token, "term-shutdown")).toBe(true);
+
+      await service.revokeAll();
+      await Promise.resolve();
+
+      expect(mockPtyGracefulKill).not.toHaveBeenCalled();
+      expect(hibernationStore.set).not.toHaveBeenCalled();
+    });
+
+    it("takePendingHibernation reads and clears the entry atomically", async () => {
+      hibernationStore.get.mockReturnValueOnce({
+        agentId: "claude",
+        agentSessionId: "pulled-id",
+        cwd: "/help/dir",
+        capturedAt: Date.now(),
+      });
+
+      const taken = await service.takePendingHibernation("proj-A");
+
+      expect(taken).toEqual({
+        agentId: "claude",
+        agentSessionId: "pulled-id",
+        cwd: "/help/dir",
+      });
+      expect(hibernationStore.clear).toHaveBeenCalledWith("proj-A");
+    });
+
+    it("takePendingHibernation returns null and does not clear when no entry exists", async () => {
+      hibernationStore.get.mockReturnValueOnce(null);
+
+      const taken = await service.takePendingHibernation("proj-empty");
+
+      expect(taken).toBeNull();
+      expect(hibernationStore.clear).not.toHaveBeenCalled();
+    });
+
+    it("skips pending-hibernation write when a same-project provision displaces the record during gracefulKill", async () => {
+      // Race we want to defend against:
+      //   1. Eviction triggers revokeByWebContentsId for the old session.
+      //   2. gracefulKill awaits (slow PTY).
+      //   3. User reopens the project — new provision runs displacePriorSessions,
+      //      marking the old record revoked.
+      //   4. gracefulKill resolves with a captured (now-stale) resume ID.
+      //   5. revokeSession MUST NOT write that ID to pendingHibernation, or
+      //      the next reopen would resume the discarded conversation instead
+      //      of the fresh one the user just started.
+      let resolveGraceful: (value: string | null) => void = () => {};
+      mockPtyGracefulKill.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveGraceful = resolve;
+          })
+      );
+
+      const first = await service.provisionSession({
+        ...provisionInput(),
+        projectViewWebContentsId: 50,
+        projectId: "proj-race",
+      });
+      if (!first) throw new Error("expected first provision");
+      expect(service.markTerminalForToken(first.token, "term-old")).toBe(true);
+
+      // Kick off the eviction-revoke; it will hang on gracefulKill.
+      const revokePromise = service.revokeByWebContentsId(50);
+
+      // While gracefulKill is in flight, a same-project re-provision lands.
+      const second = await service.provisionSession({
+        ...provisionInput(),
+        projectViewWebContentsId: 51,
+        projectId: "proj-race",
+      });
+      if (!second) throw new Error("expected second provision");
+      // Sanity: displacement already invalidated the old token.
+      expect(service.validateToken(first.token)).toBe(false);
+      expect(service.validateToken(second.token)).toBe("action");
+
+      // Now let gracefulKill resolve with the captured (stale) resume ID.
+      resolveGraceful("stale-resume-id-from-displaced-session");
+      await revokePromise;
+      await Promise.resolve();
+
+      // The stale capture must NOT clobber the new active session by writing
+      // an old resume ID into pendingHibernation for the same project.
+      expect(hibernationStore.set).not.toHaveBeenCalled();
+    });
+
+    it("a gracefulKill rejection does not abort the eviction revoke — bearer still invalidated", async () => {
+      mockPtyGracefulKill.mockRejectedValueOnce(new Error("pty host gone"));
+
+      const result = await service.provisionSession({
+        ...provisionInput(),
+        projectViewWebContentsId: 5,
+      });
+      if (!result) throw new Error("expected provision");
+      expect(service.markTerminalForToken(result.token, "term-pty-down")).toBe(true);
+
+      await service.revokeByWebContentsId(5);
+      await Promise.resolve();
+
+      // No capture written; hard kill fires as fallback; token is dead.
+      expect(hibernationStore.set).not.toHaveBeenCalled();
+      expect(mockPtyKill).toHaveBeenCalledWith("term-pty-down", "help-session-revoked");
+      expect(service.validateToken(result.token)).toBe(false);
     });
   });
 

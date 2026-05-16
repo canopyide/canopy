@@ -64,6 +64,32 @@ async function handleRevokeSession(sessionId: string): Promise<void> {
   await helpSessionService.revokeSession(sessionId);
 }
 
+async function handleTakePendingHibernation(
+  ctx: import("../types.js").IpcContext,
+  projectId: string
+): Promise<{
+  agentId: string;
+  agentSessionId: string;
+  cwd: string;
+} | null> {
+  if (typeof projectId !== "string" || !projectId) return null;
+  // Derive the calling project from the renderer's webContents binding and
+  // refuse cross-project pulls. Pending entries hold an agent's resume token
+  // — leaking another project's token across processes would let a
+  // compromised renderer continue a stranger's conversation. The renderer
+  // still passes its projectId (for shape parity with the rest of the
+  // namespace), but it must match the view-mapped id or we drop the call.
+  if (!ctx.projectId || ctx.projectId !== projectId) {
+    console.warn(
+      "[help] takePendingHibernation: projectId mismatch — refusing cross-project pull",
+      { requested: projectId, fromView: ctx.projectId, webContentsId: ctx.webContentsId }
+    );
+    return null;
+  }
+  const { helpSessionService } = await getHelpSessionService();
+  return helpSessionService.takePendingHibernation(projectId);
+}
+
 export const helpNamespace = defineIpcNamespace({
   name: "help",
   ops: {
@@ -74,6 +100,11 @@ export const helpNamespace = defineIpcNamespace({
       withContext: true,
     }),
     revokeSession: op(HELP_METHOD_CHANNELS.revokeSession, handleRevokeSession),
+    takePendingHibernation: op(
+      HELP_METHOD_CHANNELS.takePendingHibernation,
+      handleTakePendingHibernation,
+      { withContext: true }
+    ),
   },
 });
 

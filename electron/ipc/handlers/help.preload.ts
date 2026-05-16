@@ -6,6 +6,7 @@ export const HELP_METHOD_CHANNELS = {
   unmarkTerminal: "help:unmark-terminal",
   provisionSession: "help:provision-session",
   revokeSession: "help:revoke-session",
+  takePendingHibernation: "help:take-pending-hibernation",
 } as const satisfies Record<string, keyof IpcInvokeMap>;
 
 type Methods = typeof HELP_METHOD_CHANNELS;

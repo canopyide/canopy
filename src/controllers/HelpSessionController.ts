@@ -390,9 +390,10 @@ export class HelpSessionController {
     this._clearResumeBannerTimer();
     this._clearSnapshotBannerTimer();
     // Bumping the gen invalidates any in-flight launch so its post-await
-    // checkpoints bail. Live store state is left to the explicit teardown
-    // paths (tearDownForViewHidden) so a StrictMode synthetic unmount
-    // doesn't tear down the user's session.
+    // checkpoints bail. Live store state is left intact so a StrictMode
+    // synthetic unmount doesn't tear down the user's session; explicit
+    // teardown happens through user-driven paths (`newSession`,
+    // `replaceExisting`) or main-side eviction.
     this._launchGen++;
     this._hibernateArmedFor = null;
     this._lastInputs = null;
@@ -428,20 +429,6 @@ export class HelpSessionController {
     this._maybeAutoLaunch(inputs);
   }
 
-  handleVisibilityChanged(isHidden: boolean): { tearDown: boolean } {
-    if (!isHidden) {
-      return { tearDown: false };
-    }
-    if (this._isSystemSuspended) {
-      return { tearDown: false };
-    }
-    return { tearDown: true };
-  }
-
-  isSystemSuspended(): boolean {
-    return this._isSystemSuspended;
-  }
-
   /**
    * Revoke the bound help session if the underlying PTY panel disappears
    * from the panel store. addPanel puts the placeholder in panelsById
@@ -459,25 +446,6 @@ export class HelpSessionController {
     revokeHelpSession(store.sessionId);
     this._hasAutoLaunched = false;
     store.clearTerminal();
-  }
-
-  /**
-   * Hide the panel without tearing down. Called from the panel's
-   * visibilitychange handler once it has confirmed the OS isn't suspended.
-   * Bumps `_launchGen` so any in-flight `agent.launch` dispatch resolves
-   * into a stale-gen branch and cleans itself up rather than rebinding a
-   * fresh terminal into the now-torn-down view.
-   */
-  tearDownForViewHidden(): void {
-    this._launchGen++;
-    const state = useHelpPanelStore.getState();
-    if (state.terminalId) {
-      usePanelStore.getState().removePanel(state.terminalId);
-      revokeHelpSession(state.sessionId);
-      this._hasAutoLaunched = false;
-      useHelpPanelStore.getState().clearTerminal();
-    }
-    this._revokePendingSession();
   }
 
   /**
@@ -838,6 +806,42 @@ export class HelpSessionController {
     }
   }
 
+  /**
+   * Pulls any main-captured pending hibernation entry for the project and
+   * folds it into `helpPanelStore.hibernateSessions` so the existing resume
+   * lookup picks it up. Main captures these on LRU eviction / window close
+   * when the renderer-side hibernate timer couldn't run because the view was
+   * being torn down. Best-effort: failures are logged and swallowed — a
+   * missing pending entry just means we'll cold-start the agent like before.
+   *
+   * The IPC takes-and-clears atomically on main: a one-shot read so a stale
+   * entry from many launches ago can't keep resurrecting an old conversation
+   * after the user has explicitly started a new session somewhere along the
+   * way.
+   *
+   * Stale-gen guard: the caller passes the launch generation it started in.
+   * If anything bumps `_launchGen` during the IPC await (user hits "+ New
+   * session" which clears the project's hibernate slot, panel close, etc.),
+   * we DROP the pulled entry on the floor instead of writing it back. Main
+   * has already cleared the entry on its side (atomic take), so the cost is
+   * losing one resume opportunity — much cheaper than resurrecting a
+   * conversation the user just explicitly discarded.
+   */
+  private async _seedHibernateFromMain(projectId: string, gen: number): Promise<void> {
+    try {
+      const pending = await window.electron.help.takePendingHibernation(projectId);
+      if (!pending) return;
+      if (gen !== this._launchGen) return;
+      useHelpPanelStore.getState().setHibernateSession(projectId, {
+        sessionId: pending.agentSessionId,
+        cwd: pending.cwd,
+        agentId: pending.agentId,
+      });
+    } catch (err) {
+      logError("HelpPanel: failed to pull pending hibernation from main", err);
+    }
+  }
+
   private _maybeArmHibernate(inputs: HelpSessionInputs): void {
     const { isOpen, terminalId, preferredAgentId } = inputs;
     if (isOpen || !terminalId) {
@@ -1105,6 +1109,17 @@ export class HelpSessionController {
       const cwd = session.sessionPath;
       const env = buildHelpEnv(session, launchProject.id, launchAgentId);
 
+      // Seed hibernate from main's pending-hibernation store BEFORE the
+      // local lookup — this is what carries the conversation across LRU
+      // eviction / window close where the renderer-side hibernate timer
+      // couldn't capture before its view was destroyed. Passing `gen` lets
+      // the helper drop the pulled entry if a discarding action (e.g.
+      // "+ New session") supersedes this launch mid-IPC.
+      await this._seedHibernateFromMain(launchProject.id, gen);
+      if (gen !== this._launchGen) {
+        this._abandonInFlightLaunch(null, session, { resetAutoLaunch: true });
+        return;
+      }
       const hibernated = useHelpPanelStore.getState().hibernateSessions[launchProject.id];
       if (hibernated && hibernated.agentId === launchAgentId) {
         const resumedId = await this._spawnResumed(launchAgentId, hibernated, session, folderPath);
@@ -1290,6 +1305,15 @@ export class HelpSessionController {
       // Resume path applies only to the empty-state select-agent flow.
       // newSession/runAnyway explicitly discard prior sessions.
       if (!reservedId && !options.seedPrompt) {
+        // Seed hibernate from main's pending-hibernation store so an
+        // eviction-captured entry is available to the lookup below. The
+        // helper checks `gen` after its IPC await so a superseded launch
+        // doesn't write a stale entry back into helpPanelStore.
+        await this._seedHibernateFromMain(launchProject.id, gen);
+        if (gen !== this._launchGen) {
+          this._abandonInFlightLaunch(reservedId, session, { resetAutoLaunch });
+          return;
+        }
         const hibernated = useHelpPanelStore.getState().hibernateSessions[launchProject.id];
         if (hibernated && hibernated.agentId === launchAgentId && folderPath) {
           const resumedId = await this._spawnResumed(

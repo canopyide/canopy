@@ -1458,6 +1458,17 @@ export interface ElectronAPI {
       windowId: number;
     } | null>;
     revokeSession(sessionId: string): Promise<void>;
+    /**
+     * Pull and atomically clear the main-captured pending hibernation entry
+     * for a project. Main captures these on LRU eviction / window close via
+     * `gracefulKill` so the conversation can be resumed the next time the
+     * user reopens the project. Returns null when there is no pending entry.
+     */
+    takePendingHibernation(projectId: string): Promise<{
+      agentId: string;
+      agentSessionId: string;
+      cwd: string;
+    } | null>;
   };
   perf: {
     flushMarks(payload: import("../../perf/marks.js").RendererPerfFlushPayload): void;

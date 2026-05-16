@@ -12,11 +12,15 @@ import { getAssistantWiredAgentIds } from "../../shared/config/agentRegistry.js"
 import type { HelpAssistantTier } from "../../shared/types/ipc/maps.js";
 import type { PtyClient } from "./PtyClient.js";
 import { ASSISTANT_SCRATCH_ENV_VAR, getScratchDirForSession } from "./AssistantScratchService.js";
+import type { PendingHelpHibernationStore } from "./PendingHelpHibernationStore.js";
 
 // Narrow type so the test suite (and any future caller) can satisfy this
-// dependency without instantiating a full PtyClient. Only `kill` is needed —
-// the help-session displacement path is fire-and-forget by design.
-type PtyKillClient = Pick<PtyClient, "kill">;
+// dependency without instantiating a full PtyClient. `kill` is the original
+// displacement path (fire-and-forget); `gracefulKill` is used by the
+// eviction-revoke path to capture the agent's resume session ID before
+// killing — that's what powers the renderer's `[[hibernateSessions]]` resume
+// the next time the user reopens the project.
+type PtyKillClient = Pick<PtyClient, "kill" | "gracefulKill">;
 
 const SESSIONS_DIR_NAME = "help-sessions";
 const META_FILE_NAME = "meta.json";
@@ -216,6 +220,7 @@ export class HelpSessionService {
   private readonly terminalBySessionId = new Map<string, string>();
   private mcpRegistry: WindowRegistry | null = null;
   private ptyClient: PtyKillClient | null = null;
+  private pendingHibernationStore: PendingHelpHibernationStore | null = null;
   private disposed = false;
 
   setMcpRegistry(registry: WindowRegistry): void {
@@ -224,6 +229,10 @@ export class HelpSessionService {
 
   setPtyClient(client: PtyKillClient | null): void {
     this.ptyClient = client;
+  }
+
+  setPendingHibernationStore(store: PendingHelpHibernationStore | null): void {
+    this.pendingHibernationStore = store;
   }
 
   validateToken(token: string): HelpAssistantTier | false {
@@ -724,10 +733,51 @@ export class HelpSessionService {
    * stray terminal `cd`-ed into the session dir) can't keep authenticating
    * against the now-revoked record. The next provision rewrites a fresh
    * entry into the same file.
+   *
+   * Pass `{ captureHibernation: true }` for the eviction / window-close
+   * paths: instead of a hard kill, the bound PTY is graceful-killed so the
+   * agent flushes its resume ID, and a pending-hibernation entry is
+   * persisted for the project. The next time the user opens the assistant
+   * for that project, the renderer resumes the conversation. User-driven
+   * revokes (renderer IPC) leave the option off so "+ New session" /
+   * explicit close discards the transcript as the user intended.
    */
-  async revokeSession(sessionId: string): Promise<void> {
+  async revokeSession(sessionId: string, opts?: { captureHibernation?: boolean }): Promise<void> {
     const record = this.sessionsById.get(sessionId);
     if (!record || record.revoked) return;
+
+    const terminalId = this.terminalBySessionId.get(sessionId);
+
+    // Capture FIRST (while the session record is still valid for token
+    // lookups by the agent process). gracefulKill resolves with the agent's
+    // resume ID once the agent flushes its transcript and exits. If
+    // gracefulKill rejects or returns null (PTY already gone, host crashed,
+    // agent didn't write a session file), we silently fall through to the
+    // existing kill path — eviction completes either way, just without a
+    // resume entry. A best-effort capture is strictly an improvement over
+    // the previous behaviour of always losing the conversation.
+    let capturedAgentSessionId: string | null = null;
+    if (opts?.captureHibernation && terminalId && this.ptyClient) {
+      try {
+        capturedAgentSessionId = await this.ptyClient.gracefulKill(terminalId);
+      } catch (err) {
+        console.warn(
+          "[HelpSessionService] gracefulKill during capture-revoke failed:",
+          terminalId,
+          err
+        );
+      }
+    }
+
+    // Race guard: a same-project re-provision can call `displacePriorSessions`
+    // during the `gracefulKill` await above, which marks our record revoked
+    // and lets a fresh session take over the project's active slot. Detect
+    // here BEFORE we re-mark revoked / clear maps — if we lost the race, the
+    // post-await cleanup below skips the active-slot manipulation and we
+    // skip the pending-hibernation write so the captured (old) resume ID
+    // doesn't shadow the just-started fresh launch.
+    const displacedDuringCapture = record.revoked;
+
     record.revoked = true;
     this.sessionsById.delete(sessionId);
     this.sessionsByToken.delete(record.token);
@@ -735,14 +785,39 @@ export class HelpSessionService {
     // Single-backend invariant (#7509): kill the bound PTY now so the orphan
     // can't keep dispatching MCP calls under the just-revoked bearer. Guard
     // against clobbering a sibling session that took over the project's
-    // active-terminal slot before this revoke ran.
-    const terminalId = this.terminalBySessionId.get(sessionId);
+    // active-terminal slot before this revoke ran. Skip the hard kill if
+    // we already gracefulKilled — same lifecycle endpoint, just avoids the
+    // duplicate "kill an unknown terminal" warning in the PTY host log.
     if (terminalId) {
       this.terminalBySessionId.delete(sessionId);
-      if (this.activeHelpTerminalByProjectId.get(record.projectId) === terminalId) {
+      // If displaced, the new provision already cleared the active slot (and
+      // may have set it to a new terminal id) — never touch it here.
+      if (
+        !displacedDuringCapture &&
+        this.activeHelpTerminalByProjectId.get(record.projectId) === terminalId
+      ) {
         this.activeHelpTerminalByProjectId.delete(record.projectId);
       }
-      this.killTerminal(terminalId, "help-session-revoked");
+      if (!capturedAgentSessionId) {
+        this.killTerminal(terminalId, "help-session-revoked");
+      }
+    }
+
+    if (capturedAgentSessionId && this.pendingHibernationStore && !displacedDuringCapture) {
+      void this.pendingHibernationStore
+        .set(record.projectId, {
+          agentId: record.agentId,
+          agentSessionId: capturedAgentSessionId,
+          cwd: record.sessionPath,
+          capturedAt: Date.now(),
+        })
+        .catch((err) => {
+          console.warn(
+            "[HelpSessionService] Failed to persist pending hibernation:",
+            record.projectId,
+            err
+          );
+        });
     }
 
     // Claude bakes a literal session bearer into `.mcp.json`; Copilot
@@ -757,6 +832,30 @@ export class HelpSessionService {
     } else if (record.agentId === "gemini") {
       await this.stripStaleGeminiDaintreeEntry(record.sessionPath);
     }
+  }
+
+  /**
+   * Reads and clears the main-captured pending hibernation entry for a
+   * project. Called by the renderer at launch time to seed
+   * `helpPanelStore.hibernateSessions[projectId]` from the entry main
+   * captured on the prior eviction. The entry is one-shot — once read it's
+   * dropped from the persistent store so a future cold launch without
+   * intervening capture starts fresh.
+   */
+  async takePendingHibernation(projectId: string): Promise<{
+    agentId: string;
+    agentSessionId: string;
+    cwd: string;
+  } | null> {
+    if (!this.pendingHibernationStore) return null;
+    const entry = this.pendingHibernationStore.get(projectId);
+    if (!entry) return null;
+    await this.pendingHibernationStore.clear(projectId);
+    return {
+      agentId: entry.agentId,
+      agentSessionId: entry.agentSessionId,
+      cwd: entry.cwd,
+    };
   }
 
   private displacePriorSessions(projectId: string): void {
@@ -807,17 +906,30 @@ export class HelpSessionService {
     const targets = [...this.sessionsById.values()].filter(
       (record) => record.projectViewWebContentsId === webContentsId
     );
-    await Promise.all(targets.map((record) => this.revokeSession(record.sessionId)));
+    // LRU eviction destroys the renderer for a project the user almost
+    // certainly intends to return to — capture the agent's resume ID
+    // before killing so the next open resumes the conversation.
+    await Promise.all(
+      targets.map((record) => this.revokeSession(record.sessionId, { captureHibernation: true }))
+    );
   }
 
   async revokeByWindowId(windowId: number): Promise<void> {
     const targets = [...this.sessionsById.values()].filter(
       (record) => record.windowId === windowId
     );
-    await Promise.all(targets.map((record) => this.revokeSession(record.sessionId)));
+    // Window close = user is done with this window but the project lives on
+    // in other windows / future launches. Capture the resume ID so the next
+    // open in any window picks the conversation back up.
+    await Promise.all(
+      targets.map((record) => this.revokeSession(record.sessionId, { captureHibernation: true }))
+    );
   }
 
   async revokeAll(): Promise<void> {
+    // App shutdown — no time to await gracefulKill round-trips, so we skip
+    // capture. The cooperative renderer-side hibernate timer is the main
+    // resume mechanism for clean shutdowns; this is the safety net.
     const targets = [...this.sessionsById.values()];
     await Promise.all(targets.map((record) => this.revokeSession(record.sessionId)));
   }
