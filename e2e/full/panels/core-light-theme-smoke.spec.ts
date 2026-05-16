@@ -37,7 +37,7 @@ test.describe.serial("Core: Light Theme Smoke", () => {
   });
 
   // eslint-disable-next-line no-empty-pattern
-  test("light themes keep key chrome readable and capture screenshots", async ({}, testInfo) => {
+  test("light themes keep key chrome readable", async ({}, testInfo) => {
     const { window } = ctx;
 
     for (const schemeId of LIGHT_SCHEME_IDS) {
@@ -79,13 +79,6 @@ test.describe.serial("Core: Light Theme Smoke", () => {
           `${schemeId}: panel background should differ from grid background`
         )
         .toBeGreaterThanOrEqual(1.05);
-
-      const screenshotPath = testInfo.outputPath(`light-theme-${schemeId}.png`);
-      await window.screenshot({ path: screenshotPath, fullPage: true });
-      await testInfo.attach(`light-theme-${schemeId}`, {
-        path: screenshotPath,
-        contentType: "image/png",
-      });
     }
 
     expect(testInfo.errors).toHaveLength(0);
