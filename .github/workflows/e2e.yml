@@ -76,7 +76,16 @@ env:
   NODE_VERSION: "22"
 
 jobs:
-  # Determine which platforms to run on
+  # Determine which platforms to run on, and fan each one out into N shards.
+  #
+  # Sharding (#8053): the six full-* domain buckets and the `full` meta-suite
+  # split their spec list across SHARD_TOTAL parallel runners via Playwright's
+  # native `--shard`. A 39-minute serial Windows bucket becomes ~10min
+  # wall-time, and a hung shard takes out 1/N of the bucket instead of the
+  # whole thing. core/online/nightly stay unsharded — online hits real APIs
+  # (3 specs), and nightly's leak heuristic depends on serialized launches
+  # (--workers=1); cross-runner sharding there would just add noise. A
+  # single-file run (`test_file`) is one spec — no point sharding it.
   matrix-setup:
     runs-on: ubuntu-22.04
     outputs:
@@ -84,19 +93,41 @@ jobs:
     steps:
       - id: set
         run: |
+          set -euo pipefail
           PLATFORM="${{ inputs.platform || 'all' }}"
+          SUITE="${{ inputs.suite || 'core' }}"
+          TEST_FILE="${{ inputs.test_file }}"
 
-          if [ "$PLATFORM" = "macos" ]; then
-            echo 'matrix={"include":[{"os":"macos-14","name":"macOS"}]}' >> "$GITHUB_OUTPUT"
-          elif [ "$PLATFORM" = "linux" ]; then
-            echo 'matrix={"include":[{"os":"ubuntu-22.04","name":"Linux"}]}' >> "$GITHUB_OUTPUT"
-          elif [ "$PLATFORM" = "windows" ]; then
-            echo 'matrix={"include":[{"os":"windows-latest","name":"Windows"}]}' >> "$GITHUB_OUTPUT"
-          elif [ "$PLATFORM" = "non-windows" ]; then
-            echo 'matrix={"include":[{"os":"macos-14","name":"macOS"},{"os":"ubuntu-22.04","name":"Linux"}]}' >> "$GITHUB_OUTPUT"
-          else
-            echo 'matrix={"include":[{"os":"macos-14","name":"macOS"},{"os":"ubuntu-22.04","name":"Linux"},{"os":"windows-latest","name":"Windows"}]}' >> "$GITHUB_OUTPUT"
+          case "$PLATFORM" in
+            macos)       OSES='[{"os":"macos-14","name":"macOS"}]' ;;
+            linux)       OSES='[{"os":"ubuntu-22.04","name":"Linux"}]' ;;
+            windows)     OSES='[{"os":"windows-latest","name":"Windows"}]' ;;
+            non-windows) OSES='[{"os":"macos-14","name":"macOS"},{"os":"ubuntu-22.04","name":"Linux"}]' ;;
+            *)           OSES='[{"os":"macos-14","name":"macOS"},{"os":"ubuntu-22.04","name":"Linux"},{"os":"windows-latest","name":"Windows"}]' ;;
+          esac
+
+          # Only the full-* buckets and the `full` meta-suite fan out. N=4 is
+          # the tuned starting point from #8053 (39min → ~10min on Windows).
+          case "$SUITE" in
+            full|full-*) SHARD_TOTAL=4 ;;
+            *)           SHARD_TOTAL=1 ;;
+          esac
+          if [ -n "$TEST_FILE" ]; then
+            SHARD_TOTAL=1
           fi
+
+          MATRIX=$(node -e '
+            const oses = JSON.parse(process.argv[1]);
+            const total = Number(process.argv[2]);
+            const include = [];
+            for (const o of oses) {
+              for (let s = 1; s <= total; s++) {
+                include.push({ ...o, shard: s, shardTotal: total });
+              }
+            }
+            console.log(JSON.stringify({ include }));
+          ' "$OSES" "$SHARD_TOTAL")
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
 
   e2e:
     needs: matrix-setup
@@ -105,8 +136,14 @@ jobs:
       matrix: ${{ fromJSON(needs.matrix-setup.outputs.matrix) }}
 
     runs-on: ${{ matrix.os }}
-    name: ${{ inputs.suite || 'core' }} (${{ matrix.name }})
-    timeout-minutes: 180
+    name: ${{ inputs.suite || 'core' }} (${{ matrix.name }}${{ matrix.shardTotal > 1 && format(' {0}/{1}', matrix.shard, matrix.shardTotal) || '' }})
+    # Sharding shrinks the per-runner unit of work, so a hung shard should
+    # fail fast and re-run cheaply rather than burn the old 180min ceiling
+    # (the "core (Windows) hung past 53min" failure mode from #8053). nightly
+    # is unsharded and its serialized leak suite legitimately runs long, so it
+    # keeps the generous ceiling; `full` (meta — all six buckets on one
+    # runner) gets a wider window than a single full-* shard.
+    timeout-minutes: ${{ (inputs.suite == 'nightly' && 180) || (inputs.suite == 'full' && 120) || (startsWith(inputs.suite, 'full-') && 45) || 90 }}
 
     steps:
       - name: Harden Windows for Electron E2E
@@ -263,17 +300,23 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: test-results/.last-run.json
-          key: e2e-last-run-${{ runner.os }}-${{ runner.arch }}-${{ inputs.suite || 'core' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          # Scoped per-shard: each shard writes its own .last-run.json, so the
+          # restore must not bleed one shard's failures into another. (#8053)
+          key: e2e-last-run-${{ runner.os }}-${{ runner.arch }}-${{ inputs.suite || 'core' }}-s${{ matrix.shard }}of${{ matrix.shardTotal }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            e2e-last-run-${{ runner.os }}-${{ runner.arch }}-${{ inputs.suite || 'core' }}-${{ github.run_id }}-
+            e2e-last-run-${{ runner.os }}-${{ runner.arch }}-${{ inputs.suite || 'core' }}-s${{ matrix.shard }}of${{ matrix.shardTotal }}-${{ github.run_id }}-
 
-      # Single source of truth for the retry gate. Exporting via $GITHUB_ENV
-      # keeps the three OS run steps below identical and prevents drift.
-      - name: Resolve --last-failed args
+      # Single source of truth for the shard slice and the retry gate.
+      # Exporting via $GITHUB_ENV keeps the three OS run steps below identical
+      # and prevents drift.
+      - name: Resolve shard and --last-failed args
         shell: bash
         run: |
           set -euo pipefail
           SUITE="${{ inputs.suite || 'core' }}"
+          SHARD_INDEX="${{ matrix.shard }}"
+          SHARD_TOTAL="${{ matrix.shardTotal }}"
+
           LAST_FAILED_ARGS=""
           # Append --last-failed only on retries that (a) restored the prior
           # attempt's results, (b) target a suite with meaningful retry
@@ -286,7 +329,25 @@ jobs:
             LAST_FAILED_ARGS="--last-failed"
             echo "[e2e] Retry attempt ${{ github.run_attempt }} — running with --last-failed"
           fi
+
+          SHARD_ARGS=""
+          if [ "$SHARD_TOTAL" -gt 1 ]; then
+            if [ -n "$LAST_FAILED_ARGS" ]; then
+              # This shard's restored .last-run.json already contains only the
+              # specs THIS shard executed. Re-applying --shard would re-slice
+              # that tiny failed-only list by round-robin index — a 1-test list
+              # lands entirely on shard 1, starving every other shard's retry.
+              # Drop --shard and let --last-failed rerun exactly this shard's
+              # failures. (#8053)
+              echo "[e2e] Retry with --last-failed — dropping --shard for this attempt"
+            else
+              SHARD_ARGS="--shard=$SHARD_INDEX/$SHARD_TOTAL"
+              echo "[e2e] Sharded run — slice $SHARD_INDEX of $SHARD_TOTAL"
+            fi
+          fi
+
           echo "LAST_FAILED_ARGS=$LAST_FAILED_ARGS" >> "$GITHUB_ENV"
+          echo "SHARD_ARGS=$SHARD_ARGS" >> "$GITHUB_ENV"
 
       - name: Run ${{ inputs.suite || 'core' }} e2e tests (macOS)
         if: runner.os == 'macOS'
@@ -297,7 +358,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           set -euo pipefail
-          npx playwright test ${{ steps.test-cmd.outputs.args }} ${LAST_FAILED_ARGS:-}
+          npx playwright test ${{ steps.test-cmd.outputs.args }} ${SHARD_ARGS:-} ${LAST_FAILED_ARGS:-}
 
       - name: Run ${{ inputs.suite || 'core' }} e2e tests (Linux)
         if: runner.os == 'Linux'
@@ -306,7 +367,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           set -euo pipefail
-          xvfb-run --auto-servernum npx playwright test ${{ steps.test-cmd.outputs.args }} ${LAST_FAILED_ARGS:-}
+          xvfb-run --auto-servernum npx playwright test ${{ steps.test-cmd.outputs.args }} ${SHARD_ARGS:-} ${LAST_FAILED_ARGS:-}
 
       - name: Verify native modules (Windows)
         if: runner.os == 'Windows'
@@ -330,7 +391,7 @@ jobs:
           heartbeat_pid=$!
           trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
 
-          npx playwright test ${{ steps.test-cmd.outputs.args }} ${LAST_FAILED_ARGS:-}
+          npx playwright test ${{ steps.test-cmd.outputs.args }} ${SHARD_ARGS:-} ${LAST_FAILED_ARGS:-}
 
       # Persist .last-run.json for a potential job-level retry. Runs even on
       # Playwright failure (if: always()) — that's precisely when the retry
@@ -340,13 +401,13 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: test-results/.last-run.json
-          key: e2e-last-run-${{ runner.os }}-${{ runner.arch }}-${{ inputs.suite || 'core' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: e2e-last-run-${{ runner.os }}-${{ runner.arch }}-${{ inputs.suite || 'core' }}-s${{ matrix.shard }}of${{ matrix.shardTotal }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-${{ inputs.suite || 'core' }}-results-${{ matrix.name }}-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          name: e2e-${{ inputs.suite || 'core' }}-results-${{ matrix.name }}-s${{ matrix.shard }}of${{ matrix.shardTotal }}-${{ github.sha }}-attempt-${{ github.run_attempt }}
           path: |
             test-results/
             playwright-report/
