@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { projectClient } from "@/clients";
 
 export interface PollingLifecycleFetchContext {
@@ -61,7 +61,7 @@ function fanOut(method: keyof Subscriber) {
       // Isolate per-subscriber failures so one consumer's bug can't block
       // sibling consumers from receiving the same global event. Tier 0
       // console log per CLAUDE.md — diagnostic only.
-      console.error(`usePollingLifecycle: ${method} subscriber failed`, err);
+      console.warn(`usePollingLifecycle: ${method} subscriber failed`, err);
     }
   }
 }
@@ -74,11 +74,11 @@ function ensureGlobalListenersInstalled() {
   // subsequent `ensureGlobalListenersInstalled` calls would short-circuit on
   // the non-null DOM handlers and the project-switch fan-out would be
   // silently missing for the rest of the process lifetime.
-  let nextSwitchCleanup: (() => void) | null = null;
+  let cleanup: (() => void) | null;
   try {
-    nextSwitchCleanup = projectClient.onSwitch(() => fanOut("onProjectSwitch"));
+    cleanup = projectClient.onSwitch(() => fanOut("onProjectSwitch"));
   } catch (err) {
-    console.error("usePollingLifecycle: failed to subscribe project switch", err);
+    console.warn("usePollingLifecycle: failed to subscribe project switch", err);
     return;
   }
 
@@ -94,7 +94,7 @@ function ensureGlobalListenersInstalled() {
   sidebarHandler = () => fanOut("onSidebarRefresh");
   window.addEventListener("daintree:refresh-sidebar", sidebarHandler);
 
-  projectSwitchCleanup = nextSwitchCleanup;
+  projectSwitchCleanup = cleanup;
 }
 
 function teardownGlobalListenersIfEmpty() {
@@ -165,9 +165,18 @@ export function usePollingLifecycle(config: PollingLifecycleConfig): PollingLife
   // LIFO), so we need our own flag to prevent the post-await `scheduleNext`
   // chain from installing a fresh timer during teardown.
   const aliveRef = useRef(true);
-  const controlRef = useRef<PollingLifecycleControl | null>(null);
 
-  const callFetchFn = useEffectEvent(async (force: boolean): Promise<void> => {
+  // Latest-config ref pattern — equivalent to `useEffectEvent` semantics but
+  // with returnable identities. `useEffectEvent` cannot be assigned to a
+  // variable or passed down per its lint rule, so the public `scheduleNextPoll`
+  // and `refresh` use `useCallback([])` and read the live config through
+  // `configRef.current` instead of capturing `config` at first render.
+  const configRef = useRef<PollingLifecycleConfig>(config);
+  useLayoutEffect(() => {
+    configRef.current = config;
+  });
+
+  const callFetchFn = useCallback(async function callFetchFnImpl(force: boolean): Promise<void> {
     if (inFlightRef.current) {
       queuedFetchRef.current.pending = true;
       queuedFetchRef.current.force = queuedFetchRef.current.force || force;
@@ -181,7 +190,7 @@ export function usePollingLifecycle(config: PollingLifecycleConfig): PollingLife
       const fetchId = activeFetchIdRef.current;
       const isInvalidated = () => invalidatedFetchIdRef.current === fetchId;
       try {
-        await config.fetchFn({ force, fetchId, isInvalidated });
+        await configRef.current.fetchFn({ force, fetchId, isInvalidated });
       } catch (err) {
         // The consumer's fetchFn is responsible for surfacing its own errors
         // (setError, lastErrorRef). The primitive catches here so a throw —
@@ -190,58 +199,59 @@ export function usePollingLifecycle(config: PollingLifecycleConfig): PollingLife
         // fire-and-forget call site below chains `.then(scheduleNextPoll)`
         // without a `.catch`; an uncaught rejection here would skip that
         // chain and freeze the lifecycle until the next external trigger.
-        console.error("usePollingLifecycle: fetchFn threw", err);
+        console.warn("usePollingLifecycle: fetchFn threw", err);
       }
     } finally {
       inFlightRef.current = false;
       if (aliveRef.current && queuedFetchRef.current.pending) {
         const queuedForce = queuedFetchRef.current.force;
         queuedFetchRef.current = { pending: false, force: false };
-        void callFetchFn(queuedForce);
+        // Named-function self-recursion — avoids referencing the outer
+        // `callFetchFn` variable, which would close over a potentially
+        // stale binding before useCallback returns.
+        void callFetchFnImpl(queuedForce);
       }
     }
-  });
+  }, []);
 
-  const callCalculateNextInterval = useEffectEvent((): number =>
-    config.calculateNextInterval({ isVisible: isVisibleRef.current })
+  const scheduleNextPoll = useCallback(
+    function scheduleNextPollImpl(): void {
+      if (!aliveRef.current) return;
+      if (pollTimerRef.current) {
+        clearTimeout(pollTimerRef.current);
+      }
+      const interval = configRef.current.calculateNextInterval({
+        isVisible: isVisibleRef.current,
+      });
+      pollTimerRef.current = setTimeout(() => {
+        void callFetchFn(false).then(() => {
+          if (aliveRef.current) scheduleNextPollImpl();
+        });
+      }, interval);
+    },
+    [callFetchFn]
   );
 
-  const callOnProjectSwitch = useEffectEvent((): void => {
-    config.onProjectSwitch?.();
-  });
+  const refresh = useCallback(
+    async (options?: { force?: boolean }): Promise<void> => {
+      if (!aliveRef.current) return;
+      if (pollTimerRef.current) {
+        clearTimeout(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+      await callFetchFn(options?.force ?? false);
+      if (aliveRef.current) scheduleNextPoll();
+    },
+    [callFetchFn, scheduleNextPoll]
+  );
 
-  const scheduleNextPoll = useEffectEvent((): void => {
-    if (!aliveRef.current) return;
-    if (pollTimerRef.current) {
-      clearTimeout(pollTimerRef.current);
-    }
-    const interval = callCalculateNextInterval();
-    pollTimerRef.current = setTimeout(() => {
-      void callFetchFn(false).then(() => {
-        if (aliveRef.current) scheduleNextPoll();
-      });
-    }, interval);
-  });
-
-  const refresh = useEffectEvent(async (options?: { force?: boolean }): Promise<void> => {
-    if (!aliveRef.current) return;
-    if (pollTimerRef.current) {
-      clearTimeout(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-    await callFetchFn(options?.force ?? false);
-    if (aliveRef.current) scheduleNextPoll();
-  });
-
-  // Lazy-init a stable control object so consumers receive the same
-  // reference across renders. The wrappers indirect through the
-  // `useEffectEvent` results, so the consumer always invokes the latest
-  // captured config.
+  // Stable control object — `useCallback([])` keeps `callFetchFn` /
+  // `scheduleNextPoll` / `refresh` identity-stable across renders, so a
+  // single useRef-cached object captured at first render works for the
+  // hook's lifetime.
+  const controlRef = useRef<PollingLifecycleControl | null>(null);
   if (controlRef.current === null) {
-    controlRef.current = {
-      scheduleNextPoll: () => scheduleNextPoll(),
-      refresh: (options) => refresh(options),
-    };
+    controlRef.current = { scheduleNextPoll, refresh };
   }
 
   useEffect(() => {
@@ -274,7 +284,7 @@ export function usePollingLifecycle(config: PollingLifecycleConfig): PollingLife
           clearTimeout(pollTimerRef.current);
           pollTimerRef.current = null;
         }
-        callOnProjectSwitch();
+        configRef.current.onProjectSwitch?.();
         void callFetchFn(false).then(() => {
           if (aliveRef.current) scheduleNextPoll();
         });
@@ -299,7 +309,11 @@ export function usePollingLifecycle(config: PollingLifecycleConfig): PollingLife
       }
       teardownGlobalListenersIfEmpty();
     };
-  }, []);
+    // callFetchFn / scheduleNextPoll / refresh are identity-stable
+    // (`useCallback` with stable deps), so depending on them here is a no-op
+    // — they never change after first render — but listing them silences the
+    // exhaustive-deps lint.
+  }, [callFetchFn, refresh, scheduleNextPoll]);
 
   return controlRef.current;
 }
