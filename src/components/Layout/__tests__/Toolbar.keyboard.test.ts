@@ -17,7 +17,7 @@ describe("Toolbar keyboard navigation — issue #2814", () => {
     });
 
     it("queries toolbar items via data-toolbar-item selector", () => {
-      expect(source).toContain("[data-toolbar-item]:not(:disabled)");
+      expect(source).toContain("[data-toolbar-item]:not([disabled])");
     });
 
     it("tracks active index with a ref (not state) to avoid re-renders", () => {

@@ -325,7 +325,7 @@ export function Toolbar({
     () =>
       toolbarRef.current
         ? Array.from(
-            toolbarRef.current.querySelectorAll<HTMLElement>("[data-toolbar-item]:not(:disabled)")
+            toolbarRef.current.querySelectorAll<HTMLElement>("[data-toolbar-item]:not([disabled])")
           ).filter((el) => el.offsetParent !== null)
         : [],
     []
@@ -539,12 +539,12 @@ export function Toolbar({
                 size="icon"
                 data-toolbar-item=""
                 onClick={handleCopyTreeClick}
-                disabled={isCopyingTree || !activeWorktree}
+                aria-disabled={isCopyingTree || !activeWorktree || undefined}
                 className={cn(
                   "toolbar-icon-button relative",
                   treeCopied ? "text-status-success bg-status-success/10" : "text-daintree-text",
                   isCopyingTree && "cursor-wait opacity-70",
-                  !activeWorktree && "opacity-50"
+                  "aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
                 )}
                 aria-label={
                   isCopyingTree ? "Copying…" : treeCopied ? "Context Copied" : "Copy Context"
@@ -564,6 +564,8 @@ export function Toolbar({
                 <span role="status" aria-live="polite">
                   {copyFeedback}
                 </span>
+              ) : !activeWorktree ? (
+                "Open a worktree first"
               ) : (
                 createTooltipContent("Copy Context", copyTreeShortcut)
               )}
