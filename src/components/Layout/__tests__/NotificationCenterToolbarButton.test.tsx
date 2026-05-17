@@ -200,12 +200,12 @@ describe("NotificationCenterToolbarButton — DND state surface", () => {
       const { container } = render(<NotificationCenterToolbarButton />);
       const btn = container.querySelector("button")!;
       const label = btn.getAttribute("aria-label") ?? "";
-      expect(label.startsWith("Notifications — muted until ")).toBe(true);
+      expect(label.startsWith("Notifications — paused until ")).toBe(true);
       // Match either 12h ("2:30") or 24h ("14:30") locale outputs.
       expect(label).toMatch(/(?:^|[^0-9])(?:14|2):30/);
     });
 
-    it("says 'scheduled quiet hours' during the configured window", () => {
+    it("says 'quiet hours active' during the configured window", () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date(2024, 0, 1, 23, 0));
       useNotificationSettingsStore.setState({
@@ -215,7 +215,7 @@ describe("NotificationCenterToolbarButton — DND state surface", () => {
       });
       const { container } = render(<NotificationCenterToolbarButton />);
       const btn = container.querySelector("button")!;
-      expect(btn.getAttribute("aria-label")).toBe("Notifications — scheduled quiet hours");
+      expect(btn.getAttribute("aria-label")).toBe("Notifications — quiet hours active");
     });
 
     it("session mute label takes priority over unread count", () => {
@@ -227,7 +227,7 @@ describe("NotificationCenterToolbarButton — DND state surface", () => {
       });
       const { container } = render(<NotificationCenterToolbarButton />);
       const btn = container.querySelector("button")!;
-      expect(btn.getAttribute("aria-label")).toMatch(/^Notifications — muted until /);
+      expect(btn.getAttribute("aria-label")).toMatch(/^Notifications — paused until /);
     });
 
     it("button carries data-dnd-active='true' while DND is active", () => {
@@ -580,6 +580,71 @@ describe("NotificationCenterToolbarButton — DND state surface", () => {
         "animate-activity-blip"
       );
       vi.useRealTimers();
+    });
+  });
+
+  // Issue #8178 — screen-reader users get no signal when DND ends because the
+  // BellOff → Bell icon swap is purely visual. A polite live region announces
+  // transitions in both directions so SR users hear the state change.
+  describe("DND screen-reader announcement (issue #8178)", () => {
+    it("renders empty on mount with DND inactive", () => {
+      const { getByTestId } = render(<NotificationCenterToolbarButton />);
+      const announcement = getByTestId("notification-dnd-announcement");
+      expect(announcement.textContent).toBe("");
+      expect(announcement.getAttribute("role")).toBe("status");
+      expect(announcement.getAttribute("aria-live")).toBe("polite");
+    });
+
+    it("renders empty on mount while DND is already active (no spurious announcement)", () => {
+      useNotificationSettingsStore.setState({ quietUntil: Date.now() + 60 * 60 * 1000 });
+      const { getByTestId } = render(<NotificationCenterToolbarButton />);
+      expect(getByTestId("notification-dnd-announcement").textContent).toBe("");
+    });
+
+    it("announces 'Notifications paused' when session mute begins", async () => {
+      const { getByTestId } = render(<NotificationCenterToolbarButton />);
+      await act(async () => {
+        useNotificationSettingsStore.setState({ quietUntil: Date.now() + 60 * 60 * 1000 });
+      });
+      expect(getByTestId("notification-dnd-announcement").textContent).toBe("Notifications paused");
+    });
+
+    it("announces 'Quiet hours active' when scheduled quiet hours begin", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2024, 0, 1, 21, 59, 30));
+      useNotificationSettingsStore.setState({
+        quietHoursEnabled: true,
+        quietHoursStartMin: 22 * 60,
+        quietHoursEndMin: 6 * 60,
+      });
+      const { getByTestId } = render(<NotificationCenterToolbarButton />);
+      // Not yet in the window.
+      expect(getByTestId("notification-dnd-announcement").textContent).toBe("");
+
+      // Cross 22:00 — minute-poll re-arm fires and DND flips active.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(31_000);
+      });
+      expect(getByTestId("notification-dnd-announcement").textContent).toBe("Quiet hours active");
+    });
+
+    it("announces 'Notifications resumed' when DND ends", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2024, 0, 1, 12, 0));
+      useNotificationSettingsStore.setState({
+        quietUntil: new Date(2024, 0, 1, 12, 0, 30).getTime(),
+      });
+      const { getByTestId } = render(<NotificationCenterToolbarButton />);
+      // Mounted during active DND — initial render is silent.
+      expect(getByTestId("notification-dnd-announcement").textContent).toBe("");
+
+      // Advance past the session-mute expiry; boundary timer fires and DND ends.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(31_000);
+      });
+      expect(getByTestId("notification-dnd-announcement").textContent).toBe(
+        "Notifications resumed"
+      );
     });
   });
 });

@@ -170,13 +170,29 @@ export function NotificationCenterToolbarButton({
     return () => clearTimeout(timer);
   }, [isBellBlipping]);
 
+  // Screen-reader announcement on DND start / end transitions. Initialize the
+  // ref to `isDndActive` so mounting while DND is already active does not
+  // synthesize a spurious "Notifications resumed" announcement.
+  const prevDndActiveRef = useRef(isDndActive);
+  const [dndAnnouncement, setDndAnnouncement] = useState("");
+  useEffect(() => {
+    const prev = prevDndActiveRef.current;
+    prevDndActiveRef.current = isDndActive;
+    if (prev === isDndActive) return;
+    if (isDndActive) {
+      setDndAnnouncement(isScheduledMuted ? "Quiet hours active" : "Notifications paused");
+    } else {
+      setDndAnnouncement("Notifications resumed");
+    }
+  }, [isDndActive, isScheduledMuted]);
+
   if (!notificationsEnabled) return null;
 
   const label = (() => {
     if (isSessionMuted) {
-      return `Notifications — muted until ${timeFormatter.format(new Date(quietUntil))}`;
+      return `Notifications — paused until ${timeFormatter.format(new Date(quietUntil))}`;
     }
-    if (isScheduledMuted) return "Notifications — scheduled quiet hours";
+    if (isScheduledMuted) return "Notifications — quiet hours active";
     if (notificationUnreadCount > 0) return `Notifications — ${notificationUnreadCount} unread`;
     return "Notifications";
   })();
@@ -226,6 +242,15 @@ export function NotificationCenterToolbarButton({
       >
         <NotificationCenter open={notificationCenterOpen} onClose={closeNotificationCenter} />
       </FixedDropdown>
+      <span
+        data-testid="notification-dnd-announcement"
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {dndAnnouncement}
+      </span>
     </div>
   );
 }
