@@ -208,6 +208,13 @@ describe("Toolbar shortcut tooltips — issue #3443", () => {
       expect(deps).toContain("copyTreeShortcut");
     });
 
+    it("includes showCopyingSpinner in useMemo deps (issue #8179)", () => {
+      const depsMatch = source.match(/\}\),\s*\[([^\]]+)\]\s*\);/s);
+      expect(depsMatch).not.toBeNull();
+      const deps = depsMatch![1];
+      expect(deps).toContain("showCopyingSpinner");
+    });
+
     it("diagnosticsShortcut is in ToolbarProblemsButton", () => {
       expect(problemsSource).toContain('useKeybindingDisplay("panel.toggleDiagnostics")');
     });

@@ -642,6 +642,7 @@ export function Toolbar({
       currentProject,
       handleCopyTreeClick,
       isCopyingTree,
+      showCopyingSpinner,
       activeWorktree,
       treeCopied,
       copyFeedback,
