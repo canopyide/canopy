@@ -1227,9 +1227,38 @@ describe("WorktreeHeader upstream sync indicator", () => {
     // auth-failure treatment.
     const indicator = screen.getByTestId("upstream-sync-indicator");
     expect(indicator).toBeDefined();
+    expect(indicator.textContent).toContain("↑1");
     expect(indicator.className).toContain("opacity-75");
     expect(indicator.className).not.toContain("grayscale");
     expect(indicator.className).not.toContain("opacity-50");
     expect(indicator.getAttribute("data-fetch-network-failed")).toBe("true");
+  });
+
+  it("does not dim the count display on a healthy worktree", () => {
+    renderHeader({
+      worktree: { ...baseWorktree, aheadCount: 1 },
+    });
+    const indicator = screen.getByTestId("upstream-sync-indicator");
+    expect(indicator).toBeDefined();
+    expect(indicator.className).not.toContain("opacity-75");
+    expect(indicator.getAttribute("data-fetch-network-failed")).toBeNull();
+  });
+
+  it("prefers the auth-failed treatment over the network-failed dim", () => {
+    // Mutually exclusive at source (RepoFetchCoordinator), but pin the
+    // precedence so a regression can't surface both treatments at once.
+    renderHeader({
+      worktree: {
+        ...baseWorktree,
+        aheadCount: 1,
+        fetchAuthFailed: true,
+        fetchNetworkFailed: true,
+        isGitHubRemote: true,
+      },
+    });
+    const indicator = screen.getByTestId("upstream-sync-indicator");
+    expect(indicator.getAttribute("data-fetch-auth-failed")).toBe("true");
+    expect(indicator.getAttribute("data-fetch-network-failed")).toBeNull();
+    expect(indicator.className).not.toContain("opacity-75");
   });
 });
