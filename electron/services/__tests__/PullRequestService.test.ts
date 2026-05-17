@@ -1560,7 +1560,7 @@ describe("PullRequestService", () => {
     await vi.advanceTimersByTimeAsync(2500);
     await started;
     expect(batchCheckLinkedPRs).toHaveBeenCalledTimes(1);
-    expect(batchCheckLinkedPRs.mock.calls[0][1]).toEqual(
+    expect((batchCheckLinkedPRs.mock.calls[0] as unknown[])[1]).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ worktreeId: "wt-1" }),
         expect.objectContaining({ worktreeId: "wt-2" }),
