@@ -90,6 +90,21 @@ export interface NotifyPayload {
   priority?: NotificationPriority;
   /** Groups related notifications into a thread in the notification center */
   correlationId?: string;
+  /**
+   * Logical pairing key. When a later `notify()` carries the same
+   * `supersedeKey`, the prior non-archived inbox entry with that key is
+   * archived automatically — used for resolving-event pairs like
+   * "disconnected" → "reconnected" so the inbox doesn't accumulate stale
+   * stateful rows. Independent of `correlationId`: `correlationId` threads
+   * conversational entries; `supersedeKey` retires them.
+   */
+  supersedeKey?: string;
+  /**
+   * Exact id of a prior inbox entry to archive when this one is added.
+   * Takes precedence over `supersedeKey`. No-op when the target is missing
+   * or already archived.
+   */
+  supersedes?: string;
   /** When set, rapidly fired notifications with the same key coalesce into a single updating toast */
   coalesce?: CoalesceOptions;
   /** When false, the history entry exists but does not increment the unread badge. Defaults to true. */
@@ -500,6 +515,8 @@ export function notify(payload: NotifyPayload): string {
             countable: payload.countable,
             actions: historyActions.length > 0 ? historyActions : undefined,
             context,
+            supersedeKey: payload.supersedeKey,
+            supersedes: payload.supersedes,
           })
         : undefined;
     if (!notificationsEnabled || isQuiet) return "";
@@ -527,6 +544,8 @@ export function notify(payload: NotifyPayload): string {
           countable: payload.countable,
           actions: historyActions.length > 0 ? historyActions : undefined,
           context,
+          supersedeKey: payload.supersedeKey,
+          supersedes: payload.supersedes,
         })
       : undefined;
 
