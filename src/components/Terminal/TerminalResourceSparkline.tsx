@@ -30,6 +30,7 @@ export function TerminalResourceSparkline({ history, className }: TerminalResour
       viewBox={`0 0 ${width} ${height}`}
       width={width}
       height={height}
+      overflow="visible"
       className={className}
       aria-hidden="true"
     >

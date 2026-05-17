@@ -27,6 +27,13 @@ describe("TerminalResourceSparkline", () => {
     expect(circle.getAttribute("cy")).toBe("7");
   });
 
+  it("lets the edge-anchored dot render fully via overflow visible", () => {
+    // cx=48 sits on the viewBox right edge; without overflow:visible the dot
+    // would clip to a half-disk.
+    const { container } = render(<TerminalResourceSparkline history={[10, 20, 30]} />);
+    expect(container.querySelector("svg")!.getAttribute("overflow")).toBe("visible");
+  });
+
   it("clamps the dot cy so it stays inside the viewBox at extremes", () => {
     const radius = 2;
     const { container: hot } = render(<TerminalResourceSparkline history={[0, 100]} />);
