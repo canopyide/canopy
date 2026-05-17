@@ -124,14 +124,24 @@ class PullRequestService {
       this.candidates.delete(state.worktreeId);
     }
 
-    if (branchChanged && currentContext) {
-      logDebug("Worktree branch changed - clearing PR state", {
-        worktreeId: state.worktreeId,
-        oldIssue: currentContext.issueNumber,
-        newIssue: newIssueNumber,
-        oldBranch: currentContext.branchName,
-        newBranch: newBranchName,
-      });
+    // Drop PR state whenever we de-track a previously-tracked worktree, not
+    // just on a branch change. Otherwise a worktree that flips to
+    // isMainWorktree without a branch swap (e.g., user designates it the
+    // root) leaves a stale detectedPRs entry behind — and any PENDING
+    // ciStatus on that entry would keep the adaptive boost armed for up to
+    // 15 minutes against a worktree we no longer poll.
+    const shouldClearPRState = currentContext && (branchChanged || !shouldTrack);
+
+    if (shouldClearPRState) {
+      if (branchChanged) {
+        logDebug("Worktree branch changed - clearing PR state", {
+          worktreeId: state.worktreeId,
+          oldIssue: currentContext.issueNumber,
+          newIssue: newIssueNumber,
+          oldBranch: currentContext.branchName,
+          newBranch: newBranchName,
+        });
+      }
 
       this.resolvedWorktrees.delete(state.worktreeId);
       this.detectedPRs.delete(state.worktreeId);

@@ -1282,6 +1282,70 @@ describe("PullRequestService", () => {
     pullRequestService.destroy();
   });
 
+  it("clears boost state when a tracked worktree flips to isMainWorktree without branch change", async () => {
+    let checkCallCount = 0;
+    const batchCheckLinkedPRs = vi.fn(async (_cwd: string, candidates: PRCheckCandidate[]) => {
+      checkCallCount++;
+      return {
+        results: new Map(
+          candidates.map((c) => [
+            c.worktreeId,
+            {
+              issueNumber: c.issueNumber,
+              branchName: c.branchName,
+              pr: {
+                number: 10,
+                title: "Soon-to-be-main PR",
+                url: "https://github.com/o/r/pull/10",
+                state: "open" as const,
+                isDraft: false,
+                ciStatus: "PENDING" as const,
+              },
+            },
+          ])
+        ),
+      };
+    });
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/de-track" })
+    );
+
+    await pullRequestService.start();
+    expect(checkCallCount).toBe(1); // PENDING → boost armed
+
+    // Same branch, but the worktree is now the main worktree — de-track without
+    // a branch change. A stale detectedPRs entry would keep the boost armed
+    // for 15 min; the fix clears PR state on any de-track of a previously
+    // tracked candidate.
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({
+        worktreeId: "wt-1",
+        branch: "feature/de-track",
+        isMainWorktree: true,
+      })
+    );
+
+    expect(pullRequestService.getStatus().candidateCount).toBe(0);
+    expect(pullRequestService.getStatus().resolvedCount).toBe(0);
+
+    // 30s after de-track — no boosted tick (no candidates to poll either, but
+    // crucially no zombie timer; the boost timer was armed at start() and the
+    // de-track must not leave its detectedPRs entry behind to keep boosting).
+    await vi.advanceTimersByTimeAsync(30 * 1000);
+    expect(checkCallCount).toBe(1);
+
+    pullRequestService.destroy();
+  });
+
   it("reset() clears the boost window", async () => {
     let checkCallCount = 0;
     let returnPending = true;
