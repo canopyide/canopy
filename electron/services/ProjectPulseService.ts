@@ -16,12 +16,27 @@ import type {
 interface CacheEntry {
   pulse: ProjectPulse;
   timestamp: number;
+  headSha: string | null;
 }
 
 const CACHE_TTL_MS = 60_000;
 const MAX_CACHE_SIZE = 100;
 const MAX_COMMITS_FOR_HEATMAP = 20_000;
 const VERBOSE_PROJECT_PULSE_LOGGING = process.env.DAINTREE_VERBOSE === "1";
+
+const NO_COMMITS_PATTERNS = [
+  "fatal: ambiguous argument 'head'",
+  "unknown revision",
+  "needed a single revision",
+  "does not have any commits yet",
+  "not a valid object name",
+  "bad default revision 'head'",
+];
+
+function isNoCommitsError(errorMessage: string): boolean {
+  const lower = errorMessage.toLowerCase();
+  return NO_COMMITS_PATTERNS.some((p) => lower.includes(p));
+}
 
 function logProjectPulseDebug(message: string, context?: Record<string, unknown>): void {
   if (!VERBOSE_PROJECT_PULSE_LOGGING) return;
@@ -103,8 +118,19 @@ export class ProjectPulseService {
     const cached = this.cache.get(cacheKey);
 
     if (!options.forceRefresh && cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-      logProjectPulseDebug("ProjectPulse cache hit", { cacheKey });
-      return cached.pulse;
+      // Lightweight probe: if HEAD hasn't moved, serve the cached pulse.
+      // Falls through to recompute when the SHA differs so commits, rebases,
+      // and branch switches surface inside the TTL window.
+      const currentSha = await this.probeHeadSha(options.worktreePath);
+      if (currentSha === cached.headSha) {
+        logProjectPulseDebug("ProjectPulse cache hit", { cacheKey });
+        return cached.pulse;
+      }
+      logProjectPulseDebug("ProjectPulse SHA changed, recomputing", {
+        cacheKey,
+        cachedSha: cached.headSha,
+        currentSha,
+      });
     }
 
     const existing = this.inFlight.get(cacheKey);
@@ -121,9 +147,9 @@ export class ProjectPulseService {
 
     const promise = (async () => {
       try {
-        const pulse = await this.computePulse(options, controller!.signal);
+        const { pulse, headSha } = await this.computePulse(options, controller!.signal);
         if (!controller!.signal.aborted) {
-          this.cache.set(cacheKey, { pulse, timestamp: Date.now() });
+          this.cache.set(cacheKey, { pulse, timestamp: Date.now(), headSha });
           this.pruneCache();
         }
         return pulse;
@@ -154,10 +180,33 @@ export class ProjectPulseService {
     }
   }
 
+  // Reads HEAD with the shared no-commits taxonomy. Used by the cheap probe in
+  // getPulse — no signal so a pending invalidate can't abort the validity check
+  // and trick the caller into a needless recompute.
+  private async probeHeadSha(worktreePath: string): Promise<string | null> {
+    if (!existsSync(worktreePath)) {
+      return null;
+    }
+    try {
+      const git = createHardenedGit(worktreePath);
+      const out = await git.raw(["rev-parse", "--verify", "HEAD"]);
+      return out.trim() || null;
+    } catch (error) {
+      const message = formatErrorMessage(error, "Failed to probe git HEAD");
+      if (isNoCommitsError(message)) {
+        return null;
+      }
+      // Unexpected error: fall through to recompute rather than silently
+      // serving stale data.
+      logProjectPulseDebug("ProjectPulse HEAD probe failed", { worktreePath, error: message });
+      return "__probe-error__";
+    }
+  }
+
   private async computePulse(
     options: GetProjectPulseOptions,
     signal?: AbortSignal
-  ): Promise<ProjectPulse> {
+  ): Promise<{ pulse: ProjectPulse; headSha: string | null }> {
     const {
       worktreePath,
       worktreeId,
@@ -179,28 +228,22 @@ export class ProjectPulseService {
       throw new Error(`Not a git repository: ${worktreePath}`);
     }
 
+    let headSha: string | null;
     try {
-      await git.raw(["rev-parse", "--verify", "HEAD"]);
+      const headOut = await git.raw(["rev-parse", "--verify", "HEAD"]);
+      headSha = headOut.trim() || null;
     } catch (error) {
       const errorMessage = formatErrorMessage(error, "Failed to read git HEAD");
-      const noCommitsPatterns = [
-        "fatal: ambiguous argument 'HEAD'",
-        "unknown revision",
-        "needed a single revision",
-        "does not have any commits yet",
-        "not a valid object name",
-        "bad default revision 'HEAD'",
-      ];
-      if (noCommitsPatterns.some((p) => errorMessage.toLowerCase().includes(p.toLowerCase()))) {
+      if (isNoCommitsError(errorMessage)) {
         logProjectPulseDebug("Repository has no commits, returning empty pulse", { worktreeId });
-        return this.createEmptyPulse(options);
+        return { pulse: this.createEmptyPulse(options), headSha: null };
       }
       logError("Failed to get HEAD revision", {
         error: errorMessage,
         worktreeId,
         worktreePath,
       });
-      throw new Error(`Failed to read git HEAD: ${errorMessage}`);
+      throw new Error(`Failed to read git HEAD: ${errorMessage}`, { cause: error });
     }
 
     let branch: string | undefined;
@@ -287,7 +330,7 @@ export class ProjectPulseService {
       durationMs: Date.now() - startTime,
     });
 
-    return pulse;
+    return { pulse, headSha };
   }
 
   private async computeHeatmap(git: SimpleGit, rangeDays: PulseRangeDays): Promise<HeatCell[]> {
