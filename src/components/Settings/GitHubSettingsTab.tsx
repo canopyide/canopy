@@ -264,7 +264,7 @@ export function GitHubSettingsTab() {
           {validationResult === "success" && (
             <p className="text-xs text-status-success flex items-center gap-1">
               <Check className="w-3 h-3" />
-              Token validated and saved successfully
+              Token saved
             </p>
           )}
           {validationResult === "test-success" && (

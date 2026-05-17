@@ -55,6 +55,7 @@ export function registerHelpActions(actions: ActionRegistry, callbacks: ActionCa
     run: async (args?: unknown) => {
       const folderPath = await window.electron.help.getFolderPath();
       if (!folderPath) {
+        // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
         notify({
           type: "error",
           title: "Help Agent",
@@ -82,10 +83,11 @@ export function registerHelpActions(actions: ActionRegistry, callbacks: ActionCa
       const project = useProjectStore.getState().currentProject;
       let session: Awaited<ReturnType<typeof window.electron.help.provisionSession>> | null = null;
       if (!project) {
+        // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
         notify({
           type: "error",
           title: "Daintree Assistant",
-          message: "Project state is still loading. Try again.",
+          message: "Project state is still loading.",
         });
         return;
       }
@@ -102,6 +104,7 @@ export function registerHelpActions(actions: ActionRegistry, callbacks: ActionCa
           err && typeof err === "object" && "code" in err
             ? (err as Record<string, unknown>).code
             : undefined;
+        // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
         notify({
           type: "error",
           title: code === "MCP_NOT_READY" ? "Start MCP failed" : "Assistant launch failed",
@@ -114,6 +117,7 @@ export function registerHelpActions(actions: ActionRegistry, callbacks: ActionCa
       }
 
       if (!session) {
+        // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
         notify({
           type: "error",
           title: "Assistant launch failed",

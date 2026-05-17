@@ -559,6 +559,7 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
       try {
         await switchScratchAction(scratch.id);
       } catch (error) {
+        // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
         notify({
           type: "error",
           title: "Couldn't switch scratch",
@@ -574,6 +575,7 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
       try {
         await removeScratchActionStore(scratchId);
       } catch (error) {
+        // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
         notify({
           type: "error",
           title: "Couldn't remove scratch",
@@ -594,6 +596,7 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
         await loadProjects();
         setSaveAsProjectConfirm({ scratch, project: result.project });
       } catch (error) {
+        // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
         notify({
           type: "error",
           title: "Couldn't save scratch as project",
@@ -616,6 +619,7 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
       await removeScratchActionStore(scratchId);
       setSaveAsProjectConfirm(null);
     } catch (error) {
+      // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
       notify({
         type: "error",
         title: "Couldn't remove original scratch",

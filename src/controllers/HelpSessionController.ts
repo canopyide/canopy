@@ -249,6 +249,7 @@ function asStringRecord(value: unknown): Record<string, string> | undefined {
 function notifyLaunchFailed(agentId: string, reason: string): void {
   const cfg = getAgentConfig(agentId);
   const name = cfg?.name ?? agentId;
+  // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
   notify({
     type: "error",
     title: "Assistant launch failed",
@@ -637,6 +638,7 @@ export class HelpSessionController {
         })
         .catch((err) => {
           logError("HelpPanel: setSessionTier failed", err);
+          // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
           notify({
             type: "error",
             title: "Couldn't approve tool",
@@ -678,6 +680,7 @@ export class HelpSessionController {
       })()
         .catch((err) => {
           logError("HelpPanel: always-allow tier write failed", err);
+          // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
           notify({
             type: "error",
             title: "Couldn't save permission",

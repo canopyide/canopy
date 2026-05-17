@@ -295,6 +295,7 @@ export function SettingsShortcutCapture({
               setConflictRefreshKey((prev) => prev + 1);
             } catch (err) {
               logError("Failed to undo keybinding change", err);
+              // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
               notify({
                 type: "error",
                 message: "Failed to undo keybinding change",
@@ -307,6 +308,7 @@ export function SettingsShortcutCapture({
       });
     } catch (err) {
       logError("Failed to unbind keybinding", err);
+      // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
       notify({
         type: "error",
         message: "Failed to unbind keybinding",

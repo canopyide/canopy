@@ -412,6 +412,7 @@ export function registerFleetActions(actions: ActionRegistry): void {
           priority: "low",
         });
       } catch (error) {
+        // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
         notify({
           type: "error",
           title: "Couldn't save fleet",
@@ -443,6 +444,7 @@ export function registerFleetActions(actions: ActionRegistry): void {
         if (!scope) return;
         applySavedScope(scope);
       } catch (error) {
+        // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
         notify({
           type: "error",
           title: "Couldn't recall fleet",
@@ -479,6 +481,7 @@ export function registerFleetActions(actions: ActionRegistry): void {
           useProjectSettingsStore.getState().setSettings(nextSettings);
         }
       } catch (error) {
+        // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
         notify({
           type: "error",
           title: "Couldn't delete fleet",

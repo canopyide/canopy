@@ -149,6 +149,7 @@ export async function handleFallbackTriggered(data: {
         supersedeKey: fallbackSupersedeKey,
       });
     } else {
+      // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
       notify({
         type: "error",
         priority: "high",

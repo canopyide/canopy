@@ -248,6 +248,7 @@ export function BulkCreateWorktreeDialog({
           if (toCreate.every((p) => p.mode === "pr")) {
             dispatchProgress({ type: "DONE" });
             queueRef.current = null;
+            // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
             notify({
               type: "error",
               title: "Some worktrees couldn't be created",

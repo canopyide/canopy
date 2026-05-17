@@ -194,6 +194,7 @@ export function registerAppActions(actions: ActionRegistry, callbacks: ActionCal
         await appThemeClient.setColorScheme(target.id);
       } catch (error) {
         logError("Failed to persist theme toggle", error);
+        // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
         notify({
           type: "error",
           priority: "high",

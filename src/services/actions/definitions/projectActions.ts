@@ -301,6 +301,7 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
           },
         });
       } catch (error) {
+        // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
         notify({
           type: "error",
           title: "Failed to mute notifications",
@@ -400,6 +401,7 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
           },
         });
       } catch (error) {
+        // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
         notify({
           type: "error",
           title: "Failed to silence notifications",

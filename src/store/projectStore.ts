@@ -289,6 +289,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
                       markError,
                       "Failed to mark directory as safe"
                     );
+                    // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
                     notify({
                       type: "error",
                       title: "Failed to mark as safe",
