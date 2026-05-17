@@ -31,7 +31,7 @@ import { buildCacheKey, getCache, setCache } from "@/lib/githubResourceCache";
 import { useGitHubConfigStore } from "@/store/githubConfigStore";
 import type { Project } from "@shared/types";
 import type { GitHubRateLimitDetails, RepositoryStats } from "@shared/types";
-import { freshnessOpacityClass, FreshnessGlyph, freshnessSuffix } from "./FreshnessUtils";
+import { FreshnessGlyph, freshnessSuffix } from "./FreshnessUtils";
 import {
   formatRateLimitCountdown,
   msUntilNextLabelChange,
@@ -629,8 +629,7 @@ export const GitHubStatsToolbarButton = memo(
           openRingClassName="ring-1 ring-github-open/20"
           className={cn(
             isTokenError && "opacity-40",
-            !isTokenError && stats?.issueCount === 0 && "opacity-50",
-            !isTokenError && freshnessOpacityClass(freshnessLevel)
+            !isTokenError && stats?.issueCount === 0 && "opacity-50"
           )}
           dropdownContent={
             ResourceListComponent ? (
@@ -735,8 +734,7 @@ export const GitHubStatsToolbarButton = memo(
           openRingClassName="ring-1 ring-github-merged/20"
           className={cn(
             isTokenError && "opacity-40",
-            !isTokenError && stats?.prCount === 0 && "opacity-50",
-            !isTokenError && freshnessOpacityClass(freshnessLevel)
+            !isTokenError && stats?.prCount === 0 && "opacity-50"
           )}
           dropdownContent={
             ResourceListComponent ? (
@@ -827,10 +825,7 @@ export const GitHubStatsToolbarButton = memo(
           }
           icon={GitCommit}
           openRingClassName="ring-1 ring-border-strong"
-          className={cn(
-            stats?.commitCount === 0 && "opacity-50",
-            freshnessOpacityClass(commitFreshnessLevel)
-          )}
+          className={cn(stats?.commitCount === 0 && "opacity-50")}
           dropdownContent={
             CommitListComponent ? (
               <CommitListComponent
