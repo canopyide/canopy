@@ -304,11 +304,7 @@ describe("DockedTabGroup dock-popover polish (#8164)", () => {
   describe("overflow chevron hidden-active cue (item 2)", () => {
     it("folds the count into aria-label and renders no dot when the active tab is visible", () => {
       mockHiddenTabIds = new Set<string>(["t-3"]);
-      const panels = [
-        makePanel({ id: "t-1" }),
-        makePanel({ id: "t-2" }),
-        makePanel({ id: "t-3" }),
-      ];
+      const panels = [makePanel({ id: "t-1" }), makePanel({ id: "t-2" }), makePanel({ id: "t-3" })];
 
       const { container } = render(
         <DockedTabGroup group={makeGroup(["t-1", "t-2", "t-3"], "t-1")} panels={panels} />
@@ -329,11 +325,7 @@ describe("DockedTabGroup dock-popover polish (#8164)", () => {
       mockHiddenTabIds = new Set<string>(["t-1", "t-3"]);
       mockActiveDockTerminalId = "t-1";
       mockTabGroups.set("g-1", makeGroup(["t-1", "t-2", "t-3"], "t-1"));
-      const panels = [
-        makePanel({ id: "t-1" }),
-        makePanel({ id: "t-2" }),
-        makePanel({ id: "t-3" }),
-      ];
+      const panels = [makePanel({ id: "t-1" }), makePanel({ id: "t-2" }), makePanel({ id: "t-3" })];
 
       const { container } = render(
         <DockedTabGroup group={makeGroup(["t-1", "t-2", "t-3"], "t-1")} panels={panels} />
@@ -370,9 +362,7 @@ describe("DockedTabGroup dock-popover polish (#8164)", () => {
         <DockedTabGroup group={makeGroup(["t-1", "t-2", "t-3"], "t-2")} panels={panels} />
       );
 
-      const rows = Array.from(
-        container.querySelectorAll<HTMLButtonElement>("[aria-current]")
-      );
+      const rows = Array.from(container.querySelectorAll<HTMLButtonElement>("[aria-current]"));
       expect(rows.length).toBe(1);
       const activeRow = rows[0]!;
       expect(activeRow.getAttribute("aria-current")).toBe("true");
@@ -381,9 +371,9 @@ describe("DockedTabGroup dock-popover polish (#8164)", () => {
       expect(activeRow.className).toContain("before:bg-daintree-accent");
 
       // The non-active hidden row must NOT carry the active marker.
-      const allRows = Array.from(
-        container.querySelectorAll<HTMLButtonElement>("button")
-      ).filter((b) => b !== activeRow && b.textContent?.includes("Inactive hidden"));
+      const allRows = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).filter(
+        (b) => b !== activeRow && b.textContent?.includes("Inactive hidden")
+      );
       expect(allRows.length).toBeGreaterThan(0);
       for (const row of allRows) {
         expect(row.className).not.toContain("before:bg-daintree-accent");

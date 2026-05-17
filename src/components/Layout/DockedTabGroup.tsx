@@ -683,39 +683,39 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
                       className="min-w-[200px] max-w-[320px] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto"
                     >
                       {hiddenPanels.map((panel) => {
-                          const tabChrome = deriveTerminalChrome({
-                            kind: panel.kind,
-                            launchAgentId: panel.launchAgentId,
-                            runtimeIdentity: panel.runtimeIdentity,
-                            detectedAgentId: panel.detectedAgentId,
-                            detectedProcessId: panel.detectedProcessId,
-                            agentState: panel.agentState,
-                            runtimeStatus: panel.runtimeStatus,
-                            exitCode: panel.exitCode,
-                            presetColor: panelPresetColors.get(panel.id),
-                          });
-                          const isActive = panel.id === activeTabId;
-                          return (
-                            <DropdownMenuItem
-                              key={panel.id}
-                              onSelect={() => handleTabClick(panel.id)}
-                              aria-current={isActive ? "true" : undefined}
-                              className={cn(
-                                isActive &&
-                                  "font-medium before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-daintree-accent before:content-['']"
-                              )}
-                            >
-                              <span className="shrink-0 mr-2 inline-flex items-center justify-center w-3.5 h-3.5">
-                                <TerminalIcon
-                                  kind={panel.kind ?? "terminal"}
-                                  chrome={tabChrome}
-                                  className="w-3.5 h-3.5"
-                                />
-                              </span>
-                              <span className="truncate">{getBaseTitle(panel.title)}</span>
-                            </DropdownMenuItem>
-                          );
-                        })}
+                        const tabChrome = deriveTerminalChrome({
+                          kind: panel.kind,
+                          launchAgentId: panel.launchAgentId,
+                          runtimeIdentity: panel.runtimeIdentity,
+                          detectedAgentId: panel.detectedAgentId,
+                          detectedProcessId: panel.detectedProcessId,
+                          agentState: panel.agentState,
+                          runtimeStatus: panel.runtimeStatus,
+                          exitCode: panel.exitCode,
+                          presetColor: panelPresetColors.get(panel.id),
+                        });
+                        const isActive = panel.id === activeTabId;
+                        return (
+                          <DropdownMenuItem
+                            key={panel.id}
+                            onSelect={() => handleTabClick(panel.id)}
+                            aria-current={isActive ? "true" : undefined}
+                            className={cn(
+                              isActive &&
+                                "font-medium before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-daintree-accent before:content-['']"
+                            )}
+                          >
+                            <span className="shrink-0 mr-2 inline-flex items-center justify-center w-3.5 h-3.5">
+                              <TerminalIcon
+                                kind={panel.kind ?? "terminal"}
+                                chrome={tabChrome}
+                                className="w-3.5 h-3.5"
+                              />
+                            </span>
+                            <span className="truncate">{getBaseTitle(panel.title)}</span>
+                          </DropdownMenuItem>
+                        );
+                      })}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
