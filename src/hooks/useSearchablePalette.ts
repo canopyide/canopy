@@ -1,4 +1,12 @@
-import { useState, useCallback, useMemo, useEffect, useRef, useDeferredValue } from "react";
+import {
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useDeferredValue,
+} from "react";
 import Fuse, { type IFuseOptions, type FuseResultMatch } from "fuse.js";
 import { usePaletteStore, type PaletteId } from "@/store/paletteStore";
 
@@ -143,6 +151,27 @@ export function useSearchablePalette<T>(
   // this guard, unstable memo dependencies (e.g. an inline filterFn) cause
   // the reset to fire on every render, clobbering ArrowDown navigation.
   const prevResultsRef = useRef<{ ids: string; length: number }>({ ids: "", length: 0 });
+
+  // Track the ID of the currently selected item so that when the results
+  // change (typing to narrow), we can follow the same item to its new index
+  // instead of snapping selection back to the first navigable row. The
+  // selectNext/selectPrevious callbacks use functional updaters, so a single
+  // post-commit effect is the only place that can stay in sync across every
+  // mutation path (open/close/nav/hover/external setSelectedIndex).
+  //
+  // We deliberately do NOT clear the ref when results[selectedIndex] is
+  // undefined: during a narrowing query the previous selectedIndex can point
+  // past the new results length for one render, and the results-change effect
+  // (which fires AFTER this layout effect on the same commit) needs the prior
+  // ID to attempt the follow lookup.
+  const selectedItemIdRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const item = results[selectedIndex];
+    if (item != null) {
+      selectedItemIdRef.current = getItemId(item);
+    }
+  }, [selectedIndex, results, getItemId]);
+
   useEffect(() => {
     if (!resetOnResultsChange) return;
 
@@ -158,6 +187,19 @@ export function useSearchablePalette<T>(
     const prev = prevResultsRef.current;
     if (ids === prev.ids && length === prev.length) return;
     prevResultsRef.current = { ids, length };
+
+    // Follow the previously selected item to its new index when it's still
+    // present and still navigable. This preserves the "type to narrow, glance,
+    // Enter" flow that otherwise confirms the wrong row.
+    if (selectedItemIdRef.current != null && length > 0) {
+      const followIndex = results.findIndex(
+        (item) => getItemId(item) === selectedItemIdRef.current
+      );
+      if (followIndex >= 0 && (!canNavigate || canNavigate(results[followIndex]!))) {
+        setSelectedIndex(followIndex);
+        return;
+      }
+    }
 
     if (canNavigate && length > 0) {
       const firstNavigable = findNavigable(0, 1);

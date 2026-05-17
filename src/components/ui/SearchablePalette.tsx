@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useMemo, useRef, useCallback } from "react";
 import { AppPaletteDialog, KBD_CLASS, PaletteFooterHints } from "@/components/ui/AppPaletteDialog";
 import { PaletteOverflowNotice } from "@/components/ui/PaletteOverflowNotice";
 import { useEscapeStack } from "@/hooks";
@@ -245,16 +245,16 @@ export function SearchablePalette<T>({
 
   const selectedItem = results[selectedIndex] ?? null;
 
-  let footerContent: React.ReactNode;
-  if (getFooter) {
-    footerContent = getFooter(selectedItem);
-  } else if (footer !== undefined) {
-    footerContent = footer;
-  } else if (getActionLabel) {
-    const rawLabel = getActionLabel(selectedItem);
-    const actionLabel = (rawLabel ?? "").trim() || "Select";
+  // Derive the action label as a primitive so the footer JSX can be memoized
+  // by its string content rather than the (changing) selectedItem reference.
+  // Without this, arrow-key navigation rebuilds <PaletteFooterHints/> on every
+  // selection change even when the label text is identical across items.
+  const rawActionLabel = getActionLabel ? getActionLabel(selectedItem) : null;
+  const actionLabelFooter = useMemo(() => {
+    if (rawActionLabel == null) return null;
+    const actionLabel = rawActionLabel.trim() || "Select";
     const phrase = `to ${actionLabel.toLowerCase()}`;
-    footerContent = (
+    return (
       <PaletteFooterHints
         primaryHint={{ keys: ["↵"], label: phrase }}
         hints={[
@@ -263,6 +263,15 @@ export function SearchablePalette<T>({
         ]}
       />
     );
+  }, [rawActionLabel]);
+
+  let footerContent: React.ReactNode;
+  if (getFooter) {
+    footerContent = getFooter(selectedItem);
+  } else if (footer !== undefined) {
+    footerContent = footer;
+  } else if (actionLabelFooter !== null) {
+    footerContent = actionLabelFooter;
   } else {
     footerContent = undefined;
   }
