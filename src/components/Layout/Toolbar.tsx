@@ -380,8 +380,7 @@ export function Toolbar({
         const sideTrigger = toolbarRef.current?.querySelector<HTMLElement>(
           `[data-toolbar-overflow-trigger][data-toolbar-overflow-side="${side}"]`
         );
-        const redirect =
-          sideTrigger && items.includes(sideTrigger) ? sideTrigger : items[clamped];
+        const redirect = sideTrigger && items.includes(sideTrigger) ? sideTrigger : items[clamped];
         redirect?.focus();
       }
     }

@@ -197,9 +197,7 @@ describe("Toolbar keyboard navigation — issue #8163", () => {
     });
 
     it("uses [data-toolbar-overflow-trigger] selector to locate the redirect target", () => {
-      expect(source).toMatch(
-        /querySelector[^)]*\[data-toolbar-overflow-trigger\]/
-      );
+      expect(source).toMatch(/querySelector[^)]*\[data-toolbar-overflow-trigger\]/);
     });
 
     it("scopes the overflow trigger lookup by side", () => {
@@ -215,9 +213,7 @@ describe("Toolbar keyboard navigation — issue #8163", () => {
       // The side selection must come from leftGroupRef/rightGroupRef
       // containment of the previously-focused item, not from a fixed
       // assumption about which side overflowed.
-      expect(source).toMatch(
-        /leftGroupRef\.current\?\.contains\(prevFocused\)/
-      );
+      expect(source).toMatch(/leftGroupRef\.current\?\.contains\(prevFocused\)/);
     });
 
     it("redirects focus only when the previously-focused item is no longer in items", () => {
@@ -234,9 +230,7 @@ describe("Toolbar keyboard navigation — issue #8163", () => {
     it("calls .focus() on the redirect target inside the layout effect", () => {
       // The layout-effect block must contain a focus() call gated by the
       // three conditions above.
-      expect(source).toMatch(
-        /useLayoutEffect\([\s\S]*?prevFocused[\s\S]*?\.focus\(\)[\s\S]*?\}\)/
-      );
+      expect(source).toMatch(/useLayoutEffect\([\s\S]*?prevFocused[\s\S]*?\.focus\(\)[\s\S]*?\}\)/);
     });
 
     it("clears prevFocusedToolbarItemRef on eviction, regardless of activeElement", () => {
@@ -267,9 +261,7 @@ describe("Toolbar keyboard navigation — issue #8163", () => {
       // (visibility: hidden), which does NOT null offsetParent. Without an
       // additional aria-hidden ancestor check, evicted items remain in the
       // items list and the overflow focus redirect can never fire.
-      expect(source).toMatch(
-        /el\.closest\('\[aria-hidden="true"\]'\)\s*===\s*null/
-      );
+      expect(source).toMatch(/el\.closest\('\[aria-hidden="true"\]'\)\s*===\s*null/);
     });
 
     it("keeps the offsetParent guard for display:none cases", () => {
