@@ -1,12 +1,12 @@
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { CornerDownRight, GitPullRequest } from "lucide-react";
+import { Clock, CornerDownRight, GitPullRequest } from "lucide-react";
 import type { GitHubPRCIStatus } from "@shared/types/github";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import { usePRTooltip } from "@/hooks/useGitHubTooltip";
 import { useGitHubBadgeTooltip } from "./hooks/useGitHubBadgeTooltip";
 import { useGitHubBadgeFreshness } from "./hooks/useGitHubBadgeFreshness";
-import { freshnessOpacityClass, freshnessSuffix } from "@/components/Layout/FreshnessUtils";
+import { freshnessSuffix } from "@/components/Layout/FreshnessUtils";
 import { PRTooltipContent, TooltipLoading, TokenMissingTooltip } from "./GitHubTooltipContent";
 import { getPRCIStatusVisual } from "@/components/GitHub/prCIStatus";
 
@@ -81,8 +81,7 @@ export function PRBadge({
           onClick={handleClick}
           data-no-dnd
           className={cn(
-            "flex items-center gap-1 text-xs text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent min-w-0",
-            freshnessOpacityClass(freshnessLevel)
+            "flex items-center gap-1 text-xs text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent min-w-0"
           )}
           aria-disabled={!isActive || undefined}
           aria-label={ariaLabel}
@@ -120,6 +119,13 @@ export function PRBadge({
                 <span className={cn("block w-2 h-2 rounded-full", ciVisual.colorClass)} />
               )}
             </span>
+          )}
+          {freshnessLevel === "aging" && !missingToken && (
+            <Clock
+              className="w-3 h-3 shrink-0 text-text-muted"
+              strokeWidth={2.5}
+              aria-hidden="true"
+            />
           )}
         </button>
       </TooltipTrigger>
