@@ -55,7 +55,7 @@ export function openSendToAgentPalette(sourceTerminalId: string): boolean {
  * own output back to itself.
  */
 export function openSendToAgentPaletteWithText(text: string, sourceTerminalId?: string): boolean {
-  if (!text) return false;
+  if (!text.trim()) return false;
   const sourceId = sourceTerminalId ?? null;
   if (!hasSendTargets(sourceId)) return false;
 

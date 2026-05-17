@@ -126,14 +126,20 @@ describe("AgentCompletionBanner", () => {
     expect(screen.getByRole("button", { name: /send to agent/i })).toBeTruthy();
   });
 
-  it("stops click propagation on both buttons so the pane doesn't grab focus", () => {
+  it("stops click propagation on all buttons (incl. handoff) so the pane doesn't grab focus", () => {
     const onParentClick = vi.fn();
     const { container } = render(
       <div onClick={onParentClick}>
-        <AgentCompletionBanner onReview={() => {}} onDismiss={() => {}} />
+        <AgentCompletionBanner
+          onReview={() => {}}
+          onDismiss={() => {}}
+          onSendToAssistant={() => {}}
+          onSendToAgent={() => {}}
+        />
       </div>
     );
     const buttons = container.querySelectorAll("button");
+    expect(buttons.length).toBe(4); // review + assistant + agent + dismiss
     buttons.forEach((b) => fireEvent.click(b));
     expect(onParentClick).not.toHaveBeenCalled();
   });

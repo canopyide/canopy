@@ -51,6 +51,11 @@ describe("openSendToAgentPaletteWithText", () => {
     expect(openPalette).not.toHaveBeenCalled();
   });
 
+  it("returns false for whitespace-only text", () => {
+    expect(openSendToAgentPaletteWithText("   \n\t ", "a")).toBe(false);
+    expect(openPalette).not.toHaveBeenCalled();
+  });
+
   it("returns false when there are no eligible targets", () => {
     panelState = { panelIds: ["a"], panelsById: { a: { id: "a" } } };
     expect(openSendToAgentPaletteWithText("hello", "a")).toBe(false);

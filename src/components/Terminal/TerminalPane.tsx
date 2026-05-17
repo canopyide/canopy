@@ -60,6 +60,7 @@ import { terminalClient } from "@/clients";
 import { useHelpPanelStore } from "@/store/helpPanelStore";
 import { openSendToAgentPaletteWithText } from "@/hooks/useSendToAgentPalette";
 import { formatWithBracketedPaste } from "@shared/utils/terminalInputProtocol";
+import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import type { HybridInputBarHandle } from "./HybridInputBar";
 const LazyHybridInputBar = lazy(() =>
   import("./HybridInputBar").then((m) => ({ default: m.HybridInputBar }))
@@ -901,10 +902,30 @@ function TerminalPaneComponent({
   const helpAgentState = usePanelStore((s) =>
     helpTerminalId ? s.panelsById[helpTerminalId]?.agentState : undefined
   );
+  const helpInputLocked = usePanelStore((s) =>
+    helpTerminalId ? s.panelsById[helpTerminalId]?.isInputLocked === true : false
+  );
   const assistantAvailable =
     !!helpTerminalId &&
     helpTerminalId !== id &&
+    !helpInputLocked &&
     (helpAgentState === "idle" || helpAgentState === "waiting");
+
+  // The "Send to agent" palette has nothing to offer when this is the only
+  // eligible PTY pane — hide it rather than render a button that no-ops.
+  const hasAgentTargets = usePanelStore((s) =>
+    s.panelIds.some((tid) => {
+      const t = s.panelsById[tid];
+      return (
+        !!t &&
+        t.id !== id &&
+        t.location !== "trash" &&
+        t.location !== "background" &&
+        (t.kind ? panelKindHasPty(t.kind) : true) &&
+        t.hasPty !== false
+      );
+    })
+  );
 
   const handleSendToAssistant = useCallback(() => {
     const help = useHelpPanelStore.getState();
@@ -912,6 +933,7 @@ function TerminalPaneComponent({
     if (!helpTid || helpTid === id) return;
     const state = terminalInstanceService.getAgentState(helpTid);
     if (state !== "idle" && state !== "waiting") return;
+    if (usePanelStore.getState().panelsById[helpTid]?.isInputLocked === true) return;
     const text = terminalInstanceService.captureBufferText(id, 20000);
     if (!text) return;
 
@@ -1201,7 +1223,7 @@ function TerminalPaneComponent({
                 onReview={handleOpenReviewHub}
                 onDismiss={() => setCompletionBannerDismissed(true)}
                 onSendToAssistant={assistantAvailable ? handleSendToAssistant : undefined}
-                onSendToAgent={handleSendToAgent}
+                onSendToAgent={hasAgentTargets ? handleSendToAgent : undefined}
               />
             )}
 
