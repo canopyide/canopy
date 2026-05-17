@@ -24,9 +24,10 @@ let revalidateEpoch = 0;
 
 function handleWake(payload: SystemWakePayload): void {
   const { sleepDuration } = payload;
-  logDebug("[systemWakeStore] System woke", { sleepDurationMs: sleepDuration });
 
   if (sleepDuration <= WAKE_NOOP_THRESHOLD_MS) return;
+
+  logDebug("[systemWakeStore] System woke", { sleepDurationMs: sleepDuration });
 
   if (sleepDuration <= WAKE_LONG_SLEEP_THRESHOLD_MS) {
     useSystemWakeStore.setState((state) => ({
