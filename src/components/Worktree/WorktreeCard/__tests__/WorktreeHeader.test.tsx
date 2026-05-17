@@ -105,7 +105,7 @@ describe("WorktreeHeader menu button", () => {
     expect(wrapper.className).not.toContain("opacity-0");
     expect(wrapper.className).toContain("opacity-50");
     expect(wrapper.className).toContain("group-hover/card:opacity-100");
-    expect(wrapper.className).toContain("group-focus-within/card:opacity-100");
+    expect(wrapper.className).toContain("group-has-[:focus-visible]/card:opacity-100");
     expect(wrapper.className).toContain("group-has-[[data-state=open]]/card:opacity-100");
   });
 
@@ -850,7 +850,7 @@ describe("WorktreeHeader cleanup button", () => {
     expect(wrapper.className).toContain("opacity-50");
     expect(wrapper.className).not.toContain("pointer-events-none");
     expect(wrapper.className).toContain("group-hover/card:opacity-100");
-    expect(wrapper.className).toContain("group-focus-within/card:opacity-100");
+    expect(wrapper.className).toContain("group-has-[:focus-visible]/card:opacity-100");
     expect(wrapper.className).toContain("group-has-[[data-state=open]]/card:opacity-100");
     // The cleanup button inherits visibility through the wrapper, not its own classes.
     expect(wrapper.contains(button)).toBe(true);
