@@ -557,8 +557,11 @@ export function Toolbar({
         isAvailable: true,
       },
       "voice-recording": {
+        // Slot is always available so the right-aligned items keep a stable
+        // footprint when a session starts/stops. The button itself returns
+        // an invisible placeholder when inactive (mirrors DevServerPlaceholder).
         render: () => <VoiceRecordingToolbarButton key="voice-recording" data-toolbar-item="" />,
-        isAvailable: hasActiveVoiceRecording,
+        isAvailable: true,
       },
       "github-stats": {
         render: () =>
@@ -682,7 +685,6 @@ export function Toolbar({
       copyTreeShortcut,
       copyTreeAriaShortcut,
       copyTreeHintHover,
-      hasActiveVoiceRecording,
       currentProject,
       handleCopyTreeClick,
       isCopyingTree,
@@ -750,8 +752,27 @@ export function Toolbar({
     availableRightIds
   );
 
-  const leftOverflowSeverity = useOverflowBadgeSeverity(leftOverflow, errorCount);
-  const rightOverflowSeverity = useOverflowBadgeSeverity(rightOverflow, errorCount);
+  // Voice recording reserves layout via an always-available slot but should
+  // not pollute the overflow badge or dropdown when no session is active —
+  // an inactive placeholder pushed into overflow would otherwise count as a
+  // hidden item and trigger the warning severity in useOverflowBadgeSeverity.
+  const visibleLeftOverflow = useMemo(
+    () =>
+      hasActiveVoiceRecording
+        ? leftOverflow
+        : leftOverflow.filter((id) => id !== "voice-recording"),
+    [leftOverflow, hasActiveVoiceRecording]
+  );
+  const visibleRightOverflow = useMemo(
+    () =>
+      hasActiveVoiceRecording
+        ? rightOverflow
+        : rightOverflow.filter((id) => id !== "voice-recording"),
+    [rightOverflow, hasActiveVoiceRecording]
+  );
+
+  const leftOverflowSeverity = useOverflowBadgeSeverity(visibleLeftOverflow, errorCount);
+  const rightOverflowSeverity = useOverflowBadgeSeverity(visibleRightOverflow, errorCount);
 
   const leftVisibleSet = useMemo(() => new Set<AnyToolbarButtonId>(leftVisible), [leftVisible]);
   const rightVisibleSet = useMemo(() => new Set<AnyToolbarButtonId>(rightVisible), [rightVisible]);
@@ -1045,7 +1066,7 @@ export function Toolbar({
             {renderLeftButtons(effectiveLeftButtons, leftVisibleSet)}
           </div>
           <div className="app-no-drag">
-            {renderOverflowMenu(leftOverflow, "left", leftOverflowSeverity)}
+            {renderOverflowMenu(visibleLeftOverflow, "left", leftOverflowSeverity)}
           </div>
         </div>
 
@@ -1143,7 +1164,7 @@ export function Toolbar({
             {renderButtons(effectiveRightButtons, rightVisibleSet)}
           </div>
           <div className="app-no-drag">
-            {renderOverflowMenu(rightOverflow, "right", rightOverflowSeverity)}
+            {renderOverflowMenu(visibleRightOverflow, "right", rightOverflowSeverity)}
           </div>
 
           <div className={toolbarDividerClass} />
