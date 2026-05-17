@@ -39,11 +39,10 @@ async function expectToolbarActionReachable(page: AppContext["window"], name: st
 
     for (let index = 0; index < count; index++) {
       const overflowButton = overflowButtons.nth(index);
-      const ariaLabel = await overflowButton.getAttribute("aria-label").catch(() => null);
-      if (ariaLabel && !ariaLabel.toLowerCase().includes(overflowLabel.toLowerCase())) {
-        continue;
-      }
-
+      // The overflow button's accessible name no longer enumerates its
+      // items (issue #8159) — it's a stable "More toolbar items — N
+      // hidden". Don't pre-filter by item name; open each visible
+      // overflow button and check whether the target menuitem appears.
       if (!(await overflowButton.isVisible({ timeout: 500 }).catch(() => false))) {
         continue;
       }
@@ -96,8 +95,11 @@ test.describe.serial("Core: Toolbar Overflow", () => {
     await expect(toolbarButton(window, "Open Terminal")).toBeVisible({ timeout: T_SHORT });
     await expect(toolbarButton(window, "Toggle Sidebar")).toBeVisible({ timeout: T_SHORT });
 
-    // No overflow menu should be present
-    const overflowButtons = window.locator('[aria-label*="more toolbar items"]');
+    // No overflow menu should be present. Match the accessible name
+    // case-insensitively via role — a CSS [aria-label*=…] substring is
+    // case-sensitive and would silently never match "More toolbar
+    // items — N hidden" (issue #8159), making this a false pass.
+    const overflowButtons = window.getByRole("button", { name: /more toolbar items/i });
     await expect(overflowButtons).toHaveCount(0);
   });
 
