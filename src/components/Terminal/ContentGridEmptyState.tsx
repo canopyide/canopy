@@ -50,10 +50,13 @@ export function ContentGridEmptyState({
       );
     })
   );
-  // Suppress RecipeRunner until the recipe store has been bound to the current
-  // project — recipes load fire-and-forget, so `currentProjectId === null`
-  // means the load has not started yet and `RecipeRunnerEmpty` would flash.
+  // Suppress RecipeRunner until the recipe store has settled for the current
+  // project — `loadRecipes()` sets `currentProjectId` synchronously before any
+  // IPC resolves, so we also need `!isLoading` to avoid flashing
+  // `RecipeRunnerEmpty` ("Create your first recipe") while in-repo recipes are
+  // still in flight.
   const recipesProjectId = useRecipeStore((state) => state.currentProjectId);
+  const recipesLoading = useRecipeStore((state) => state.isLoading);
   const { homeDir } = useHomeDir();
 
   const branchLabel =
@@ -154,7 +157,7 @@ export function ContentGridEmptyState({
           </p>
         )}
 
-        {hasActiveWorktree && recipesProjectId !== null && (
+        {hasActiveWorktree && recipesProjectId !== null && !recipesLoading && (
           <div className="mb-6 w-full flex justify-center">
             <RecipeRunner activeWorktreeId={activeWorktreeId} defaultCwd={defaultCwd} />
           </div>
