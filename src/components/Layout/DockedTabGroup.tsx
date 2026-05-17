@@ -14,7 +14,7 @@ import {
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
 import { LayoutGroup } from "framer-motion";
-import { ChevronDown, Plus } from "lucide-react";
+import { ChevronDown, CopyPlus } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DropdownMenu,
@@ -276,6 +276,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   const tabIds = useMemo(() => panels.map((p) => p.id), [panels]);
 
   const hiddenTabIds = useTabOverflow(tabListEl, tabIds);
+  const activeTabIsHidden = activeTabId !== "" && hiddenTabIds.has(activeTabId);
 
   // Handle tab reorder drag end
   const handleTabDragEnd = useCallback(
@@ -638,7 +639,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
                         aria-label="Duplicate panel as new tab"
                         type="button"
                       >
-                        <Plus className="w-3 h-3" aria-hidden="true" />
+                        <CopyPlus className="w-3 h-3" aria-hidden="true" />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom">Duplicate panel as new tab</TooltipContent>
@@ -652,13 +653,27 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
                           <button
                             type="button"
                             onPointerDown={(e) => e.stopPropagation()}
-                            className="shrink-0 p-1.5 hover:bg-daintree-text/10 text-daintree-text/40 hover:text-daintree-text transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
-                            aria-label="Show hidden tabs"
+                            className="relative shrink-0 p-1.5 hover:bg-daintree-text/10 text-daintree-text/40 hover:text-daintree-text transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
+                            aria-label={
+                              activeTabIsHidden
+                                ? "Show hidden tabs, including active"
+                                : "Show hidden tabs"
+                            }
                             aria-haspopup="menu"
                             data-testid="dock-tabs-overflow"
                           >
                             <ChevronDown className="w-3 h-3" aria-hidden="true" />
-                            <span className="sr-only"> ({hiddenTabIds.size} hidden)</span>
+                            {activeTabIsHidden && (
+                              <span
+                                className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-daintree-text/70"
+                                aria-hidden="true"
+                              />
+                            )}
+                            <span className="sr-only">
+                              {" "}
+                              ({hiddenTabIds.size} hidden
+                              {activeTabIsHidden ? ", including active" : ""})
+                            </span>
                           </button>
                         </DropdownMenuTrigger>
                       </TooltipTrigger>
@@ -688,7 +703,10 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
                               key={panel.id}
                               onSelect={() => handleTabClick(panel.id)}
                               aria-current={isActive ? "true" : undefined}
-                              className={cn(isActive && "font-medium")}
+                              className={cn(
+                                isActive &&
+                                  "font-medium before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-daintree-accent before:content-['']"
+                              )}
                             >
                               <span className="shrink-0 mr-2 inline-flex items-center justify-center w-3.5 h-3.5">
                                 <TerminalIcon
