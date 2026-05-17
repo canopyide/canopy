@@ -247,6 +247,9 @@ export class WorkspaceService {
           issueNumber,
         });
       },
+      onDetectionPaused: (tripped) => {
+        this.sendEvent({ type: "pr-detection-paused", tripped });
+      },
     });
 
     this.resourceActionExecutor = new ResourceActionExecutor({

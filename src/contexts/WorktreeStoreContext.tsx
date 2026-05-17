@@ -47,6 +47,11 @@ interface PRClearedEvent {
   branchName?: string;
 }
 
+interface PRDetectionPausedEvent {
+  type: "pr-detection-paused";
+  tripped: boolean;
+}
+
 interface IssueDetectedEvent {
   type: "issue-detected";
   worktreeId: string;
@@ -326,6 +331,13 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
           },
           store.getState().nextVersion()
         );
+      })
+    );
+
+    cleanups.push(
+      worktreePort.onEvent("pr-detection-paused", (data) => {
+        const event = data as PRDetectionPausedEvent;
+        store.getState().setPrDetectionPaused(event.tripped);
       })
     );
 

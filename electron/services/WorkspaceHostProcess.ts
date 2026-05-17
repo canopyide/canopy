@@ -718,6 +718,7 @@ export class WorkspaceHostProcess extends EventEmitter {
       case "worktree-removed":
       case "pr-detected":
       case "pr-cleared":
+      case "pr-detection-paused":
       case "issue-detected":
       case "issue-not-found":
       case "copytree:progress":

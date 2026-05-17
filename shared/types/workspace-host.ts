@@ -417,6 +417,9 @@ export type WorkspaceHostEvent =
       /** Branch the clear was initiated against — receiver drops the overlay if the worktree's branch has since changed. */
       branchName?: string;
     }
+  // PR detection circuit breaker tripped (true) or recovered (false).
+  // Service-wide, not per-worktree — drives the ambient errored badge state.
+  | { type: "pr-detection-paused"; tripped: boolean }
   // Issue events
   | {
       type: "issue-detected";

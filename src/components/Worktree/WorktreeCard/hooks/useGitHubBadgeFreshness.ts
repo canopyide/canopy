@@ -4,6 +4,7 @@ import { getCache, buildCacheKey } from "@/lib/githubResourceCache";
 import { useGlobalMinuteTicker } from "@/hooks/useGlobalMinuteTicker";
 import { useProjectStore } from "@/store/projectStore";
 import { useGitHubRateLimitStore } from "@/store/githubRateLimitStore";
+import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 
 const DEFAULT_FILTER_STATE = "open";
 const DEFAULT_SORT_ORDER = "created";
@@ -23,6 +24,7 @@ export function useGitHubBadgeFreshness(
   rowLastUpdatedAt?: number
 ): UseGitHubBadgeFreshnessResult {
   const projectPath = useProjectStore((s) => s.currentProject?.path);
+  const prDetectionPaused = useWorktreeStore((s) => s.prDetectionPaused);
   const tick = useGlobalMinuteTicker();
   const rateLimitBlocked = useGitHubRateLimitStore((s) => s.blocked);
 
@@ -37,14 +39,21 @@ export function useGitHubBadgeFreshness(
   const cacheLastUpdatedAt = cacheEntry?.timestamp ?? null;
   const now = tick > 0 ? Date.now() : Date.now();
 
+  // When the workspace-host PR detection circuit breaker is tripped, polling
+  // is paused service-wide and every badge is showing potentially stale data.
+  // Surface the ambient "errored" tier regardless of cache age so the signal
+  // persists after the transient toast fades.
+  //
   // While GitHub-wide rate-limit pause is active, badge data may be older
   // than its timestamp suggests — polling is suspended, so a `fresh` badge
   // would be misleading. Treat as `aging` until the block clears.
-  const freshnessLevel: FreshnessLevel = rateLimitBlocked
-    ? "aging"
-    : rowLastUpdatedAt != null && now - rowLastUpdatedAt > STALE_THRESHOLD_MS
+  const freshnessLevel: FreshnessLevel = prDetectionPaused
+    ? "errored"
+    : rateLimitBlocked
       ? "aging"
-      : "fresh";
+      : rowLastUpdatedAt != null && now - rowLastUpdatedAt > STALE_THRESHOLD_MS
+        ? "aging"
+        : "fresh";
 
   return { freshnessLevel, cacheLastUpdatedAt, now };
 }

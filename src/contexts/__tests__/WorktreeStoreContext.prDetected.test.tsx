@@ -21,6 +21,7 @@ type PortEventName =
   | "worktree-activated"
   | "pr-detected"
   | "pr-cleared"
+  | "pr-detection-paused"
   | "issue-detected"
   | "issue-not-found";
 
@@ -1040,5 +1041,32 @@ describe("WorktreeStoreProvider manual issue associations (#8079)", () => {
     });
 
     expect(store.getState().worktrees.get("wt-1")?.issueNumber).toBeUndefined();
+  });
+});
+
+describe("WorktreeStoreProvider pr-detection-paused handler", () => {
+  it("mirrors the circuit-breaker trip into the store", async () => {
+    const store = await renderProvider();
+    expect(store.getState().prDetectionPaused).toBe(false);
+
+    act(() => {
+      emit("pr-detection-paused", { type: "pr-detection-paused", tripped: true });
+    });
+
+    expect(store.getState().prDetectionPaused).toBe(true);
+  });
+
+  it("clears the flag on recovery", async () => {
+    const store = await renderProvider();
+    act(() => {
+      emit("pr-detection-paused", { type: "pr-detection-paused", tripped: true });
+    });
+    expect(store.getState().prDetectionPaused).toBe(true);
+
+    act(() => {
+      emit("pr-detection-paused", { type: "pr-detection-paused", tripped: false });
+    });
+
+    expect(store.getState().prDetectionPaused).toBe(false);
   });
 });

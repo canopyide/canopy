@@ -45,6 +45,11 @@ export interface WorktreeViewState {
   isInitialized: boolean;
   isReconnecting: boolean;
   reconnectingAt: number | null;
+  /**
+   * True when the workspace-host PR detection circuit breaker is tripped.
+   * Service-wide (not per-worktree); drives the ambient errored PR badge.
+   */
+  prDetectionPaused: boolean;
 }
 
 export interface WorktreeViewActions {
@@ -62,6 +67,7 @@ export interface WorktreeViewActions {
   setError(error: string | null): void;
   setFatalError(message: string): void;
   setReconnecting(reconnecting: boolean): void;
+  setPrDetectionPaused(tripped: boolean): void;
 }
 
 export type WorktreeViewStore = WorktreeViewState & WorktreeViewActions;
@@ -79,6 +85,7 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
     isInitialized: false,
     isReconnecting: false,
     reconnectingAt: null,
+    prDetectionPaused: false,
 
     nextVersion() {
       return ++versionCounter;
@@ -236,6 +243,11 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
             : Date.now()
           : null,
       });
+    },
+
+    setPrDetectionPaused(tripped: boolean) {
+      if (get().prDetectionPaused === tripped) return;
+      set({ prDetectionPaused: tripped });
     },
   }));
 }

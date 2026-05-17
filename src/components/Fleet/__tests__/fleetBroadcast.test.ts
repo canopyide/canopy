@@ -78,6 +78,7 @@ function installViewStore(worktrees: Map<string, WorktreeSnapshot>) {
     isInitialized: true,
     isReconnecting: false,
     reconnectingAt: null,
+    prDetectionPaused: false,
     nextVersion: () => 0,
     applySnapshot: () => {},
     applyUpdate: () => {},
@@ -88,6 +89,7 @@ function installViewStore(worktrees: Map<string, WorktreeSnapshot>) {
     setError: () => {},
     setFatalError: () => {},
     setReconnecting: () => {},
+    setPrDetectionPaused: () => {},
   }));
   setCurrentViewStore(store);
 }

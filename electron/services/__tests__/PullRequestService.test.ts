@@ -212,6 +212,47 @@ describe("PullRequestService", () => {
     pullRequestService.destroy();
   });
 
+  it("emits sys:pr:detection-paused once on trip and again on recovery", async () => {
+    let callCount = 0;
+    const batchCheckLinkedPRs = vi.fn(async () => {
+      callCount++;
+      if (callCount <= 3) {
+        return { results: new Map(), error: "API rate limit exceeded" };
+      }
+      return { results: new Map() };
+    });
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    const paused: DaintreeEventMap["sys:pr:detection-paused"][] = [];
+    const unsubscribe = events.on("sys:pr:detection-paused", (payload) => paused.push(payload));
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/test" })
+    );
+
+    await pullRequestService.start();
+    await vi.advanceTimersToNextTimerAsync();
+    await vi.advanceTimersToNextTimerAsync();
+
+    // Trip: exactly one tripped:true on the 3rd consecutive error.
+    expect(pullRequestService.getStatus().consecutiveErrors).toBe(3);
+    expect(paused).toEqual([{ tripped: true }]);
+
+    // Recovery: backoff window fires, resets the breaker, emits tripped:false.
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    expect(pullRequestService.getStatus().isEnabled).toBe(true);
+    expect(paused).toEqual([{ tripped: true }, { tripped: false }]);
+
+    unsubscribe();
+    pullRequestService.destroy();
+  });
+
   it("revalidates resolved PRs at 90-second intervals", async () => {
     let checkCallCount = 0;
     const batchCheckLinkedPRs = vi.fn(async (_cwd: string, candidates: PRCheckCandidate[]) => {

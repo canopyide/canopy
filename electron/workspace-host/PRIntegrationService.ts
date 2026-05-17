@@ -46,6 +46,7 @@ export interface PRIntegrationCallbacks {
     }
   ): void;
   onIssueNotFound(worktreeId: string, issueNumber: number): void;
+  onDetectionPaused(tripped: boolean): void;
 }
 
 export class PRIntegrationService {
@@ -117,6 +118,12 @@ export class PRIntegrationService {
     this.prEventUnsubscribers.push(
       this.eventBus.on("sys:pr:cleared", (data) => {
         this.callbacks.onPRCleared(data.worktreeId, { branchName: data.branchName });
+      })
+    );
+
+    this.prEventUnsubscribers.push(
+      this.eventBus.on("sys:pr:detection-paused", (data) => {
+        this.callbacks.onDetectionPaused(data.tripped);
       })
     );
 

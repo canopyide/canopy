@@ -303,6 +303,7 @@ describe("destructive-action danger metadata", () => {
       isInitialized: true,
       isReconnecting: false,
       reconnectingAt: null,
+      prDetectionPaused: false,
       nextVersion: () => 1,
       applySnapshot: () => {},
       applyUpdate: () => {},
@@ -313,6 +314,7 @@ describe("destructive-action danger metadata", () => {
       setError: () => {},
       setFatalError: () => {},
       setReconnecting: () => {},
+      setPrDetectionPaused: () => {},
     }));
     setCurrentViewStore(viewStore);
     const contextOverride = {

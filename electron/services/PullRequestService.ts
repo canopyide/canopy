@@ -494,6 +494,7 @@ class PullRequestService {
           logDebug("Circuit breaker recovery - running immediate check");
           this.consecutiveErrors = 0;
           this.nextRetryAt = 0;
+          events.emit("sys:pr:detection-paused", { tripped: false });
           void this.checkForPRs()
             .catch((err) => this.handleError(formatErrorMessage(err, "PR check failed")))
             .finally(() => this.scheduleNextPoll());
@@ -852,7 +853,7 @@ class PullRequestService {
     this.consecutiveErrors++;
     logWarn("PR check failed", { error: errorMsg, consecutiveErrors: this.consecutiveErrors });
 
-    if (this.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+    if (this.consecutiveErrors === MAX_CONSECUTIVE_ERRORS) {
       const backoffMs = computeBackoff(this.consecutiveErrors);
       this.nextRetryAt = Date.now() + backoffMs;
       logWarn("Too many consecutive errors - pausing PR polling", { retryInMs: backoffMs });
@@ -861,6 +862,7 @@ class PullRequestService {
         message: "PR detection paused due to errors. Will retry automatically.",
         id: "pr-service-circuit-breaker",
       });
+      events.emit("sys:pr:detection-paused", { tripped: true });
     }
   }
 

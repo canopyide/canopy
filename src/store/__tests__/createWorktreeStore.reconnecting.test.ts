@@ -185,6 +185,33 @@ describe("createWorktreeStore — reconnectingAt timestamp", () => {
   });
 });
 
+describe("createWorktreeStore — PR detection paused state", () => {
+  it("starts with prDetectionPaused=false", () => {
+    const store = createWorktreeStore();
+    expect(store.getState().prDetectionPaused).toBe(false);
+  });
+
+  it("setPrDetectionPaused(true) flips the flag", () => {
+    const store = createWorktreeStore();
+    store.getState().setPrDetectionPaused(true);
+    expect(store.getState().prDetectionPaused).toBe(true);
+  });
+
+  it("setPrDetectionPaused(false) clears the flag", () => {
+    const store = createWorktreeStore();
+    store.getState().setPrDetectionPaused(true);
+    store.getState().setPrDetectionPaused(false);
+    expect(store.getState().prDetectionPaused).toBe(false);
+  });
+
+  it("no-ops (same state reference) when the value is unchanged", () => {
+    const store = createWorktreeStore();
+    const before = store.getState();
+    store.getState().setPrDetectionPaused(false);
+    expect(store.getState()).toBe(before);
+  });
+});
+
 describe("createWorktreeStore — applySnapshot identity preservation", () => {
   it("preserves Map identity when every snapshot is value-equal", () => {
     const store = createWorktreeStore();

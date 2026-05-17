@@ -54,6 +54,7 @@ const DIRECT_RENDERER_EVENTS = new Set([
   "worktree-removed",
   "pr-detected",
   "pr-cleared",
+  "pr-detection-paused",
   "issue-detected",
   "issue-not-found",
 ]);
