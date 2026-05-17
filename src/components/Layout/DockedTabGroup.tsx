@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useShallow } from "zustand/react/shallow";
 import {
   DndContext,
   useDndMonitor,
@@ -14,7 +13,7 @@ import {
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
 import { LayoutGroup } from "framer-motion";
-import { ChevronDown, CopyPlus } from "lucide-react";
+import { ChevronDown, CopyPlus, SquareArrowOutUpRight } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DropdownMenu,
@@ -28,7 +27,6 @@ import { useTabOverflow } from "@/hooks";
 import {
   useTerminalInputStore,
   usePanelStore,
-  usePortalStore,
   useFocusStore,
   type TerminalInstance,
 } from "@/store";
@@ -124,12 +122,10 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
     return () => clearTimeout(timer);
   }, [isOpen]);
 
-  const { isOpen: portalOpen, width: portalWidth } = usePortalStore(
-    useShallow((s) => ({ isOpen: s.isOpen, width: s.width }))
-  );
-
   // Mirrors DockedTerminalItem: only the worktree-sidebar-hidden state
-  // changes left-side popover collision padding.
+  // changes left-side popover collision padding. Right padding is handled by
+  // PopoverContent's collisionBoundary (width: 100vw − --right-obstruction-offset),
+  // so the assistant/portal exclusion is not re-counted here.
   const sidebarHidden = useFocusStore((s) => s.gestureSidebarHidden);
 
   const collisionPadding = useMemo(() => {
@@ -138,60 +134,51 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
       top: basePadding,
       left: sidebarHidden ? 8 : basePadding,
       bottom: basePadding,
-      right: portalOpen ? portalWidth + basePadding : basePadding,
+      right: basePadding,
     };
-  }, [sidebarHidden, portalOpen, portalWidth]);
+  }, [sidebarHidden]);
 
-  // Toggle buffering based on popover open state
+  const portalTarget = useDockPanelPortal();
+  const [portalContainer, setPortalContainer] = useState<HTMLDivElement | null>(null);
+
+  const portalContainerRef = useCallback((node: HTMLDivElement | null) => {
+    setPortalContainer(node);
+  }, []);
+
+  // Toggle buffering based on popover open state. The terminal stays mounted
+  // in DockPanelOffscreenContainer across open/close cycles; the popover only
+  // shuttles the host element into a visible container. One layout pass after
+  // the portal-target ref settles is enough for `checkVisibility()` inside
+  // `fit()` to flip — no retry loop needed.
   useEffect(() => {
-    let cancelled = false;
+    if (!activePanel) return;
+    const activeId = activePanel.id;
 
-    const applyBufferingState = async () => {
+    if (!isOpen) {
       try {
-        if (isOpen && activePanel) {
-          if (!cancelled) {
-            const MAX_RETRIES = 10;
-            const RETRY_DELAY_MS = 16;
-
-            let dims: { cols: number; rows: number } | null = null;
-            for (let attempt = 0; attempt < MAX_RETRIES && !cancelled; attempt++) {
-              await new Promise((resolve) => requestAnimationFrame(resolve));
-              if (cancelled) return;
-
-              dims = terminalInstanceService.fit(activePanel.id);
-              if (dims) break;
-
-              if (attempt < MAX_RETRIES - 1) {
-                await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-              }
-            }
-
-            if (cancelled || !dims) return;
-
-            terminalInstanceService.applyRendererPolicy(
-              activePanel.id,
-              TerminalRefreshTier.VISIBLE
-            );
-          }
-        } else if (activePanel) {
-          if (!cancelled) {
-            terminalInstanceService.applyRendererPolicy(
-              activePanel.id,
-              TerminalRefreshTier.BACKGROUND
-            );
-          }
-        }
+        terminalInstanceService.applyRendererPolicy(activeId, TerminalRefreshTier.BACKGROUND);
       } catch (error) {
-        console.warn(`Failed to apply dock state for panel ${activePanel?.id}:`, error);
+        console.warn(`Failed to apply dock state for panel ${activeId}:`, error);
       }
-    };
+      return;
+    }
 
-    applyBufferingState();
+    if (!portalContainer) return;
+
+    const rafId = requestAnimationFrame(() => {
+      try {
+        const dims = terminalInstanceService.fit(activeId);
+        if (!dims) return;
+        terminalInstanceService.applyRendererPolicy(activeId, TerminalRefreshTier.VISIBLE);
+      } catch (error) {
+        console.warn(`Failed to apply dock state for panel ${activeId}:`, error);
+      }
+    });
 
     return () => {
-      cancelled = true;
+      cancelAnimationFrame(rafId);
     };
-  }, [isOpen, activePanel]);
+  }, [isOpen, portalContainer, activePanel]);
 
   // Auto-close popover when drag starts for any panel in this group
   useDndMonitor({
@@ -201,13 +188,6 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
       }
     },
   });
-
-  const portalTarget = useDockPanelPortal();
-  const [portalContainer, setPortalContainer] = useState<HTMLDivElement | null>(null);
-
-  const portalContainerRef = useCallback((node: HTMLDivElement | null) => {
-    setPortalContainer(node);
-  }, []);
 
   // Register/unregister portal target for active panel
   useEffect(() => {
@@ -395,6 +375,12 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
     },
     [panels, activeTabId, tabListEl]
   );
+
+  const handlePopOut = useCallback(() => {
+    if (!activePanel) return;
+    const moved = moveTerminalToGrid(activePanel.id);
+    if (moved) closeDockTerminal();
+  }, [activePanel, moveTerminalToGrid, closeDockTerminal]);
 
   // Handle add tab - duplicate the current panel as a new tab
   const handleAddTab = useCallback(async () => {
@@ -595,7 +581,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
         >
           <SortableContext items={tabIds} strategy={horizontalListSortingStrategy}>
             <LayoutGroup id={`dock-tabs-${group.id}`}>
-              <div className="flex items-stretch border-b border-divider bg-daintree-sidebar shrink-0">
+              <div className="group flex items-stretch border-b border-divider bg-daintree-sidebar shrink-0">
                 <div
                   ref={setTabListEl}
                   className="flex items-center min-w-0 flex-1 overflow-x-auto overscroll-x-none scrollbar-none"
@@ -650,6 +636,23 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
                     <TooltipContent side="bottom">Duplicate panel as new tab</TooltipContent>
                   </Tooltip>
                 </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePopOut();
+                      }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      className="shrink-0 p-1.5 text-daintree-text/40 hover:text-daintree-text hover:bg-daintree-text/10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
+                      aria-label="Open in grid"
+                    >
+                      <SquareArrowOutUpRight className="w-3 h-3" aria-hidden="true" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Open in grid</TooltipContent>
+                </Tooltip>
                 {hiddenPanels.length > 0 && (
                   <DropdownMenu>
                     <Tooltip>
