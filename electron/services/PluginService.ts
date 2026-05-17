@@ -29,6 +29,7 @@ import {
   unregisterPluginToolbarButtons,
 } from "../../shared/config/toolbarButtonRegistry.js";
 import { registerPluginMenuItem, unregisterPluginMenuItems } from "./pluginMenuRegistry.js";
+import { forgeProviderRegistry } from "./ForgeProviderRegistry.js";
 import { broadcastToRenderer } from "../ipc/utils.js";
 import { CHANNELS } from "../ipc/channels.js";
 import type { LoadedPluginInfo } from "../../shared/types/plugin.js";
@@ -380,10 +381,18 @@ export class PluginService {
       );
     }
 
-    if (manifest.contributes.forgeProviders.length > 0) {
-      console.warn(
-        `[PluginService] Plugin "${manifest.name}": contributes.forgeProviders is not yet implemented and will be ignored`
-      );
+    // Eager (manifest-driven) registration: populates the routing table and
+    // Preferences UI before any plugin code runs. The runtime implementation
+    // binds lazily via host.registerForgeProvider during activate().
+    for (const provider of manifest.contributes.forgeProviders) {
+      try {
+        forgeProviderRegistry.registerDescriptorOnly(manifest.name, provider);
+      } catch (err) {
+        console.error(
+          `[PluginService] Plugin "${manifest.name}": invalid forge provider "${provider.id}", skipping:`,
+          err
+        );
+      }
     }
 
     // Insert the plugin into the registry BEFORE importing its main module so
@@ -509,6 +518,31 @@ export class PluginService {
           disposeUpdate();
           disposeRemove();
         };
+      },
+      registerForgeProvider: (descriptor, impl) => {
+        if (revoked) {
+          throw new Error(
+            `Plugin "${pluginId}" host revoked: registerForgeProvider called after activate() returned or timed out`
+          );
+        }
+        const dispose = forgeProviderRegistry.register(pluginId, descriptor, impl);
+        // Track via the same per-plugin cleanup list as event subscriptions so
+        // flushPluginEventCleanups() disposes it automatically on unload.
+        let list = this.pluginEventCleanups.get(pluginId);
+        if (!list) {
+          list = [];
+          this.pluginEventCleanups.set(pluginId, list);
+        }
+        const tracked = (): void => {
+          dispose();
+          const current = this.pluginEventCleanups.get(pluginId);
+          if (!current) return;
+          const idx = current.indexOf(tracked);
+          if (idx >= 0) current.splice(idx, 1);
+          if (current.length === 0) this.pluginEventCleanups.delete(pluginId);
+        };
+        list.push(tracked);
+        return tracked;
       },
     };
     return {
@@ -680,6 +714,10 @@ export class PluginService {
     this.flushPluginEventCleanups(pluginId);
     this.removeHandlers(pluginId);
     this.unregisterPluginActions(pluginId);
+    // Defensive: event-cleanup flush already disposes runtime-bound providers;
+    // this also clears manifest-only (eager) descriptors that never got an
+    // impl. Both unregisterAll and the per-registration disposer are idempotent.
+    forgeProviderRegistry.unregisterAll(pluginId);
     unregisterPluginMenuItems(pluginId);
     unregisterPluginToolbarButtons(pluginId);
     unregisterPluginPanelKinds(pluginId);

@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Breaking Changes
+
+- **Plugin SDK: `PluginWorktreeSnapshot` forge fields replaced.** The GitHub-shaped fields `issueNumber`, `issueTitle`, `prNumber`, `prUrl`, `prState`, and `prTitle` are removed and replaced by a single provider-agnostic `linked` field (`{ providerId, issue?, pr? } | null`) typed against `ResourceRef`/`NormalizedPRState`. Plugins reading the old fields must migrate to `snapshot.linked`. `linked` is currently `null` for all worktrees until the forge-provider routing lands (`PRIntegrationService` rewrite). Plugins must declare `engines.daintree: "^0.11.0"` (or lower) to be gated out on this version; the SDK is pre-1.0 so this clean break ships without a migration shim. (#8058)
+
+### Features
+
+- **Plugin SDK: `host.registerForgeProvider(descriptor, impl)`.** New host API for forge plugins to register a provider implementation during `activate()`, backed by the new `ForgeProviderRegistry` (host-side routing by git remote hostname). Manifest `contributes.forgeProviders` entries now register eagerly instead of logging "not yet implemented"; the runtime implementation binds lazily and is auto-disposed on plugin unload. (#8058, #8057)
+
 ## [0.11.1] - 2026-05-17
 
 Stability follow-up to v0.11.0. Walks back two terminal rendering regressions, refreshes project stats on trash and restore without waiting for the 5s poll, and lets the Daintree Assistant resume across project-view LRU eviction. The release pipeline also splits into three independent per-OS workflows.

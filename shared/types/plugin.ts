@@ -1,4 +1,10 @@
-import type { ForgeProviderContribution } from "./forge.js";
+import type {
+  ForgeProviderContribution,
+  ForgeProviderDescriptor,
+  ForgeProviderImpl,
+  NormalizedPRState,
+  ResourceRef,
+} from "./forge.js";
 
 export interface PanelContribution {
   id: string;
@@ -138,12 +144,23 @@ export interface PluginWorktreeSnapshot {
   readonly isMainWorktree?: boolean;
   readonly aheadCount?: number;
   readonly behindCount?: number;
-  readonly issueNumber?: number;
-  readonly issueTitle?: string;
-  readonly prNumber?: number;
-  readonly prUrl?: string;
-  readonly prState?: "open" | "merged" | "closed";
-  readonly prTitle?: string;
+  /**
+   * Provider-agnostic branch→forge linkage. Replaces the GitHub-shaped
+   * `issueNumber`/`prNumber`/`prUrl`/`prState`/… fields removed in the
+   * forge-provider abstraction. `null` when the worktree is not linked to a
+   * forge resource (or no provider has resolved the linkage yet). See
+   * `docs/architecture/forge-provider-abstraction.md`.
+   */
+  readonly linked: {
+    readonly providerId: string;
+    readonly issue?: { readonly ref: ResourceRef; readonly title?: string };
+    readonly pr?: {
+      readonly ref: ResourceRef;
+      readonly title?: string;
+      readonly url: string;
+      readonly state: NormalizedPRState;
+    };
+  } | null;
   readonly mood?: "stable" | "active" | "stale" | "error";
   readonly lastActivityTimestamp?: number | null;
   readonly createdAt?: number;
@@ -178,6 +195,15 @@ export interface PluginHostApi {
    * disposed when the plugin is unloaded.
    */
   onDidChangeWorktrees(callback: (snapshots: PluginWorktreeSnapshot[]) => void): () => void;
+  /**
+   * Register a forge provider implementation. Call from `activate(host)`.
+   * `descriptor` mirrors the plugin's `forgeProviders` manifest entry; fields
+   * already declared statically in `plugin.json` may be omitted (only `id` is
+   * required). The provider is namespaced at runtime as `{pluginId}.{id}`.
+   * Returns a disposer; calling it more than once is a no-op. The provider is
+   * automatically unregistered when the plugin is unloaded.
+   */
+  registerForgeProvider(descriptor: ForgeProviderDescriptor, impl: ForgeProviderImpl): () => void;
 }
 
 export type PluginActivate = (

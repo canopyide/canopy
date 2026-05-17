@@ -19,12 +19,12 @@ export function toPluginWorktreeSnapshot(snapshot: WorktreeSnapshot): PluginWork
     isMainWorktree: snapshot.isMainWorktree,
     aheadCount: snapshot.aheadCount,
     behindCount: snapshot.behindCount,
-    issueNumber: snapshot.issueNumber,
-    issueTitle: snapshot.issueTitle,
-    prNumber: snapshot.prNumber,
-    prUrl: snapshot.prUrl,
-    prState: snapshot.prState,
-    prTitle: snapshot.prTitle,
+    // `linked` is provider-routed. The internal WorktreeSnapshot does not yet
+    // carry provider identity (providerId/owner/repo), so there is nothing to
+    // project here without coupling this allowlist to GitHub's URL shape.
+    // Stays `null` until the ForgeProviderRegistry resolves linkage and
+    // PRIntegrationService populates it (see forge-provider-abstraction.md).
+    linked: null,
     mood: snapshot.mood,
     lastActivityTimestamp: snapshot.lastActivityTimestamp ?? null,
     createdAt: snapshot.createdAt,

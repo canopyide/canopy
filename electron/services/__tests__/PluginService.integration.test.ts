@@ -56,6 +56,7 @@ import {
   getToolbarButtonConfig,
 } from "../../../shared/config/toolbarButtonRegistry.js";
 import { clearPluginMenuRegistry, getPluginMenuItems } from "../pluginMenuRegistry.js";
+import { forgeProviderRegistry } from "../ForgeProviderRegistry.js";
 
 function makeCtx(pluginId: string, overrides: Partial<PluginIpcContext> = {}): PluginIpcContext {
   return {
@@ -76,6 +77,7 @@ type PluginManifestShape = {
     panels?: unknown[];
     toolbarButtons?: unknown[];
     menuItems?: unknown[];
+    forgeProviders?: unknown[];
   };
 };
 
@@ -120,6 +122,7 @@ afterEach(async () => {
     clearPanelKindRegistry();
     clearToolbarButtonRegistry();
     clearPluginMenuRegistry();
+    forgeProviderRegistry.clear();
     storeState.clear();
     for (const key of globalMarkers) {
       delete (globalThis as Record<string, unknown>)[key];
@@ -889,5 +892,118 @@ describe("PluginService integration — built-in plugin loading", () => {
     } finally {
       errorSpy.mockRestore();
     }
+  });
+});
+
+describe("PluginService integration — forge provider contributions", () => {
+  async function writeForgeActivateFixture(pluginDir: string): Promise<string> {
+    const fileName = `forge-activate-${randomUUID()}.mjs`;
+    await fs.writeFile(
+      path.join(pluginDir, fileName),
+      `export function activate(host) {
+  const impl = {
+    parseRemote: () => null,
+    getCredentials: async () => null,
+    validateCredentials: async () => ({ valid: false }),
+    listIssues: async () => ({ items: [], nextCursor: null, hasMore: false }),
+    listPRs: async () => ({ items: [], nextCursor: null, hasMore: false }),
+    getIssue: async () => null,
+    getPR: async () => null,
+    findPRByBranch: async () => null,
+    getCIStatus: async () => null,
+    getRepoMetadata: async () => ({ defaultBranch: "main", isPrivate: false, isFork: false, isArchived: false, rawData: null }),
+    buildIssueUrl: () => "",
+    buildPRUrl: () => "",
+  };
+  host.registerForgeProvider({ id: "gh" }, impl);
+}
+`
+    );
+    return fileName;
+  }
+
+  it("registers a manifest forge provider eagerly without the 'not implemented' warning", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await writePlugin("acme.forge-eager", {
+        name: "acme.forge-eager",
+        version: "1.0.0",
+        contributes: {
+          forgeProviders: [{ id: "gh", name: "GitHub", matches: ["github.com"] }],
+        },
+      });
+
+      const service = new PluginService(tmpDir, "0.0.0");
+      await service.initialize();
+
+      // Descriptor is registered (routing table populated) but not callable
+      // until activate() binds an impl.
+      expect(forgeProviderRegistry.getActiveProvider("https://github.com/o/r")).toBeNull();
+      expect(service.hasPlugin("acme.forge-eager")).toBe(true);
+      expect(
+        warnSpy.mock.calls.some((c) =>
+          String(c[0]).includes("forgeProviders is not yet implemented")
+        )
+      ).toBe(false);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("binds the runtime impl via host.registerForgeProvider and routes by hostname", async () => {
+    const pluginDir = await writePlugin("acme.forge-impl", {
+      name: "acme.forge-impl",
+      version: "1.0.0",
+      contributes: {
+        forgeProviders: [{ id: "gh", name: "GitHub", matches: ["github.com"] }],
+      },
+    });
+    const mainFile = await writeForgeActivateFixture(pluginDir);
+    await fs.writeFile(
+      path.join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "acme.forge-impl",
+        version: "1.0.0",
+        main: mainFile,
+        contributes: {
+          forgeProviders: [{ id: "gh", name: "GitHub", matches: ["github.com"] }],
+        },
+      })
+    );
+
+    const service = new PluginService(tmpDir, "0.0.0");
+    await service.initialize();
+
+    // Eager manifest matches merge with the lazily-bound impl.
+    expect(forgeProviderRegistry.getActiveProvider("https://github.com/o/r")).not.toBeNull();
+  });
+
+  it("unregisters the provider on plugin unload", async () => {
+    const pluginDir = await writePlugin("acme.forge-unload", {
+      name: "acme.forge-unload",
+      version: "1.0.0",
+      contributes: {
+        forgeProviders: [{ id: "gh", name: "GitHub", matches: ["github.com"] }],
+      },
+    });
+    const mainFile = await writeForgeActivateFixture(pluginDir);
+    await fs.writeFile(
+      path.join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "acme.forge-unload",
+        version: "1.0.0",
+        main: mainFile,
+        contributes: {
+          forgeProviders: [{ id: "gh", name: "GitHub", matches: ["github.com"] }],
+        },
+      })
+    );
+
+    const service = new PluginService(tmpDir, "0.0.0");
+    await service.initialize();
+    expect(forgeProviderRegistry.getActiveProvider("https://github.com/o/r")).not.toBeNull();
+
+    service.unloadPlugin("acme.forge-unload");
+    expect(forgeProviderRegistry.getActiveProvider("https://github.com/o/r")).toBeNull();
   });
 });

@@ -58,6 +58,7 @@ import {
   unregisterPluginToolbarButtons,
 } from "../../../shared/config/toolbarButtonRegistry.js";
 import { registerPluginMenuItem, unregisterPluginMenuItems } from "../pluginMenuRegistry.js";
+import { forgeProviderRegistry } from "../ForgeProviderRegistry.js";
 import { CHANNELS } from "../../ipc/channels.js";
 
 function makeCtx(pluginId: string, overrides: Partial<PluginIpcContext> = {}): PluginIpcContext {
@@ -2216,16 +2217,11 @@ describe("Plugin worktree host API", () => {
       "id",
       "isCurrent",
       "isMainWorktree",
-      "issueNumber",
-      "issueTitle",
       "lastActivityTimestamp",
+      "linked",
       "mood",
       "name",
       "path",
-      "prNumber",
-      "prState",
-      "prTitle",
-      "prUrl",
       "worktreeId",
     ];
     expect(Object.keys(active).sort()).toEqual(expected);
@@ -2300,7 +2296,7 @@ describe("reserved contribution point warnings", () => {
     );
   });
 
-  it("accepts a contributes.forgeProviders entry and logs a 'not yet implemented' warning", async () => {
+  it("registers a contributes.forgeProviders entry eagerly without a 'not implemented' warning", async () => {
     await writePlugin("forge", {
       name: "acme.forge",
       version: "1.0.0",
@@ -2319,19 +2315,25 @@ describe("reserved contribution point warnings", () => {
       },
     });
 
-    const service = new PluginService(tmpDir, "0.7.5");
-    await service.initialize();
+    try {
+      const service = new PluginService(tmpDir, "0.7.5");
+      await service.initialize();
 
-    expect(service.listPlugins()).toHaveLength(1);
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining(
-        'Plugin "acme.forge": contributes.forgeProviders is not yet implemented'
-      )
-    );
-    // Reserved + ignored: a forge-only manifest has no registry side effects.
-    expect(registerPanelKind).not.toHaveBeenCalled();
-    expect(registerToolbarButton).not.toHaveBeenCalled();
-    expect(registerPluginMenuItem).not.toHaveBeenCalled();
+      expect(service.listPlugins()).toHaveLength(1);
+      const warnMessages = warnSpy.mock.calls.map((call: unknown[]) => String(call[0]));
+      expect(
+        warnMessages.some((m: string) => m.includes("contributes.forgeProviders is not yet"))
+      ).toBe(false);
+      // Eager: the descriptor is recorded but not callable until activate()
+      // binds an impl, so the routing table reports no active provider yet.
+      expect(forgeProviderRegistry.getActiveProvider("https://github.com/o/r")).toBeNull();
+      // Forge-only manifest still has no panel/toolbar/menu side effects.
+      expect(registerPanelKind).not.toHaveBeenCalled();
+      expect(registerToolbarButton).not.toHaveBeenCalled();
+      expect(registerPluginMenuItem).not.toHaveBeenCalled();
+    } finally {
+      forgeProviderRegistry.clear();
+    }
   });
 
   it("does not warn about reserved points when the manifest omits them", async () => {
