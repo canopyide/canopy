@@ -75,15 +75,19 @@ const AGENT_TOOLBAR_IDS = new Set<ToolbarButtonId>([
 
 type OverflowMenuMeta = { label: string; icon: React.ComponentType<{ className?: string }> };
 
-// voice-recording has no actionable overflow item — it's a persistent
-// indicator that only appears while recording is already active. Surface the
-// label via tooltip text only; suppress from the dropdown list itself.
-const OVERFLOW_DROPDOWN_SKIP: ReadonlySet<string> = new Set(["voice-recording"]);
-
 const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text relative";
 // These controls are project-only visually, but their no-drag rectangles must
 // exist on first paint so secondary windows don't cache them as titlebar drag.
 const PROJECT_SCOPED_TOOLBAR_IDS = new Set<AnyToolbarButtonId>(["dev-server", "github-stats"]);
+
+// Hardware-privacy indicators stay out of the overflow dropdown while their
+// signal is active — collapsing them under `…` would hide the only visual
+// cue that the host is recording. Voice recording joins this set only when
+// the user is actively recording (see `pinnedRightIds` derivation below);
+// future mic/camera/screen-share indicators that follow the same principle
+// should be added here.
+const VOICE_RECORDING_PINNED: ReadonlySet<AnyToolbarButtonId> = new Set(["voice-recording"]);
+const NO_PINNED_IDS: ReadonlySet<AnyToolbarButtonId> = new Set();
 
 // How long the copy-tree button shows the green "context copied" feedback
 // before reverting to its idle state. Long enough to register the success,
@@ -146,12 +150,10 @@ export function PluginToolbarButton({
   );
 }
 
-// Adapter view over the unified `TOOLBAR_BUTTON_METADATA` registry. Skips
-// entries that should never render as overflow menu items (see
-// `OVERFLOW_DROPDOWN_SKIP`) — those are still surfaced in tooltip text.
+// Adapter view over the unified `TOOLBAR_BUTTON_METADATA` registry.
 const overflowMenuMetaInit: Record<string, OverflowMenuMeta> = {};
 for (const [id, meta] of Object.entries(TOOLBAR_BUTTON_METADATA)) {
-  if (!meta || OVERFLOW_DROPDOWN_SKIP.has(id)) continue;
+  if (!meta) continue;
   overflowMenuMetaInit[id] = { label: meta.label, icon: meta.icon };
 }
 export const OVERFLOW_MENU_META: Partial<Record<AnyToolbarButtonId, OverflowMenuMeta>> =
@@ -745,11 +747,18 @@ export function Toolbar({
     [effectiveRightButtons, buttonRegistry]
   );
 
+  // Pin the voice-recording indicator out of overflow while a recording is
+  // active so the user never loses sight of the live mic signal. The set
+  // reference is stabilized so the overflow hook's recalculate callback
+  // doesn't re-fire on every render.
+  const pinnedRightIds = hasActiveVoiceRecording ? VOICE_RECORDING_PINNED : NO_PINNED_IDS;
+
   const { leftVisible, leftOverflow, rightVisible, rightOverflow } = useToolbarOverflow(
     leftGroupRef,
     rightGroupRef,
     availableLeftIds,
-    availableRightIds
+    availableRightIds,
+    pinnedRightIds
   );
 
   // Voice recording reserves layout via an always-available slot but should

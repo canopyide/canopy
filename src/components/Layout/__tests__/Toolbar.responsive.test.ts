@@ -131,6 +131,18 @@ describe("Toolbar responsive design — issue #4133", () => {
         '`More toolbar items — ${n} ${n === 1 ? "problem" : "problems"} hidden`'
       );
     });
+
+    it("pins voice-recording out of overflow while actively recording — issue #8158", () => {
+      // The toolbar must keep the live mic indicator visible regardless of
+      // container width. The pinned set wires into useToolbarOverflow so the
+      // button is excluded from the overflow budget while a recording is
+      // active. The previous workaround (a hardcoded fallback label in the
+      // overflow tooltip) is gone; reintroducing it would re-mask the bug.
+      expect(source).toContain("VOICE_RECORDING_PINNED");
+      expect(source).toContain("pinnedRightIds");
+      expect(source).not.toContain('id === "voice-recording"');
+      expect(source).not.toContain("OVERFLOW_DROPDOWN_SKIP");
+    });
   });
 
   describe("toolbar button visual states — issue #7973", () => {

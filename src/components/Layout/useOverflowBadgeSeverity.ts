@@ -32,6 +32,10 @@ function isBuiltInAgentId(id: AnyToolbarButtonId): id is BuiltInAgentId {
  * into the overflow `…` menu so the trigger can surface a single dot rather
  * than silently hiding active state.
  *
+ * Hardware-privacy indicators (e.g. voice recording) are pinned out of
+ * overflow by the toolbar — they never appear in `overflowIds`, so no
+ * branch here handles them.
+ *
  * Why a primitive return: keeps Zustand selector identity stable so
  * downstream renders don't churn (lesson #3730). All store reads are
  * unconditional to comply with the rules of hooks; gating happens inside
@@ -59,12 +63,6 @@ export function useOverflowBadgeSeverity(
 
     if (overflowIds.includes("problems") && errorCount > 0) {
       critical = true;
-    }
-
-    // voice-recording is only registered when actively recording — its
-    // mere presence in overflow signals a live session.
-    if (overflowIds.includes("voice-recording")) {
-      warning = true;
     }
 
     const overflowedAgentIds: BuiltInAgentId[] = [];

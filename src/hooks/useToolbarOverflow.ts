@@ -21,37 +21,48 @@ export interface OverflowResult {
  *
  * Items are removed lowest-priority-first (highest number). Within the same
  * priority, items later in the array are removed first.
+ *
+ * `pinnedIds` are immune to overflow — they always land in `visibleIds` and
+ * their widths are excluded from the budget calculation, so non-pinned items
+ * absorb all width pressure. Used for hardware-privacy indicators (e.g. an
+ * active mic recording) where presence must remain stable regardless of
+ * container width.
  */
 export function computeOverflow(
   containerWidth: number,
   itemWidths: Map<string, number>,
   orderedIds: AnyToolbarButtonId[],
-  priorities: Record<string, ToolbarButtonPriority>
+  priorities: Record<string, ToolbarButtonPriority>,
+  pinnedIds?: ReadonlySet<AnyToolbarButtonId>
 ): OverflowResult {
   if (orderedIds.length === 0) {
     return { visibleIds: [], overflowIds: [] };
   }
 
-  const totalWidth = orderedIds.reduce(
+  const hasPinned = pinnedIds !== undefined && pinnedIds.size > 0;
+  const removableIds = hasPinned ? orderedIds.filter((id) => !pinnedIds.has(id)) : orderedIds;
+
+  const removableWidth = removableIds.reduce(
     (sum, id) => sum + (itemWidths.get(id) ?? DEFAULT_ITEM_WIDTH),
     0
   );
 
-  if (totalWidth <= containerWidth) {
+  if (removableWidth <= containerWidth) {
     return { visibleIds: [...orderedIds], overflowIds: [] };
   }
 
-  // Sort by priority descending (lowest priority = highest number = removed first),
-  // then by reverse position (later items removed first within same priority)
-  const sortedForRemoval = orderedIds
-    .map((id, index) => ({ id, index, priority: priorities[id] ?? 3 }))
+  // Sort removable items by priority descending (lowest priority = highest number
+  // = removed first), then by reverse position (later items removed first within
+  // same priority). Pinned items are excluded from removal entirely.
+  const sortedForRemoval = removableIds
+    .map((id) => ({ id, index: orderedIds.indexOf(id), priority: priorities[id] ?? 3 }))
     .sort((a, b) => {
       if (b.priority !== a.priority) return b.priority - a.priority;
       return b.index - a.index;
     });
 
   const overflowSet = new Set<AnyToolbarButtonId>();
-  let currentWidth = totalWidth;
+  let currentWidth = removableWidth;
   const targetWidth = containerWidth - OVERFLOW_TRIGGER_WIDTH;
 
   for (const item of sortedForRemoval) {
@@ -77,6 +88,9 @@ export function computeOverflow(
  *
  * `previousResult` is `null` on the first call. If there is no current
  * overflow, the guard is a no-op and the pure result is returned.
+ *
+ * `pinnedIds` are forwarded to `computeOverflow` — pinned items never appear
+ * in `overflowIds` regardless of container width.
  */
 export function computeGuardedOverflow(
   containerWidth: number,
@@ -84,9 +98,10 @@ export function computeGuardedOverflow(
   orderedIds: AnyToolbarButtonId[],
   priorities: Record<string, ToolbarButtonPriority>,
   previousWidth: number,
-  previousResult: OverflowResult | null
+  previousResult: OverflowResult | null,
+  pinnedIds?: ReadonlySet<AnyToolbarButtonId>
 ): OverflowResult {
-  const fresh = computeOverflow(containerWidth, itemWidths, orderedIds, priorities);
+  const fresh = computeOverflow(containerWidth, itemWidths, orderedIds, priorities, pinnedIds);
 
   if (previousResult === null || previousResult.overflowIds.length === 0) {
     return fresh;
@@ -131,7 +146,8 @@ export function useToolbarOverflow(
   leftContainerRef: React.RefObject<HTMLDivElement | null>,
   rightContainerRef: React.RefObject<HTMLDivElement | null>,
   leftIds: AnyToolbarButtonId[],
-  rightIds: AnyToolbarButtonId[]
+  rightIds: AnyToolbarButtonId[],
+  rightPinnedIds?: ReadonlySet<AnyToolbarButtonId>
 ): {
   leftVisible: AnyToolbarButtonId[];
   leftOverflow: AnyToolbarButtonId[];
@@ -222,7 +238,8 @@ export function useToolbarOverflow(
         rightIds,
         TOOLBAR_BUTTON_PRIORITIES,
         rightPrevWidthRef.current,
-        rightPrevResultRef.current
+        rightPrevResultRef.current,
+        rightPinnedIds
       );
       setRightResult((prev) => {
         if (
@@ -236,7 +253,7 @@ export function useToolbarOverflow(
         return result;
       });
     }
-  }, [leftContainerRef, rightContainerRef, leftIds, rightIds, measureItems]);
+  }, [leftContainerRef, rightContainerRef, leftIds, rightIds, rightPinnedIds, measureItems]);
 
   useLayoutEffect(() => {
     const leftContainer = leftContainerRef.current;
