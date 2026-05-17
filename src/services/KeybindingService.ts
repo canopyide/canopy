@@ -26,6 +26,7 @@ class KeybindingService {
   private scopeStack: KeyScope[] = ["global"];
   private currentScope: KeyScope = "global";
   private pendingChord: string | null = null;
+  private lastInvalidKey: string | null = null;
   private chordTimeout: NodeJS.Timeout | null = null;
   private listeners = new Set<() => void>();
 
@@ -310,6 +311,16 @@ class KeybindingService {
     this.clearPendingChord();
   }
 
+  getLastInvalidKey(): string | null {
+    return this.lastInvalidKey;
+  }
+
+  clearLastInvalidKey(): void {
+    if (this.lastInvalidKey === null) return;
+    this.lastInvalidKey = null;
+    this.notifyListeners();
+  }
+
   normalizeKeyForBinding(event: KeyboardEvent): string {
     return normalizeKeyForBinding(event);
   }
@@ -400,15 +411,29 @@ class KeybindingService {
       };
     }
 
+    // When a pending chord exists and the second key is neither a chord
+    // completion nor a recognized standalone, surface the attempted combo
+    // so the HUD can echo it, AND consume the event so the key doesn't
+    // leak through to xterm (bare key types in the terminal) or fire a
+    // side-effecting standalone action (e.g. Cmd+T → terminal.duplicate)
+    // that the user only pressed as part of the cancelled chord.
+    const invalidChordKey = this.pendingChord !== null && !bestMatch && !foundChordPrefix;
+
     // Clear pending chord if we found a match or no chord prefix
     if (bestMatch || !foundChordPrefix) {
+      // lastInvalidKey must be set before clearPendingChord() — the
+      // synchronous notifyListeners() call inside that method is when
+      // subscribers read the snapshot.
+      if (invalidChordKey) {
+        this.lastInvalidKey = currentCombo;
+      }
       this.clearPendingChord();
     }
 
     return {
       match: bestMatch,
       chordPrefix: foundChordPrefix,
-      shouldConsume: !!bestMatch || foundChordPrefix,
+      shouldConsume: !!bestMatch || foundChordPrefix || invalidChordKey,
     };
   }
 
