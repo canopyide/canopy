@@ -151,14 +151,17 @@ describe("Toolbar responsive design — issue #4133", () => {
 
     it("armed selectors carry an inset shadow on top of the emphasis background", () => {
       // The armed selector block must include both background AND box-shadow
-      // so the state reads as anchored/pressed, not "still hovering".
+      // so the state reads as anchored/pressed, not "still hovering". The shadow
+      // shape is asserted as an inset hairline ring (0 0 0 1px) — the geometry
+      // that distinguishes the state edge from a soft directional shadow that
+      // reads as fog on low-contrast light themes (#7XXX).
       const armedBlock = css.match(
         /\.toolbar-icon-button\[aria-pressed="true"\][\s\S]*?\{[\s\S]*?\}/
       )?.[0];
       expect(armedBlock).toBeDefined();
       expect(armedBlock).toContain("--toolbar-control-armed-bg");
       expect(armedBlock).toContain("--toolbar-control-armed-shadow");
-      expect(armedBlock).toMatch(/inset\s+0\s+1px\s+2px/);
+      expect(armedBlock).toMatch(/inset\s+0\s+0\s+0\s+1px/);
     });
 
     it("press transform is owned by base Button cva, not the toolbar transition list", () => {
