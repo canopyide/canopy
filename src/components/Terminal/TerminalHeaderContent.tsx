@@ -73,9 +73,16 @@ function getResourceSeverity(cpuPercent: number, memoryKb: number): ResourceSeve
   return "muted";
 }
 
-// Three consecutive same-direction polls before the displayed band changes —
-// prevents flicker at threshold boundaries (CPU 50/80, mem 1G/2G).
-const SEVERITY_HYSTERESIS_POLLS = 3;
+const SEVERITY_ORDER: Record<ResourceSeverity, number> = { muted: 0, amber: 1, red: 2 };
+
+// Asymmetric same-direction poll hysteresis before the displayed band changes —
+// prevents flicker at threshold boundaries (CPU 50/80, mem 1G/2G). Escalating to
+// a hotter band reacts quickly (3 polls); de-escalating back down lingers longer
+// (5 polls) so hot states don't vanish on a single quiet poll. This deliberately
+// diverges from ProcessDetector's symmetric hysteresis: a missed spike is worse
+// than a slightly stale calm reading.
+const ESCALATION_HYSTERESIS_POLLS = 3;
+const DE_ESCALATION_HYSTERESIS_POLLS = 5;
 
 export function TerminalHeaderContent({
   id,
@@ -122,7 +129,11 @@ export function TerminalHeaderContent({
         pendingCountRef.current = 1;
       }
 
-      if (pendingCountRef.current < SEVERITY_HYSTERESIS_POLLS) {
+      const threshold =
+        SEVERITY_ORDER[rawSeverity] > SEVERITY_ORDER[current]
+          ? ESCALATION_HYSTERESIS_POLLS
+          : DE_ESCALATION_HYSTERESIS_POLLS;
+      if (pendingCountRef.current < threshold) {
         return current;
       }
 
