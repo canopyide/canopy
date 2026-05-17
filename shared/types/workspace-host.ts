@@ -90,8 +90,6 @@ export interface WorktreeSnapshot {
   worktreeChanges?: WorktreeChanges | null;
   worktreeId: string;
   timestamp?: number;
-  /** Task ID for task-scoped worktree orchestration */
-  taskId?: string;
   /** Current or last completed lifecycle script status */
   lifecycleStatus?: WorktreeLifecycleStatus;
 

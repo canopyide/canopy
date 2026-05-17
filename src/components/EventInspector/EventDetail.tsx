@@ -254,7 +254,6 @@ export function EventDetail({ event, className }: EventDetailProps) {
       {event.payload &&
         (event.payload.worktreeId ||
           event.payload.agentId ||
-          event.payload.taskId ||
           event.payload.runId ||
           event.payload.terminalId ||
           event.payload.issueNumber ||
