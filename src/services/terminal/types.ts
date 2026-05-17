@@ -145,10 +145,16 @@ export interface ManagedTerminal {
   hibernationTimer?: ReturnType<typeof setTimeout>;
   ipcListenerCount: number;
 
-  // Visibility-driven WebGL restore debounce. Hide path releases the WebGL
-  // context immediately; show path waits ~100ms before re-acquiring so rapid
-  // tab/panel toggles don't thrash addon load/unload.
+  // Visibility-driven WebGL restore debounce. Show path waits ~100ms before
+  // re-acquiring so rapid tab/panel toggles don't thrash addon load/unload.
   webGLRestoreTimer?: number;
+
+  // Visibility-driven WebGL release hysteresis. Hide path holds the context
+  // for ~500ms before releasing so rapid hide→show cycles (panel toggles,
+  // focus oscillation) don't churn the WebGL pool. Authoritative release
+  // paths (tier demotion, agent demotion, destroy, hibernation) cancel this
+  // timer and release immediately.
+  webGLHideTimer?: number;
 
   // Timestamp of the most recent successful reduceScrollback() — gates the
   // BACKGROUND-tier scrollback shrink path so rapid tab oscillation doesn't
