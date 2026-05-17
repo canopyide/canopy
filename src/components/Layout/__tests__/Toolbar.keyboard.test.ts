@@ -182,6 +182,13 @@ describe("Toolbar keyboard navigation — issue #8163", () => {
       expect(source).toContain('data-toolbar-overflow-trigger=""');
     });
 
+    it("tags the overflow trigger with its side via data-toolbar-overflow-side", () => {
+      // The side marker lets the redirect choose the matching trigger when
+      // both groups overflow simultaneously, so focus doesn't jump across
+      // the toolbar to the wrong group.
+      expect(source).toMatch(/data-toolbar-overflow-side=\{side\}/);
+    });
+
     it("does not locate the overflow trigger via aria-haspopup selector", () => {
       // Regression guard against the AgentButton/AgentTrayButton false-positive.
       expect(source).not.toMatch(
@@ -192,6 +199,24 @@ describe("Toolbar keyboard navigation — issue #8163", () => {
     it("uses [data-toolbar-overflow-trigger] selector to locate the redirect target", () => {
       expect(source).toMatch(
         /querySelector[^)]*\[data-toolbar-overflow-trigger\]/
+      );
+    });
+
+    it("scopes the overflow trigger lookup by side", () => {
+      // Without the [data-toolbar-overflow-side] filter, querySelector
+      // returns the first trigger in DOM order (always the left group),
+      // misdirecting focus when a right-side item is evicted.
+      expect(source).toMatch(
+        /\[data-toolbar-overflow-trigger\]\[data-toolbar-overflow-side="\$\{side\}"\]/
+      );
+    });
+
+    it("chooses the side of the redirect target by group containment", () => {
+      // The side selection must come from leftGroupRef/rightGroupRef
+      // containment of the previously-focused item, not from a fixed
+      // assumption about which side overflowed.
+      expect(source).toMatch(
+        /leftGroupRef\.current\?\.contains\(prevFocused\)/
       );
     });
 
@@ -214,17 +239,43 @@ describe("Toolbar keyboard navigation — issue #8163", () => {
       );
     });
 
-    it("clears prevFocusedToolbarItemRef after redirecting", () => {
-      // Resetting the ref after the redirect makes the effect idempotent
-      // across repeated re-renders, so .focus() does not fire on every
-      // subsequent render.
-      expect(source).toMatch(/prevFocusedToolbarItemRef\.current\s*=\s*null/);
+    it("clears prevFocusedToolbarItemRef on eviction, regardless of activeElement", () => {
+      // The clear must come BEFORE the activeElement guard so a stale ref
+      // is dropped even if the user has moved focus into a Radix portal
+      // — otherwise an unrelated later re-render with activeElement === body
+      // would trigger a phantom redirect into the toolbar.
+      const effectMatch = source.match(/useLayoutEffect\(\(\) => \{[\s\S]*?\n  \}\);/);
+      expect(effectMatch).not.toBeNull();
+      const effectBody = effectMatch![0];
+      const clearIdx = effectBody.search(/prevFocusedToolbarItemRef\.current\s*=\s*null/);
+      const activeElementIdx = effectBody.search(/document\.activeElement\s*===\s*document\.body/);
+      expect(clearIdx).toBeGreaterThan(-1);
+      expect(activeElementIdx).toBeGreaterThan(-1);
+      expect(clearIdx).toBeLessThan(activeElementIdx);
     });
 
-    it("falls back to items[clamped] when the overflow trigger is not present", () => {
+    it("falls back to items[clamped] when the matching overflow trigger is not present", () => {
       // When neither group renders an overflow menu (everything fits),
       // the redirect should land on the clamped item rather than no-op.
       expect(source).toMatch(/items\[clamped\]/);
+    });
+  });
+
+  describe("Visible-items filter (load-bearing for redirect)", () => {
+    it("excludes items inside aria-hidden wrappers from getToolbarItems", () => {
+      // Overflow-hidden buttons use `invisible absolute` Tailwind classes
+      // (visibility: hidden), which does NOT null offsetParent. Without an
+      // additional aria-hidden ancestor check, evicted items remain in the
+      // items list and the overflow focus redirect can never fire.
+      expect(source).toMatch(
+        /el\.closest\('\[aria-hidden="true"\]'\)\s*===\s*null/
+      );
+    });
+
+    it("keeps the offsetParent guard for display:none cases", () => {
+      // Placeholders and other display:none elements must still be filtered
+      // out — the aria-hidden check is additive, not a replacement.
+      expect(source).toMatch(/el\.offsetParent !== null/);
     });
   });
 });

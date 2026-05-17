@@ -339,7 +339,16 @@ export function Toolbar({
       toolbarRef.current
         ? Array.from(
             toolbarRef.current.querySelectorAll<HTMLElement>("[data-toolbar-item]:not([disabled])")
-          ).filter((el) => el.offsetParent !== null)
+          ).filter(
+            // Overflow-hidden buttons use `invisible absolute` Tailwind
+            // classes plus aria-hidden="true" on their wrapper. visibility:
+            // hidden alone does not null offsetParent, so the aria-hidden
+            // ancestor check is the canonical "this item is overflow-hidden,
+            // skip it" signal — without it, evicted items stay in the list,
+            // get tabIndex assigned, and the overflow focus redirect can
+            // never fire.
+            (el) => el.offsetParent !== null && el.closest('[aria-hidden="true"]') === null
+          )
         : [],
     []
   );
@@ -357,18 +366,24 @@ export function Toolbar({
     syncToolbarTabStops(items, clamped);
 
     const prevFocused = prevFocusedToolbarItemRef.current;
-    if (
-      prevFocused &&
-      !items.includes(prevFocused) &&
-      document.activeElement === document.body
-    ) {
-      const overflowTrigger = toolbarRef.current?.querySelector<HTMLElement>(
-        "[data-toolbar-overflow-trigger]"
-      );
-      const redirect =
-        overflowTrigger && items.includes(overflowTrigger) ? overflowTrigger : items[clamped];
-      redirect?.focus();
+    if (prevFocused && !items.includes(prevFocused)) {
+      // Clear the ref unconditionally on eviction. If the user has since
+      // moved focus into a Radix portal (activeElement !== body), the
+      // redirect below is skipped — but the ref must still be cleared so
+      // a later unrelated re-render doesn't trigger a phantom redirect.
       prevFocusedToolbarItemRef.current = null;
+      if (document.activeElement === document.body) {
+        // Redirect to the overflow trigger on the SAME side as the
+        // evicted item; falling back to the other side's trigger would
+        // pull focus across the toolbar to the wrong group.
+        const side = leftGroupRef.current?.contains(prevFocused) ? "left" : "right";
+        const sideTrigger = toolbarRef.current?.querySelector<HTMLElement>(
+          `[data-toolbar-overflow-trigger][data-toolbar-overflow-side="${side}"]`
+        );
+        const redirect =
+          sideTrigger && items.includes(sideTrigger) ? sideTrigger : items[clamped];
+        redirect?.focus();
+      }
     }
   });
 
@@ -914,6 +929,7 @@ export function Toolbar({
                 size="icon"
                 data-toolbar-item=""
                 data-toolbar-overflow-trigger=""
+                data-toolbar-overflow-side={side}
                 className={toolbarIconButtonClass}
                 aria-label={ariaLabel}
               >
