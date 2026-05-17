@@ -153,7 +153,9 @@ describe("HighlightText", () => {
   it("wraps matching text in a highlight span", () => {
     const html = renderToStaticMarkup(HighlightText({ text: "Font size setting", query: "font" }));
     expect(html).toContain("text-search-highlight-text");
-    expect(html).toContain("font-semibold");
+    // Bold weight removed — color alone differentiates the match, so width
+    // does not shift as the user types.
+    expect(html).not.toContain("font-semibold");
     // The matched portion should be inside the highlight span
     expect(html.toLowerCase()).toContain(">font<");
   });

@@ -174,7 +174,7 @@ export function HighlightText({ text, query }: HighlightTextProps) {
       <span>
         {parts.map((part, i) =>
           lowerTokens.some((t) => part.toLowerCase() === t) ? (
-            <span key={i} className="text-search-highlight-text font-semibold">
+            <span key={i} className="text-search-highlight-text">
               {part}
             </span>
           ) : (
