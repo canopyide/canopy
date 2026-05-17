@@ -190,13 +190,13 @@ describe("computeOverflow", () => {
       // when the same pinnedIds set is passed to both left and right calls.
       const widths = makeWidths(ids, 36);
       const without = computeOverflow(179, widths, ids, TOOLBAR_BUTTON_PRIORITIES);
+      const foreignPinSet = new Set(["voice-recording"]) as Set<ToolbarButtonId>;
       const withForeignPin = computeOverflow(
         179,
         widths,
         ids,
         TOOLBAR_BUTTON_PRIORITIES,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        new Set<ToolbarButtonId>(["voice-recording" as ToolbarButtonId])
+        foreignPinSet
       );
       expect(withForeignPin).toEqual(without);
     });
