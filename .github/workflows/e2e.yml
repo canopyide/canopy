@@ -69,8 +69,12 @@ on:
 permissions:
   contents: read
 
+# Scope concurrency per (suite, platform, ref). The three per-OS release
+# workflows (release-{macos,linux,windows}.yml) all call this for the same
+# suite on the same ref, so a key that omits the platform collapses them
+# into one group and cancel-in-progress: true makes them kill each other.
 concurrency:
-  group: e2e-${{ inputs.suite || 'core' }}-${{ github.ref }}
+  group: e2e-${{ inputs.suite || 'core' }}-${{ inputs.platform || 'all' }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
