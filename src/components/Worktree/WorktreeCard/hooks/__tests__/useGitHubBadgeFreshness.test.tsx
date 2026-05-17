@@ -122,4 +122,29 @@ describe("useGitHubBadgeFreshness", () => {
     const { result } = renderHook(() => useGitHubBadgeFreshness("pr", time));
     expect(result.current.freshnessLevel).toBe("aging");
   });
+
+  it("transitions between fresh and aging as the rate-limit store flips", async () => {
+    const { act } = await import("@testing-library/react");
+    const time = Date.now();
+    cache.setCache(PR_KEY, makeCacheEntry(time));
+
+    const { result, rerender } = renderHook(() => useGitHubBadgeFreshness("pr", time));
+    expect(result.current.freshnessLevel).toBe("fresh");
+
+    act(() => {
+      useGitHubRateLimitStore.setState({
+        blocked: true,
+        kind: "primary",
+        resetAt: Date.now() + 60_000,
+      });
+    });
+    rerender();
+    expect(result.current.freshnessLevel).toBe("aging");
+
+    act(() => {
+      useGitHubRateLimitStore.setState({ blocked: false, kind: null, resetAt: null });
+    });
+    rerender();
+    expect(result.current.freshnessLevel).toBe("fresh");
+  });
 });

@@ -108,6 +108,21 @@ describe("useGitHubRateLimit", () => {
     expect(useGitHubRateLimitStore.getState().blocked).toBe(false);
   });
 
+  it("hydrates as blocked when only the graphql bucket is exhausted", async () => {
+    const futureResetAt = Date.now() + 30_000;
+    getRateLimitDetailsMock.mockResolvedValueOnce(
+      makeDetails({ graphql: makeBucket(0, futureResetAt) })
+    );
+
+    renderHook(() => useGitHubRateLimit());
+    await act(async () => {});
+
+    const state = useGitHubRateLimitStore.getState();
+    expect(state.blocked).toBe(true);
+    expect(state.kind).toBe("primary");
+    expect(state.resetAt).toBe(futureResetAt);
+  });
+
   it("ignores a stale replay after a live push has already landed", async () => {
     const futureResetAt = Date.now() + 30_000;
     let resolveReplay!: (details: GitHubRateLimitDetails | null) => void;

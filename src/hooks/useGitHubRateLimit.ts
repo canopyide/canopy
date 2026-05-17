@@ -48,9 +48,17 @@ export function useGitHubRateLimit(): void {
 
 function inferReplayPayload(details: GitHubRateLimitDetails): GitHubRateLimitPayload {
   const now = Date.now();
+  // Check both core and graphql buckets — a graphql-only block (e.g. heavy
+  // GraphQL caller exhausted its quota while REST still has budget) wouldn't
+  // show up if we only inspected core, and the doomed first fetch on mount
+  // would surface a raw error before the push arrived. Secondary blocks
+  // aren't represented in the `/rate_limit` snapshot at all; those still
+  // rely on the push.
   const coreBlocked = details.core.remaining === 0 && details.core.resetAt > now;
-  if (coreBlocked) {
-    return { blocked: true, kind: "primary", resetAt: details.core.resetAt };
+  const graphqlBlocked = details.graphql.remaining === 0 && details.graphql.resetAt > now;
+  if (coreBlocked || graphqlBlocked) {
+    const resetAt = coreBlocked ? details.core.resetAt : details.graphql.resetAt;
+    return { blocked: true, kind: "primary", resetAt };
   }
   return { blocked: false, kind: null };
 }

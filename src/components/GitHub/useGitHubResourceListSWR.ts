@@ -150,6 +150,15 @@ export function useGitHubResourceListSWR({
     rateLimitBlockedRef.current = rateLimitBlocked;
   }, [rateLimitBlocked]);
   const [recentlyHitRateLimit, setRecentlyHitRateLimit] = useState(false);
+  // Clear the catch-path sticky flag the moment the store reports unblocked.
+  // Without this, a fetch that races the block-push leaves `isRateLimited`
+  // true until some unrelated successful fetch arrives — contradicting the
+  // empty-state copy promising the dropdown will resume automatically.
+  useEffect(() => {
+    if (!rateLimitBlocked) {
+      setRecentlyHitRateLimit(false);
+    }
+  }, [rateLimitBlocked]);
   const isRateLimited = rateLimitBlocked || recentlyHitRateLimit;
 
   const fetchData = useCallback(

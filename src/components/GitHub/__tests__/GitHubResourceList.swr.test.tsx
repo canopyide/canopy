@@ -1033,6 +1033,45 @@ describe("GitHubResourceList retry behavior", () => {
     expect(mockListIssues).not.toHaveBeenCalled();
   });
 
+  it("clears the sticky paused state once the rate-limit store unblocks", async () => {
+    // Reproduces the race window: a fetch fails with a rate-limit error
+    // (catch path sets the sticky flag), the push arrives blocking the
+    // store, then the block later clears. The sticky flag MUST auto-clear
+    // when `rateLimitBlocked` returns to false — otherwise the dropdown
+    // would stay paused forever despite the empty-state copy promising
+    // automatic resume.
+    mockListIssues.mockRejectedValueOnce(
+      new Error("GitHub rate limit exceeded. Try again in a few minutes.")
+    );
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/GitHub requests are paused/)).toBeTruthy();
+    });
+
+    // Push arrives, confirming the block at the store level.
+    act(() => {
+      useGitHubRateLimitStore.setState({
+        blocked: true,
+        kind: "primary",
+        resetAt: Date.now() + 60_000,
+      });
+    });
+    expect(screen.getByText(/GitHub requests are paused/)).toBeTruthy();
+
+    // Quota resets — push arrives clearing the block. Sticky flag must
+    // auto-clear so `isRateLimited` returns to false.
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+    act(() => {
+      useGitHubRateLimitStore.setState({ blocked: false, kind: null, resetAt: null });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText(/GitHub requests are paused/)).toBeNull();
+    });
+  });
+
   it("shows an inline paused banner over cached data while rate-limited", async () => {
     const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
     setCache(cacheKey, {
