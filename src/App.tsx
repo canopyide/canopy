@@ -24,6 +24,7 @@ import { useHibernationNotifications } from "./hooks/useHibernationNotifications
 import { useIdleTerminalNotifications } from "./hooks/useIdleTerminalNotifications";
 import { useDiskSpaceWarnings } from "./hooks/useDiskSpaceWarnings";
 import { useGitHubTokenHealth } from "./hooks/useGitHubTokenHealth";
+import { useGitHubRateLimit } from "./hooks/useGitHubRateLimit";
 import { useActionRegistry } from "./hooks/useActionRegistry";
 import { usePluginActions } from "./hooks/usePluginActions";
 import { usePluginPanelKinds } from "./hooks/usePluginPanelKinds";
@@ -283,6 +284,7 @@ function App() {
   useIdleTerminalNotifications();
   useDiskSpaceWarnings();
   useGitHubTokenHealth();
+  useGitHubRateLimit();
   useUnloadCleanup();
   useResourceProfile();
 

@@ -7,8 +7,9 @@ import {
   nextGeneration,
   getGeneration,
 } from "@/lib/githubResourceCache";
-import { isTokenRelatedError, isTransientNetworkError } from "@/lib/githubErrors";
+import { isRateLimitError, isTokenRelatedError, isTransientNetworkError } from "@/lib/githubErrors";
 import { githubClient } from "@/clients/githubClient";
+import { useGitHubRateLimitStore } from "@/store/githubRateLimitStore";
 import type { GitHubIssue, GitHubPR, GitHubSortOrder } from "@shared/types/github";
 import { parseNumberQuery } from "@/lib/parseNumberQuery";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
@@ -59,6 +60,8 @@ export interface UseGitHubResourceListSWRReturn {
   lastUpdatedAt: number | null;
   exactNumberNotFound: number | null;
   isTokenError: boolean;
+  isRateLimited: boolean;
+  rateLimitResetAt: number | null;
   handleLoadMore: () => void;
   handleRetry: () => void;
   handleManualRefresh: () => void;
@@ -133,6 +136,31 @@ export function useGitHubResourceListSWR({
     githubConfigRef.current = githubConfig;
   }, [githubConfig]);
 
+  // Rate-limit state: a single store push fans out to every consuming hook,
+  // so we read directly here and mirror into a ref for `fetchData` (same
+  // rationale as `githubConfigRef` — adding `rateLimitBlocked` to fetchData's
+  // deps would recreate the callback on every rate-limit flip and reflash
+  // the skeleton). `recentlyHitRateLimit` covers the brief race window where
+  // a fetch fires just before the store-push lands: the catch path sets it,
+  // a successful fetch clears it. `isRateLimited` is the OR.
+  const rateLimitBlocked = useGitHubRateLimitStore((s) => s.blocked);
+  const rateLimitResetAt = useGitHubRateLimitStore((s) => s.resetAt);
+  const rateLimitBlockedRef = useRef(rateLimitBlocked);
+  useEffect(() => {
+    rateLimitBlockedRef.current = rateLimitBlocked;
+  }, [rateLimitBlocked]);
+  const [recentlyHitRateLimit, setRecentlyHitRateLimit] = useState(false);
+  // Clear the catch-path sticky flag the moment the store reports unblocked.
+  // Without this, a fetch that races the block-push leaves `isRateLimited`
+  // true until some unrelated successful fetch arrives — contradicting the
+  // empty-state copy promising the dropdown will resume automatically.
+  useEffect(() => {
+    if (!rateLimitBlocked) {
+      setRecentlyHitRateLimit(false);
+    }
+  }, [rateLimitBlocked]);
+  const isRateLimited = rateLimitBlocked || recentlyHitRateLimit;
+
   const fetchData = useCallback(
     async (
       currentCursor: string | null | undefined,
@@ -146,6 +174,11 @@ export function useGitHubResourceListSWR({
       // a token-error toast for users who haven't set up GitHub yet.
       const cfg = githubConfigRef.current;
       if (cfg && !cfg.hasToken) return;
+
+      // Skip fetches while GitHub-wide rate-limit pause is active — the main
+      // process would block the request and surface a rate-limit error, but
+      // the render path already shows the paused state from store push.
+      if (rateLimitBlockedRef.current) return;
 
       const isRevalidate = options?.revalidating ?? false;
 
@@ -224,6 +257,9 @@ export function useGitHubResourceListSWR({
             }
             setCursor(result.pageInfo.endCursor);
             setHasMore(result.pageInfo.hasNextPage);
+            // Successful response clears the sticky catch-path flag. The
+            // store-driven `rateLimitBlocked` continues to gate the UI.
+            setRecentlyHitRateLimit(false);
 
             // Write first-page results to cache (skip search-filtered results)
             if (!append && options?.cacheKey && !debouncedSearch) {
@@ -258,7 +294,8 @@ export function useGitHubResourceListSWR({
               canRetry &&
               attempt < maxAttempts - 1 &&
               isTransientNetworkError(message) &&
-              !isTokenRelatedError(message);
+              !isTokenRelatedError(message) &&
+              !isRateLimitError(message);
             if (!retryable) break;
             try {
               await abortableDelay(FETCH_RETRY_DELAYS_MS[attempt]!, abortSignal);
@@ -277,7 +314,17 @@ export function useGitHubResourceListSWR({
             if (getGeneration(options.cacheKey) !== options.generation) return;
           }
           const message = formatErrorMessage(lastError, "Failed to fetch data");
-          if (append) {
+          if (isRateLimitError(message)) {
+            // Sticky-flag the rate-limited surface for the brief window
+            // before the rate-limit store push lands. The render path
+            // (`isRateLimited`) ORs this with the store flag.
+            setRecentlyHitRateLimit(true);
+            if (append) {
+              setLoadMoreError(null);
+            } else {
+              setError(null);
+            }
+          } else if (append) {
             setLoadMoreError(message);
           } else {
             setError(message);
@@ -471,6 +518,11 @@ export function useGitHubResourceListSWR({
     if (githubConfig && !githubConfig.hasToken) {
       return;
     }
+    // Skip numeric fetches while rate-limit pause is active. The render
+    // path shows the paused state instead of firing a doomed lookup.
+    if (rateLimitBlocked) {
+      return;
+    }
 
     exactNumberAbortRef.current?.abort();
     loadMoreAbortRef.current?.abort();
@@ -564,6 +616,7 @@ export function useGitHubResourceListSWR({
           try {
             await runNumericAttempt();
             if (abortController.signal.aborted) return;
+            setRecentlyHitRateLimit(false);
             lastError = null;
             return;
           } catch (err) {
@@ -573,7 +626,8 @@ export function useGitHubResourceListSWR({
             const retryable =
               attempt < FETCH_MAX_ATTEMPTS - 1 &&
               isTransientNetworkError(message) &&
-              !isTokenRelatedError(message);
+              !isTokenRelatedError(message) &&
+              !isRateLimitError(message);
             if (!retryable) break;
             try {
               await abortableDelay(FETCH_RETRY_DELAYS_MS[attempt]!, abortController.signal);
@@ -585,7 +639,12 @@ export function useGitHubResourceListSWR({
         }
         if (lastError != null) {
           const message = formatErrorMessage(lastError, "Failed to fetch data");
-          setError(message);
+          if (isRateLimitError(message)) {
+            setRecentlyHitRateLimit(true);
+            setError(null);
+          } else {
+            setError(message);
+          }
         }
       } finally {
         if (!abortController.signal.aborted) {
@@ -599,7 +658,7 @@ export function useGitHubResourceListSWR({
     return () => {
       abortController.abort();
     };
-  }, [numberQuery, projectPath, type, filterState, retryKey, githubConfig]);
+  }, [numberQuery, projectPath, type, filterState, retryKey, githubConfig, rateLimitBlocked]);
 
   const handleLoadMore = useCallback(() => {
     if (!loadingMore && hasMore) {
@@ -649,6 +708,8 @@ export function useGitHubResourceListSWR({
     lastUpdatedAt,
     exactNumberNotFound,
     isTokenError,
+    isRateLimited,
+    rateLimitResetAt,
     handleLoadMore,
     handleRetry,
     handleManualRefresh,
