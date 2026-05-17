@@ -8,10 +8,11 @@
 //   \x00-\x1f  C0 controls (NUL, LF, CR, ESC, TAB, …)
 //   \x7f       DEL
 //   \x80-\x9f  C1 controls
-//   ​-‏  ZWSP, ZWNJ, ZWJ, LRM, RLM
-//   ‪-‮  Bidi embedding/override (incl. RIGHT-TO-LEFT OVERRIDE)
-//   ⁦-⁩  Bidi isolate marks
-//   ﻿         BOM / zero-width no-break space
+//   U+200B-U+200F: ZWSP, ZWNJ, ZWJ, LRM, RLM
+//   U+202A-U+202E: Bidi embedding/override (including RIGHT-TO-LEFT OVERRIDE)
+//   U+2066-U+2069: Bidi isolate marks
+//   U+FEFF: BOM / zero-width no-break space
+// eslint-disable-next-line no-control-regex, no-irregular-whitespace
 const PASTE_JACK_RE = /[\x00-\x1f\x7f-\x9f​-‏‪-‮⁦-⁩﻿]/g;
 
 export function sanitizeForClipboard(text: string): string {
