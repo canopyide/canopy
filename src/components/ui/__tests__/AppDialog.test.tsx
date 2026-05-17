@@ -476,12 +476,7 @@ describe("AppDialog focus trapping", () => {
       render(
         <>
           <Dispatcher />
-          <AppDialog
-            isOpen={true}
-            onClose={() => {}}
-            initialFocus="none"
-            data-testid="test-dialog"
-          >
+          <AppDialog isOpen={true} onClose={() => {}} initialFocus="none" data-testid="test-dialog">
             <AppDialog.Body>
               <button type="button">Inside</button>
             </AppDialog.Body>

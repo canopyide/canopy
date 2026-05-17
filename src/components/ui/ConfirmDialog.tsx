@@ -1,10 +1,6 @@
 import type React from "react";
 import { useEffect, useState } from "react";
-import {
-  AppDialog,
-  type DialogInitialFocus,
-  type DialogZIndex,
-} from "@/components/ui/AppDialog";
+import { AppDialog, type DialogInitialFocus, type DialogZIndex } from "@/components/ui/AppDialog";
 import { TypedNameConfirmInput } from "@/components/ui/TypedNameConfirmInput";
 
 const DESTRUCTIVE_CONFIRM_LABEL_RE =

@@ -658,11 +658,11 @@ describe("ConfirmDialog — are-you-sure title guard", () => {
     );
 
     const messages = errorSpy.mock.calls.map((call: unknown[]) => String(call[0] ?? ""));
-    expect(messages.some((m) => m.includes("Are you sure"))).toBe(true);
-    expect(messages.some((m) => m.includes("[ConfirmDialog]"))).toBe(true);
+    expect(messages.some((m: string) => m.includes("Are you sure"))).toBe(true);
+    expect(messages.some((m: string) => m.includes("[ConfirmDialog]"))).toBe(true);
   });
 
-  it('matches case-insensitively and tolerates surrounding whitespace', () => {
+  it("matches case-insensitively and tolerates surrounding whitespace", () => {
     render(
       <ConfirmDialog
         isOpen={true}
@@ -675,10 +675,10 @@ describe("ConfirmDialog — are-you-sure title guard", () => {
     );
 
     const messages = errorSpy.mock.calls.map((call: unknown[]) => String(call[0] ?? ""));
-    expect(messages.some((m) => m.includes("Are you sure"))).toBe(true);
+    expect(messages.some((m: string) => m.includes("Are you sure"))).toBe(true);
   });
 
-  it('is silent for non-matching titles', () => {
+  it("is silent for non-matching titles", () => {
     render(
       <ConfirmDialog
         isOpen={true}
@@ -691,10 +691,10 @@ describe("ConfirmDialog — are-you-sure title guard", () => {
     );
 
     const messages = errorSpy.mock.calls.map((call: unknown[]) => String(call[0] ?? ""));
-    expect(messages.some((m) => m.includes("Are you sure"))).toBe(false);
+    expect(messages.some((m: string) => m.includes("Are you sure"))).toBe(false);
   });
 
-  it('is silent when title is a non-string ReactNode', () => {
+  it("is silent when title is a non-string ReactNode", () => {
     render(
       <ConfirmDialog
         isOpen={true}
@@ -707,10 +707,10 @@ describe("ConfirmDialog — are-you-sure title guard", () => {
     );
 
     const messages = errorSpy.mock.calls.map((call: unknown[]) => String(call[0] ?? ""));
-    expect(messages.some((m) => m.includes("Are you sure"))).toBe(false);
+    expect(messages.some((m: string) => m.includes("Are you sure"))).toBe(false);
   });
 
-  it('logs only once across multiple renders', () => {
+  it("logs only once across multiple renders", () => {
     render(
       <ConfirmDialog
         isOpen={true}
@@ -733,11 +733,11 @@ describe("ConfirmDialog — are-you-sure title guard", () => {
     );
 
     const messages = errorSpy.mock.calls.map((call: unknown[]) => String(call[0] ?? ""));
-    const matchCount = messages.filter((m) => m.includes("Are you sure")).length;
+    const matchCount = messages.filter((m: string) => m.includes("Are you sure")).length;
     expect(matchCount).toBe(1);
   });
 
-  it('is silent in production builds', () => {
+  it("is silent in production builds", () => {
     vi.stubEnv("DEV", false);
 
     render(
@@ -784,10 +784,10 @@ describe("ConfirmDialog — cannot-be-undone body guard", () => {
     );
 
     const messages = errorSpy.mock.calls.map((call: unknown[]) => String(call[0] ?? ""));
-    expect(messages.some((m) => m.includes("cannot be undone"))).toBe(true);
+    expect(messages.some((m: string) => m.includes("cannot be undone"))).toBe(true);
   });
 
-  it('warns on the curly-quote contraction "can’t be undone"', () => {
+  it("warns on the curly-quote contraction can’t be undone", () => {
     render(
       <ConfirmDialog
         isOpen={true}
@@ -801,7 +801,7 @@ describe("ConfirmDialog — cannot-be-undone body guard", () => {
     );
 
     const messages = errorSpy.mock.calls.map((call: unknown[]) => String(call[0] ?? ""));
-    expect(messages.some((m) => m.includes("cannot be undone"))).toBe(true);
+    expect(messages.some((m: string) => m.includes("cannot be undone"))).toBe(true);
   });
 
   it('is silent for apostrophe-less "cant be undone" (typo)', () => {
@@ -818,7 +818,7 @@ describe("ConfirmDialog — cannot-be-undone body guard", () => {
     );
 
     const messages = errorSpy.mock.calls.map((call: unknown[]) => String(call[0] ?? ""));
-    expect(messages.some((m) => m.includes("cannot be undone"))).toBe(false);
+    expect(messages.some((m: string) => m.includes("cannot be undone"))).toBe(false);
   });
 
   it('warns on the contraction "can\'t be undone"', () => {
@@ -835,7 +835,7 @@ describe("ConfirmDialog — cannot-be-undone body guard", () => {
     );
 
     const messages = errorSpy.mock.calls.map((call: unknown[]) => String(call[0] ?? ""));
-    expect(messages.some((m) => m.includes("cannot be undone"))).toBe(true);
+    expect(messages.some((m: string) => m.includes("cannot be undone"))).toBe(true);
   });
 
   it('warns when children contain a string body with "cannot be undone"', () => {
@@ -853,10 +853,10 @@ describe("ConfirmDialog — cannot-be-undone body guard", () => {
     );
 
     const messages = errorSpy.mock.calls.map((call: unknown[]) => String(call[0] ?? ""));
-    expect(messages.some((m) => m.includes("cannot be undone"))).toBe(true);
+    expect(messages.some((m: string) => m.includes("cannot be undone"))).toBe(true);
   });
 
-  it('is silent for non-matching body copy', () => {
+  it("is silent for non-matching body copy", () => {
     render(
       <ConfirmDialog
         isOpen={true}
@@ -870,10 +870,10 @@ describe("ConfirmDialog — cannot-be-undone body guard", () => {
     );
 
     const messages = errorSpy.mock.calls.map((call: unknown[]) => String(call[0] ?? ""));
-    expect(messages.some((m) => m.includes("cannot be undone"))).toBe(false);
+    expect(messages.some((m: string) => m.includes("cannot be undone"))).toBe(false);
   });
 
-  it('is silent when description is a non-string ReactNode containing the phrase', () => {
+  it("is silent when description is a non-string ReactNode containing the phrase", () => {
     render(
       <ConfirmDialog
         isOpen={true}
@@ -887,10 +887,10 @@ describe("ConfirmDialog — cannot-be-undone body guard", () => {
     );
 
     const messages = errorSpy.mock.calls.map((call: unknown[]) => String(call[0] ?? ""));
-    expect(messages.some((m) => m.includes("cannot be undone"))).toBe(false);
+    expect(messages.some((m: string) => m.includes("cannot be undone"))).toBe(false);
   });
 
-  it('logs only once across multiple renders', () => {
+  it("logs only once across multiple renders", () => {
     render(
       <ConfirmDialog
         isOpen={true}
@@ -915,11 +915,11 @@ describe("ConfirmDialog — cannot-be-undone body guard", () => {
     );
 
     const messages = errorSpy.mock.calls.map((call: unknown[]) => String(call[0] ?? ""));
-    const matchCount = messages.filter((m) => m.includes("cannot be undone")).length;
+    const matchCount = messages.filter((m: string) => m.includes("cannot be undone")).length;
     expect(matchCount).toBe(1);
   });
 
-  it('is silent in production builds', () => {
+  it("is silent in production builds", () => {
     vi.stubEnv("DEV", false);
 
     render(
