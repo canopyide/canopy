@@ -132,6 +132,32 @@ describe("errors.recent", () => {
     errorStoreMock.getState.mockReturnValue({ errors: [] });
     expect(await run(setupActions(), "errors.recent")).toEqual([]);
   });
+
+  it("sorts by timestamp desc even when store array order is stale (in-place dedup)", async () => {
+    errorStoreMock.getState.mockReturnValue({
+      errors: [
+        { id: "e-old", type: "git", message: "a", timestamp: 1, dismissed: false },
+        { id: "e-deduped", type: "git", message: "b", timestamp: 9, dismissed: false },
+        { id: "e-mid", type: "git", message: "c", timestamp: 5, dismissed: false },
+      ],
+    });
+    const result = await run(setupActions(), "errors.recent");
+    expect(result.map((e: any) => e.id)).toEqual(["e-deduped", "e-mid", "e-old"]);
+  });
+
+  it("defaults to a limit of 20", async () => {
+    errorStoreMock.getState.mockReturnValue({
+      errors: Array.from({ length: 21 }, (_, i) => ({
+        id: `e${i}`,
+        type: "git",
+        message: "x",
+        timestamp: 100 - i,
+        dismissed: false,
+      })),
+    });
+    const result = await run(setupActions(), "errors.recent");
+    expect(result).toHaveLength(20);
+  });
 });
 
 describe("notifications.recent", () => {
@@ -240,5 +266,62 @@ describe("notifications.recent", () => {
   it("returns an empty array when the inbox is empty", async () => {
     notificationHistoryMock.getState.mockReturnValue({ entries: [] });
     expect(await run(setupActions(), "notifications.recent")).toEqual([]);
+  });
+
+  it("excludes non-countable entries from unreadOnly (matches bell-badge semantics)", async () => {
+    notificationHistoryMock.getState.mockReturnValue({
+      entries: [
+        { id: "n1", type: "info", message: "badged", timestamp: 3, seenAsToast: false },
+        {
+          id: "n2",
+          type: "info",
+          message: "silent",
+          timestamp: 2,
+          seenAsToast: false,
+          countable: false,
+        },
+        {
+          id: "n3",
+          type: "info",
+          message: "countable-true",
+          timestamp: 1,
+          seenAsToast: false,
+          countable: true,
+        },
+      ],
+    });
+    const result = await run(setupActions(), "notifications.recent", { unreadOnly: true });
+    expect(result.map((e: any) => e.id)).toEqual(["n1", "n3"]);
+  });
+
+  it("defaults to a limit of 20", async () => {
+    notificationHistoryMock.getState.mockReturnValue({
+      entries: Array.from({ length: 21 }, (_, i) => ({
+        id: `n${i}`,
+        type: "info",
+        message: "x",
+        timestamp: 100 - i,
+        seenAsToast: false,
+      })),
+    });
+    const result = await run(setupActions(), "notifications.recent");
+    expect(result).toHaveLength(20);
+  });
+
+  it("applies type, unreadOnly and limit together", async () => {
+    notificationHistoryMock.getState.mockReturnValue({
+      entries: [
+        { id: "n1", type: "error", message: "seen-err", timestamp: 4, seenAsToast: true },
+        { id: "n2", type: "error", message: "unseen-err-a", timestamp: 3, seenAsToast: false },
+        { id: "n3", type: "info", message: "unseen-info", timestamp: 2, seenAsToast: false },
+        { id: "n4", type: "error", message: "unseen-err-b", timestamp: 1, seenAsToast: false },
+      ],
+    });
+    const result = await run(setupActions(), "notifications.recent", {
+      type: "error",
+      unreadOnly: true,
+      limit: 1,
+    });
+    expect(result.map((e: any) => e.id)).toEqual(["n2"]);
   });
 });

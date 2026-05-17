@@ -219,7 +219,10 @@ export function registerLogActions(actions: ActionRegistry, _callbacks: ActionCa
         (args as { limit?: number; includesDismissed?: boolean } | undefined) ?? {};
       const errors = useErrorStore.getState().errors;
       const filtered = includesDismissed ? errors : errors.filter((e) => !e.dismissed);
-      return filtered.slice(0, limit).map((e) => ({
+      // errorStore dedup updates in place (keeps array slot, refreshes timestamp),
+      // so array order is not strictly newest-first — sort before slicing.
+      const sorted = [...filtered].sort((a, b) => b.timestamp - a.timestamp);
+      return sorted.slice(0, limit).map((e) => ({
         id: e.id,
         type: e.type,
         message: e.message,
@@ -275,7 +278,12 @@ export function registerLogActions(actions: ActionRegistry, _callbacks: ActionCa
       } = (args as { limit?: number; type?: string; unreadOnly?: boolean } | undefined) ?? {};
       const entries = useNotificationHistoryStore.getState().entries;
       const filtered = entries.filter(
-        (e) => (!type || e.type === type) && (!unreadOnly || !e.seenAsToast)
+        (e) =>
+          (!type || e.type === type) &&
+          // Mirror the bell-badge unread definition (notificationHistorySlice
+          // counts !seenAsToast && countable !== false) so `unreadOnly` doesn't
+          // surface silent non-countable entries the UI never badges.
+          (!unreadOnly || (!e.seenAsToast && e.countable !== false))
       );
       return filtered.slice(0, limit).map((e) => ({
         id: e.id,
