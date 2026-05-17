@@ -152,9 +152,20 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
     },
 
     setReconnecting(reconnecting: boolean) {
+      // Preserve the original disconnect timestamp across repeated
+      // setReconnecting(true) calls. During a workspace-host crash-retry
+      // loop, `onDisconnected` can fire on every restart attempt; resetting
+      // the baseline on each fire would keep the elapsed clock under the
+      // escalation threshold for the entire ~14s restart budget, so the
+      // escalated copy would never appear before `setFatalError` fires.
+      const prev = get();
       set({
         isReconnecting: reconnecting,
-        reconnectingAt: reconnecting ? Date.now() : null,
+        reconnectingAt: reconnecting
+          ? prev.isReconnecting && prev.reconnectingAt !== null
+            ? prev.reconnectingAt
+            : Date.now()
+          : null,
       });
     },
   }));

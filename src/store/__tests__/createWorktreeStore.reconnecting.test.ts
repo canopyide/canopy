@@ -109,11 +109,26 @@ describe("createWorktreeStore — reconnectingAt timestamp", () => {
     expect(store.getState().reconnectingAt).toBeNull();
   });
 
-  it("repeated setReconnecting(true) refreshes the timestamp baseline", () => {
+  it("repeated setReconnecting(true) preserves the original baseline", () => {
+    // During a workspace-host crash-retry loop, `onDisconnected` fires on
+    // every restart. If `reconnectingAt` were re-stamped on each call, the
+    // elapsed clock would reset and the escalation copy would never appear
+    // before the restart budget exhausts (~14s) and `setFatalError` fires.
     const store = createWorktreeStore();
     store.getState().setReconnecting(true);
     const first = store.getState().reconnectingAt;
     vi.advanceTimersByTime(5000);
+    store.getState().setReconnecting(true);
+    expect(store.getState().reconnectingAt).toBe(first);
+  });
+
+  it("setReconnecting(true) after recovery captures a fresh timestamp", () => {
+    const store = createWorktreeStore();
+    store.getState().setReconnecting(true);
+    const first = store.getState().reconnectingAt;
+    vi.advanceTimersByTime(5000);
+    store.getState().setReconnecting(false);
+    vi.advanceTimersByTime(1000);
     store.getState().setReconnecting(true);
     const second = store.getState().reconnectingAt;
     expect(second).not.toBeNull();
