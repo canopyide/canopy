@@ -296,6 +296,7 @@ describe("destructive-action danger metadata", () => {
       worktrees: new Map<string, WorktreeSnapshot>([
         ["wt-placeholder", { id: "wt-placeholder", hasTeardownCommand: true } as WorktreeSnapshot],
       ]),
+      manualAssociations: new Map(),
       version: 1,
       isLoading: false,
       error: null,
@@ -306,6 +307,8 @@ describe("destructive-action danger metadata", () => {
       applySnapshot: () => {},
       applyUpdate: () => {},
       applyRemove: () => {},
+      setManualAssociation: () => {},
+      clearManualAssociation: () => {},
       setLoading: () => {},
       setError: () => {},
       setFatalError: () => {},
