@@ -774,6 +774,42 @@ describe("KeybindingService", () => {
       expect(service.getLastInvalidKey()).toBe("y");
     });
 
+    it("consumes the event for an invalid bare-key second press so it does not leak to xterm", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      startCmdKChord(service);
+
+      const bareY = createKeyboardEvent({ key: "y", code: "KeyY" });
+      const result = service.resolveKeybinding(bareY);
+
+      // shouldConsume must be true — useGlobalKeybindings only calls
+      // preventDefault when this is set. Without it, bare keys land in
+      // the focused terminal as input.
+      expect(result.shouldConsume).toBe(true);
+      expect(result.match).toBeUndefined();
+      expect(result.chordPrefix).toBe(false);
+    });
+
+    it("does not fire a standalone modified shortcut as the invalid second key (Cmd+K then Cmd+T)", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      startCmdKChord(service);
+
+      // Cmd+T is normally bound to terminal.duplicate. As an invalid second
+      // key after Cmd+K, it must NOT resolve to that action — the user pressed
+      // it as part of a cancelled chord, not as an intentional duplicate.
+      const cmdT = createKeyboardEvent({
+        key: "t",
+        code: "KeyT",
+        metaKey: true,
+      });
+      const result = service.resolveKeybinding(cmdT);
+
+      expect(result.match).toBeUndefined();
+      expect(result.shouldConsume).toBe(true);
+      expect(service.getLastInvalidKey()).toBe("Cmd+t");
+    });
+
     it("notifies listeners synchronously when lastInvalidKey is set via resolveKeybinding", () => {
       setPlatform("MacIntel");
       const service = new KeybindingService();
