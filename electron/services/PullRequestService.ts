@@ -216,6 +216,15 @@ class PullRequestService {
         return;
       }
 
+      // Startup jitter still pending: skip entirely. handleWorktreeUpdate
+      // already updated the candidate map synchronously, so the upcoming
+      // jittered initial check (runInitialCheck → checkForPRs) will pick
+      // this candidate up. Running here would bypass the jitter and recreate
+      // the synchronised post-restart burst (#8072).
+      if (this.startupDelayTimer !== null) {
+        return;
+      }
+
       // A branch-change recheck inside the 5s floor is deferred until the
       // floor clears rather than dropped to the next poll tick — keeps
       // branch switches responsive (≤5s) without bursting the API.

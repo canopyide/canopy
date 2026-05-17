@@ -1527,4 +1527,77 @@ describe("PullRequestService", () => {
 
     pullRequestService.destroy();
   });
+
+  it("does not bypass the startup jitter via a debounced worktree update", async () => {
+    const batchCheckLinkedPRs = vi.fn(async () => ({ results: new Map() }));
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/seed" })
+    );
+
+    const started = pullRequestService.start();
+
+    // A worktree update arrives during the jitter window (e.g. the
+    // WorkspaceService initial scan after a host restart) → 100ms debounce.
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-2", branch: "feature/burst" })
+    );
+
+    // Past the debounce (100ms) but still inside the jitter floor (<500ms):
+    // the debounced check must defer to the pending jitter, not fire.
+    await vi.advanceTimersByTimeAsync(400);
+    expect(batchCheckLinkedPRs).not.toHaveBeenCalled();
+
+    // Once the jitter clears, a single initial check covers both candidates.
+    await vi.advanceTimersByTimeAsync(2500);
+    await started;
+    expect(batchCheckLinkedPRs).toHaveBeenCalledTimes(1);
+    expect(batchCheckLinkedPRs.mock.calls[0][1]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ worktreeId: "wt-1" }),
+        expect.objectContaining({ worktreeId: "wt-2" }),
+      ])
+    );
+
+    pullRequestService.destroy();
+  });
+
+  it("wires the normal poll timer after the jittered initial check", async () => {
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0); // jitter → 500ms
+    let callCount = 0;
+    const batchCheckLinkedPRs = vi.fn(async () => {
+      callCount++;
+      return { results: new Map() };
+    });
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/jitter-poll" })
+    );
+
+    const started = pullRequestService.start();
+    await vi.advanceTimersByTimeAsync(500);
+    await started;
+    expect(callCount).toBe(1); // jittered initial check
+
+    await vi.advanceTimersByTimeAsync(30 * 1000);
+    expect(callCount).toBe(2); // normal 30s poll wired in the jittered path
+
+    randomSpy.mockRestore();
+    pullRequestService.destroy();
+  });
 });
