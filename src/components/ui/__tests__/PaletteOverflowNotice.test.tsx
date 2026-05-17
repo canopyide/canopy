@@ -25,4 +25,16 @@ describe("PaletteOverflowNotice", () => {
     expect(notice).toBeTruthy();
     expect(notice.textContent).toBe("+27 more");
   });
+
+  it("exposes a descriptive aria-label so screen readers get context", () => {
+    // The visible text is terse for visual scanning, so AT users get a
+    // fuller phrase via aria-label that mentions "results" and the recovery
+    // ("refine your search").
+    render(<PaletteOverflowNotice shown={20} total={47} />);
+    const notice = screen.getByRole("status");
+    const label = notice.getAttribute("aria-label") ?? "";
+    expect(label).toContain("27");
+    expect(label.toLowerCase()).toContain("results");
+    expect(label.toLowerCase()).toContain("refine");
+  });
 });

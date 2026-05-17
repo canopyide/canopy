@@ -12,7 +12,9 @@ export function HighlightedText({ text, indices }: HighlightedTextProps) {
   // can emit unsorted/overlapping indices when a query is split across
   // BitapSearch chunks; using `prev.end + 1` as the merge threshold unifies
   // adjacency (touching ranges) and overlap.
-  const sorted = [...indices].filter(([s, e]) => s <= e).sort((a, b) => a[0] - b[0]);
+  const sorted = [...indices]
+    .filter(([s, e]) => s >= 0 && s <= e && e < text.length)
+    .sort((a, b) => a[0] - b[0]);
   const merged: [number, number][] = [];
   for (const [s, e] of sorted) {
     const last = merged[merged.length - 1];

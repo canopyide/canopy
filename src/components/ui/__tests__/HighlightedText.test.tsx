@@ -90,6 +90,42 @@ describe("HighlightedText", () => {
     expect(marks).toHaveLength(1);
     expect(marks[0]?.textContent).toBe("abcdef");
   });
+
+  it("keeps ranges with a one-character gap separate", () => {
+    // A non-zero gap between ranges must NOT merge — only adjacency (gap=0)
+    // and overlap collapse into one span.
+    const { container } = render(
+      <HighlightedText
+        text="abcXefg"
+        indices={[
+          [0, 2],
+          [4, 6],
+        ]}
+      />
+    );
+    expect(container.textContent).toBe("abcXefg");
+    const marks = container.querySelectorAll(".text-search-highlight-text");
+    expect(marks).toHaveLength(2);
+    expect(marks[0]?.textContent).toBe("abc");
+    expect(marks[1]?.textContent).toBe("efg");
+  });
+
+  it("silently drops out-of-bounds and negative indices", () => {
+    // Malformed indices from a future consumer must not produce empty/phantom
+    // spans — Fuse itself never emits these, but the filter guards future
+    // callers and keeps the rendered output stable.
+    const { container } = render(
+      <HighlightedText
+        text="abc"
+        indices={[
+          [-1, 1],
+          [10, 12],
+        ]}
+      />
+    );
+    expect(container.textContent).toBe("abc");
+    expect(container.querySelectorAll(".text-search-highlight-text")).toHaveLength(0);
+  });
 });
 
 describe("findMatchIndices", () => {
