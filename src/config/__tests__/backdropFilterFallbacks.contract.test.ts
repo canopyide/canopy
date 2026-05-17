@@ -20,13 +20,17 @@ const SURFACES = [
 
 describe("backdrop-filter fallbacks contract (#8166)", () => {
   for (const { file, selector } of SURFACES) {
+    const css = fs.readFileSync(path.join(STYLES_ROOT, file), "utf8");
+
+    const baseIdx = css.indexOf(`${selector} {`);
+    const supportsIdx = css.indexOf("@supports not (backdrop-filter: blur(1px))");
+    const mediaIdx = css.indexOf("@media (prefers-reduced-transparency: reduce)");
+
+    if (baseIdx < 0) throw new Error(`Missing selector ${selector} in ${file}`);
+    if (supportsIdx < 0) throw new Error(`Missing @supports in ${file}`);
+    if (mediaIdx < 0) throw new Error(`Missing @media in ${file}`);
+
     describe(`${file} — ${selector}`, () => {
-      const css = fs.readFileSync(path.join(STYLES_ROOT, file), "utf8");
-
-      const baseIdx = css.indexOf(`${selector} {`);
-      const supportsIdx = css.indexOf("@supports not (backdrop-filter: blur(1px))");
-      const mediaIdx = css.indexOf("@media (prefers-reduced-transparency: reduce)");
-
       it("has an @supports not (backdrop-filter: blur(1px)) fallback", () => {
         expect(supportsIdx).toBeGreaterThan(-1);
       });
@@ -47,6 +51,8 @@ describe("backdrop-filter fallbacks contract (#8166)", () => {
         // Both fallback blocks scope to the surface selector and zero out the
         // filter; the solid background uses an opaque --theme-surface-* token,
         // never a translucent color-mix.
+        // @ts-expect-error - indices verified not -1 by guard checks above
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
         const blocks = css
           .slice(supportsIdx)
           .split("@media (prefers-reduced-transparency: reduce)")[0]
