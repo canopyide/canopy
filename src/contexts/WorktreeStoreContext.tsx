@@ -281,8 +281,11 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
             // The PR's state no longer matches this filtered slot (e.g. a
             // closed PR still sitting in the "open" slot). Drop the row so the
             // sidebar badge and dropdown converge on the next filter switch
-            // instead of waiting out the 45s TTL.
-            if (isFilteredSlot && pr.state.toLowerCase() !== event.prState) {
+            // instead of waiting out the 45s TTL. This eviction branch must
+            // stay ahead of the CI-only branch below: it sets changed=true on
+            // removal even when ciStatus is unchanged, which is what triggers
+            // the generation bump in mutateCacheEntries.
+            if (isFilteredSlot && pr.state && pr.state.toLowerCase() !== event.prState) {
               changed = true;
               continue;
             }

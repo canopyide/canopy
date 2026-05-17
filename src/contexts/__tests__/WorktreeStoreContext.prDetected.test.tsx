@@ -597,6 +597,46 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
     expect(getGeneration(key)).toBe(genBefore + 1);
   });
 
+  it("evicts a closed PR from every 'open' sort slot in one event", async () => {
+    const store = await renderProvider();
+    act(() => {
+      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+    });
+
+    const createdKey = buildCacheKey("/repo/proj", "pr", "open", "created");
+    const updatedKey = buildCacheKey("/repo/proj", "pr", "open", "updated");
+    for (const key of [createdKey, updatedKey]) {
+      setCache(key, {
+        items: [{ ...makePR(42, "PENDING"), state: "OPEN" }],
+        endCursor: null,
+        hasNextPage: false,
+        timestamp: 1,
+      });
+    }
+    const genCreatedBefore = getGeneration(createdKey);
+    const genUpdatedBefore = getGeneration(updatedKey);
+
+    act(() => {
+      emit("pr-detected", {
+        type: "pr-detected",
+        worktreeId: "wt-1",
+        prNumber: 42,
+        prUrl: "https://example.test/pr/42",
+        prState: "closed",
+        prCiStatus: "FAILURE",
+      });
+    });
+
+    expect(
+      (getCache(createdKey)?.items as GitHubPR[]).find((it) => it.number === 42)
+    ).toBeUndefined();
+    expect(
+      (getCache(updatedKey)?.items as GitHubPR[]).find((it) => it.number === 42)
+    ).toBeUndefined();
+    expect(getGeneration(createdKey)).toBe(genCreatedBefore + 1);
+    expect(getGeneration(updatedKey)).toBe(genUpdatedBefore + 1);
+  });
+
   it("evicts a PR from the 'open' slot once it merges", async () => {
     const store = await renderProvider();
     act(() => {
