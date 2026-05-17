@@ -91,6 +91,29 @@ describe("forgeProviderRegistry — registration", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0].contribution.id).toBe("a");
   });
+
+  it("freezes stored contributions so callers cannot corrupt the registry", () => {
+    registerForgeProviders("acme.frozen", [
+      makeContribution("x", ["frozen.example"], {
+        capabilities: ["issues"],
+        viewRefs: ["v"],
+      }),
+    ]);
+
+    const entries = getRegisteredForgeProviders();
+    expect(() => entries[0].contribution.matches.push("evil.example")).toThrow();
+    expect(() => (entries[0].contribution.capabilities as string[])?.push("evil")).toThrow();
+    expect(() => (entries[0].contribution.viewRefs as string[])?.push("evil")).toThrow();
+    expect(listMatchingProviders("https://evil.example/r")).toEqual([]);
+  });
+
+  it("treats an empty contributions array as an unregister (replace-with-nothing)", () => {
+    registerForgeProviders("acme.reset", [makeContribution("a", ["reset.example"])]);
+    expect(getRegisteredForgeProviders()).toHaveLength(1);
+
+    registerForgeProviders("acme.reset", []);
+    expect(getRegisteredForgeProviders()).toHaveLength(0);
+  });
 });
 
 describe("forgeProviderRegistry — unregister and clear", () => {

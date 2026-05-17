@@ -24,8 +24,27 @@ export function registerForgeProviders(
   contributions: ForgeProviderContribution[]
 ): void {
   if (typeof pluginId !== "string" || pluginId.length === 0) return;
-  if (!Array.isArray(contributions) || contributions.length === 0) return;
-  PLUGIN_FORGE_PROVIDERS.set(pluginId, [...contributions]);
+  if (!Array.isArray(contributions) || contributions.length === 0) {
+    PLUGIN_FORGE_PROVIDERS.delete(pluginId);
+    return;
+  }
+  PLUGIN_FORGE_PROVIDERS.set(pluginId, contributions.map(freezeContribution));
+}
+
+function freezeContribution(c: ForgeProviderContribution): ForgeProviderContribution {
+  const frozen: ForgeProviderContribution = {
+    ...c,
+    matches: Object.freeze([...c.matches]) as unknown as string[],
+  };
+  if (c.capabilities) {
+    frozen.capabilities = Object.freeze([
+      ...c.capabilities,
+    ]) as unknown as ForgeProviderContribution["capabilities"];
+  }
+  if (c.viewRefs) {
+    frozen.viewRefs = Object.freeze([...c.viewRefs]) as unknown as string[];
+  }
+  return Object.freeze(frozen);
 }
 
 export function unregisterForgeProviders(pluginId: string): void {
