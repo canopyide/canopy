@@ -52,6 +52,15 @@ describe("Worktree list keyboard grid — issue #6422", () => {
     it('only applies role="group" in the overview grid variant — sidebar rows defer to the row wrapper', () => {
       expect(source).toContain('role={variant === "grid" ? "group" : undefined}');
     });
+
+    it("keeps outline-hidden on the inner click-target button to preserve forced-colors UA outline (#8094)", () => {
+      expect(source).toMatch(/"absolute inset-0 z-0 outline-hidden"/);
+    });
+
+    it("does not paint a duplicate accent focus ring on the inner button — card-level :has(> button:focus-visible) ring is canonical (#8094)", () => {
+      expect(source).not.toContain("focus-visible:outline-daintree-accent");
+      expect(source).not.toContain("focus-visible:ring-daintree-accent");
+    });
   });
 
   describe("WorktreeHeader actions toolbar", () => {
