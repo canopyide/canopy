@@ -115,3 +115,116 @@ describe("Toolbar keyboard navigation — issue #2814", () => {
     });
   });
 });
+
+describe("Toolbar keyboard navigation — issue #8163", () => {
+  let source: string;
+
+  beforeEach(async () => {
+    source = await fs.readFile(TOOLBAR_PATH, "utf-8");
+  });
+
+  describe("Portal event guard (Bug 2)", () => {
+    it("guards handleToolbarKeyDown against keys originating outside the toolbar DOM subtree", () => {
+      // React synthetic events bubble through the React tree, so keydowns
+      // inside Radix portal content (DropdownMenuContent, ContextMenuContent
+      // — rendered in document.body) still reach this handler. The DOM
+      // containment check excludes them so Arrow keys inside an open menu
+      // navigate the menu instead of being stolen by toolbar roving focus.
+      expect(source).toMatch(
+        /if\s*\(!toolbarRef\.current\?\.contains\(e\.target as Node\)\)\s*return/
+      );
+    });
+
+    it("places the containment guard before the modifier guard", () => {
+      const containsIdx = source.search(/toolbarRef\.current\?\.contains\(e\.target as Node\)/);
+      const modifierIdx = source.search(/if\s*\(e\.metaKey \|\| e\.altKey \|\| e\.ctrlKey\)/);
+      expect(containsIdx).toBeGreaterThan(-1);
+      expect(modifierIdx).toBeGreaterThan(-1);
+      expect(containsIdx).toBeLessThan(modifierIdx);
+    });
+
+    it("places the containment guard before getToolbarItems is called", () => {
+      // Bailing before getToolbarItems avoids wasted DOM queries on every
+      // portal-originated keydown. Scope to handleToolbarKeyDown's body so
+      // the assertion isn't fooled by the earlier getToolbarItems call in
+      // handleToolbarFocusCapture.
+      const handlerMatch = source.match(
+        /handleToolbarKeyDown\s*=\s*useCallback\([\s\S]*?\n\s{2}\);/
+      );
+      expect(handlerMatch).not.toBeNull();
+      const body = handlerMatch![0];
+      const containsIdx = body.search(/toolbarRef\.current\?\.contains\(e\.target as Node\)/);
+      const itemsIdx = body.search(/const items = getToolbarItems\(\)/);
+      expect(containsIdx).toBeGreaterThan(-1);
+      expect(itemsIdx).toBeGreaterThan(-1);
+      expect(containsIdx).toBeLessThan(itemsIdx);
+    });
+  });
+
+  describe("Overflow focus redirect (Bug 1)", () => {
+    it("tracks the previously-focused toolbar item with a ref", () => {
+      expect(source).toMatch(/prevFocusedToolbarItemRef\s*=\s*useRef/);
+    });
+
+    it("updates prevFocusedToolbarItemRef inside the focus-capture handler", () => {
+      // The ref must be set inside handleToolbarFocusCapture so the layout
+      // effect can detect when that item is later evicted.
+      expect(source).toMatch(
+        /handleToolbarFocusCapture[\s\S]*?prevFocusedToolbarItemRef\.current\s*=\s*target/
+      );
+    });
+
+    it("marks the overflow trigger Button with data-toolbar-overflow-trigger", () => {
+      // A dedicated marker is required because [data-toolbar-item][aria-haspopup='menu']
+      // also matches AgentButton and AgentTrayButton (which appear earlier in
+      // document order), so the overflow trigger cannot be located by that
+      // selector alone.
+      expect(source).toContain('data-toolbar-overflow-trigger=""');
+    });
+
+    it("does not locate the overflow trigger via aria-haspopup selector", () => {
+      // Regression guard against the AgentButton/AgentTrayButton false-positive.
+      expect(source).not.toMatch(
+        /querySelector[^)]*\[data-toolbar-item\]\[aria-haspopup=['"]menu['"]\]/
+      );
+    });
+
+    it("uses [data-toolbar-overflow-trigger] selector to locate the redirect target", () => {
+      expect(source).toMatch(
+        /querySelector[^)]*\[data-toolbar-overflow-trigger\]/
+      );
+    });
+
+    it("redirects focus only when the previously-focused item is no longer in items", () => {
+      expect(source).toMatch(/!items\.includes\(prevFocused\)/);
+    });
+
+    it("guards focus redirect on document.activeElement === document.body", () => {
+      // Without this guard the redirect could fire spuriously when focus
+      // is intentionally elsewhere (e.g. user clicked an unrelated control
+      // between the focus-capture and the next render).
+      expect(source).toMatch(/document\.activeElement\s*===\s*document\.body/);
+    });
+
+    it("calls .focus() on the redirect target inside the layout effect", () => {
+      // The layout-effect block must contain a focus() call gated by the
+      // three conditions above.
+      expect(source).toMatch(
+        /useLayoutEffect\([\s\S]*?prevFocused[\s\S]*?\.focus\(\)[\s\S]*?\}\)/
+      );
+    });
+
+    it("clears prevFocusedToolbarItemRef after redirecting", () => {
+      // Resetting the ref after the redirect makes the effect idempotent
+      // across repeated re-renders, so .focus() does not fire on every
+      // subsequent render.
+      expect(source).toMatch(/prevFocusedToolbarItemRef\.current\s*=\s*null/);
+    });
+
+    it("falls back to items[clamped] when the overflow trigger is not present", () => {
+      // When neither group renders an overflow menu (everything fits),
+      // the redirect should land on the clamped item rather than no-op.
+      expect(source).toMatch(/items\[clamped\]/);
+    });
+  });
+});

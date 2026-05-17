@@ -234,6 +234,12 @@ export function Toolbar({
   const leftGroupRef = useRef<HTMLDivElement>(null);
   const rightGroupRef = useRef<HTMLDivElement>(null);
   const activeToolbarIndexRef = useRef<number>(0);
+  // Tracks the last toolbar item that received focus. Read in the
+  // layout-effect tab-stop sync to detect when that item has been evicted
+  // (moved into overflow or unmounted) — in that case the browser drops
+  // focus to document.body, and we redirect it to the overflow trigger or
+  // nearest visible item to preserve keyboard navigation (WCAG 2.4.3).
+  const prevFocusedToolbarItemRef = useRef<HTMLElement | null>(null);
   const githubStatsRef = useRef<GitHubStatsHandle>(null);
   // Set in onPointerDownOutside, read in onCloseAutoFocus on the overflow
   // dropdown. Suppresses focus restoration for pointer dismissals so the
@@ -349,6 +355,21 @@ export function Toolbar({
     const clamped = Math.min(activeToolbarIndexRef.current, items.length - 1);
     activeToolbarIndexRef.current = clamped;
     syncToolbarTabStops(items, clamped);
+
+    const prevFocused = prevFocusedToolbarItemRef.current;
+    if (
+      prevFocused &&
+      !items.includes(prevFocused) &&
+      document.activeElement === document.body
+    ) {
+      const overflowTrigger = toolbarRef.current?.querySelector<HTMLElement>(
+        "[data-toolbar-overflow-trigger]"
+      );
+      const redirect =
+        overflowTrigger && items.includes(overflowTrigger) ? overflowTrigger : items[clamped];
+      redirect?.focus();
+      prevFocusedToolbarItemRef.current = null;
+    }
   });
 
   const handleToolbarFocusCapture = useCallback(
@@ -358,6 +379,7 @@ export function Toolbar({
       const idx = items.indexOf(target);
       if (idx !== -1) {
         activeToolbarIndexRef.current = idx;
+        prevFocusedToolbarItemRef.current = target;
         syncToolbarTabStops(items, idx);
       }
     },
@@ -366,6 +388,14 @@ export function Toolbar({
 
   const handleToolbarKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLElement>) => {
+      // React synthetic events bubble through the React tree, so keydowns
+      // inside portaled children (Radix DropdownMenu/ContextMenu content
+      // rendered in document.body) still reach this handler. The DOM
+      // containment check excludes those — portal content is not a DOM
+      // descendant of the toolbar — so Arrow keys inside an open menu can
+      // navigate the menu instead of being stolen by toolbar roving focus.
+      if (!toolbarRef.current?.contains(e.target as Node)) return;
+
       if (e.metaKey || e.altKey || e.ctrlKey) return;
 
       const items = getToolbarItems();
@@ -883,6 +913,7 @@ export function Toolbar({
                 variant="ghost"
                 size="icon"
                 data-toolbar-item=""
+                data-toolbar-overflow-trigger=""
                 className={toolbarIconButtonClass}
                 aria-label={ariaLabel}
               >
