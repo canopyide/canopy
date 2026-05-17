@@ -232,25 +232,30 @@ const dragScreenReaderInstructions: ScreenReaderInstructions = {
 
 export interface DragAnnouncementRefs {
   isKeyboardDragRef: MutableRefObject<boolean>;
-  pinnedLabelRef: MutableRefObject<string>;
-  pinnedSourceIndexRef: MutableRefObject<number | null>;
   pinnedTotalRef: MutableRefObject<number | null>;
 }
 
 /**
  * Build the dnd-kit `Announcements` object for the global drag surface.
  *
- * Drag state has to be pinned at pickup time (label, source index, total) so
- * the drop string survives mid-drag filter mutations; refs supply that pin
- * via the sibling `DragAnnouncementMonitor` and the factory closes over
- * them. The factory is exported pure so unit tests can drive the lifecycle
- * with controlled refs and label resolvers.
+ * `pinnedTotalRef` is populated at pickup by the sibling
+ * `DragAnnouncementMonitor` so the drop string's denominator survives
+ * mid-drag filter mutations. The factory is exported pure so unit tests can
+ * drive the lifecycle with controlled refs and label resolvers.
  *
  * Pointer drags suppress `onDragOver` (return `undefined`) so the polite
  * live region isn't flooded — the visual placeholder already conveys hover
  * state, and dnd-kit's measuring loop fires `onDragOver` at the
  * `MEASURING_CONFIG.frequency` cadence. Keyboard drags keep the running
  * "X is over Y" prose since the user has no visual cursor to track.
+ *
+ * **Read order matters.** `DragAnnouncementMonitor` and dnd-kit's internal
+ * `Accessibility` component both register via `useDndMonitor`, and dnd-kit
+ * dispatches to listeners in insertion order. The monitor's `useEffect`
+ * runs first (children before sibling render output in the DndContext tree),
+ * so it must NOT clear refs at `onDragEnd` / `onDragCancel` — `Accessibility`
+ * reads them second to build the announcement string. The monitor clears
+ * refs at the top of the *next* `onDragStart` instead.
  */
 export function createDragAnnouncements(
   refs: DragAnnouncementRefs,
@@ -275,7 +280,7 @@ export function createDragAnnouncements(
         return `${label} returned to its original position`;
       }
       const overData = over.data.current as { sortable?: { index?: number } } | undefined;
-      const destIndex = overData?.sortable?.index ?? refs.pinnedSourceIndexRef.current;
+      const destIndex = overData?.sortable?.index;
       const total = refs.pinnedTotalRef.current;
       if (typeof destIndex === "number" && total !== null && total > 0) {
         return `Dropped ${label} at position ${destIndex + 1} of ${total}`;
@@ -320,21 +325,22 @@ function getEventCoordinates(event: Event): { x: number; y: number } | null {
 function DragAnnouncementMonitor({ refs }: { refs: DragAnnouncementRefs }) {
   useDndMonitor({
     onDragStart({ activatorEvent, active }) {
+      // Clear leftover state from the previous drag at the top of the next
+      // pickup, NOT in onDragEnd/onDragCancel. The reason is listener order:
+      // this monitor registers via useDndMonitor before dnd-kit's internal
+      // Accessibility component, and dnd-kit iterates listeners in insertion
+      // order. Clearing at end/cancel would zero the refs before the
+      // Accessibility component reads them to build the announcement, so the
+      // "Dropped X at position N of T" copy would never fire.
       refs.isKeyboardDragRef.current =
         typeof KeyboardEvent !== "undefined" && activatorEvent instanceof KeyboardEvent;
-      refs.pinnedLabelRef.current = getDragLabel(active.data.current);
 
       const data = active.data.current as
         | {
-            sourceIndex?: number;
             dragStartOrder?: unknown[];
-            sortable?: { index?: number; items?: unknown[] };
+            sortable?: { items?: unknown[] };
           }
         | undefined;
-      const sortableIndex = typeof data?.sortable?.index === "number" ? data.sortable.index : null;
-      const explicitSource = typeof data?.sourceIndex === "number" ? data.sourceIndex : null;
-      refs.pinnedSourceIndexRef.current = sortableIndex ?? explicitSource;
-
       const sortableTotal = data?.sortable?.items?.length;
       const dragOrderTotal = Array.isArray(data?.dragStartOrder)
         ? data.dragStartOrder.length
@@ -345,18 +351,6 @@ function DragAnnouncementMonitor({ refs }: { refs: DragAnnouncementRefs }) {
           : typeof dragOrderTotal === "number"
             ? dragOrderTotal
             : null;
-    },
-    onDragEnd() {
-      refs.isKeyboardDragRef.current = false;
-      refs.pinnedLabelRef.current = "";
-      refs.pinnedSourceIndexRef.current = null;
-      refs.pinnedTotalRef.current = null;
-    },
-    onDragCancel() {
-      refs.isKeyboardDragRef.current = false;
-      refs.pinnedLabelRef.current = "";
-      refs.pinnedSourceIndexRef.current = null;
-      refs.pinnedTotalRef.current = null;
     },
   });
   return null;
@@ -480,11 +474,9 @@ export function DndProvider({ children }: DndProviderProps) {
   // memoized `dragAnnouncements` factory. Identity is stable for the
   // provider's lifetime so the `useMemo` below can use an empty dep list.
   const isKeyboardDragRef = useRef(false);
-  const pinnedLabelRef = useRef<string>("");
-  const pinnedSourceIndexRef = useRef<number | null>(null);
   const pinnedTotalRef = useRef<number | null>(null);
   const announcementRefs = useMemo<DragAnnouncementRefs>(
-    () => ({ isKeyboardDragRef, pinnedLabelRef, pinnedSourceIndexRef, pinnedTotalRef }),
+    () => ({ isKeyboardDragRef, pinnedTotalRef }),
     []
   );
   const dragAnnouncements = useMemo(

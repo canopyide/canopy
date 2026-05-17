@@ -5,21 +5,15 @@ import { createDragAnnouncements, type DragAnnouncementRefs } from "../DndProvid
 import { makeSortableAnnouncements } from "../sortableAnnouncements";
 
 // Build a refs harness with controlled values so the factory's pickup-time
-// pins (keyboard flag, source index, total) can be driven from tests.
+// pins (keyboard flag, total) can be driven from tests.
 function makeRefs(
   initial: Partial<{
     isKeyboardDrag: boolean;
-    pinnedLabel: string;
-    pinnedSourceIndex: number | null;
     pinnedTotal: number | null;
   }> = {}
 ): DragAnnouncementRefs {
   return {
     isKeyboardDragRef: { current: initial.isKeyboardDrag ?? false } as MutableRefObject<boolean>,
-    pinnedLabelRef: { current: initial.pinnedLabel ?? "" } as MutableRefObject<string>,
-    pinnedSourceIndexRef: {
-      current: initial.pinnedSourceIndex ?? null,
-    } as MutableRefObject<number | null>,
     pinnedTotalRef: {
       current: initial.pinnedTotal ?? null,
     } as MutableRefObject<number | null>,
@@ -104,7 +98,7 @@ describe("createDragAnnouncements — global DndProvider factory", () => {
 
   it("onDragEnd announces destination position from over sortable.index plus pinned total", () => {
     const announcements = createDragAnnouncements(
-      makeRefs({ pinnedSourceIndex: 0, pinnedTotal: 5 }),
+      makeRefs({ pinnedTotal: 5 }),
       resolveActive,
       resolveOver
     );
@@ -116,9 +110,12 @@ describe("createDragAnnouncements — global DndProvider factory", () => {
     ).toBe("Dropped Claude Agent at position 3 of 5");
   });
 
-  it("onDragEnd falls back to pinned source index when over has no sortable metadata", () => {
+  it("onDragEnd omits position when over has no sortable metadata", () => {
+    // No source-index fallback: the resolved destination is unknown, so the
+    // announcement stays generic rather than misleading the user with the
+    // pickup position dressed up as the drop position.
     const announcements = createDragAnnouncements(
-      makeRefs({ pinnedSourceIndex: 3, pinnedTotal: 8 }),
+      makeRefs({ pinnedTotal: 8 }),
       resolveActive,
       resolveOver
     );
@@ -127,22 +124,22 @@ describe("createDragAnnouncements — global DndProvider factory", () => {
         active: makeActive({ terminal: { title: "Claude Agent" } }),
         over: makeOver("term-x", {}),
       })
-    ).toBe("Dropped Claude Agent at position 4 of 8");
+    ).toBe("Dropped Claude Agent");
   });
 
-  it("onDragEnd omits position when pin and over both lack index data", () => {
+  it("onDragEnd omits position when pinned total is null", () => {
     const announcements = createDragAnnouncements(makeRefs(), resolveActive, resolveOver);
     expect(
       announcements.onDragEnd!({
         active: makeActive({ terminal: { title: "Claude Agent" } }),
-        over: makeOver("term-x", {}),
+        over: makeOver("term-x", { sortable: { index: 0 } }),
       })
     ).toBe("Dropped Claude Agent");
   });
 
   it("onDragEnd omits position when total is zero", () => {
     const announcements = createDragAnnouncements(
-      makeRefs({ pinnedSourceIndex: 0, pinnedTotal: 0 }),
+      makeRefs({ pinnedTotal: 0 }),
       resolveActive,
       resolveOver
     );
@@ -156,7 +153,7 @@ describe("createDragAnnouncements — global DndProvider factory", () => {
 
   it("onDragEnd without target announces return to original position", () => {
     const announcements = createDragAnnouncements(
-      makeRefs({ pinnedSourceIndex: 0, pinnedTotal: 5 }),
+      makeRefs({ pinnedTotal: 5 }),
       resolveActive,
       resolveOver
     );
@@ -176,6 +173,25 @@ describe("createDragAnnouncements — global DndProvider factory", () => {
         over: null,
       })
     ).toBe("Drag cancelled. Claude Agent returned to its original position");
+  });
+
+  it("position string still resolves even when refs survive past the drop event", () => {
+    // Regression: the monitor clears refs at the *next* onDragStart, not at
+    // onDragEnd, because dnd-kit dispatches listeners in insertion order and
+    // the monitor's useEffect runs before Accessibility's. If the monitor
+    // cleared refs at end/cancel, Accessibility would read null and the
+    // position-aware copy would never fire. This test pins the contract that
+    // the factory reads non-null pinned values at onDragEnd time.
+    const refs = makeRefs({ pinnedTotal: 4, isKeyboardDrag: true });
+    const announcements = createDragAnnouncements(refs, resolveActive, resolveOver);
+    expect(
+      announcements.onDragEnd!({
+        active: makeActive({ terminal: { title: "Claude Agent" } }),
+        over: makeOver("term-2", { sortable: { index: 1 } }),
+      })
+    ).toBe("Dropped Claude Agent at position 2 of 4");
+    expect(refs.pinnedTotalRef.current).toBe(4);
+    expect(refs.isKeyboardDragRef.current).toBe(true);
   });
 });
 

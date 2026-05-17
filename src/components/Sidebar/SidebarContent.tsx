@@ -185,9 +185,22 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     };
   }, []);
   useDndMonitor({
+    onDragStart() {
+      // Drop any pending 50ms cancel-announcement timer from a previous drag
+      // so a rapid Escape → pickup sequence can't speak stale cancel copy on
+      // top of the new drag's pickup announcement.
+      if (cancelAnnouncementTimerRef.current !== null) {
+        clearTimeout(cancelAnnouncementTimerRef.current);
+        cancelAnnouncementTimerRef.current = null;
+      }
+    },
     onDragCancel({ active }) {
       // Only handle worktree-sort drags — other drag types live on their own
       // surfaces and don't compete with this region's polite Alt+Arrow queue.
+      // Note: dnd-kit fires onDragCancel for both Escape presses and
+      // cancelDrop-converted rejections (e.g., a grid-full rejection). The
+      // assertive interrupt is appropriate for both since each ends the drag
+      // without committing, and the user needs immediate audible feedback.
       if (!isWorktreeSortDragData(active.data.current as Record<string, unknown> | undefined)) {
         return;
       }
