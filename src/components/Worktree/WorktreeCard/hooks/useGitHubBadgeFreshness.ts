@@ -8,6 +8,8 @@ import { useGitHubRateLimitStore } from "@/store/githubRateLimitStore";
 const DEFAULT_FILTER_STATE = "open";
 const DEFAULT_SORT_ORDER = "created";
 
+const STALE_THRESHOLD_MS = 3 * 60 * 1000;
+
 const noopSubscribe = () => () => {};
 
 interface UseGitHubBadgeFreshnessResult {
@@ -40,11 +42,9 @@ export function useGitHubBadgeFreshness(
   // would be misleading. Treat as `aging` until the block clears.
   const freshnessLevel: FreshnessLevel = rateLimitBlocked
     ? "aging"
-    : rowLastUpdatedAt == null || cacheLastUpdatedAt == null
-      ? "fresh"
-      : cacheLastUpdatedAt > rowLastUpdatedAt
-        ? "aging"
-        : "fresh";
+    : rowLastUpdatedAt != null && now - rowLastUpdatedAt > STALE_THRESHOLD_MS
+      ? "aging"
+      : "fresh";
 
   return { freshnessLevel, cacheLastUpdatedAt, now };
 }
