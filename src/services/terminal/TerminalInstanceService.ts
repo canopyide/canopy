@@ -450,18 +450,20 @@ class TerminalInstanceService {
    *
    * Avoiding per-write clearTimeout/setTimeout matters: at 60fps+ output the
    * naive pattern thrashes Chromium's timer queue and produces GC pressure.
+   *
+   * `applyRendererPolicy(BURST)` is called on every write: when BURST is
+   * already applied the policy returns early (line 50 of
+   * TerminalRendererPolicy) and as a load-bearing side-effect clears any
+   * pending tierChangeTimer — that cancellation is what prevents a
+   * concurrent focus-loss-scheduled downgrade from firing unopposed and
+   * stranding the terminal at FOCUSED/VISIBLE/BACKGROUND mid-stream.
    */
   private onPtyWrite(id: string): void {
     const managed = this.instances.get(id);
     if (!managed) return;
 
-    const now = Date.now();
-    const previousDeadline = managed.writeBurstDeadline;
-    managed.writeBurstDeadline = now + WRITE_BURST_DECAY_MS;
-
-    if (previousDeadline === undefined || now >= previousDeadline) {
-      this.rendererPolicy.applyRendererPolicy(id, TerminalRefreshTier.BURST);
-    }
+    managed.writeBurstDeadline = Date.now() + WRITE_BURST_DECAY_MS;
+    this.rendererPolicy.applyRendererPolicy(id, TerminalRefreshTier.BURST);
 
     if (managed.writeBurstTimer === undefined) {
       this.scheduleWriteBurstDecay(id, WRITE_BURST_DECAY_MS);
