@@ -216,6 +216,62 @@ describe("computeGuardedOverflow", () => {
     expect(t4.overflowIds).toEqual(["copy-tree"]);
   });
 
+  it("discards previous result when an overflowed item is no longer in orderedIds", () => {
+    // copy-tree is in overflow, then the consumer drops copy-tree from the
+    // ID list entirely (button deactivated). The held snapshot is stale and
+    // must not be returned.
+    const widths = makeWidths(ids, 36);
+    const previous: OverflowResult = {
+      visibleIds: ["terminal", "browser", "github-stats", "settings"],
+      overflowIds: ["copy-tree"],
+    };
+    const idsWithoutCopyTree: ToolbarButtonId[] = [
+      "terminal",
+      "browser",
+      "github-stats",
+      "settings",
+    ];
+    const result = computeGuardedOverflow(
+      180,
+      widths,
+      idsWithoutCopyTree,
+      TOOLBAR_BUTTON_PRIORITIES,
+      170,
+      previous
+    );
+    expect(result.overflowIds).not.toContain("copy-tree");
+    expect(result.overflowIds).toEqual([]);
+    expect(result.visibleIds).toEqual(idsWithoutCopyTree);
+  });
+
+  it("anchor does not drift across a sequence of holds", () => {
+    // Simulates the hook's contract: prevWidth/prevResult only update on
+    // accepted state changes. A long sequence of growth ticks below the
+    // threshold must all anchor to the same prevWidth, not to the last seen
+    // containerWidth.
+    const widths = makeWidths(ids, 36);
+    const initial = computeGuardedOverflow(179, widths, ids, TOOLBAR_BUTTON_PRIORITIES, 0, null);
+    expect(initial.overflowIds).toEqual(["copy-tree"]);
+    // Restore threshold from 179 = 179 + 36 + 16 = 231. Sequence 190→200→210→220→230 all hold.
+    const anchorPrev = 179;
+    let last: OverflowResult = initial;
+    for (const w of [190, 200, 210, 220, 230]) {
+      const r = computeGuardedOverflow(w, widths, ids, TOOLBAR_BUTTON_PRIORITIES, anchorPrev, last);
+      expect(r).toBe(initial);
+      last = r;
+    }
+    // 231 — exactly at the threshold from the original anchor (NOT 230+36+16=282).
+    const released = computeGuardedOverflow(
+      231,
+      widths,
+      ids,
+      TOOLBAR_BUTTON_PRIORITIES,
+      anchorPrev,
+      last
+    );
+    expect(released.overflowIds).toEqual([]);
+  });
+
   it("uses the smallest overflowed item width for the restore threshold", () => {
     // copy-tree is 60, settings is 36. Smallest = 36. Threshold uses 36.
     const widths = new Map<string, number>([

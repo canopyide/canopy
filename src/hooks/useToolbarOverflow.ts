@@ -96,7 +96,19 @@ export function computeGuardedOverflow(
     return fresh;
   }
 
+  // If the ID set changed (item activated/deactivated), the previous result
+  // references buttons that no longer exist. Don't hold a stale snapshot.
+  const orderedSet = new Set<string>(orderedIds);
+  for (const id of previousResult.overflowIds) {
+    if (!orderedSet.has(id)) return fresh;
+  }
+  for (const id of previousResult.visibleIds) {
+    if (!orderedSet.has(id)) return fresh;
+  }
+
   // Growing with items currently in overflow — gate the restoration.
+  // The reduce starts at +Infinity but is only reached when overflowIds is
+  // non-empty (guarded above), so the result is always a real item width.
   const smallestOverflowedItemWidth = previousResult.overflowIds.reduce<number>((min, id) => {
     const w = itemWidths.get(id) ?? DEFAULT_ITEM_WIDTH;
     return w < min ? w : min;
@@ -183,6 +195,9 @@ export function useToolbarOverflow(
         leftPrevWidthRef.current,
         leftPrevResultRef.current
       );
+      // Ref writes inside the updater are safe under concurrent rendering:
+      // `containerWidth` and `result` are captured in the enclosing closure,
+      // so a re-invoked updater writes the same values (idempotent).
       setLeftResult((prev) => {
         if (
           arraysEqual(prev.visibleIds, result.visibleIds) &&
