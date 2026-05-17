@@ -4,7 +4,7 @@ import { getCache, buildCacheKey } from "@/lib/githubResourceCache";
 import { useGlobalMinuteTicker } from "@/hooks/useGlobalMinuteTicker";
 import { useProjectStore } from "@/store/projectStore";
 import { useGitHubRateLimitStore } from "@/store/githubRateLimitStore";
-import { useWorktreeStore } from "@/hooks/useWorktreeStore";
+import { useWorktreeStoreOptional } from "@/hooks/useWorktreeStore";
 
 const DEFAULT_FILTER_STATE = "open";
 const DEFAULT_SORT_ORDER = "created";
@@ -24,7 +24,7 @@ export function useGitHubBadgeFreshness(
   rowLastUpdatedAt?: number
 ): UseGitHubBadgeFreshnessResult {
   const projectPath = useProjectStore((s) => s.currentProject?.path);
-  const prDetectionPaused = useWorktreeStore((s) => s.prDetectionPaused);
+  const prDetectionPaused = useWorktreeStoreOptional((s) => s.prDetectionPaused);
   const tick = useGlobalMinuteTicker();
   const rateLimitBlocked = useGitHubRateLimitStore((s) => s.blocked);
 
