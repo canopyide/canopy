@@ -1211,10 +1211,7 @@ describe("AgentButton preset UX", () => {
       for (const [state, expected] of cases) {
         mockMergedPresetsFn = () => [];
         const { getByRole, getAllByTestId, unmount } = render(
-          <AgentButton
-            type="claude"
-            availability={state as unknown as CliAvailability[string]}
-          />
+          <AgentButton type="claude" availability={state as unknown as CliAvailability[string]} />
         );
         expect(tooltipTexts(getAllByTestId)).toContain(expected);
         expect(getByRole("button").getAttribute("aria-label")).toBe(expected);
