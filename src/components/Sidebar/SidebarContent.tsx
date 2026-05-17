@@ -780,14 +780,15 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       <TooltipTrigger asChild>
         <button
           type="button"
-          disabled={!canArmMatching}
-          onClick={() =>
+          aria-disabled={!canArmMatching || undefined}
+          onClick={() => {
+            if (!canArmMatching) return;
             actionService.dispatch(
               "fleet.armMatchingFilter",
               { worktreeIds: filteredWorktrees.map((w) => w.id) },
               { source: "user" }
-            )
-          }
+            );
+          }}
           className={`inline-flex items-center justify-center self-stretch px-1.5 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-daintree-accent ${
             canArmMatching
               ? "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.06]"

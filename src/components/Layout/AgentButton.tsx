@@ -279,7 +279,17 @@ export function AgentButton({
         ? `${config.name} needs setup. Click to configure.`
         : `${config.name} CLI not found. Click to install.`;
   const tooltipShortcut = isLaunchable ? displayCombo : undefined;
-  const chevronTooltip = `Set ${config.name} preset`;
+  const chevronTooltip = isLoading
+    ? `Checking ${config.name} CLI availability...`
+    : isLaunchable
+      ? `Set ${config.name} preset`
+      : needsSetup
+        ? // The chevron blocks clicks when not launchable, so its copy
+          // names the precondition instead of promising an action the
+          // primary button owns (mirrors the `ariaLabel` strings below).
+          `${config.name} needs setup`
+        : `${config.name} CLI not found`;
+  const isChevronDisabled = isLoading || !isLaunchable;
 
   const ariaLabel = isLoading
     ? `Checking ${config.name} availability`
@@ -290,6 +300,7 @@ export function AgentButton({
         : `${config.name} CLI not installed`;
 
   const handleClick = () => {
+    if (isLoading) return;
     if (isLaunchable) {
       // Defer all preset resolution to useAgentLauncher. Forwarding the
       // resolved savedPresetId explicitly would block the launcher's
@@ -352,12 +363,13 @@ export function AgentButton({
                   variant="ghost"
                   size="icon"
                   onClick={handleClick}
-                  disabled={isLoading}
+                  aria-disabled={isLoading || undefined}
                   data-toolbar-item={dataToolbarItem}
                   onPointerEnter={clearFocusRestoreSuppression}
                   className={cn(
                     "toolbar-agent-button text-daintree-text relative",
-                    needsSetup && "opacity-70"
+                    needsSetup && "opacity-70",
+                    "aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
                   )}
                   aria-label={ariaLabel}
                   aria-keyshortcuts={ariaShortcut}
@@ -449,12 +461,13 @@ export function AgentButton({
                 variant="ghost"
                 size="icon"
                 onClick={handleClick}
-                disabled={isLoading}
+                aria-disabled={isLoading || undefined}
                 data-toolbar-item={dataToolbarItem}
                 onPointerEnter={clearFocusRestoreSuppression}
                 className={cn(
                   "toolbar-agent-button text-daintree-text rounded-r-none border-r border-transparent relative",
-                  needsSetup && "opacity-70"
+                  needsSetup && "opacity-70",
+                  "aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
                 )}
                 aria-label={ariaLabel}
                 aria-keyshortcuts={ariaShortcut}
@@ -480,13 +493,27 @@ export function AgentButton({
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
-                    disabled={isLoading || !isLaunchable}
+                    aria-disabled={isChevronDisabled || undefined}
+                    onPointerDown={(e) => {
+                      if (isChevronDisabled) e.preventDefault();
+                    }}
+                    onKeyDown={(e) => {
+                      if (
+                        isChevronDisabled &&
+                        (e.key === "Enter" || e.key === " " || e.key === "ArrowDown")
+                      ) {
+                        e.preventDefault();
+                      }
+                    }}
+                    onClick={(e) => {
+                      if (isChevronDisabled) e.preventDefault();
+                    }}
                     data-toolbar-item={dataToolbarItem}
                     onPointerEnter={clearFocusRestoreSuppression}
                     className={cn(
                       "toolbar-agent-button text-daintree-text rounded-l-none",
                       "h-8 w-6 p-0 flex items-center justify-center",
-                      !isLaunchable && !isLoading && "opacity-60"
+                      "aria-disabled:opacity-60 aria-disabled:cursor-not-allowed"
                     )}
                     aria-label={chevronTooltip}
                   >
