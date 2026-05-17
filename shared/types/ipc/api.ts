@@ -1416,6 +1416,12 @@ export interface ElectronAPI {
         kinds: import("../../config/panelKindRegistry.js").PanelKindConfig[];
       }) => void
     ): () => void;
+    /** Subscribe to plugin toolbar button registry changes. Returns a cleanup. */
+    onToolbarButtonsChanged(
+      callback: (payload: {
+        buttons: import("../../config/toolbarButtonRegistry.js").ToolbarButtonConfig[];
+      }) => void
+    ): () => void;
   };
   crashRecovery: {
     getPending(): Promise<import("./crashRecovery.js").PendingCrash | null>;

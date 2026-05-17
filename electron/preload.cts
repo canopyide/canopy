@@ -100,6 +100,7 @@ import type { ShowContextMenuPayload } from "../shared/types/menu.js";
 import type { ResourceProfilePayload } from "../shared/types/resourceProfile.js";
 import type { PluginActionDescriptor } from "../shared/types/plugin.js";
 import type { PanelKindConfig } from "../shared/config/panelKindRegistry.js";
+import type { ToolbarButtonConfig } from "../shared/config/toolbarButtonRegistry.js";
 
 export type { ElectronAPI };
 
@@ -2476,6 +2477,8 @@ const api: ElectronAPI = {
       _eventBusOn("plugin:actions-changed", callback),
     onPanelKindsChanged: (callback: (payload: { kinds: PanelKindConfig[] }) => void) =>
       _eventBusOn("plugin:panel-kinds-changed", callback),
+    onToolbarButtonsChanged: (callback: (payload: { buttons: ToolbarButtonConfig[] }) => void) =>
+      _eventBusOn("plugin:toolbar-buttons-changed", callback),
   },
 
   crashRecovery: {

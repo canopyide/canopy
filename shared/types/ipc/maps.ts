@@ -2294,6 +2294,11 @@ export interface IpcEventMap {
     kinds: import("../../config/panelKindRegistry.js").PanelKindConfig[];
   };
 
+  // Plugin toolbar button registry events (main → renderer)
+  "plugin:toolbar-buttons-changed": {
+    buttons: import("../../config/toolbarButtonRegistry.js").ToolbarButtonConfig[];
+  };
+
   // Resource profile change (main → renderer)
   "resource:profile-changed": import("../resourceProfile.js").ResourceProfilePayload;
 
@@ -2366,6 +2371,8 @@ export type IpcEventBusMap = Pick<
   | "plugin:actions-changed"
   // Plugin panel kind registry (global broadcast)
   | "plugin:panel-kinds-changed"
+  // Plugin toolbar button registry (global broadcast)
+  | "plugin:toolbar-buttons-changed"
   // Terminal lifecycle (non-data) — exit, spawn-result, backend crash/ready
   | "terminal:exit"
   | "terminal:backend-crashed"
