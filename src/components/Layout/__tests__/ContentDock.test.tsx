@@ -54,6 +54,18 @@ describe("ContentDock regression test", () => {
     expect(content).toMatch(/isOver\s*&&\s*[^]*?ring-border-default/);
   });
 
+  // Issue #8162 — drop the ambient in-flight rail tint; the only drag-state cue
+  // is the armed isOver treatment, plus a cursor-no-drop rejection signal for
+  // worktree-card sort drags that can't drop on the dock.
+  it("removes ambient panel-drag tint and adds worktree-sort cursor feedback", () => {
+    const content = readFileSync(resolve(__dirname, "../ContentDock.tsx"), "utf-8");
+
+    expect(content).not.toContain("useIsDragging");
+    expect(content).not.toContain('isPanelDragging && "bg-overlay-subtle"');
+    expect(content).toContain('isWorktreeSortDragging && "cursor-no-drop"');
+    expect(content).toMatch(/isOver\s*&&\s*[^]*?cursor-copy/);
+  });
+
   // Issue #6590 — handleAddTerminal must rely on the atomic dock activation
   // flag instead of a follow-up openDockTerminal() call, otherwise the
   // watchdog effect collapses the freshly created panel.
