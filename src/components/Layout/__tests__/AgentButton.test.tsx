@@ -1118,5 +1118,55 @@ describe("AgentButton preset UX", () => {
       expect(chevron!.getAttribute("aria-disabled")).toBeNull();
       expect(fireEvent.pointerDown(chevron!)).toBe(true);
     });
+
+    it("split-button primary is aria-disabled while loading and the click is guarded", () => {
+      // The with-presets branch is a separate JSX tree from the plain
+      // button; assert it carries the same aria-disabled + click guard.
+      mockMergedPresetsFn = () => [{ id: "p", name: "P" }];
+
+      const { getByTestId, getAllByRole } = render(
+        <AgentButton type="claude" availability={undefined} />
+      );
+
+      const buttons = getAllByRole("button");
+      for (const button of buttons) {
+        expect(button.getAttribute("aria-disabled")).toBe("true");
+        expect(button.hasAttribute("disabled")).toBe(false);
+      }
+
+      const chevronIcon = getByTestId("chevron-icon");
+      const primary = buttons.find((b) => !b.contains(chevronIcon));
+      expect(primary).toBeTruthy();
+      fireEvent.click(primary!);
+      expect(dispatchMock).not.toHaveBeenCalled();
+    });
+
+    it("chevron copy names the precondition (no blocked 'Click to …' promise) when not launchable", () => {
+      // The chevron blocks clicks when not launchable, so its
+      // tooltip/aria-label must not imperatively promise an action.
+      for (const state of ["missing", "installed"]) {
+        mockMergedPresetsFn = () => [{ id: "only", name: "Only" }];
+        const { getByTestId, unmount } = render(
+          <AgentButton type="claude" availability={state as unknown as CliAvailability[string]} />
+        );
+        const chevron = getByTestId("chevron-icon").closest("button");
+        expect(chevron!.getAttribute("aria-label")).toBeTruthy();
+        expect(chevron!.getAttribute("aria-label")).not.toMatch(/click to/i);
+        unmount();
+      }
+    });
+
+    it("chevron blocks keyboard menu-open keys via preventDefault when not launchable", () => {
+      mockMergedPresetsFn = () => [{ id: "only", name: "Only" }];
+
+      const { getByTestId } = render(
+        <AgentButton type="claude" availability={"missing" as unknown as CliAvailability[string]} />
+      );
+
+      const chevron = getByTestId("chevron-icon").closest("button");
+      for (const key of ["Enter", " ", "ArrowDown"]) {
+        expect(fireEvent.keyDown(chevron!, { key })).toBe(false);
+      }
+    });
   });
 });

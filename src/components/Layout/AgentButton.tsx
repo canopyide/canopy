@@ -284,8 +284,11 @@ export function AgentButton({
     : isLaunchable
       ? `Set ${config.name} preset`
       : needsSetup
-        ? `${config.name} needs setup. Click to configure.`
-        : `${config.name} CLI not found. Click to install.`;
+        ? // The chevron blocks clicks when not launchable, so its copy
+          // names the precondition instead of promising an action the
+          // primary button owns (mirrors the `ariaLabel` strings below).
+          `${config.name} needs setup`
+        : `${config.name} CLI not found`;
   const isChevronDisabled = isLoading || !isLaunchable;
 
   const ariaLabel = isLoading
