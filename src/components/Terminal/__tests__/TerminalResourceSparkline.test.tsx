@@ -49,6 +49,6 @@ describe("TerminalResourceSparkline", () => {
     const { container } = render(<TerminalResourceSparkline history={[10, 20, 30]} />);
     const svg = container.querySelector("svg")!;
     const children = Array.from(svg.children);
-    expect(children[children.length - 1].tagName.toLowerCase()).toBe("circle");
+    expect(children[children.length - 1]!.tagName.toLowerCase()).toBe("circle");
   });
 });

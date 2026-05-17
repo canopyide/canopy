@@ -18,11 +18,11 @@ export function TerminalResourceSparkline({ history, className }: TerminalResour
     .join(" ");
 
   const dotRadius = 2;
-  const lastValue = history[history.length - 1];
+  const lastValue = history[history.length - 1]!;
   const lastX = width;
   const lastY = Math.max(
     dotRadius,
-    Math.min(height - dotRadius, height - (Math.min(lastValue, 100) / 100) * height),
+    Math.min(height - dotRadius, height - (Math.min(lastValue, 100) / 100) * height)
   );
 
   return (
