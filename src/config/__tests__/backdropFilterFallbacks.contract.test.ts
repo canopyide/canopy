@@ -52,7 +52,6 @@ describe("backdrop-filter fallbacks contract (#8166)", () => {
         // filter; the solid background uses an opaque --theme-surface-* token,
         // never a translucent color-mix.
         // @ts-expect-error - indices verified not -1 by guard checks above
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
         const blocks = css
           .slice(supportsIdx)
           .split("@media (prefers-reduced-transparency: reduce)")[0]
