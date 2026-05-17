@@ -212,6 +212,41 @@ describe("DockLaunchButton", () => {
     expect(getByText("Gemini").className).toContain("opacity-70");
   });
 
+  it("treats unauthenticated agents as launchable (CLI handles auth at runtime)", () => {
+    const onLaunchAgent = vi.fn();
+    const { getByText } = render(
+      <DockLaunchButton
+        agents={[{ id: "codex", name: "Codex", availability: "unauthenticated" }]}
+        hasDevPreview={false}
+        onLaunchAgent={onLaunchAgent}
+        activeWorktreeId={null}
+        cwd="/tmp"
+      />
+    );
+
+    fireEvent.click(getByText("Codex"));
+    expect(onLaunchAgent).toHaveBeenCalledWith("codex");
+    expect(actionDispatchMock).not.toHaveBeenCalled();
+    // Soft dim and settings tooltip must not leak onto a launchable row.
+    expect(getByText("Codex").className).not.toContain("opacity-70");
+    expect(getByText("Codex").getAttribute("title")).toBeNull();
+  });
+
+  it("keeps non-launchable rows selectable (no disabled attribute)", () => {
+    const { getByText } = render(
+      <DockLaunchButton
+        agents={AGENTS}
+        hasDevPreview={false}
+        onLaunchAgent={vi.fn()}
+        activeWorktreeId={null}
+        cwd="/tmp"
+      />
+    );
+
+    // Regression guard: the pre-fix behavior was a disabled, dead-end row.
+    expect(getByText("Gemini").hasAttribute("disabled")).toBe(false);
+  });
+
   it("always exposes Terminal and Browser, gates Dev preview on hasDevPreview", () => {
     const onLaunchAgent = vi.fn();
     const { getByText, queryByText, rerender } = render(

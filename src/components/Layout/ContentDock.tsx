@@ -379,6 +379,7 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
           cwd={cwd}
           recipeContext={recipeContext}
           onLaunchAgent={(agentId) => void handleAddTerminal(agentId, "context-menu")}
+          settingsSource="context-menu"
         />
         <ContextMenuSeparator />
         <ContextMenuSub>

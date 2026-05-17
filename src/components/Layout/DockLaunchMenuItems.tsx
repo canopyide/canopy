@@ -4,7 +4,7 @@ import { BrandMark, Workflow } from "@/components/icons";
 import { useRecipeStore } from "@/store/recipeStore";
 import type { RecipeContext } from "@/utils/recipeVariables";
 import { actionService } from "@/services/ActionService";
-import type { AgentAvailabilityState } from "@shared/types";
+import type { ActionSource, AgentAvailabilityState } from "@shared/types";
 import { isAgentBlocked, isAgentLaunchable } from "@shared/utils/agentAvailability";
 
 type MenuComponent = React.ElementType;
@@ -32,6 +32,11 @@ interface DockLaunchMenuItemsProps {
   cwd: string;
   recipeContext?: RecipeContext;
   onLaunchAgent: (agentId: string) => void;
+  // The surface attribution to attach to the settings dispatch for
+  // non-launchable rows. Defaults to "menu"; ContentDock's context-menu
+  // path overrides it so telemetry stays consistent with how the user
+  // actually opened the launcher.
+  settingsSource?: ActionSource;
 }
 
 export function DockLaunchMenuItems({
@@ -42,6 +47,7 @@ export function DockLaunchMenuItems({
   cwd,
   recipeContext,
   onLaunchAgent,
+  settingsSource = "menu",
 }: DockLaunchMenuItemsProps) {
   // Subscribe inside the menu so the listener only runs while open.
   const recipes = useRecipeStore((s) => s.recipes);
@@ -76,7 +82,7 @@ export function DockLaunchMenuItems({
                     void actionService.dispatch(
                       "app.settings.openTab",
                       { tab: "agents", subtab: agent.id },
-                      { source: "menu" }
+                      { source: settingsSource }
                     );
                   }
                 }}
