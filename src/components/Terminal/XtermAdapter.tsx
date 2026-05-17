@@ -477,12 +477,6 @@ export function XtermAdapter({
     // Use the stable proxy to avoid stale closures in the service
     terminalInstanceService.updateRefreshTierProvider(terminalId, stableRefreshTierProvider);
     terminalInstanceService.applyRendererPolicy(terminalId, currentTier);
-
-    // If moving to a high-priority state (Focused or Burst), boost the writer
-    // to flush any background buffer immediately.
-    if (currentTier === TerminalRefreshTier.FOCUSED || currentTier === TerminalRefreshTier.BURST) {
-      terminalInstanceService.boostRefreshRate(terminalId);
-    }
   }, [terminalId, stableRefreshTierProvider, currentTier]);
 
   // Refit terminal when window becomes visible again after being hidden.

@@ -8,6 +8,11 @@ export interface WriteControllerDeps {
   acknowledgeData: (id: string, bytes: number) => void;
   notifyWriteComplete: (id: string, bytes: number) => void;
   incrementUnseen: (id: string, isScrolledBack: boolean) => void;
+  // Synchronous notification that a real PTY write is about to paint —
+  // fires only on the actual write path (after hibernated / deferred-restore
+  // early-exits), before terminal.write(). Used by TerminalInstanceService
+  // to drive the BURST refresh tier from real activity instead of focus.
+  onWrite?: (id: string) => void;
 }
 
 /**
@@ -48,6 +53,8 @@ export class TerminalWriteController {
       this.deps.notifyWriteComplete(id, deferredBytes);
       return;
     }
+
+    this.deps.onWrite?.(id);
 
     this.deps.incrementUnseen(id, managed.isUserScrolledBack);
 
