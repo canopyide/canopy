@@ -71,6 +71,7 @@ function makeWorktree(id: string, overrides: Partial<WorktreeSnapshot> = {}): Wo
 function installViewStore(worktrees: Map<string, WorktreeSnapshot>) {
   const store = createStore<WorktreeViewState & WorktreeViewActions>(() => ({
     worktrees,
+    manualAssociations: new Map(),
     version: 0,
     isLoading: false,
     error: null,
@@ -81,6 +82,8 @@ function installViewStore(worktrees: Map<string, WorktreeSnapshot>) {
     applySnapshot: () => {},
     applyUpdate: () => {},
     applyRemove: () => {},
+    setManualAssociation: () => {},
+    clearManualAssociation: () => {},
     setLoading: () => {},
     setError: () => {},
     setFatalError: () => {},

@@ -106,24 +106,31 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
           if (thisGen !== generation) return;
 
           // Hydrate manual issue associations from electron store.
-          // Auto-detected issues (from branch names) are already in the snapshots,
-          // but user-attached associations are stored separately.
-          let states = response.states;
+          // Auto-detected issues (from branch names) arrive in the snapshots,
+          // but user-attached associations are stored separately and must
+          // survive subsequent `worktree-update` events (#8079). The store
+          // merges them (MANUAL_OVER_AUTO) and caches the map so later events
+          // can re-merge without another IPC round-trip.
+          const states = response.states;
+          // Mint the snapshot version NOW, while this data is fresh — before
+          // awaiting the association fetch. A `worktree-update` delivered
+          // during that await mints a higher version via its own
+          // `nextVersion()` and must win; minting late would make this
+          // now-stale snapshot silently revert the live update (#8079).
+          const snapshotVersion = store.getState().nextVersion();
+
+          // `undefined` (not `{}`) means "couldn't load — keep whatever's
+          // cached". An empty object means "authoritatively no associations".
+          // Defaulting to `{}` on failure would wipe cached manual
+          // associations on a transient IPC error (#8079 review).
+          let associations:
+            | Record<string, { issueNumber: number; issueTitle?: string }>
+            | undefined;
           try {
-            const associations = await worktreeClient.getAllIssueAssociations();
+            associations = await worktreeClient.getAllIssueAssociations();
             if (thisGen !== generation) return;
-            if (Object.keys(associations).length > 0) {
-              states = states.map((s) => {
-                const assoc = associations[s.id];
-                // Only apply manual association if no auto-detected issue exists
-                if (assoc && !s.issueNumber) {
-                  return { ...s, issueNumber: assoc.issueNumber, issueTitle: assoc.issueTitle };
-                }
-                return s;
-              });
-            }
           } catch {
-            // Non-critical — proceed without manual associations
+            // Non-critical — keep cached associations (associations stays undefined)
             if (thisGen !== generation) return;
           }
 
@@ -133,7 +140,16 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
           // cycle will deliver fresh data.
           if (!worktreePort.isReady()) return;
 
-          store.getState().applySnapshot(states, store.getState().nextVersion());
+          // A `worktree-update` raced ahead during the association fetch and
+          // already advanced the store past this snapshot. Don't revert it.
+          // On a cold start we still must hydrate, so retry the fetch (the
+          // generation guard prevents overlapping stale completions).
+          if (snapshotVersion <= store.getState().version) {
+            if (!store.getState().isInitialized) fetchInitialState();
+            return;
+          }
+
+          store.getState().applySnapshot(states, snapshotVersion, associations);
         })
         .catch((err: Error) => {
           if (thisGen !== generation) return;

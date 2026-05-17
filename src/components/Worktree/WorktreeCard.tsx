@@ -475,22 +475,20 @@ export function WorktreeCard({
       issueState: issue.state,
       issueUrl: issue.url,
     });
-    getCurrentViewStore().setState((prev) => {
-      const existing = prev.worktrees.get(worktree.id);
-      if (!existing) return prev;
-      const next = new Map(prev.worktrees);
-      next.set(worktree.id, {
-        ...existing,
-        issueNumber: issue.number,
-        issueTitle: issue.title,
-      });
-      return { worktrees: next };
+    // Record the manual association in the store so it survives subsequent
+    // `worktree-update` events (which carry only auto-detected issue state).
+    // This also optimistically re-merges the snapshot for immediate feedback.
+    getCurrentViewStore().getState().setManualAssociation(worktree.id, {
+      issueNumber: issue.number,
+      issueTitle: issue.title,
     });
   };
 
   const handleDetachIssue = async () => {
     await worktreeClient.detachIssue(worktree.id);
-    getCurrentViewStore().setState((prev) => {
+    const store = getCurrentViewStore();
+    store.getState().clearManualAssociation(worktree.id);
+    store.setState((prev) => {
       const existing = prev.worktrees.get(worktree.id);
       if (!existing) return prev;
       const next = new Map(prev.worktrees);
