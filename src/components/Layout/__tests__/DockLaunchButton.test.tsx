@@ -192,9 +192,7 @@ describe("DockLaunchButton", () => {
       "Gemini is blocked by endpoint security. Click to configure."
     );
     // Installed but not launchable (e.g. WSL): generic setup copy.
-    expect(getByText("Codex").getAttribute("title")).toBe(
-      "Codex needs setup. Click to configure."
-    );
+    expect(getByText("Codex").getAttribute("title")).toBe("Codex needs setup. Click to configure.");
   });
 
   it("dims non-launchable agent rows with opacity-70", () => {
