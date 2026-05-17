@@ -162,6 +162,7 @@ vi.mock("@dnd-kit/core", () => ({
 
 import { DockedTerminalItem } from "../DockedTerminalItem";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { TerminalRefreshTier } from "@/types";
 
 function makeTerminal(overrides: Partial<TerminalInstance> = {}): TerminalInstance {
   return {
@@ -319,11 +320,8 @@ describe("DockedTerminalItem lifecycle and pop-out (#8160)", () => {
 
     expect(terminalInstanceService.applyRendererPolicy).toHaveBeenCalledWith(
       "t-1",
-      expect.anything()
+      TerminalRefreshTier.VISIBLE
     );
-    const lastCall = vi.mocked(terminalInstanceService.applyRendererPolicy).mock.calls.at(-1);
-    // VISIBLE tier — using anything() for the enum value because the type isn't exported here
-    expect(lastCall?.[0]).toBe("t-1");
   });
 
   it("applies BACKGROUND policy synchronously when mounted closed", () => {
@@ -333,9 +331,30 @@ describe("DockedTerminalItem lifecycle and pop-out (#8160)", () => {
 
     expect(terminalInstanceService.applyRendererPolicy).toHaveBeenCalledWith(
       "t-1",
-      expect.anything()
+      TerminalRefreshTier.BACKGROUND
     );
     expect(rafCallbacks.length).toBe(0);
+  });
+
+  it("cancels the pending RAF and never applies VISIBLE when closed before it fires", () => {
+    mockActiveDockTerminalId = "t-1";
+
+    const { rerender } = render(<DockedTerminalItem terminal={makeTerminal({ id: "t-1" })} />);
+    expect(rafCallbacks.length).toBe(1);
+    expect(rafCallbacks[0]?.cancelled).toBe(false);
+
+    mockActiveDockTerminalId = null;
+    rerender(<DockedTerminalItem terminal={makeTerminal({ id: "t-1" })} />);
+
+    expect(rafCallbacks[0]?.cancelled).toBe(true);
+
+    act(() => {
+      flushRaf();
+    });
+
+    const calls = vi.mocked(terminalInstanceService.applyRendererPolicy).mock.calls;
+    expect(calls.some((c) => c[1] === TerminalRefreshTier.VISIBLE)).toBe(false);
+    expect(calls.some((c) => c[1] === TerminalRefreshTier.BACKGROUND)).toBe(true);
   });
 
   it("renders an 'Open in grid' button that pops the terminal to the grid", () => {

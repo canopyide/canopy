@@ -244,6 +244,7 @@ vi.mock("@/components/ui/ConfirmDialog", () => ({
 
 import { DockedTabGroup } from "../DockedTabGroup";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { TerminalRefreshTier } from "@/types";
 
 function makePanel(overrides: Partial<TerminalInstance> = {}): TerminalInstance {
   return {
@@ -537,7 +538,7 @@ describe("DockedTabGroup lifecycle and pop-out (#8160)", () => {
     vi.useRealTimers();
   });
 
-  it("schedules a single RAF on open and applies a renderer policy for the active panel", () => {
+  it("schedules a single RAF on open and applies VISIBLE policy for the active panel", () => {
     mockActiveDockTerminalId = "t-1";
     const panels = [makePanel({ id: "t-1" }), makePanel({ id: "t-2" })];
 
@@ -550,8 +551,10 @@ describe("DockedTabGroup lifecycle and pop-out (#8160)", () => {
       flushRaf();
     });
 
-    const lastCall = vi.mocked(terminalInstanceService.applyRendererPolicy).mock.calls.at(-1);
-    expect(lastCall?.[0]).toBe("t-1");
+    expect(terminalInstanceService.applyRendererPolicy).toHaveBeenCalledWith(
+      "t-1",
+      TerminalRefreshTier.VISIBLE
+    );
   });
 
   it("applies BACKGROUND policy synchronously when mounted closed", () => {
@@ -562,9 +565,33 @@ describe("DockedTabGroup lifecycle and pop-out (#8160)", () => {
 
     expect(terminalInstanceService.applyRendererPolicy).toHaveBeenCalledWith(
       "t-1",
-      expect.anything()
+      TerminalRefreshTier.BACKGROUND
     );
     expect(rafCallbacks.length).toBe(0);
+  });
+
+  it("cancels the pending RAF and never applies VISIBLE when closed before it fires", () => {
+    mockActiveDockTerminalId = "t-1";
+    const panels = [makePanel({ id: "t-1" }), makePanel({ id: "t-2" })];
+
+    const { rerender } = render(
+      <DockedTabGroup group={makeGroup(["t-1", "t-2"], "t-1")} panels={panels} />
+    );
+    expect(rafCallbacks.length).toBe(1);
+    expect(rafCallbacks[0]?.cancelled).toBe(false);
+
+    mockActiveDockTerminalId = null;
+    rerender(<DockedTabGroup group={makeGroup(["t-1", "t-2"], "t-1")} panels={panels} />);
+
+    expect(rafCallbacks[0]?.cancelled).toBe(true);
+
+    act(() => {
+      flushRaf();
+    });
+
+    const calls = vi.mocked(terminalInstanceService.applyRendererPolicy).mock.calls;
+    expect(calls.some((c) => c[1] === TerminalRefreshTier.VISIBLE)).toBe(false);
+    expect(calls.some((c) => c[1] === TerminalRefreshTier.BACKGROUND)).toBe(true);
   });
 
   it("renders an 'Open in grid' button that pops the active panel to the grid", () => {
