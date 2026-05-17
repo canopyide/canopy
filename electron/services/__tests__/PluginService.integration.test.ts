@@ -31,11 +31,18 @@ import { randomUUID } from "crypto";
  *   produces a distinct URL and re-executes module-level side effects.
  */
 
+const storeState = new Map<string, unknown>();
 vi.mock("electron", () => ({
   app: { getVersion: vi.fn(() => "0.0.0") },
 }));
 vi.mock("../../ipc/utils.js", () => ({
   broadcastToRenderer: vi.fn(),
+}));
+vi.mock("../../store.js", () => ({
+  store: {
+    get: (key: string) => storeState.get(key),
+    set: (key: string, value: unknown) => storeState.set(key, value),
+  },
 }));
 
 import { PluginService } from "../PluginService.js";
@@ -113,6 +120,7 @@ afterEach(async () => {
     clearPanelKindRegistry();
     clearToolbarButtonRegistry();
     clearPluginMenuRegistry();
+    storeState.clear();
     for (const key of globalMarkers) {
       delete (globalThis as Record<string, unknown>)[key];
     }
@@ -731,5 +739,155 @@ describe("PluginService integration — full contribution fan-out", () => {
       },
     ]);
     expect(readMarker(markerKey)).toBe(1);
+  });
+});
+
+describe("PluginService integration — built-in plugin loading", () => {
+  let builtinDir: string;
+
+  async function writeBuiltinPlugin(
+    pluginDirName: string,
+    manifest: PluginManifestShape
+  ): Promise<string> {
+    const dir = path.join(builtinDir, pluginDirName);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, "plugin.json"), JSON.stringify(manifest));
+    return dir;
+  }
+
+  beforeEach(async () => {
+    builtinDir = await fs.mkdtemp(path.join(os.tmpdir(), "daintree-builtin-int-"));
+  });
+
+  afterEach(async () => {
+    await fs.rm(builtinDir, { recursive: true, force: true });
+  });
+
+  it("loads contributions from both built-in and user directories into the real registries", async () => {
+    await writeBuiltinPlugin("daintree.builtin-panels", {
+      name: "daintree.builtin-panels",
+      version: "1.0.0",
+      contributes: {
+        panels: [{ id: "main", name: "Main", iconId: "eye", color: "#abc" }],
+      },
+    });
+    await writePlugin("acme.user-panels", {
+      name: "acme.user-panels",
+      version: "1.0.0",
+      contributes: {
+        panels: [{ id: "side", name: "Side", iconId: "box", color: "#def" }],
+      },
+    });
+
+    const service = new PluginService(tmpDir, "0.0.0", { builtinPluginsRoot: builtinDir });
+    await service.initialize();
+
+    expect(getPanelKindConfig("daintree.builtin-panels.main")?.extensionId).toBe(
+      "daintree.builtin-panels"
+    );
+    expect(getPanelKindConfig("acme.user-panels.side")?.extensionId).toBe("acme.user-panels");
+
+    const plugins = service.listPlugins();
+    expect(plugins.find((p) => p.manifest.name === "daintree.builtin-panels")?.isBuiltin).toBe(
+      true
+    );
+    expect(plugins.find((p) => p.manifest.name === "acme.user-panels")?.isBuiltin).toBe(false);
+  });
+
+  it("does not register contributions for a disabled built-in", async () => {
+    storeState.set("plugins", { disabledBuiltins: ["daintree.disabled"] });
+    await writeBuiltinPlugin("daintree.disabled", {
+      name: "daintree.disabled",
+      version: "1.0.0",
+      contributes: {
+        panels: [{ id: "x", name: "X", iconId: "eye", color: "#000" }],
+        toolbarButtons: [{ id: "b", label: "B", iconId: "i", actionId: "daintree.disabled.act" }],
+      },
+    });
+
+    const service = new PluginService(tmpDir, "0.0.0", { builtinPluginsRoot: builtinDir });
+    await service.initialize();
+
+    expect(getPanelKindConfig("daintree.disabled.x")).toBeUndefined();
+    expect(getToolbarButtonConfig("plugin.daintree.disabled.b")).toBeUndefined();
+    expect(service.listPlugins()).toEqual([]);
+  });
+
+  it("activates a built-in plugin's main entry through the standard lifecycle", async () => {
+    const markerKey = makeMarkerKey();
+    const pluginDir = await writeBuiltinPlugin("daintree.activate-test", {
+      name: "daintree.activate-test",
+      version: "1.0.0",
+    });
+    const mainFile = await writeMainFixture(pluginDir, markerKey);
+    await fs.writeFile(
+      path.join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "daintree.activate-test",
+        version: "1.0.0",
+        main: mainFile,
+      })
+    );
+
+    const service = new PluginService(tmpDir, "0.0.0", { builtinPluginsRoot: builtinDir });
+    await service.initialize();
+
+    expect(readMarker(markerKey)).toBe(1);
+    expect(service.listPlugins()[0].isBuiltin).toBe(true);
+  });
+
+  it("does not execute the main entry of a disabled built-in", async () => {
+    const markerKey = makeMarkerKey();
+    const pluginDir = await writeBuiltinPlugin("daintree.disabled-main", {
+      name: "daintree.disabled-main",
+      version: "1.0.0",
+    });
+    const mainFile = await writeMainFixture(pluginDir, markerKey);
+    await fs.writeFile(
+      path.join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "daintree.disabled-main",
+        version: "1.0.0",
+        main: mainFile,
+      })
+    );
+    storeState.set("plugins", { disabledBuiltins: ["daintree.disabled-main"] });
+
+    const service = new PluginService(tmpDir, "0.0.0", { builtinPluginsRoot: builtinDir });
+    await service.initialize();
+
+    expect(readMarker(markerKey)).toBeUndefined();
+    expect(service.listPlugins()).toEqual([]);
+  });
+
+  it("loads remaining built-ins and user plugins when one built-in has a malformed manifest", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const badDir = path.join(builtinDir, "broken");
+      await fs.mkdir(badDir, { recursive: true });
+      await fs.writeFile(path.join(badDir, "plugin.json"), "{not json");
+
+      await writeBuiltinPlugin("daintree.good-builtin", {
+        name: "daintree.good-builtin",
+        version: "1.0.0",
+        contributes: {
+          panels: [{ id: "ok", name: "Ok", iconId: "i", color: "#abc" }],
+        },
+      });
+      await writePlugin("acme.good-user", {
+        name: "acme.good-user",
+        version: "1.0.0",
+      });
+
+      const service = new PluginService(tmpDir, "0.0.0", { builtinPluginsRoot: builtinDir });
+      await service.initialize();
+
+      const names = service.listPlugins().map((p) => p.manifest.name);
+      expect(names).toEqual(expect.arrayContaining(["daintree.good-builtin", "acme.good-user"]));
+      expect(names).toHaveLength(2);
+      expect(getPanelKindConfig("daintree.good-builtin.ok")).toBeDefined();
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });

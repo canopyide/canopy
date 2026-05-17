@@ -33,6 +33,7 @@ import { broadcastToRenderer } from "../ipc/utils.js";
 import { CHANNELS } from "../ipc/channels.js";
 import type { LoadedPluginInfo } from "../../shared/types/plugin.js";
 import type { PluginToolbarButtonId } from "../../shared/types/toolbar.js";
+import { store } from "../store.js";
 
 /** Plugin action IDs must be `{pluginId}.{actionId}`. Built-in IDs use colons, so the formats cannot collide. */
 const PLUGIN_ACTION_ID_RE = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-zA-Z0-9._-]*$/;
@@ -45,6 +46,7 @@ interface LoadedPlugin {
   dir: string;
   resolvedMain?: string;
   loadedAt: number;
+  isBuiltin: boolean;
 }
 
 const ACTIVATE_TIMEOUT_MS = 5000;
@@ -72,7 +74,22 @@ export class PluginService {
     activate: (client: WorkspaceClient) => void;
   }> = [];
   private initialized = false;
+  /**
+   * Plugin ids that are owned by a built-in plugin but currently disabled in
+   * Preferences. Held alongside `this.plugins` so the user-dir scan cannot
+   * register a third-party plugin under a trusted first-party namespace just
+   * because the matching built-in is turned off — the namespace stays claimed
+   * even when the activation is skipped.
+   */
+  private reservedBuiltinNames = new Set<string>();
   private pluginsRoot: string;
+  /**
+   * Optional override for the built-in plugins directory. When unset, the
+   * canonical app-bundled path is resolved lazily at `initialize()` time via
+   * {@link getBuiltinDir}. Tests pass an explicit path so they don't depend
+   * on `app.isPackaged` / `process.resourcesPath`.
+   */
+  private builtinPluginsRoot: string | undefined;
   private appVersion: string;
   /**
    * Coalesces multiple registry events fired in the same tick (e.g., when a
@@ -84,9 +101,14 @@ export class PluginService {
   private disposed = false;
   private readonly disposeRegistrySubscriptions: () => void;
 
-  constructor(pluginsRoot?: string, appVersion?: string) {
+  constructor(
+    pluginsRoot?: string,
+    appVersion?: string,
+    options?: { builtinPluginsRoot?: string }
+  ) {
     this.pluginsRoot = pluginsRoot ?? path.join(os.homedir(), ".daintree", "plugins");
     this.appVersion = appVersion ?? app.getVersion();
+    this.builtinPluginsRoot = options?.builtinPluginsRoot;
 
     const offRegister = onPanelKindRegistered(() => this.schedulePanelKindsBroadcast());
     const offUnregister = onPanelKindUnregistered(() => this.schedulePanelKindsBroadcast());
@@ -129,20 +151,85 @@ export class PluginService {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
+    // Built-ins load first so user plugins with a colliding manifest.name are
+    // rejected by the duplicate guard in loadPlugin() — built-in wins.
+    const builtinDir = this.builtinPluginsRoot ?? this.getBuiltinDir();
+    try {
+      const builtinLoaded = builtinDir
+        ? await this.loadFromDir(builtinDir, { isBuiltin: true })
+        : 0;
+      const userLoaded = await this.loadFromDir(this.pluginsRoot, { isBuiltin: false });
+      console.log(
+        `[PluginService] Loaded ${builtinLoaded} built-in plugin(s) from ${builtinDir ?? "<unresolved>"} and ${userLoaded} user plugin(s) from ${this.pluginsRoot}`
+      );
+    } finally {
+      // Idempotency must hold even when a scan throws (e.g. EACCES on the
+      // user dir): a retry would re-run the built-in scan and trigger
+      // "already registered, overwriting" warnings from the contribution
+      // registries.
+      this.initialized = true;
+    }
+  }
+
+  /**
+   * Canonical app-bundled built-in plugins directory. Resolved at call time
+   * because `app.isPackaged` / `process.resourcesPath` are not valid at module
+   * evaluation. Mirrors the pattern in HelpService / SoundService — built-ins
+   * ship via electron-builder's `extraResources`, so the source directory at
+   * the repo root maps 1:1 to `<Resources>/plugins/builtin/` in packaged
+   * builds. Returns `null` when the Electron app API is unavailable (tests
+   * that mock `electron` with a minimal stub) — the built-in scan is then
+   * skipped without aborting user-plugin loading.
+   */
+  private getBuiltinDir(): string | null {
+    try {
+      if (app.isPackaged) {
+        return path.join(process.resourcesPath, "plugins", "builtin");
+      }
+      if (typeof app.getAppPath !== "function") return null;
+      return path.join(app.getAppPath(), "plugins", "builtin");
+    } catch (err) {
+      console.warn("[PluginService] Failed to resolve built-in plugins directory:", err);
+      return null;
+    }
+  }
+
+  /**
+   * Read disabled built-in plugin ids from the user store. Defensive against
+   * missing keys (in-memory fallback during tests) and read failures —
+   * a failed read returns an empty set so all built-ins activate, matching
+   * the safest startup behavior.
+   */
+  private getDisabledBuiltinIds(): Set<string> {
+    try {
+      const value = store.get("plugins") as { disabledBuiltins?: unknown } | undefined;
+      const list = Array.isArray(value?.disabledBuiltins) ? value.disabledBuiltins : [];
+      return new Set(list.filter((id): id is string => typeof id === "string"));
+    } catch (err) {
+      console.warn("[PluginService] Failed to read disabled built-in plugins from store:", err);
+      return new Set();
+    }
+  }
+
+  private async loadFromDir(root: string, opts: { isBuiltin: boolean }): Promise<number> {
     let entries: import("fs").Dirent[];
     try {
-      entries = await fs.readdir(this.pluginsRoot, { withFileTypes: true });
+      entries = await fs.readdir(root, { withFileTypes: true });
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        console.log("[PluginService] No plugins directory found, skipping");
-        this.initialized = true;
-        return;
+        console.log(
+          `[PluginService] No ${opts.isBuiltin ? "built-in" : "user"} plugins directory at ${root}, skipping`
+        );
+        return 0;
       }
       throw err;
     }
 
     const pluginDirs = entries.filter((e) => e.isDirectory());
-    const results = await Promise.allSettled(pluginDirs.map((d) => this.loadPlugin(d.name)));
+    const disabled = opts.isBuiltin ? this.getDisabledBuiltinIds() : null;
+    const results = await Promise.allSettled(
+      pluginDirs.map((d) => this.loadPlugin(root, d.name, { isBuiltin: opts.isBuiltin, disabled }))
+    );
 
     let loaded = 0;
     for (const result of results) {
@@ -150,13 +237,15 @@ export class PluginService {
         loaded++;
       }
     }
-
-    this.initialized = true;
-    console.log(`[PluginService] Loaded ${loaded} plugin(s) from ${this.pluginsRoot}`);
+    return loaded;
   }
 
-  private async loadPlugin(dirName: string): Promise<LoadedPlugin | null> {
-    const pluginDir = path.join(this.pluginsRoot, dirName);
+  private async loadPlugin(
+    root: string,
+    dirName: string,
+    opts: { isBuiltin: boolean; disabled: Set<string> | null }
+  ): Promise<LoadedPlugin | null> {
+    const pluginDir = path.join(root, dirName);
     const manifestPath = path.join(pluginDir, "plugin.json");
 
     let content: string;
@@ -187,7 +276,18 @@ export class PluginService {
 
     const manifest = parseResult.data;
 
-    if (this.plugins.has(manifest.name)) {
+    // Built-ins disabled in Preferences are skipped entirely — neither
+    // registered in the plugins map nor activated. The disable persists in
+    // electron-store and takes effect on next launch. The name is reserved
+    // so a user plugin in the next scan cannot hijack a trusted first-party
+    // namespace just because its built-in is off.
+    if (opts.isBuiltin && opts.disabled?.has(manifest.name)) {
+      console.log(`[PluginService] Built-in plugin "${manifest.name}" is disabled, skipping`);
+      this.reservedBuiltinNames.add(manifest.name);
+      return null;
+    }
+
+    if (this.plugins.has(manifest.name) || this.reservedBuiltinNames.has(manifest.name)) {
       console.error(
         `[PluginService] Duplicate plugin name "${manifest.name}" in ${dirName} — rejecting`
       );
@@ -223,6 +323,7 @@ export class PluginService {
       manifest,
       dir: pluginDir,
       loadedAt: Date.now(),
+      isBuiltin: opts.isBuiltin,
     };
 
     if (manifest.main) {
@@ -608,6 +709,7 @@ export class PluginService {
       manifest: p.manifest,
       dir: p.dir,
       loadedAt: p.loadedAt,
+      isBuiltin: p.isBuiltin,
     }));
   }
 

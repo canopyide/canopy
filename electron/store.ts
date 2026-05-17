@@ -282,6 +282,15 @@ export interface StoreSchema {
    * issues without reconfiguring on every launch.
    */
   logLevelOverrides: Record<string, string>;
+  /**
+   * Plugin runtime state. `disabledBuiltins` lists built-in plugin ids
+   * (manifest.name) the user has disabled from Preferences. PluginService
+   * filters these out at startup; built-ins cannot be uninstalled, only
+   * disabled — disable takes effect on next launch.
+   */
+  plugins: {
+    disabledBuiltins: string[];
+  };
 }
 
 const storeOptions = {
@@ -426,6 +435,9 @@ const storeOptions = {
     updateChannel: "stable" as const,
     lastUpdateCheck: null,
     logLevelOverrides: {},
+    plugins: {
+      disabledBuiltins: [],
+    },
   },
   cwd: process.env.DAINTREE_USER_DATA,
 };

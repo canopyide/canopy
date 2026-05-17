@@ -52,6 +52,7 @@ module.exports = async function () {
       { from: "help", to: "help" },
       { from: "electron/resources/sounds", to: "sounds" },
       { from: "electron/services/persistence/migrations", to: "migrations" },
+      { from: "plugins/builtin", to: "plugins/builtin" },
     ],
     // node-pty and better-sqlite3 contain native .node binaries that need
     // real filesystem access for `require()` — they cannot live inside the

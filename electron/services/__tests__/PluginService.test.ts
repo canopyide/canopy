@@ -9,12 +9,23 @@ const appMock = vi.hoisted(() => ({
   getVersion: vi.fn(() => "0.0.0"),
 }));
 const broadcastToRendererMock = vi.hoisted(() => vi.fn());
+const storeMock = vi.hoisted(() => {
+  const state = new Map<string, unknown>();
+  return {
+    get: vi.fn((key: string) => state.get(key)),
+    set: vi.fn((key: string, value: unknown) => state.set(key, value)),
+    _state: state,
+  };
+});
 
 vi.mock("electron", () => ({
   app: appMock,
 }));
 vi.mock("../../ipc/utils.js", () => ({
   broadcastToRenderer: broadcastToRendererMock,
+}));
+vi.mock("../../store.js", () => ({
+  store: storeMock,
 }));
 vi.mock("../../../shared/config/panelKindRegistry.js", () => ({
   registerPanelKind: vi.fn(),
@@ -71,6 +82,7 @@ function writePlugin(name: string, manifest: Record<string, unknown>): Promise<v
 beforeEach(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "daintree-plugin-test-"));
   vi.clearAllMocks();
+  storeMock._state.clear();
 });
 
 afterEach(async () => {
@@ -690,6 +702,193 @@ describe("PluginService", () => {
 
     expect(registerToolbarButton).not.toHaveBeenCalled();
     expect(registerPluginMenuItem).not.toHaveBeenCalled();
+  });
+});
+
+describe("PluginService built-in plugin loading", () => {
+  let builtinDir: string;
+
+  async function writeBuiltinPlugin(
+    name: string,
+    manifest: Record<string, unknown>
+  ): Promise<void> {
+    const dir = path.join(builtinDir, name);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, "plugin.json"), JSON.stringify(manifest));
+  }
+
+  beforeEach(async () => {
+    builtinDir = await fs.mkdtemp(path.join(os.tmpdir(), "daintree-builtin-plugin-test-"));
+  });
+
+  afterEach(async () => {
+    await fs.rm(builtinDir, { recursive: true, force: true });
+  });
+
+  it("tags plugins loaded from the built-in directory with isBuiltin=true", async () => {
+    await writeBuiltinPlugin("daintree.helper", {
+      name: "daintree.helper",
+      version: "1.0.0",
+    });
+    await writePlugin("acme.user-plugin", {
+      name: "acme.user-plugin",
+      version: "1.0.0",
+    });
+
+    const service = new PluginService(tmpDir, "0.0.0", { builtinPluginsRoot: builtinDir });
+    await service.initialize();
+
+    const plugins = service.listPlugins();
+    expect(plugins).toHaveLength(2);
+    const builtin = plugins.find((p) => p.manifest.name === "daintree.helper");
+    const user = plugins.find((p) => p.manifest.name === "acme.user-plugin");
+    expect(builtin?.isBuiltin).toBe(true);
+    expect(user?.isBuiltin).toBe(false);
+  });
+
+  it("user plugins receive isBuiltin=false even when no built-in dir is configured", async () => {
+    await writePlugin("acme.user-only", {
+      name: "acme.user-only",
+      version: "1.0.0",
+    });
+
+    const service = new PluginService(tmpDir, "0.0.0");
+    await service.initialize();
+
+    const plugins = service.listPlugins();
+    expect(plugins).toHaveLength(1);
+    expect(plugins[0].isBuiltin).toBe(false);
+  });
+
+  it("skips built-in scan cleanly when the directory is absent", async () => {
+    const missingDir = path.join(builtinDir, "does-not-exist");
+    await writePlugin("acme.user-plugin", {
+      name: "acme.user-plugin",
+      version: "1.0.0",
+    });
+
+    const service = new PluginService(tmpDir, "0.0.0", { builtinPluginsRoot: missingDir });
+    await service.initialize();
+
+    const plugins = service.listPlugins();
+    expect(plugins).toHaveLength(1);
+    expect(plugins[0].manifest.name).toBe("acme.user-plugin");
+    expect(plugins[0].isBuiltin).toBe(false);
+  });
+
+  it("built-ins win when a user plugin declares the same manifest name", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await writeBuiltinPlugin("collision", {
+        name: "daintree.dupe",
+        version: "1.0.0",
+        description: "builtin",
+      });
+      await writePlugin("collision-user", {
+        name: "daintree.dupe",
+        version: "2.0.0",
+        description: "user",
+      });
+
+      const service = new PluginService(tmpDir, "0.0.0", { builtinPluginsRoot: builtinDir });
+      await service.initialize();
+
+      const plugins = service.listPlugins();
+      expect(plugins).toHaveLength(1);
+      expect(plugins[0].manifest.description).toBe("builtin");
+      expect(plugins[0].isBuiltin).toBe(true);
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`Duplicate plugin name "daintree.dupe"`)
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("skips built-ins listed in plugins.disabledBuiltins", async () => {
+    storeMock._state.set("plugins", { disabledBuiltins: ["daintree.muted"] });
+    await writeBuiltinPlugin("muted", {
+      name: "daintree.muted",
+      version: "1.0.0",
+    });
+    await writeBuiltinPlugin("kept", {
+      name: "daintree.kept",
+      version: "1.0.0",
+    });
+
+    const service = new PluginService(tmpDir, "0.0.0", { builtinPluginsRoot: builtinDir });
+    await service.initialize();
+
+    const plugins = service.listPlugins();
+    expect(plugins.map((p) => p.manifest.name)).toEqual(["daintree.kept"]);
+  });
+
+  it("disabledBuiltins does not affect user plugins with the same name", async () => {
+    storeMock._state.set("plugins", { disabledBuiltins: ["acme.user-plugin"] });
+    await writePlugin("acme.user-plugin", {
+      name: "acme.user-plugin",
+      version: "1.0.0",
+    });
+
+    const service = new PluginService(tmpDir, "0.0.0", { builtinPluginsRoot: builtinDir });
+    await service.initialize();
+
+    const plugins = service.listPlugins();
+    expect(plugins).toHaveLength(1);
+    expect(plugins[0].isBuiltin).toBe(false);
+  });
+
+  it("treats missing plugins.disabledBuiltins as empty (no exception)", async () => {
+    // store has no "plugins" key at all (in-memory fallback shape)
+    await writeBuiltinPlugin("daintree.helper", {
+      name: "daintree.helper",
+      version: "1.0.0",
+    });
+
+    const service = new PluginService(tmpDir, "0.0.0", { builtinPluginsRoot: builtinDir });
+    await service.initialize();
+
+    expect(service.listPlugins()).toHaveLength(1);
+  });
+
+  it("ignores malformed disabledBuiltins values defensively", async () => {
+    storeMock._state.set("plugins", { disabledBuiltins: "not-an-array" });
+    await writeBuiltinPlugin("daintree.helper", {
+      name: "daintree.helper",
+      version: "1.0.0",
+    });
+
+    const service = new PluginService(tmpDir, "0.0.0", { builtinPluginsRoot: builtinDir });
+    await service.initialize();
+
+    expect(service.listPlugins()).toHaveLength(1);
+  });
+
+  it("reserves a disabled built-in's namespace against a hijacking user plugin", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      storeMock._state.set("plugins", { disabledBuiltins: ["daintree.github"] });
+      await writeBuiltinPlugin("github", {
+        name: "daintree.github",
+        version: "1.0.0",
+        description: "first-party",
+      });
+      await writePlugin("hijacker", {
+        name: "daintree.github",
+        version: "9.9.9",
+        description: "third-party impostor",
+      });
+
+      const service = new PluginService(tmpDir, "0.0.0", { builtinPluginsRoot: builtinDir });
+      await service.initialize();
+
+      expect(service.listPlugins()).toEqual([]);
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`Duplicate plugin name "daintree.github"`)
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });
 

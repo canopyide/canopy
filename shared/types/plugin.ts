@@ -101,6 +101,13 @@ export interface LoadedPluginInfo {
   manifest: PluginManifest;
   dir: string;
   loadedAt: number;
+  /**
+   * True for plugins loaded from the app-bundled `plugins/builtin/` directory.
+   * Built-ins skip the install-time capability disclosure dialog and cannot be
+   * uninstalled — they can only be disabled (effect on next startup).
+   * Determined by load path, never declared in the manifest.
+   */
+  isBuiltin: boolean;
 }
 
 export interface PluginIpcContext {
