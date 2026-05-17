@@ -1,0 +1,143 @@
+import { describe, expect, it } from "vitest";
+import { createWorktreeStore } from "@/store/createWorktreeStore";
+import type { WorktreeSnapshot } from "@shared/types";
+
+function makeSnapshot(id: string, overrides: Partial<WorktreeSnapshot> = {}): WorktreeSnapshot {
+  return {
+    id,
+    name: id,
+    branch: "main",
+    path: `/repo/${id}`,
+    isCurrent: false,
+    isMainWorktree: false,
+    modifiedCount: 0,
+    changes: [],
+    summary: "",
+    mood: null,
+    gitDir: "",
+    ...overrides,
+  } as unknown as WorktreeSnapshot;
+}
+
+describe("createWorktreeStore — manual issue associations (#8079)", () => {
+  it("starts with an empty manualAssociations map", () => {
+    const store = createWorktreeStore();
+    expect(store.getState().manualAssociations.size).toBe(0);
+  });
+
+  it("applySnapshot merges associations over auto-detected issue (MANUAL_OVER_AUTO)", () => {
+    const store = createWorktreeStore();
+    store
+      .getState()
+      .applySnapshot(
+        [makeSnapshot("wt-1", { issueNumber: 11, issueTitle: "Auto detected" })],
+        store.getState().nextVersion(),
+        { "wt-1": { issueNumber: 42, issueTitle: "Manual issue" } }
+      );
+
+    const wt = store.getState().worktrees.get("wt-1");
+    expect(wt?.issueNumber).toBe(42);
+    expect(wt?.issueTitle).toBe("Manual issue");
+    expect(store.getState().manualAssociations.get("wt-1")?.issueNumber).toBe(42);
+  });
+
+  it("applyUpdate preserves a manual association the snapshot omits", () => {
+    const store = createWorktreeStore();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], store.getState().nextVersion(), {
+      "wt-1": { issueNumber: 42, issueTitle: "Manual issue" },
+    });
+
+    // A worktree-update with no issue fields must NOT clobber the manual assoc.
+    store
+      .getState()
+      .applyUpdate(makeSnapshot("wt-1", { branch: "feature/x" }), store.getState().nextVersion());
+
+    const wt = store.getState().worktrees.get("wt-1");
+    expect(wt?.issueNumber).toBe(42);
+    expect(wt?.issueTitle).toBe("Manual issue");
+    expect(wt?.branch).toBe("feature/x");
+  });
+
+  it("setManualAssociation re-merges the existing snapshot immediately", () => {
+    const store = createWorktreeStore();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], store.getState().nextVersion());
+
+    store.getState().setManualAssociation("wt-1", { issueNumber: 99, issueTitle: "Attached" });
+
+    const wt = store.getState().worktrees.get("wt-1");
+    expect(wt?.issueNumber).toBe(99);
+    expect(wt?.issueTitle).toBe("Attached");
+  });
+
+  it("clearManualAssociation stops resurrecting the issue on the next update", () => {
+    const store = createWorktreeStore();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], store.getState().nextVersion(), {
+      "wt-1": { issueNumber: 42, issueTitle: "Manual issue" },
+    });
+
+    store.getState().clearManualAssociation("wt-1");
+    store
+      .getState()
+      .applyUpdate(
+        makeSnapshot("wt-1", { issueNumber: undefined }),
+        store.getState().nextVersion()
+      );
+
+    const wt = store.getState().worktrees.get("wt-1");
+    expect(wt?.issueNumber).toBeUndefined();
+    expect(store.getState().manualAssociations.has("wt-1")).toBe(false);
+  });
+
+  it("preserves the previous title when the issue number is unchanged", () => {
+    const store = createWorktreeStore();
+    store
+      .getState()
+      .applySnapshot(
+        [makeSnapshot("wt-1", { issueNumber: 7, issueTitle: "Loaded title" })],
+        store.getState().nextVersion()
+      );
+
+    // Poll re-fetch drops the title but keeps the same issue number.
+    store
+      .getState()
+      .applyUpdate(
+        makeSnapshot("wt-1", { issueNumber: 7, issueTitle: undefined }),
+        store.getState().nextVersion()
+      );
+
+    expect(store.getState().worktrees.get("wt-1")?.issueTitle).toBe("Loaded title");
+  });
+
+  it("clears the title when the issue number changes", () => {
+    const store = createWorktreeStore();
+    store
+      .getState()
+      .applySnapshot(
+        [makeSnapshot("wt-1", { issueNumber: 7, issueTitle: "Old title" })],
+        store.getState().nextVersion()
+      );
+
+    store
+      .getState()
+      .applyUpdate(
+        makeSnapshot("wt-1", { issueNumber: 8, issueTitle: undefined }),
+        store.getState().nextVersion()
+      );
+
+    const wt = store.getState().worktrees.get("wt-1");
+    expect(wt?.issueNumber).toBe(8);
+    expect(wt?.issueTitle).toBeUndefined();
+  });
+
+  it("setFatalError drops cached manual associations", () => {
+    const store = createWorktreeStore();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], store.getState().nextVersion(), {
+      "wt-1": { issueNumber: 42, issueTitle: "Manual issue" },
+    });
+
+    store.getState().setFatalError("host crashed");
+
+    expect(store.getState().manualAssociations.size).toBe(0);
+    expect(store.getState().isInitialized).toBe(false);
+  });
+});

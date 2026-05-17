@@ -1182,6 +1182,12 @@ export class WorktreeMonitor {
           void this.extractIssueNumberAsync(currentBranch, this._name);
         }
         this.issueTitle = undefined;
+        // Clear PR info synchronously in the same emit as the branch change
+        // so the renderer never sees a frame with the new branch but the old
+        // PR (#8079). PullRequestService still emits its own clear downstream;
+        // by then this snapshot already has null PR fields, so that second
+        // emit collapses to a no-op via snapshotsEqual.
+        this.clearPRInfo();
         this.callbacks.onBranchChanged?.(this.id, currentBranch);
       }
 

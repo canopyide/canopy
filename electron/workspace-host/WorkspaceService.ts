@@ -427,12 +427,16 @@ export class WorkspaceService {
             void this.extractIssueNumberAsync(existingMonitor, wt.branch, wt.name);
           }
           existingMonitor.setIssueTitle(undefined);
+          // Bundle the PR clear into this same branch-change emit so the
+          // renderer never renders the new branch with the old PR (#8079).
+          existingMonitor.clearPRInfo();
           if (existingMonitor.hasInitialStatus) {
             this.emitUpdate(existingMonitor);
           }
         } else if (branchChanged && !wt.branch) {
           existingMonitor.setIssueNumber(undefined);
           existingMonitor.setIssueTitle(undefined);
+          existingMonitor.clearPRInfo();
           if (existingMonitor.hasInitialStatus) {
             this.emitUpdate(existingMonitor);
           }

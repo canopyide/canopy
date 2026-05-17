@@ -24,8 +24,21 @@ export function getCurrentViewStoreOrNull(): WorktreeViewStoreApi | null {
   return _currentViewStore;
 }
 
+/**
+ * A user-attached worktree→issue association held in the renderer alongside
+ * the snapshot map. The authoritative copy lives in the Electron store
+ * (`worktreeIssueMap`); this slice mirrors it so that `worktree-update` events
+ * — which carry only auto-detected (branch-name) issue state — don't clobber
+ * manual associations between cold hydrations.
+ */
+export interface ManualIssueAssociation {
+  issueNumber: number;
+  issueTitle?: string;
+}
+
 export interface WorktreeViewState {
   worktrees: Map<string, WorktreeSnapshot>;
+  manualAssociations: Map<string, ManualIssueAssociation>;
   version: number;
   isLoading: boolean;
   error: string | null;
@@ -36,9 +49,15 @@ export interface WorktreeViewState {
 
 export interface WorktreeViewActions {
   nextVersion(): number;
-  applySnapshot(states: WorktreeSnapshot[], version: number): void;
+  applySnapshot(
+    states: WorktreeSnapshot[],
+    version: number,
+    associations?: Record<string, ManualIssueAssociation>
+  ): void;
   applyUpdate(state: WorktreeSnapshot, version: number): void;
   applyRemove(worktreeId: string, version: number): void;
+  setManualAssociation(worktreeId: string, assoc: ManualIssueAssociation): void;
+  clearManualAssociation(worktreeId: string): void;
   setLoading(loading: boolean): void;
   setError(error: string | null): void;
   setFatalError(message: string): void;
@@ -53,6 +72,7 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
 
   return createStore<WorktreeViewStore>((set, get) => ({
     worktrees: new Map(),
+    manualAssociations: new Map(),
     version: 0,
     isLoading: true,
     error: null,
@@ -64,17 +84,34 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
       return ++versionCounter;
     },
 
-    applySnapshot(states: WorktreeSnapshot[], version: number) {
+    applySnapshot(
+      states: WorktreeSnapshot[],
+      version: number,
+      associations?: Record<string, ManualIssueAssociation>
+    ) {
       if (version <= get().version) return;
       const prev = get();
+      // Atomically adopt the freshly-hydrated manual associations alongside
+      // the snapshot (lesson #4958 — no separate slice update that could
+      // render a half-merged state). When the caller doesn't pass them
+      // (e.g. unit tests), keep whatever's already cached.
+      const manual = associations
+        ? new Map<string, ManualIssueAssociation>(Object.entries(associations))
+        : prev.manualAssociations;
+      const associationsChanged = associations !== undefined;
+
+      const merged = states.map((s) =>
+        mergeIssueState(s, prev.worktrees.get(s.id), manual.get(s.id))
+      );
+
       // Once hydrated, suppress redundant Map identity churn when every
       // incoming snapshot is value-equal to its existing counterpart. Cold
       // starts always rebuild so `isInitialized` flips correctly even when
       // the first snapshot is empty.
       if (
         prev.isInitialized &&
-        states.length === prev.worktrees.size &&
-        states.every((s) => {
+        merged.length === prev.worktrees.size &&
+        merged.every((s) => {
           const existing = prev.worktrees.get(s.id);
           return existing !== undefined && snapshotsEqual(existing, s);
         })
@@ -86,10 +123,11 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
           error: null,
           isReconnecting: false,
           reconnectingAt: null,
+          ...(associationsChanged ? { manualAssociations: manual } : {}),
         });
         return;
       }
-      const map = new Map(states.map((s) => [s.id, s]));
+      const map = new Map(merged.map((s) => [s.id, s]));
       set({
         worktrees: map,
         version,
@@ -98,6 +136,7 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
         error: null,
         isReconnecting: false,
         reconnectingAt: null,
+        ...(associationsChanged ? { manualAssociations: manual } : {}),
       });
     },
 
@@ -105,13 +144,39 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
       if (version <= get().version) return;
       const prev = get().worktrees;
       const existing = prev.get(state.id);
-      if (existing && snapshotsEqual(existing, state)) {
+      const merged = mergeIssueState(state, existing, get().manualAssociations.get(state.id));
+      if (existing && snapshotsEqual(existing, merged)) {
         set({ version });
         return;
       }
       const next = new Map(prev);
-      next.set(state.id, state);
+      next.set(state.id, merged);
       set({ worktrees: next, version });
+    },
+
+    setManualAssociation(worktreeId: string, assoc: ManualIssueAssociation) {
+      const prev = get();
+      const nextAssoc = new Map(prev.manualAssociations);
+      nextAssoc.set(worktreeId, assoc);
+      const existing = prev.worktrees.get(worktreeId);
+      if (!existing) {
+        set({ manualAssociations: nextAssoc });
+        return;
+      }
+      // Re-merge the affected snapshot so the manual association survives the
+      // next `worktree-update` (which carries only auto-detected issue state).
+      const merged = mergeIssueState(existing, existing, assoc);
+      const nextWorktrees = new Map(prev.worktrees);
+      nextWorktrees.set(worktreeId, merged);
+      set({ manualAssociations: nextAssoc, worktrees: nextWorktrees });
+    },
+
+    clearManualAssociation(worktreeId: string) {
+      const prev = get();
+      if (!prev.manualAssociations.has(worktreeId)) return;
+      const nextAssoc = new Map(prev.manualAssociations);
+      nextAssoc.delete(worktreeId);
+      set({ manualAssociations: nextAssoc });
     },
 
     applyRemove(worktreeId: string, version: number) {
@@ -142,8 +207,12 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
       // `isInitialized` is reset so the next `fetchInitialState` treats the
       // post-restart fetch as a cold start rather than a silent wake refresh
       // (which swallows fetch errors).
+      // Drop cached manual associations too — the post-restart
+      // `fetchInitialState` re-hydrates them from the Electron store, so a
+      // stale renderer copy must not leak across the crash boundary.
       set({
         error: message,
+        manualAssociations: new Map(),
         isInitialized: false,
         isReconnecting: false,
         reconnectingAt: null,
@@ -201,6 +270,53 @@ export function cleanupOrphanedTerminals(): void {
     });
     orphanedTerminals.forEach((terminal) => terminalStore.removePanel(terminal.id));
   }
+}
+
+/**
+ * Reconcile the issue fields of an incoming snapshot with what the renderer
+ * already knows. Two concerns, both from #8079:
+ *
+ *  1. **Title flicker** — when the issue number is unchanged but the incoming
+ *     snapshot dropped the title (the main process resets it to `undefined`
+ *     while it re-fetches the GitHub title after a poll), keep the previous
+ *     title so `IssueBadge` doesn't flash the raw `#NNN` for ~100–500ms.
+ *     A genuine issue-number change clears the title immediately — the old
+ *     title belongs to the old issue.
+ *
+ *  2. **MANUAL_OVER_AUTO** — an explicit user-attached issue association
+ *     always overrides the auto-detected (branch-name) issue. Explicit user
+ *     intent beats the heuristic, matching mainstream issue-tracker UX. This
+ *     is a deliberate inversion of the old `if (assoc && !issueNumber)`
+ *     fallback behaviour (manual was previously only a last resort).
+ */
+function mergeIssueState(
+  incoming: WorktreeSnapshot,
+  existing: WorktreeSnapshot | undefined,
+  manual: { issueNumber: number; issueTitle?: string } | undefined
+): WorktreeSnapshot {
+  let issueNumber = incoming.issueNumber;
+  let issueTitle = incoming.issueTitle;
+
+  if (
+    existing &&
+    issueNumber !== undefined &&
+    issueNumber === existing.issueNumber &&
+    issueTitle === undefined &&
+    existing.issueTitle !== undefined
+  ) {
+    issueTitle = existing.issueTitle;
+  }
+
+  // MANUAL_OVER_AUTO: explicit user association wins over auto-detection.
+  if (manual) {
+    issueNumber = manual.issueNumber;
+    issueTitle = manual.issueTitle;
+  }
+
+  if (issueNumber === incoming.issueNumber && issueTitle === incoming.issueTitle) {
+    return incoming;
+  }
+  return { ...incoming, issueNumber, issueTitle };
 }
 
 function snapshotsEqual(a: WorktreeSnapshot, b: WorktreeSnapshot): boolean {

@@ -774,3 +774,72 @@ describe("WorktreeStoreProvider issue-detected handler", () => {
     expect(store.getState().worktrees.get("wt-1")?.issueNumber).toBe(200);
   });
 });
+
+describe("WorktreeStoreProvider manual issue associations (#8079)", () => {
+  function mockHydration(
+    states: WorktreeSnapshot[],
+    associations: Record<string, { issueNumber: number; issueTitle?: string }>
+  ): void {
+    const electron = (globalThis as unknown as { window: Window }).window.electron as unknown as {
+      worktreePort: { request: (name: string) => Promise<unknown> };
+      worktree: { getAllIssueAssociations: () => Promise<unknown> };
+    };
+    electron.worktreePort.request = () => Promise.resolve({ states });
+    electron.worktree.getAllIssueAssociations = () => Promise.resolve(associations);
+  }
+
+  it("manual association survives a worktree-update that omits the issue", async () => {
+    mockHydration([makeWorktree("wt-1", { issueNumber: undefined, issueTitle: undefined })], {
+      "wt-1": { issueNumber: 42, issueTitle: "Manual issue" },
+    });
+    const store = await renderProvider();
+
+    expect(store.getState().worktrees.get("wt-1")?.issueNumber).toBe(42);
+
+    act(() => {
+      emit("worktree-update", {
+        type: "worktree-update",
+        worktree: makeWorktree("wt-1", {
+          branch: "feature/x",
+          issueNumber: undefined,
+          issueTitle: undefined,
+        }),
+      });
+    });
+
+    const wt = store.getState().worktrees.get("wt-1");
+    expect(wt?.issueNumber).toBe(42);
+    expect(wt?.issueTitle).toBe("Manual issue");
+    expect(wt?.branch).toBe("feature/x");
+  });
+
+  it("manual association overrides an auto-detected issue (MANUAL_OVER_AUTO)", async () => {
+    mockHydration([makeWorktree("wt-1", { issueNumber: 11, issueTitle: "Auto" })], {
+      "wt-1": { issueNumber: 42, issueTitle: "Manual issue" },
+    });
+    const store = await renderProvider();
+
+    const wt = store.getState().worktrees.get("wt-1");
+    expect(wt?.issueNumber).toBe(42);
+    expect(wt?.issueTitle).toBe("Manual issue");
+  });
+
+  it("clearing an association stops it resurfacing on the next update", async () => {
+    mockHydration([makeWorktree("wt-1", { issueNumber: undefined })], {
+      "wt-1": { issueNumber: 42, issueTitle: "Manual issue" },
+    });
+    const store = await renderProvider();
+
+    act(() => {
+      store.getState().clearManualAssociation("wt-1");
+    });
+    act(() => {
+      emit("worktree-update", {
+        type: "worktree-update",
+        worktree: makeWorktree("wt-1", { issueNumber: undefined, issueTitle: undefined }),
+      });
+    });
+
+    expect(store.getState().worktrees.get("wt-1")?.issueNumber).toBeUndefined();
+  });
+});

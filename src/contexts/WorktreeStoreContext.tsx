@@ -106,22 +106,16 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
           if (thisGen !== generation) return;
 
           // Hydrate manual issue associations from electron store.
-          // Auto-detected issues (from branch names) are already in the snapshots,
-          // but user-attached associations are stored separately.
-          let states = response.states;
+          // Auto-detected issues (from branch names) arrive in the snapshots,
+          // but user-attached associations are stored separately and must
+          // survive subsequent `worktree-update` events (#8079). The store
+          // merges them (MANUAL_OVER_AUTO) and caches the map so later events
+          // can re-merge without another IPC round-trip.
+          const states = response.states;
+          let associations: Record<string, { issueNumber: number; issueTitle?: string }> = {};
           try {
-            const associations = await worktreeClient.getAllIssueAssociations();
+            associations = await worktreeClient.getAllIssueAssociations();
             if (thisGen !== generation) return;
-            if (Object.keys(associations).length > 0) {
-              states = states.map((s) => {
-                const assoc = associations[s.id];
-                // Only apply manual association if no auto-detected issue exists
-                if (assoc && !s.issueNumber) {
-                  return { ...s, issueNumber: assoc.issueNumber, issueTitle: assoc.issueTitle };
-                }
-                return s;
-              });
-            }
           } catch {
             // Non-critical — proceed without manual associations
             if (thisGen !== generation) return;
@@ -133,7 +127,7 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
           // cycle will deliver fresh data.
           if (!worktreePort.isReady()) return;
 
-          store.getState().applySnapshot(states, store.getState().nextVersion());
+          store.getState().applySnapshot(states, store.getState().nextVersion(), associations);
         })
         .catch((err: Error) => {
           if (thisGen !== generation) return;

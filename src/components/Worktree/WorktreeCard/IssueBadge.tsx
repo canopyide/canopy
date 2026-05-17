@@ -1,6 +1,8 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { CircleDot } from "lucide-react";
+import { useDeferredLoading } from "@/hooks/useDeferredLoading";
+import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import { useIssueTooltip } from "@/hooks/useGitHubTooltip";
 import { useGitHubBadgeTooltip } from "./hooks/useGitHubBadgeTooltip";
@@ -41,6 +43,19 @@ export function IssueBadge({
     isActive: isActive ?? false,
     onOpen,
   });
+
+  // Suppress the raw "#NNN" monospace fallback during the brief window where
+  // a *freshly-set* issue number has no title yet (the GitHub title fetch is
+  // in-flight, ~100–500ms). Per the Doherty Threshold, show nothing for the
+  // first 400ms rather than flashing the number, then fall through (#8079).
+  // Title preservation for *unchanged* issue numbers is handled upstream in
+  // the store, so this gate only fires on genuine issue-number transitions.
+  const prevIssueNumber = useRef<number | undefined>(undefined);
+  const isColdTitleGap = !issueTitle && issueNumber !== prevIssueNumber.current;
+  const showColdFallback = useDeferredLoading(isColdTitleGap, UI_DOHERTY_THRESHOLD);
+  useEffect(() => {
+    prevIssueNumber.current = issueNumber;
+  }, [issueNumber]);
 
   const { freshnessLevel, cacheLastUpdatedAt, now } = useGitHubBadgeFreshness(
     "issue",
@@ -94,13 +109,14 @@ export function IssueBadge({
                   : "text-text-primary/90"
             )}
           >
-            {issueTitle || (
-              <span
-                className={cn("font-mono", missingToken ? "text-text-muted" : "text-github-open")}
-              >
-                #{issueNumber}
-              </span>
-            )}
+            {issueTitle ||
+              (isColdTitleGap && !showColdFallback ? null : (
+                <span
+                  className={cn("font-mono", missingToken ? "text-text-muted" : "text-github-open")}
+                >
+                  #{issueNumber}
+                </span>
+              ))}
           </span>
         </button>
       </TooltipTrigger>
