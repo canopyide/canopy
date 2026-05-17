@@ -103,6 +103,8 @@ export function useWaitingTerminalIds(): string[] {
 }
 
 export function useErrorTerminals(): TerminalInstance[] {
+  const worktreeIds = useWorktreeIds();
+
   return usePanelStore(
     useShallow((state) => {
       const out: TerminalInstance[] = [];
@@ -111,6 +113,11 @@ export function useErrorTerminals(): TerminalInstance[] {
         if (!t) continue;
         if (t.agentState !== "exited") continue;
         if (typeof t.exitCode !== "number" || t.exitCode === 0) continue;
+        // isTerminalVisible rejects trash/background/ephemeral/orphaned;
+        // isTerminalErrorClusterEligible adds the dock-location exclusion.
+        // Without the orphan gate, clicking an entry from a deleted worktree
+        // would call selectWorktree() on a stale ID and persist it.
+        if (!isTerminalVisible(t, state.isInTrash, worktreeIds)) continue;
         if (!isTerminalErrorClusterEligible(t)) continue;
         out.push(t);
       }

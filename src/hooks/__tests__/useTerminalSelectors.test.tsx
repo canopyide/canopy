@@ -507,6 +507,27 @@ describe("useErrorTerminals", () => {
     const { result } = renderHook(() => useErrorTerminals());
     expect(result.current).toEqual([]);
   });
+
+  it("excludes orphaned errored terminals when worktree IDs are known", () => {
+    const worktrees = new Map([["wt-1", { worktreeId: "wt-1" }]]);
+    setupBoth(
+      [
+        { id: "t-live", agentState: "exited", location: "grid", exitCode: 1, worktreeId: "wt-1" },
+        {
+          id: "t-orphan",
+          agentState: "exited",
+          location: "grid",
+          exitCode: 1,
+          worktreeId: "wt-gone",
+        },
+      ],
+      worktrees
+    );
+
+    const { result } = renderHook(() => useErrorTerminals());
+    expect(result.current).toHaveLength(1);
+    expect(result.current[0]!.id).toBe("t-live");
+  });
 });
 
 function setupWorktreesWithChanges(
