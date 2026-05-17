@@ -31,6 +31,7 @@ export interface WorktreeViewState {
   error: string | null;
   isInitialized: boolean;
   isReconnecting: boolean;
+  reconnectingAt: number | null;
 }
 
 export interface WorktreeViewActions {
@@ -57,6 +58,7 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
     error: null,
     isInitialized: false,
     isReconnecting: false,
+    reconnectingAt: null,
 
     nextVersion() {
       return ++versionCounter;
@@ -83,6 +85,7 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
           isInitialized: true,
           error: null,
           isReconnecting: false,
+          reconnectingAt: null,
         });
         return;
       }
@@ -94,6 +97,7 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
         isInitialized: true,
         error: null,
         isReconnecting: false,
+        reconnectingAt: null,
       });
     },
 
@@ -142,12 +146,27 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
         error: message,
         isInitialized: false,
         isReconnecting: false,
+        reconnectingAt: null,
         isLoading: false,
       });
     },
 
     setReconnecting(reconnecting: boolean) {
-      set({ isReconnecting: reconnecting });
+      // Preserve the original disconnect timestamp across repeated
+      // setReconnecting(true) calls. During a workspace-host crash-retry
+      // loop, `onDisconnected` can fire on every restart attempt; resetting
+      // the baseline on each fire would keep the elapsed clock under the
+      // escalation threshold for the entire ~14s restart budget, so the
+      // escalated copy would never appear before `setFatalError` fires.
+      const prev = get();
+      set({
+        isReconnecting: reconnecting,
+        reconnectingAt: reconnecting
+          ? prev.isReconnecting && prev.reconnectingAt !== null
+            ? prev.reconnectingAt
+            : Date.now()
+          : null,
+      });
     },
   }));
 }

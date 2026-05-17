@@ -23,6 +23,7 @@ import {
   useDeferredLoading,
 } from "@/hooks";
 import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
+import { formatRelativeTime } from "@/lib/formatRelativeTime";
 import { WorktreeSidebarSearchBar, QuickStateFilterBar } from "@/components/Worktree";
 import { BulkCreateWorktreeDialog } from "@/components/GitHub/BulkCreateWorktreeDialog";
 import { FleetPickerPalette } from "@/components/Fleet/FleetPickerPalette";
@@ -85,6 +86,12 @@ const QUICK_STATE_LABELS: Record<"working" | "waiting" | "finished", string> = {
 };
 
 const KEYBOARD_REORDER_ANNOUNCEMENT_DEBOUNCE_MS = 150;
+
+// Threshold for escalating the "Reconnecting…" badge to include the time
+// since data last arrived. 10s sits above the Doherty 400ms gate so the
+// indicator never flickers on transient reconnects, and below the worst-case
+// ~14s workspace-host restart budget so it fires before `setFatalError`.
+const RECONNECT_ESCALATE_MS = 10_000;
 
 function truncateSearchQuery(trimmedQuery: string) {
   const codepoints = Array.from(trimmedQuery);
@@ -155,8 +162,24 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     scrollContainerRef,
     { onKeyboardReorder: handleKeyboardReorder }
   );
-  const { worktrees, isLoading, isReconnecting, error, refresh } = useWorktrees();
+  const { worktrees, isLoading, isReconnecting, reconnectingAt, error, refresh } = useWorktrees();
   worktreesRef.current = worktrees;
+
+  // 1Hz tick that drives the escalated "Reconnecting… last updated X ago"
+  // copy. The store holds the start timestamp; this state forces a render so
+  // `formatRelativeTime(reconnectingAt)` recomputes against the latest clock.
+  // Effect re-runs on every new disconnect via `reconnectingAt` dep, so the
+  // baseline is always fresh — no stale-closure risk.
+  const [, setReconnectTick] = useState(0);
+  useEffect(() => {
+    if (!isReconnecting || reconnectingAt == null) return;
+    const id = setInterval(() => setReconnectTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [isReconnecting, reconnectingAt]);
+  const showReconnectingEscalated =
+    isReconnecting &&
+    reconnectingAt !== null &&
+    Date.now() - reconnectingAt >= RECONNECT_ESCALATE_MS;
   const deferredWorktrees = useDeferredValue(worktrees);
   const [isRefreshing, startRefreshTransition] = useTransition();
   const showRefreshSpinner = useDeferredLoading(isRefreshing, UI_DOHERTY_THRESHOLD);
@@ -905,9 +928,12 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
               role="status"
               aria-live="polite"
               className="flex items-center gap-1 text-daintree-text/60 text-xs"
+              data-reconnect-escalated={showReconnectingEscalated ? "true" : undefined}
             >
               <RefreshCw className="w-3 h-3 animate-spin" aria-hidden="true" />
-              Reconnecting…
+              {showReconnectingEscalated && reconnectingAt !== null
+                ? `Reconnecting… last updated ${formatRelativeTime(reconnectingAt)}`
+                : "Reconnecting…"}
             </span>
           )}
         </div>

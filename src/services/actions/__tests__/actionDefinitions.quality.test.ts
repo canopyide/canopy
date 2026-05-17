@@ -301,6 +301,7 @@ describe("destructive-action danger metadata", () => {
       error: null,
       isInitialized: true,
       isReconnecting: false,
+      reconnectingAt: null,
       nextVersion: () => 1,
       applySnapshot: () => {},
       applyUpdate: () => {},
