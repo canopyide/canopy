@@ -229,6 +229,9 @@ describe("PullRequestService", () => {
                 url: "https://github.com/o/r/pull/10",
                 state: "open" as const,
                 isDraft: false,
+                // Explicit non-pending CI status keeps the adaptive boost off so
+                // the assertion verifies the baseline 90s cadence.
+                ciStatus: "SUCCESS" as const,
               },
             },
           ])
@@ -343,6 +346,7 @@ describe("PullRequestService", () => {
                   url: "https://github.com/o/r/pull/10",
                   state: "open" as const,
                   isDraft: false,
+                  ciStatus: "SUCCESS" as const,
                 },
               },
             ])
@@ -366,6 +370,7 @@ describe("PullRequestService", () => {
                 url: "https://github.com/o/r/pull/10",
                 state: "open" as const,
                 isDraft: false,
+                ciStatus: "SUCCESS" as const,
               },
             },
           ])
@@ -862,11 +867,12 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-rev", branch: "feature/rev" })
     );
 
-    // start() schedules the 90s revalidation timer (refresh() alone doesn't).
+    // start() schedules the revalidation timer (refresh() alone doesn't).
+    // The first poll returns PENDING, so the adaptive boost activates and the
+    // next revalidation fires at the 30s boosted cadence, not the 90s baseline.
     await pullRequestService.start();
     expect(detected.at(-1)?.prCiStatus).toBe("PENDING");
 
-    // Force revalidation by advancing past the 90s interval.
     // After CI flips to SUCCESS, the change-detection should re-emit.
     await vi.advanceTimersByTimeAsync(90 * 1000);
 
@@ -921,6 +927,486 @@ describe("PullRequestService", () => {
     });
 
     unsubscribe();
+    pullRequestService.destroy();
+  });
+
+  it("boosts revalidation cadence to 30s when CI is PENDING", async () => {
+    let checkCallCount = 0;
+    const batchCheckLinkedPRs = vi.fn(async (_cwd: string, candidates: PRCheckCandidate[]) => {
+      checkCallCount++;
+      return {
+        results: new Map(
+          candidates.map((c) => [
+            c.worktreeId,
+            {
+              issueNumber: c.issueNumber,
+              branchName: c.branchName,
+              pr: {
+                number: 10,
+                title: "Pending PR",
+                url: "https://github.com/o/r/pull/10",
+                state: "open" as const,
+                isDraft: false,
+                ciStatus: "PENDING" as const,
+              },
+            },
+          ])
+        ),
+      };
+    });
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/boost" })
+    );
+
+    await pullRequestService.start();
+    expect(checkCallCount).toBe(1);
+
+    // 30s boosted revalidation fires because the first poll returned PENDING.
+    await vi.advanceTimersByTimeAsync(30 * 1000);
+    expect(checkCallCount).toBe(2);
+
+    // Still boosted — every revalidation keeps returning PENDING so the window
+    // slides forward and the next tick is again 30s out.
+    await vi.advanceTimersByTimeAsync(30 * 1000);
+    expect(checkCallCount).toBe(3);
+
+    pullRequestService.destroy();
+  });
+
+  it("treats EXPECTED ciStatus as in-flight and boosts revalidation", async () => {
+    let checkCallCount = 0;
+    const batchCheckLinkedPRs = vi.fn(async (_cwd: string, candidates: PRCheckCandidate[]) => {
+      checkCallCount++;
+      return {
+        results: new Map(
+          candidates.map((c) => [
+            c.worktreeId,
+            {
+              issueNumber: c.issueNumber,
+              branchName: c.branchName,
+              pr: {
+                number: 12,
+                title: "Expected PR",
+                url: "https://github.com/o/r/pull/12",
+                state: "open" as const,
+                isDraft: false,
+                ciStatus: "EXPECTED" as const,
+              },
+            },
+          ])
+        ),
+      };
+    });
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/expected" })
+    );
+
+    await pullRequestService.start();
+    expect(checkCallCount).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(30 * 1000);
+    expect(checkCallCount).toBe(2);
+
+    pullRequestService.destroy();
+  });
+
+  it("decays boost back to 90s once CI resolves to a terminal state", async () => {
+    let checkCallCount = 0;
+    const batchCheckLinkedPRs = vi.fn(async (_cwd: string, candidates: PRCheckCandidate[]) => {
+      checkCallCount++;
+      // First two polls return PENDING (initial check + one boosted reval).
+      // The third call onwards returns SUCCESS, which should clear the boost.
+      const ciStatus = checkCallCount <= 2 ? "PENDING" : "SUCCESS";
+      return {
+        results: new Map(
+          candidates.map((c) => [
+            c.worktreeId,
+            {
+              issueNumber: c.issueNumber,
+              branchName: c.branchName,
+              pr: {
+                number: 10,
+                title: "Decaying PR",
+                url: "https://github.com/o/r/pull/10",
+                state: "open" as const,
+                isDraft: false,
+                ciStatus: ciStatus as "PENDING" | "SUCCESS",
+              },
+            },
+          ])
+        ),
+      };
+    });
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/decay" })
+    );
+
+    await pullRequestService.start();
+    expect(checkCallCount).toBe(1); // initial check, PENDING → boost armed
+
+    // 30s boosted reval fires, also returns PENDING (extends the boost).
+    await vi.advanceTimersByTimeAsync(30 * 1000);
+    expect(checkCallCount).toBe(2);
+
+    // 30s later, the third reval fires (still boosted), returns SUCCESS — boost clears.
+    await vi.advanceTimersByTimeAsync(30 * 1000);
+    expect(checkCallCount).toBe(3);
+
+    // Boost cleared → next revalidation should be at the 90s baseline.
+    // 30s after the SUCCESS reval there must be no extra call.
+    await vi.advanceTimersByTimeAsync(30 * 1000);
+    expect(checkCallCount).toBe(3);
+
+    // 90s after the SUCCESS reval the baseline timer fires.
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    expect(checkCallCount).toBe(4);
+
+    pullRequestService.destroy();
+  });
+
+  it("does not boost revalidation when CI is already SUCCESS", async () => {
+    let checkCallCount = 0;
+    const batchCheckLinkedPRs = vi.fn(async (_cwd: string, candidates: PRCheckCandidate[]) => {
+      checkCallCount++;
+      return {
+        results: new Map(
+          candidates.map((c) => [
+            c.worktreeId,
+            {
+              issueNumber: c.issueNumber,
+              branchName: c.branchName,
+              pr: {
+                number: 10,
+                title: "Green PR",
+                url: "https://github.com/o/r/pull/10",
+                state: "open" as const,
+                isDraft: false,
+                ciStatus: "SUCCESS" as const,
+              },
+            },
+          ])
+        ),
+      };
+    });
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/green" })
+    );
+
+    await pullRequestService.start();
+    expect(checkCallCount).toBe(1);
+
+    // 30s should NOT fire a revalidation — boost is not armed for SUCCESS.
+    await vi.advanceTimersByTimeAsync(30 * 1000);
+    expect(checkCallCount).toBe(1);
+
+    // 90s baseline cadence still fires.
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    expect(checkCallCount).toBe(2);
+
+    pullRequestService.destroy();
+  });
+
+  it("ceiling expires after 15 min when revalidations stop refreshing the boost", async () => {
+    let checkCallCount = 0;
+    let failNextRevalidations = false;
+    const batchCheckLinkedPRs = vi.fn(async (_cwd: string, candidates: PRCheckCandidate[]) => {
+      checkCallCount++;
+      if (failNextRevalidations) {
+        // result.error short-circuits revalidateResolvedPRs before the boost
+        // recompute — the boost keeps its existing expiry and decays naturally.
+        return { results: new Map(), error: "Simulated revalidation failure" };
+      }
+      return {
+        results: new Map(
+          candidates.map((c) => [
+            c.worktreeId,
+            {
+              issueNumber: c.issueNumber,
+              branchName: c.branchName,
+              pr: {
+                number: 10,
+                title: "Hung PR",
+                url: "https://github.com/o/r/pull/10",
+                state: "open" as const,
+                isDraft: false,
+                ciStatus: "PENDING" as const,
+              },
+            },
+          ])
+        ),
+      };
+    });
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+    vi.doMock("../../utils/logger.js", () => ({
+      logInfo: vi.fn(),
+      logWarn: vi.fn(),
+      logDebug: vi.fn(),
+    }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/ceiling" })
+    );
+
+    await pullRequestService.start();
+    expect(checkCallCount).toBe(1); // PENDING → boost armed, expires in 15 min
+
+    // From here on, every revalidation returns result.error. The boost
+    // window cannot be refreshed, so once 15 min pass the boost decays.
+    failNextRevalidations = true;
+
+    // First boosted revalidation at 30s — fires, returns error, leaves boost
+    // expiry untouched.
+    await vi.advanceTimersByTimeAsync(30 * 1000);
+    expect(checkCallCount).toBe(2);
+
+    // Advance to just before the 15 min ceiling (15 min after start, ~14:30
+    // since the boosted reval). Many boosted ticks fire in this window — all
+    // return errors and don't refresh the boost.
+    await vi.advanceTimersByTimeAsync(15 * 60 * 1000 - 60 * 1000);
+    const callsBeforeCeiling = checkCallCount;
+    expect(callsBeforeCeiling).toBeGreaterThan(2);
+
+    // Cross the ceiling (15 min + a bit). After boostExpiresAt elapses, the
+    // next scheduleRevalidation picks the 90s baseline. Confirm by advancing
+    // 30s past the ceiling and checking that the call rate has slowed.
+    await vi.advanceTimersByTimeAsync(60 * 1000); // past the ceiling
+    const callsJustAfterCeiling = checkCallCount;
+
+    // 30s later — under boost we would have added one more call. Under the
+    // 90s baseline, fewer than one call fires in 30s.
+    await vi.advanceTimersByTimeAsync(30 * 1000);
+    expect(checkCallCount - callsJustAfterCeiling).toBeLessThanOrEqual(1);
+
+    // 90s after the ceiling-elapsed reschedule, a baseline tick must have
+    // fired at most once (proves cadence dropped, not that polling stopped).
+    await vi.advanceTimersByTimeAsync(120 * 1000);
+    expect(checkCallCount).toBeGreaterThan(callsJustAfterCeiling);
+
+    pullRequestService.destroy();
+  });
+
+  it("refresh() clears the boost window so the cadence is re-evaluated from scratch", async () => {
+    let checkCallCount = 0;
+    let returnPending = true;
+    const batchCheckLinkedPRs = vi.fn(async (_cwd: string, candidates: PRCheckCandidate[]) => {
+      checkCallCount++;
+      const ciStatus = returnPending ? "PENDING" : "SUCCESS";
+      return {
+        results: new Map(
+          candidates.map((c) => [
+            c.worktreeId,
+            {
+              issueNumber: c.issueNumber,
+              branchName: c.branchName,
+              pr: {
+                number: 10,
+                title: "Refresh PR",
+                url: "https://github.com/o/r/pull/10",
+                state: "open" as const,
+                isDraft: false,
+                ciStatus: ciStatus as "PENDING" | "SUCCESS",
+              },
+            },
+          ])
+        ),
+      };
+    });
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/refresh-clears-boost" })
+    );
+
+    await pullRequestService.start();
+    expect(checkCallCount).toBe(1); // PENDING → boost armed
+
+    // Flip CI to SUCCESS and refresh — refresh should clear the boost, run a
+    // fresh check (which returns SUCCESS), and schedule the next revalidation
+    // at the 90s baseline.
+    returnPending = false;
+    await pullRequestService.refresh();
+    expect(checkCallCount).toBe(2);
+
+    // 30s after refresh — no boosted tick.
+    await vi.advanceTimersByTimeAsync(30 * 1000);
+    expect(checkCallCount).toBe(2);
+
+    // 90s after refresh — baseline cadence fires.
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    expect(checkCallCount).toBe(3);
+
+    pullRequestService.destroy();
+  });
+
+  it("clears boost state when a tracked worktree flips to isMainWorktree without branch change", async () => {
+    let checkCallCount = 0;
+    const batchCheckLinkedPRs = vi.fn(async (_cwd: string, candidates: PRCheckCandidate[]) => {
+      checkCallCount++;
+      return {
+        results: new Map(
+          candidates.map((c) => [
+            c.worktreeId,
+            {
+              issueNumber: c.issueNumber,
+              branchName: c.branchName,
+              pr: {
+                number: 10,
+                title: "Soon-to-be-main PR",
+                url: "https://github.com/o/r/pull/10",
+                state: "open" as const,
+                isDraft: false,
+                ciStatus: "PENDING" as const,
+              },
+            },
+          ])
+        ),
+      };
+    });
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/de-track" })
+    );
+
+    await pullRequestService.start();
+    expect(checkCallCount).toBe(1); // PENDING → boost armed
+
+    // Same branch, but the worktree is now the main worktree — de-track without
+    // a branch change. A stale detectedPRs entry would keep the boost armed
+    // for 15 min; the fix clears PR state on any de-track of a previously
+    // tracked candidate.
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({
+        worktreeId: "wt-1",
+        branch: "feature/de-track",
+        isMainWorktree: true,
+      })
+    );
+
+    expect(pullRequestService.getStatus().candidateCount).toBe(0);
+    expect(pullRequestService.getStatus().resolvedCount).toBe(0);
+
+    // 30s after de-track — no boosted tick (no candidates to poll either, but
+    // crucially no zombie timer; the boost timer was armed at start() and the
+    // de-track must not leave its detectedPRs entry behind to keep boosting).
+    await vi.advanceTimersByTimeAsync(30 * 1000);
+    expect(checkCallCount).toBe(1);
+
+    pullRequestService.destroy();
+  });
+
+  it("reset() clears the boost window", async () => {
+    let checkCallCount = 0;
+    let returnPending = true;
+    const batchCheckLinkedPRs = vi.fn(async (_cwd: string, candidates: PRCheckCandidate[]) => {
+      checkCallCount++;
+      const ciStatus = returnPending ? "PENDING" : "SUCCESS";
+      return {
+        results: new Map(
+          candidates.map((c) => [
+            c.worktreeId,
+            {
+              issueNumber: c.issueNumber,
+              branchName: c.branchName,
+              pr: {
+                number: 10,
+                title: "Reset PR",
+                url: "https://github.com/o/r/pull/10",
+                state: "open" as const,
+                isDraft: false,
+                ciStatus: ciStatus as "PENDING" | "SUCCESS",
+              },
+            },
+          ])
+        ),
+      };
+    });
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/reset-clears-boost" })
+    );
+
+    await pullRequestService.start();
+    expect(checkCallCount).toBe(1); // PENDING → boost armed
+
+    // Reset wipes all state; restart with a non-pending result, the cadence
+    // must fall back to the 90s baseline rather than the 30s boost.
+    pullRequestService.reset();
+    returnPending = false;
+
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-2", branch: "feature/reset-clears-boost-2" })
+    );
+    await pullRequestService.start();
+    expect(checkCallCount).toBe(2);
+
+    // 30s after restart — no boost.
+    await vi.advanceTimersByTimeAsync(30 * 1000);
+    expect(checkCallCount).toBe(2);
+
+    // 90s after restart — baseline cadence.
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    expect(checkCallCount).toBe(3);
+
     pullRequestService.destroy();
   });
 });

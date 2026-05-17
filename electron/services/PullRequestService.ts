@@ -37,6 +37,16 @@ const UPDATE_DEBOUNCE_MS = 100;
 // Slow-cadence revalidation for resolved PRs to detect state changes (merged/closed)
 const RESOLVED_REVALIDATION_INTERVAL_MS = 90 * 1000; // 90 seconds
 
+// Adaptive boost: when any resolved PR has CI in-flight (PENDING/EXPECTED), drop
+// the revalidation cadence so users see green/red transitions promptly. 30s is
+// the floor — statusCheckRollup is ~10–30 GraphQL points per call, so 30s keeps
+// headroom for ~8 active PRs under the 5000/hr primary limit. The ceiling caps
+// boosted polling at 15 min after the last observed PENDING result, preventing
+// a hung CI from indefinitely burning quota; subsequent PENDING observations
+// slide the window forward.
+const RESOLVED_REVALIDATION_BOOST_INTERVAL_MS = 30 * 1000; // 30 seconds
+const RESOLVED_REVALIDATION_BOOST_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+
 interface WorktreeContext {
   issueNumber?: number;
   branchName?: string;
@@ -69,6 +79,7 @@ class PullRequestService {
   private consecutiveErrors: number = 0;
   private nextRetryAt: number = 0;
   private lastFocusCatchupAt: number = Number.NEGATIVE_INFINITY;
+  private boostExpiresAt: number | null = null;
 
   get isEnabled(): boolean {
     return this.nextRetryAt === 0 || Date.now() >= this.nextRetryAt;
@@ -113,14 +124,24 @@ class PullRequestService {
       this.candidates.delete(state.worktreeId);
     }
 
-    if (branchChanged && currentContext) {
-      logDebug("Worktree branch changed - clearing PR state", {
-        worktreeId: state.worktreeId,
-        oldIssue: currentContext.issueNumber,
-        newIssue: newIssueNumber,
-        oldBranch: currentContext.branchName,
-        newBranch: newBranchName,
-      });
+    // Drop PR state whenever we de-track a previously-tracked worktree, not
+    // just on a branch change. Otherwise a worktree that flips to
+    // isMainWorktree without a branch swap (e.g., user designates it the
+    // root) leaves a stale detectedPRs entry behind — and any PENDING
+    // ciStatus on that entry would keep the adaptive boost armed for up to
+    // 15 minutes against a worktree we no longer poll.
+    const shouldClearPRState = currentContext && (branchChanged || !shouldTrack);
+
+    if (shouldClearPRState) {
+      if (branchChanged) {
+        logDebug("Worktree branch changed - clearing PR state", {
+          worktreeId: state.worktreeId,
+          oldIssue: currentContext.issueNumber,
+          newIssue: newIssueNumber,
+          oldBranch: currentContext.branchName,
+          newBranch: newBranchName,
+        });
+      }
 
       this.resolvedWorktrees.delete(state.worktreeId);
       this.detectedPRs.delete(state.worktreeId);
@@ -223,6 +244,7 @@ class PullRequestService {
       clearTimeout(this.updateDebounceTimer);
       this.updateDebounceTimer = null;
     }
+    this.boostExpiresAt = null;
     this.isPolling = false;
     logInfo("PullRequestService stopped");
   }
@@ -235,6 +257,14 @@ class PullRequestService {
       clearTimeout(this.pollTimer);
       this.pollTimer = null;
     }
+    // Manual refresh re-evaluates everything from scratch, so cancel any
+    // pre-armed revalidation tick and clear the boost window — the post-check
+    // reschedule below picks an interval based on the fresh CI status.
+    if (this.revalidationTimer) {
+      clearTimeout(this.revalidationTimer);
+      this.revalidationTimer = null;
+    }
+    this.boostExpiresAt = null;
     this.nextRetryAt = 0;
     this.consecutiveErrors = 0;
     clearPRCaches();
@@ -246,8 +276,11 @@ class PullRequestService {
     this.resolvedWorktrees.clear();
     await this.checkForPRs();
 
-    if (this.isPolling && this.hasUnresolvedCandidates()) {
-      this.scheduleNextPoll();
+    if (this.isPolling) {
+      if (this.hasUnresolvedCandidates()) {
+        this.scheduleNextPoll();
+      }
+      this.scheduleRevalidation();
     }
   }
 
@@ -259,6 +292,7 @@ class PullRequestService {
     this.consecutiveErrors = 0;
     this.nextRetryAt = 0;
     this.lastFocusCatchupAt = Number.NEGATIVE_INFINITY;
+    this.boostExpiresAt = null;
   }
 
   /**
@@ -386,6 +420,21 @@ class PullRequestService {
     }, interval);
   }
 
+  // Sliding boost window: if any resolved PR has CI in flight, extend
+  // boostExpiresAt so the next scheduleRevalidation picks the 30s cadence.
+  // A clean sweep clears it so the cadence decays back to the 90s baseline.
+  // Called from the happy paths of checkForPRs and revalidateResolvedPRs —
+  // a failed batch leaves the prior state alone so a transient error doesn't
+  // accidentally cancel a live boost.
+  private updateBoostFromDetectedPRs(): void {
+    const hasPendingCi = Array.from(this.detectedPRs.values()).some(
+      (pr) => pr.ciStatus === "PENDING" || pr.ciStatus === "EXPECTED"
+    );
+    this.boostExpiresAt = hasPendingCi
+      ? Date.now() + RESOLVED_REVALIDATION_BOOST_DURATION_MS
+      : null;
+  }
+
   private hasUnresolvedCandidates(): boolean {
     for (const worktreeId of this.candidates.keys()) {
       if (!this.resolvedWorktrees.has(worktreeId)) {
@@ -415,6 +464,16 @@ class PullRequestService {
       return;
     }
 
+    // Clear an expired boost timestamp before selecting the interval so a stale
+    // value doesn't force one extra boosted tick after the ceiling has passed.
+    if (this.boostExpiresAt !== null && this.boostExpiresAt <= Date.now()) {
+      this.boostExpiresAt = null;
+    }
+    const intervalMs =
+      this.boostExpiresAt !== null
+        ? RESOLVED_REVALIDATION_BOOST_INTERVAL_MS
+        : RESOLVED_REVALIDATION_INTERVAL_MS;
+
     this.revalidationTimer = setTimeout(() => {
       this.revalidationTimer = null;
       void this.revalidateResolvedPRs()
@@ -424,7 +483,7 @@ class PullRequestService {
           })
         )
         .finally(() => this.scheduleRevalidation());
-    }, RESOLVED_REVALIDATION_INTERVAL_MS);
+    }, intervalMs);
   }
 
   private async revalidateResolvedPRs(): Promise<void> {
@@ -535,6 +594,8 @@ class PullRequestService {
           });
         }
       }
+
+      this.updateBoostFromDetectedPRs();
     } catch (error) {
       logWarn("Revalidation check error", {
         error: formatErrorMessage(error, "PR revalidation failed"),
@@ -628,6 +689,8 @@ class PullRequestService {
           });
         }
       }
+
+      this.updateBoostFromDetectedPRs();
     } catch (error) {
       this.handleError(formatErrorMessage(error, "PR check failed"));
     }
