@@ -841,6 +841,7 @@ export function WorktreeCard({
                     effectiveSummary={effectiveSummary}
                     worktreeErrors={worktreeErrors}
                     isFocused={isFocused}
+                    isStale={isStaleCard}
                     onToggleExpand={handleToggleExpand}
                     onPathClick={handlePathClick}
                     onDismissError={dismissError}
