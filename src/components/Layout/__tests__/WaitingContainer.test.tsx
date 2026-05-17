@@ -270,6 +270,22 @@ describe("WaitingContainer", () => {
       expect(screen.queryByTestId("bg-watch-button")).toBeNull();
       expect(screen.queryByTestId("waiting-watch-button")).toBeNull();
     });
+
+    it("does not nest a <button> inside a <button> (invalid HTML)", () => {
+      mockTerminals = [makeTerminal({ id: "t1" })];
+      const { container } = render(<WaitingContainer />);
+      const nested = container.querySelectorAll("button button");
+      expect(nested.length).toBe(0);
+    });
+
+    it("exposes the row as a button via role + tabIndex (not a native <button>)", () => {
+      mockTerminals = [makeTerminal({ id: "t1" })];
+      render(<WaitingContainer />);
+      const row = screen.getByTestId("waiting-single-item");
+      expect(row.tagName).toBe("DIV");
+      expect(row.getAttribute("role")).toBe("button");
+      expect(row.getAttribute("tabindex")).toBe("0");
+    });
   });
 
   describe("row activation", () => {
@@ -394,6 +410,25 @@ describe("WaitingContainer", () => {
       render(<WaitingContainer />);
       fireEvent.click(screen.getByTestId("waiting-single-item"));
       expect(setActiveTabMock).not.toHaveBeenCalled();
+    });
+
+    it("renders independent collapse state across multiple groups", () => {
+      mockTerminals = [
+        makeTerminal({ id: "a1" }),
+        makeTerminal({ id: "a2" }),
+        makeTerminal({ id: "b1" }),
+        makeTerminal({ id: "b2" }),
+      ];
+      mockTabGroups = new Map([
+        ["gA", makeGroup({ id: "gA", panelIds: ["a1", "a2"], activeTabId: "a1" })],
+        ["gB", makeGroup({ id: "gB", panelIds: ["b1", "b2"], activeTabId: "b1" })],
+      ]);
+      render(<WaitingContainer />);
+      expect(screen.getAllByTestId("waiting-single-item").length).toBe(4);
+      const collapseButtons = screen.getAllByRole("button", { name: "Collapse group" });
+      expect(collapseButtons.length).toBe(2);
+      fireEvent.click(collapseButtons[0]!);
+      expect(screen.getAllByTestId("waiting-single-item").length).toBe(2);
     });
   });
 

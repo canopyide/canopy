@@ -57,19 +57,23 @@ export function WaitingContainer({ compact = false }: WaitingContainerProps) {
   const { worktreeMap } = useWorktrees();
 
   const displayItems = useMemo((): WaitingDisplayItem[] => {
-    const waitingById = new Map<string, TerminalInstance>();
-    for (const terminal of terminals) waitingById.set(terminal.id, terminal);
-
+    // Build panelId -> group, applying the same location guard as
+    // getPanelGroup so a stale group whose location no longer matches the
+    // panel falls through to a single row instead of mis-routing setActiveTab.
     const panelToGroup = new Map<string, TabGroup>();
+    const waitingByPanelId = new Map<string, TerminalInstance>();
+    for (const terminal of terminals) waitingByPanelId.set(terminal.id, terminal);
     for (const group of tabGroups.values()) {
       for (const panelId of group.panelIds) {
-        if (waitingById.has(panelId)) {
-          panelToGroup.set(panelId, group);
-        }
+        const panel = waitingByPanelId.get(panelId);
+        if (!panel) continue;
+        const panelLocation = panel.location === "dock" ? "dock" : "grid";
+        if (panelLocation !== group.location) continue;
+        panelToGroup.set(panelId, group);
       }
     }
 
-    const groupBuckets = new Map<string, TerminalInstance[]>();
+    const groupBuckets = new Map<string, { group: TabGroup; waitingMembers: TerminalInstance[] }>();
     const singles: WaitingDisplaySingle[] = [];
 
     for (const terminal of terminals) {
@@ -77,9 +81,9 @@ export function WaitingContainer({ compact = false }: WaitingContainerProps) {
       if (group) {
         const bucket = groupBuckets.get(group.id);
         if (bucket) {
-          bucket.push(terminal);
+          bucket.waitingMembers.push(terminal);
         } else {
-          groupBuckets.set(group.id, [terminal]);
+          groupBuckets.set(group.id, { group, waitingMembers: [terminal] });
         }
       } else {
         singles.push({ type: "single", terminal, groupId: null });
@@ -88,19 +92,12 @@ export function WaitingContainer({ compact = false }: WaitingContainerProps) {
 
     const items: WaitingDisplayItem[] = [];
 
-    for (const [groupId, waitingMembers] of groupBuckets) {
-      const group = tabGroups.get(groupId);
-      if (!group) {
-        for (const terminal of waitingMembers) {
-          items.push({ type: "single", terminal, groupId: null });
-        }
-        continue;
-      }
+    for (const { group, waitingMembers } of groupBuckets.values()) {
       if (waitingMembers.length > 1) {
         items.push({ type: "group", group, waitingTerminals: waitingMembers });
       } else {
         for (const terminal of waitingMembers) {
-          items.push({ type: "single", terminal, groupId });
+          items.push({ type: "single", terminal, groupId: group.id });
         }
       }
     }
@@ -286,13 +283,26 @@ function WaitingSingleItem({
   const title = terminal.title || "Terminal";
 
   return (
-    <button
-      type="button"
+    // The row is a div + role="button" rather than a native <button>
+    // because the kill icon-button is a sibling target inside this row;
+    // nesting <button> inside <button> is invalid HTML and breaks
+    // keyboard / screen-reader semantics.
+    <div
       data-testid="waiting-single-item"
       data-agent-state={agentState ?? "unknown"}
+      role="button"
+      tabIndex={0}
       onClick={() => onActivate(terminal, groupId)}
+      onKeyDown={(e) => {
+        // Ignore Enter / Space bubbled from the inner kill button.
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onActivate(terminal, groupId);
+        }
+      }}
       className={cn(
-        "flex items-start gap-2 px-2 py-1.5 rounded-[var(--radius-sm)] border-l-2 border-l-transparent hover:bg-tint/5 focus:bg-tint/5 outline-hidden transition-colors group text-left w-full",
+        "flex items-start gap-2 px-2 py-1.5 rounded-[var(--radius-sm)] border-l-2 border-l-transparent hover:bg-tint/5 focus:bg-tint/5 focus-visible:outline-2 focus-visible:outline-daintree-accent outline-hidden transition-colors group cursor-pointer w-full",
         compact && "py-1 pl-1.5"
       )}
       aria-label={`Focus ${title}`}
@@ -363,7 +373,7 @@ function WaitingSingleItem({
           <TooltipContent side="bottom">{`Kill ${title}`}</TooltipContent>
         </Tooltip>
       </div>
-    </button>
+    </div>
   );
 }
 
