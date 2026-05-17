@@ -23,6 +23,11 @@ import type { AgentSettings, CliAvailability } from "@shared/types";
 const dispatchMock = vi.fn();
 const updateWorktreePresetMock = vi.fn();
 const updateAgentMock = vi.fn().mockResolvedValue(undefined);
+// Hoisted so the vi.mock factory (also hoisted) can reference it; a plain
+// `const` would initialize after the mock factory runs.
+const { dispatchToolbarVisibilityMock } = vi.hoisted(() => ({
+  dispatchToolbarVisibilityMock: vi.fn(),
+}));
 let dropdownCloseAutoFocusSpy: ((e: { preventDefault: () => void }) => void) | null = null;
 let dropdownPointerDownOutsideSpy: (() => void) | null = null;
 
@@ -299,6 +304,10 @@ vi.mock("lucide-react", () => ({
   Unplug: () => <span data-testid="unplug-icon" />,
 }));
 
+vi.mock("@/lib/toolbarVisibilityDispatch", () => ({
+  dispatchToolbarVisibility: dispatchToolbarVisibilityMock,
+}));
+
 import { AgentButton } from "../AgentButton";
 
 function settingsWith(agents: Record<string, unknown>): AgentSettings {
@@ -310,6 +319,7 @@ describe("AgentButton preset UX", () => {
     dispatchMock.mockClear();
     updateWorktreePresetMock.mockClear();
     updateAgentMock.mockClear();
+    dispatchToolbarVisibilityMock.mockClear();
     mockSettings = null;
     mockActiveWorktreeId = null;
     mockCcrPresetsByAgent = {};
@@ -908,6 +918,24 @@ describe("AgentButton preset UX", () => {
   });
 
   describe("context menu", () => {
+    it("Unpin from Toolbar dispatches the shared helper with explicitPinned=false", () => {
+      // Locks the contract between AgentButton and dispatchToolbarVisibility:
+      // the "Unpin" action must force pinned=false regardless of current
+      // visibility (it's not a toggle). The "left" side argument is a sentinel
+      // — the helper ignores `side` for agent IDs — but locking it here
+      // catches an accidental "right" pass that would still work today but
+      // could become a meaningful signal if the helper ever changes.
+      mockSettings = settingsWith({ claude: { pinned: true } });
+
+      const { getByText } = render(
+        <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
+      );
+      fireEvent.click(getByText("Unpin from Toolbar"));
+
+      expect(dispatchToolbarVisibilityMock).toHaveBeenCalledTimes(1);
+      expect(dispatchToolbarVisibilityMock).toHaveBeenCalledWith("claude", "left", false);
+    });
+
     it("exposes Manage Presets that deep-links to the presets section (no-presets branch)", () => {
       mockSettings = settingsWith({ claude: {} });
       mockMergedPresetsFn = () => [];

@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent } from "@testing-library/react";
 import type { AgentSettings } from "@shared/types";
+import type { CliAvailability } from "@shared/types/ipc/system";
 
 const setLeftButtonsMock = vi.fn();
 const setRightButtonsMock = vi.fn();
@@ -42,6 +43,7 @@ let mockToolbarState: ToolbarState = {
 };
 
 let mockAgentSettings: AgentSettings | null = null;
+let mockCliAvailability: CliAvailability | undefined = undefined;
 
 vi.mock("@/store", () => ({
   useToolbarPreferencesStore: (selector: (s: ToolbarState) => unknown) =>
@@ -54,8 +56,9 @@ vi.mock("@/store/agentSettingsStore", () => ({
 }));
 
 vi.mock("@/store/cliAvailabilityStore", () => ({
-  useCliAvailabilityStore: (selector: (s: { availability: undefined }) => unknown) =>
-    selector({ availability: undefined }),
+  useCliAvailabilityStore: (
+    selector: (s: { availability: CliAvailability | undefined }) => unknown
+  ) => selector({ availability: mockCliAvailability }),
 }));
 
 // The component delegates all visibility writes to dispatchToolbarVisibility.
@@ -178,6 +181,7 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
       reset: resetMock,
     };
     mockAgentSettings = null;
+    mockCliAvailability = undefined;
   });
 
   it("shows agent rows as checked when pinned in agentSettingsStore", () => {
@@ -273,6 +277,22 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
     expect(claudeCheckbox.checked).toBe(false);
   });
 
+  it("renders an agent as visible when pinned is undefined and CLI is ready (tri-state)", () => {
+    // #7673 tri-state: an agent with no explicit `pinned` flag follows live
+    // CLI availability — `ready` means visible. Locks the UI-side rendering
+    // of the path the helper covers in isolation.
+    mockAgentSettings = agentSettings({ claude: {} });
+    mockCliAvailability = { claude: "ready" } as CliAvailability;
+
+    const { getByLabelText, getByTestId } = render(<ToolbarSettingsTab />);
+    const claudeCheckbox = getByLabelText("Toggle Claude Agent visibility") as HTMLInputElement;
+    expect(claudeCheckbox.checked).toBe(true);
+    // Left layout: agent-tray, claude (tri-state visible), gemini (no pin,
+    // missing/undefined → hidden), terminal (no hide) = 3 of 4 visible.
+    const leftSection = getByTestId("section-Left side buttons");
+    expect(leftSection.getAttribute("data-description")).toContain("3 of 4 visible");
+  });
+
   it("dispatches a right-side agent toggle with side=right", () => {
     // Relocate codex to the right side — an unlikely but possible layout.
     mockToolbarState.layout = {
@@ -313,6 +333,7 @@ describe("ToolbarSettingsTab — drag-source vs hidden opacity deconfliction", (
       reset: resetMock,
     };
     mockAgentSettings = null;
+    mockCliAvailability = undefined;
   });
 
   function rowFor(label: string, container: HTMLElement): HTMLElement {
