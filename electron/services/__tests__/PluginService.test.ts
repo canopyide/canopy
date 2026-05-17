@@ -293,6 +293,18 @@ describe("PluginManifestSchema forgeProviders contribution", () => {
       },
     });
     expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.contributes.forgeProviders).toEqual([
+        {
+          id: "github",
+          name: "GitHub",
+          matches: ["github.com"],
+          capabilities: ["issues", "pulls", "reviews", "required-checks", "releases"],
+          settingsScopeRef: "github",
+          viewRefs: ["github-issues", "github-prs"],
+        },
+      ]);
+    }
   });
 
   it("accepts a forgeProviders entry with only required fields", () => {
@@ -2117,6 +2129,10 @@ describe("reserved contribution point warnings", () => {
         'Plugin "acme.forge": contributes.forgeProviders is not yet implemented'
       )
     );
+    // Reserved + ignored: a forge-only manifest has no registry side effects.
+    expect(registerPanelKind).not.toHaveBeenCalled();
+    expect(registerToolbarButton).not.toHaveBeenCalled();
+    expect(registerPluginMenuItem).not.toHaveBeenCalled();
   });
 
   it("does not warn about reserved points when the manifest omits them", async () => {

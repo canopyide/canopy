@@ -266,9 +266,14 @@ export interface MilestoneCapability {
 /**
  * Runtime contract a forge plugin implements and registers via
  * `host.registerForgeProvider`. Every provider implements the base methods;
- * optional capabilities are sibling fields the host probes with the `in`
- * operator at runtime. Adding a new capability adds a sibling field — the
- * base interface never changes.
+ * optional capabilities are sibling fields the host probes at runtime.
+ * Adding a new capability adds a sibling field — the base interface never
+ * changes.
+ *
+ * Capability presence check: use a truthiness/`!= null` guard
+ * (`if (provider.reviews)`), NOT the `in` operator. An optional property
+ * explicitly set to `undefined` still satisfies `"reviews" in provider`,
+ * so `in` would falsely report the capability as available.
  */
 export interface ForgeProviderImpl {
   // Auth — fully owned by the plugin; the host never inspects credentials.
@@ -294,7 +299,7 @@ export interface ForgeProviderImpl {
   // Host-visible rate-limit state, parsed from the provider's own transport.
   getRateLimit?(): Promise<RateLimitInfo>;
 
-  // Optional capabilities — host checks via the `in` operator at runtime.
+  // Optional capabilities — host checks presence via a truthiness guard (see above).
   reviews?: ReviewCapability;
   approvals?: ApprovalCapability;
   releases?: ReleaseCapability;
