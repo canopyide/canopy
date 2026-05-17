@@ -270,14 +270,14 @@ export function AgentButton({
 
   const presetSegment = activePresetName ? ` · ${activePresetName}` : "";
   const tooltipLabel = isLoading
-    ? `Checking ${config.name} CLI availability...`
+    ? `Checking ${config.name} CLI…`
     : isLaunchable
       ? signInUnconfirmed
         ? `Start ${config.name}${presetSegment} — sign-in not detected`
         : `Start ${config.name}${presetSegment}${tooltipDetails}`
       : needsSetup
-        ? `${config.name} needs setup. Click to configure.`
-        : `${config.name} CLI not found. Click to install.`;
+        ? `Configure ${config.name}`
+        : `Install ${config.name} CLI`;
   const tooltipShortcut = isLaunchable ? displayCombo : undefined;
   const chevronTooltip = isLoading
     ? `Checking ${config.name} CLI availability...`
@@ -292,12 +292,12 @@ export function AgentButton({
   const isChevronDisabled = isLoading || !isLaunchable;
 
   const ariaLabel = isLoading
-    ? `Checking ${config.name} availability`
+    ? `Checking ${config.name} CLI`
     : isLaunchable
-      ? `Start ${config.name} Agent`
+      ? `Start ${config.name}`
       : needsSetup
-        ? `${config.name} needs setup`
-        : `${config.name} CLI not installed`;
+        ? `Configure ${config.name}`
+        : `Install ${config.name} CLI`;
 
   const handleClick = () => {
     if (isLoading) return;
