@@ -557,7 +557,7 @@ export function HelpPanel({
                   <LazyHybridInputBar
                     ref={inputBarRef}
                     terminalId={terminalId}
-                    cwd={terminal.cwd}
+                    cwd={terminal?.cwd ?? ""}
                     agentId={effectiveAgentId}
                     agentHasLifecycleEvent={terminal?.stateChangeTrigger !== undefined}
                     agentState={terminal?.agentState}

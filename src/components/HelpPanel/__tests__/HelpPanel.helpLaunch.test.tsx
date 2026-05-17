@@ -2671,8 +2671,8 @@ describe("HelpPanel — HybridInputBar wiring (issue #8185)", () => {
     expect(mockNotifyUserInput).toHaveBeenCalledWith("term-1");
     expect(mockTerminalSubmit).toHaveBeenCalledWith("term-1", "hello");
     // Order matters (lesson #2187): notifyUserInput must precede submit.
-    expect(mockNotifyUserInput.mock.invocationCallOrder[0]).toBeLessThan(
-      mockTerminalSubmit.mock.invocationCallOrder[0]
+    expect(mockNotifyUserInput.mock.invocationCallOrder?.[0] ?? 0).toBeLessThan(
+      mockTerminalSubmit.mock.invocationCallOrder?.[0] ?? 0
     );
   });
 
@@ -2690,8 +2690,8 @@ describe("HelpPanel — HybridInputBar wiring (issue #8185)", () => {
 
     expect(mockNotifyUserInput).toHaveBeenCalledWith("term-1");
     expect(mockTerminalSendKey).toHaveBeenCalledWith("term-1", "escape");
-    expect(mockNotifyUserInput.mock.invocationCallOrder[0]).toBeLessThan(
-      mockTerminalSendKey.mock.invocationCallOrder[0]
+    expect(mockNotifyUserInput.mock.invocationCallOrder?.[0] ?? 0).toBeLessThan(
+      mockTerminalSendKey.mock.invocationCallOrder?.[0] ?? 0
     );
   });
 
