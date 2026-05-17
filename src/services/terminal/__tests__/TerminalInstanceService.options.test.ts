@@ -119,7 +119,7 @@ describe("TerminalInstanceService - options", () => {
     expect(managed.terminal.options).toEqual(
       expect.objectContaining({
         cursorBlink: false,
-        rescaleOverlappingGlyphs: false,
+        rescaleOverlappingGlyphs: true,
         customGlyphs: true,
         reflowCursorLine: true,
       })
@@ -151,7 +151,6 @@ describe("TerminalInstanceService - options", () => {
     // so these must be present on the stored options object
     expect(managed.terminal.options).toMatchObject({
       cursorBlink: false,
-      rescaleOverlappingGlyphs: false,
     });
 
     terminalInstanceService.destroy("test-options");
@@ -191,7 +190,6 @@ describe("TerminalInstanceService - options", () => {
 
     expect(managed.terminal.options).toMatchObject({
       cursorBlink: false,
-      rescaleOverlappingGlyphs: false,
     });
     expect(managed.terminal.options.fontSize).toBe(14);
 

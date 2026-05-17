@@ -349,10 +349,10 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
     expect(managed.terminal.refresh).not.toHaveBeenCalled();
   });
 
-  it("tier demotion while visible releases WebGL and repaints DOM", () => {
-    // Keep WebGL limited to focused/burst agent terminals. Visible but
-    // unfocused panes fall back to the DOM renderer so stale WebGL atlas state
-    // cannot persist until the next focus click.
+  it("tier demotion while visible keeps WebGL active (no release, no refresh)", () => {
+    // Per #6801: keep WebGL while visible on tier transitions to avoid a
+    // one-frame renderer gap. The release+refresh path only runs when not
+    // visible, so a visible terminal sees no churn here.
     const managed = makeMockManaged({
       isVisible: true,
       lastAppliedTier: TerminalRefreshTier.FOCUSED,
@@ -365,8 +365,8 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
     service.applyRendererPolicy("t1", TerminalRefreshTier.BACKGROUND);
     vi.advanceTimersByTime(500);
 
-    expect(service.webGLManager.isActive("t1")).toBe(false);
-    expect(managed.terminal.refresh).toHaveBeenCalledWith(0, 23);
+    expect(service.webGLManager.isActive("t1")).toBe(true);
+    expect(managed.terminal.refresh).not.toHaveBeenCalled();
   });
 
   it("agent demotion during debounce window cancels WebGL restore", () => {

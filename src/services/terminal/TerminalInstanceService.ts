@@ -246,7 +246,8 @@ class TerminalInstanceService {
         if (managed.runtimeAgentId) {
           if (isWebGLEligibleTier(tier)) {
             this.webGLManager.ensureContext(id, managed);
-          } else {
+          } else if (!managed.isVisible) {
+            // Keep WebGL while visible — releasing here causes a one-frame renderer gap.
             const hadWebGL = this.webGLManager.isActive(id);
             this.webGLManager.releaseContext(id);
             // Only refresh for a visible terminal — repainting an offscreen
@@ -707,7 +708,6 @@ class TerminalInstanceService {
       }
       if (launchAgentId !== undefined && !existing.isHibernated) {
         existing.terminal.options.cursorBlink = false;
-        existing.terminal.options.rescaleOverlappingGlyphs = false;
       }
       return existing;
     }
@@ -737,7 +737,6 @@ class TerminalInstanceService {
 
     if (launchAgentId !== undefined) {
       terminalOptions.cursorBlink = false;
-      terminalOptions.rescaleOverlappingGlyphs = false;
     }
 
     const terminal = new Terminal(terminalOptions);
