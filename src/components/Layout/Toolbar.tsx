@@ -12,6 +12,11 @@ import {
   MonitorPlay,
   Ellipsis,
   GitBranch,
+  Pin,
+  PinOff,
+  Clipboard,
+  Square,
+  X,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { Folders, McpServerIcon } from "@/components/icons";
@@ -25,12 +30,20 @@ import { AgentTrayButton } from "./AgentTrayButton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { middleTruncate } from "@/utils/textParsing";
 import { useToolbarOverflow } from "@/hooks/useToolbarOverflow";
 import { useWorktreeActions } from "@/hooks/useWorktreeActions";
 import { useAriaKeyshortcuts, useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
@@ -186,6 +199,23 @@ export function Toolbar({
     activeWorktreeId ? state.worktrees.get(activeWorktreeId) : null
   );
   const branchName = activeWorktree?.branch;
+  // Branch label gets middle-truncated to preserve the meaningful tail
+  // (e.g. `feature/...-pill` instead of `feature/migrate-from-…`). The full
+  // value still appears in the tooltip on hover/focus.
+  const truncatedBranchName = branchName ? middleTruncate(branchName, 24) : undefined;
+  // Source of truth for runtime-only fields (processCount, isPinned) the
+  // context menu needs to gate its items. `currentProject` (Project type)
+  // doesn't carry those — they live on the SearchableProject derived in the
+  // palette hook.
+  const activeSearchableProject = useMemo(
+    () => projectSwitcher.results.find((project) => project.isActive),
+    [projectSwitcher.results]
+  );
+  const tooltipLabel = currentProject
+    ? branchName
+      ? `${currentProject.name} / ${branchName}`
+      : currentProject.name
+    : "Open project";
 
   useEffect(() => {
     loadProjects();
@@ -280,6 +310,10 @@ export function Toolbar({
     },
     [projectSwitcher]
   );
+
+  const handleCopyProjectPath = useCallback((path: string) => {
+    void navigator.clipboard.writeText(path).catch(console.error);
+  }, []);
 
   useEffect(() => {
     return window.electron.window.onFullscreenChange(setIsFullscreen);
@@ -1039,41 +1073,101 @@ export function Toolbar({
             }
             isDeletingOriginalScratch={projectSwitcher.isDeletingOriginalScratch}
           >
-            <button
-              data-toolbar-item=""
-              className="toolbar-project-pill app-no-drag pointer-events-auto flex h-9 min-w-0 max-w-full items-center justify-center gap-2 overflow-hidden border px-3 outline-hidden"
-              data-testid="project-switcher-trigger"
-              aria-label={currentProject ? undefined : "Open project"}
-              onClick={() => projectSwitcher.open("dropdown")}
-            >
-              <span
-                className={cn("text-base leading-none shrink-0", !currentProject && "opacity-0")}
-                aria-label={currentProject ? "Project emoji" : undefined}
-                aria-hidden={currentProject ? undefined : true}
-              >
-                {currentProject?.emoji ?? "•"}
-              </span>
-              <span
-                className={cn(
-                  "min-w-0 truncate text-xs tracking-wide text-daintree-text",
-                  currentProject ? "font-semibold" : "font-medium"
-                )}
-              >
-                {currentProject?.name ?? "Open project"}
-              </span>
-              <span
-                className={cn(
-                  "toolbar-project-chip shrink-0 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono tabular-nums",
-                  !branchName && "opacity-0"
-                )}
-                aria-label={branchName ? `Current branch ${branchName}` : undefined}
-                aria-hidden={branchName ? undefined : true}
-              >
-                <GitBranch className="toolbar-project-chip-icon h-3 w-3 shrink-0" />
-                <span className="toolbar-project-chip-label">{branchName ?? "main"}</span>
-              </span>
-              <ChevronsUpDown className="toolbar-project-meta ml-0.5 h-3 w-3 shrink-0" />
-            </button>
+            <ContextMenu>
+              <ContextMenuTrigger asChild>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      data-toolbar-item=""
+                      className="toolbar-project-pill app-no-drag pointer-events-auto flex h-9 min-w-0 max-w-full items-center justify-center gap-2 overflow-hidden border px-3 outline-hidden"
+                      data-testid="project-switcher-trigger"
+                      role="combobox"
+                      aria-haspopup="listbox"
+                      aria-expanded={isDropdownOpen}
+                      aria-label={currentProject ? undefined : "Open project"}
+                      onClick={() => projectSwitcher.open("dropdown")}
+                    >
+                      <span
+                        className={cn(
+                          "text-base leading-none shrink-0",
+                          !currentProject && "opacity-0"
+                        )}
+                        aria-label={currentProject ? "Project emoji" : undefined}
+                        aria-hidden={currentProject ? undefined : true}
+                      >
+                        {currentProject?.emoji ?? "•"}
+                      </span>
+                      <span
+                        className={cn(
+                          "min-w-0 truncate text-xs tracking-wide text-daintree-text",
+                          currentProject ? "font-semibold" : "font-medium"
+                        )}
+                      >
+                        {currentProject?.name ?? "Open project"}
+                      </span>
+                      <span
+                        className={cn(
+                          "toolbar-project-chip shrink-0 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono tabular-nums",
+                          !branchName && "opacity-0"
+                        )}
+                        aria-label={branchName ? `Current branch ${branchName}` : undefined}
+                        aria-hidden={branchName ? undefined : true}
+                      >
+                        <GitBranch className="toolbar-project-chip-icon h-3 w-3 shrink-0" />
+                        <span className="toolbar-project-chip-label">
+                          {truncatedBranchName ?? "main"}
+                        </span>
+                      </span>
+                      <ChevronsUpDown className="toolbar-project-meta ml-0.5 h-3 w-3 shrink-0" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">{tooltipLabel}</TooltipContent>
+                </Tooltip>
+              </ContextMenuTrigger>
+              {currentProject && (
+                <ContextMenuContent>
+                  <ContextMenuItem
+                    onClick={() => void projectSwitcher.togglePinProject(currentProject.id)}
+                  >
+                    {activeSearchableProject?.isPinned ? (
+                      <>
+                        <PinOff className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
+                        Unpin project
+                      </>
+                    ) : (
+                      <>
+                        <Pin className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
+                        Pin project
+                      </>
+                    )}
+                  </ContextMenuItem>
+                  <ContextMenuItem onClick={() => handleCopyProjectPath(currentProject.path)}>
+                    <Clipboard className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
+                    Copy path
+                  </ContextMenuItem>
+                  {(activeSearchableProject?.processCount ?? 0) > 0 && (
+                    <>
+                      <ContextMenuSeparator />
+                      <ContextMenuItem
+                        destructive
+                        onClick={() => handleStopProject(currentProject.id)}
+                      >
+                        <Square className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
+                        Stop all agents
+                      </ContextMenuItem>
+                    </>
+                  )}
+                  <ContextMenuSeparator />
+                  <ContextMenuItem
+                    destructive
+                    onClick={() => handleCloseProject(currentProject.id)}
+                  >
+                    <X className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
+                    Close project
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              )}
+            </ContextMenu>
           </ProjectSwitcherPalette>
         </div>
 
