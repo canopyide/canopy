@@ -10,6 +10,7 @@ import {
   X,
   Filter,
   Github,
+  Clock,
 } from "lucide-react";
 import { isTokenRelatedError, isTransientNetworkError } from "@/lib/githubErrors";
 import { Button } from "@/components/ui/button";
@@ -172,6 +173,7 @@ export function GitHubResourceList({
     lastUpdatedAt,
     exactNumberNotFound,
     isTokenError,
+    isRateLimited,
     handleLoadMore,
     handleRetry,
     handleManualRefresh,
@@ -872,6 +874,19 @@ export function GitHubResourceList({
           </div>
         ) : data.length > 0 ? (
           <div key="github-content" className="flex-1 min-h-0 flex flex-col">
+            {isRateLimited && !error && (
+              <div className="px-3 py-2 border-b border-[var(--border-divider)] flex items-center gap-2 text-muted-foreground bg-overlay-soft shrink-0">
+                <Clock className="h-3.5 w-3.5 shrink-0" />
+                <span className="text-xs truncate">
+                  GitHub requests are paused. Showing last known results.
+                </span>
+                {lastUpdatedAt != null && !debouncedSearch && (
+                  <span className="text-xs text-muted-foreground/70 shrink-0 whitespace-nowrap">
+                    · Updated <LiveTimeAgo timestamp={lastUpdatedAt} />
+                  </span>
+                )}
+              </div>
+            )}
             {error && (
               <div className="px-3 py-2 border-b border-[var(--border-divider)] flex items-center gap-2 text-muted-foreground bg-overlay-soft shrink-0">
                 <WifiOff className="h-3.5 w-3.5 shrink-0" />
@@ -950,34 +965,47 @@ export function GitHubResourceList({
             </div>
           </div>
         ) : null}
-        {!loading && !data.length && error && (
+        {!loading && !data.length && error && !isTokenError && !isRateLimited && (
           <div className="p-8 text-center text-muted-foreground">
             <WifiOff className="h-5 w-5 mx-auto mb-2 opacity-50" />
             <p className="text-sm">{sanitizeIpcError(error)}</p>
-            {isTokenError ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleOpenGitHubSettings}
-                className="mt-2 text-muted-foreground hover:text-daintree-text"
-              >
-                <Settings className="h-3.5 w-3.5" />
-                Open GitHub Settings
-              </Button>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleRetry}
-                className="mt-2 text-muted-foreground hover:text-daintree-text"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                Retry
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleRetry}
+              className="mt-2 text-muted-foreground hover:text-daintree-text"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Retry
+            </Button>
           </div>
         )}
-        {!loading && !error && !data.length && renderEmpty()}
+        {!loading && !data.length && error && isTokenError && (
+          <div className="p-8 text-center text-muted-foreground">
+            <WifiOff className="h-5 w-5 mx-auto mb-2 opacity-50" />
+            <p className="text-sm">{sanitizeIpcError(error)}</p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleOpenGitHubSettings}
+              className="mt-2 text-muted-foreground hover:text-daintree-text"
+            >
+              <Settings className="h-3.5 w-3.5" />
+              Open GitHub Settings
+            </Button>
+          </div>
+        )}
+        {!loading && !data.length && isRateLimited && !isTokenError && (
+          <EmptyState
+            variant="zero-data"
+            scale="canvas"
+            icon={<Clock />}
+            title="GitHub requests are paused"
+            description="The current rate-limit window has been exhausted. The dropdown will resume automatically once GitHub clears the quota."
+            className="flex-1 justify-center"
+          />
+        )}
+        {!loading && !error && !isRateLimited && !data.length && renderEmpty()}
       </div>
 
       <div className="p-3 border-t border-[var(--border-divider)] grid grid-cols-[1fr_auto_1fr] items-center shrink-0">

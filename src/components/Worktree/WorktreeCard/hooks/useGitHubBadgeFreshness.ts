@@ -3,6 +3,7 @@ import type { FreshnessLevel } from "@/hooks/useRepositoryStats";
 import { getCache, buildCacheKey } from "@/lib/githubResourceCache";
 import { useGlobalMinuteTicker } from "@/hooks/useGlobalMinuteTicker";
 import { useProjectStore } from "@/store/projectStore";
+import { useGitHubRateLimitStore } from "@/store/githubRateLimitStore";
 
 const DEFAULT_FILTER_STATE = "open";
 const DEFAULT_SORT_ORDER = "created";
@@ -21,6 +22,7 @@ export function useGitHubBadgeFreshness(
 ): UseGitHubBadgeFreshnessResult {
   const projectPath = useProjectStore((s) => s.currentProject?.path);
   const tick = useGlobalMinuteTicker();
+  const rateLimitBlocked = useGitHubRateLimitStore((s) => s.blocked);
 
   const cacheKey = projectPath
     ? buildCacheKey(projectPath, type, DEFAULT_FILTER_STATE, DEFAULT_SORT_ORDER)
@@ -33,8 +35,12 @@ export function useGitHubBadgeFreshness(
   const cacheLastUpdatedAt = cacheEntry?.timestamp ?? null;
   const now = tick > 0 ? Date.now() : Date.now();
 
-  const freshnessLevel: FreshnessLevel =
-    rowLastUpdatedAt == null || cacheLastUpdatedAt == null
+  // While GitHub-wide rate-limit pause is active, badge data may be older
+  // than its timestamp suggests — polling is suspended, so a `fresh` badge
+  // would be misleading. Treat as `aging` until the block clears.
+  const freshnessLevel: FreshnessLevel = rateLimitBlocked
+    ? "aging"
+    : rowLastUpdatedAt == null || cacheLastUpdatedAt == null
       ? "fresh"
       : cacheLastUpdatedAt > rowLastUpdatedAt
         ? "aging"

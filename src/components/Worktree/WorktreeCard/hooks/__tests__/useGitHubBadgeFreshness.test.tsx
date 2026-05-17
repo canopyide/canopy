@@ -6,6 +6,7 @@ import { renderHook } from "@testing-library/react";
 import { useGitHubBadgeFreshness } from "../useGitHubBadgeFreshness";
 import * as cache from "@/lib/githubResourceCache";
 import type { GitHubResourceCacheEntry } from "@/lib/githubResourceCache";
+import { useGitHubRateLimitStore } from "@/store/githubRateLimitStore";
 
 function makeCacheEntry(timestamp: number): GitHubResourceCacheEntry {
   return { items: [], endCursor: null, hasNextPage: false, timestamp };
@@ -27,11 +28,13 @@ const ISSUE_KEY = "/test/repo:issue:open:created";
 describe("useGitHubBadgeFreshness", () => {
   beforeEach(() => {
     cache._resetForTests();
+    useGitHubRateLimitStore.setState({ blocked: false, kind: null, resetAt: null });
     mockTick = 1;
   });
 
   afterEach(() => {
     cache._resetForTests();
+    useGitHubRateLimitStore.setState({ blocked: false, kind: null, resetAt: null });
   });
 
   it("returns fresh when no row timestamp", () => {
@@ -93,5 +96,30 @@ describe("useGitHubBadgeFreshness", () => {
     mockTick = 5;
     const { result } = renderHook(() => useGitHubBadgeFreshness("pr", undefined));
     expect(result.current.now).toBeGreaterThan(0);
+  });
+
+  it("treats badges as aging while rate-limit pause is active, even with no cache", () => {
+    useGitHubRateLimitStore.setState({
+      blocked: true,
+      kind: "primary",
+      resetAt: Date.now() + 60_000,
+    });
+
+    const { result } = renderHook(() => useGitHubBadgeFreshness("pr", Date.now()));
+    expect(result.current.freshnessLevel).toBe("aging");
+  });
+
+  it("treats badges as aging while rate-limit pause is active, regardless of cache freshness", () => {
+    const time = Date.now();
+    cache.setCache(PR_KEY, makeCacheEntry(time));
+    useGitHubRateLimitStore.setState({
+      blocked: true,
+      kind: "secondary",
+      resetAt: null,
+    });
+
+    // Without rate-limit, this would be "fresh" (cache time equals row time).
+    const { result } = renderHook(() => useGitHubBadgeFreshness("pr", time));
+    expect(result.current.freshnessLevel).toBe("aging");
   });
 });
