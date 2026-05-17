@@ -414,7 +414,11 @@ export class WorkspaceService {
           existingMonitor.restartWatcherIfRunning();
         }
 
-        if (isCurrentChanged && existingMonitor.hasInitialStatus) {
+        // Skip this emit when the branch also changed — the branch-change
+        // block below emits the full snapshot (with updated isCurrent and
+        // cleared PR) anyway. Emitting here first would surface an
+        // intermediate frame carrying the new branch with the old PR (#8079).
+        if (isCurrentChanged && !branchChanged && existingMonitor.hasInitialStatus) {
           this.emitUpdate(existingMonitor);
         }
 

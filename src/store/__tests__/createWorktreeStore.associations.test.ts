@@ -129,6 +129,58 @@ describe("createWorktreeStore — manual issue associations (#8079)", () => {
     expect(wt?.issueTitle).toBeUndefined();
   });
 
+  it("applySnapshot without associations preserves the cached map", () => {
+    const store = createWorktreeStore();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], store.getState().nextVersion(), {
+      "wt-1": { issueNumber: 42, issueTitle: "Manual issue" },
+    });
+
+    // A later refresh whose association IPC failed passes `undefined`.
+    store
+      .getState()
+      .applySnapshot(
+        [makeSnapshot("wt-1", { branch: "feature/x" })],
+        store.getState().nextVersion()
+      );
+
+    expect(store.getState().manualAssociations.get("wt-1")?.issueNumber).toBe(42);
+    expect(store.getState().worktrees.get("wt-1")?.issueNumber).toBe(42);
+    expect(store.getState().worktrees.get("wt-1")?.branch).toBe("feature/x");
+  });
+
+  it("a stale-version applySnapshot does not revert a newer applyUpdate", () => {
+    const store = createWorktreeStore();
+    // Version minted while the snapshot data was "fresh".
+    const snapshotVersion = store.getState().nextVersion();
+    // A worktree-update races ahead during the association fetch.
+    store
+      .getState()
+      .applyUpdate(makeSnapshot("wt-1", { branch: "feature/new" }), store.getState().nextVersion());
+
+    // The now-stale snapshot tries to apply with the older version.
+    store.getState().applySnapshot([makeSnapshot("wt-1", { branch: "old" })], snapshotVersion);
+
+    expect(store.getState().worktrees.get("wt-1")?.branch).toBe("feature/new");
+  });
+
+  it("manual association overrides an issue-detected-style update (MANUAL_OVER_AUTO)", () => {
+    const store = createWorktreeStore();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], store.getState().nextVersion());
+    store.getState().setManualAssociation("wt-1", { issueNumber: 42, issueTitle: "Manual" });
+
+    // issue-detected builds a snapshot with a different (auto) issue.
+    store
+      .getState()
+      .applyUpdate(
+        makeSnapshot("wt-1", { issueNumber: 99, issueTitle: "Auto detected" }),
+        store.getState().nextVersion()
+      );
+
+    const wt = store.getState().worktrees.get("wt-1");
+    expect(wt?.issueNumber).toBe(42);
+    expect(wt?.issueTitle).toBe("Manual");
+  });
+
   it("setFatalError drops cached manual associations", () => {
     const store = createWorktreeStore();
     store.getState().applySnapshot([makeSnapshot("wt-1")], store.getState().nextVersion(), {

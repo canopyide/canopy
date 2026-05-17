@@ -541,6 +541,7 @@ export class WorktreeMonitor {
     this.prState = undefined;
     this.prCiStatus = undefined;
     this.prTitle = undefined;
+    this.prLastUpdatedAt = undefined;
   }
 
   setCreatedAt(ms: number | undefined): void {
