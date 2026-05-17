@@ -17,6 +17,14 @@ export function TerminalResourceSparkline({ history, className }: TerminalResour
     })
     .join(" ");
 
+  const dotRadius = 2;
+  const lastValue = history[history.length - 1];
+  const lastX = width;
+  const lastY = Math.max(
+    dotRadius,
+    Math.min(height - dotRadius, height - (Math.min(lastValue, 100) / 100) * height),
+  );
+
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
@@ -33,6 +41,7 @@ export function TerminalResourceSparkline({ history, className }: TerminalResour
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+      <circle cx={lastX} cy={lastY} r={dotRadius} fill="currentColor" stroke="none" />
     </svg>
   );
 }
