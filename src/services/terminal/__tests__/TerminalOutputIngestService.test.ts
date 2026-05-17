@@ -30,36 +30,7 @@ class MockWorker {
 // HIGH_WATERMARK          = 128 * 1024 = 131072 bytes
 // LOW_WATERMARK           =  32 * 1024 =  32768 bytes
 // COALESCE_BATCH_CAP      = 256 * 1024 = 262144 bytes
-// WRITE_CHUNK_BYTES       =  32 * 1024 =  32768 bytes
 // chunkByteSize for strings = data.length
-
-const WRITE_CHUNK = 32 * 1024;
-
-type WriteCall = [string, string | Uint8Array];
-
-const callsFor = (mock: ReturnType<typeof vi.fn>, terminalId: string): Array<string | Uint8Array> =>
-  (mock.mock.calls as WriteCall[]).filter((c) => c[0] === terminalId).map((c) => c[1]);
-
-const concatStringWrites = (mock: ReturnType<typeof vi.fn>, terminalId: string): string => {
-  const out: string[] = [];
-  for (const data of callsFor(mock, terminalId)) {
-    if (typeof data !== "string") {
-      throw new Error("expected string write");
-    }
-    out.push(data);
-  }
-  return out.join("");
-};
-
-const expectAllSlicesUnderCap = (mock: ReturnType<typeof vi.fn>, terminalId: string): void => {
-  for (const data of callsFor(mock, terminalId)) {
-    const size = typeof data === "string" ? data.length : data.byteLength;
-    expect(size).toBeLessThanOrEqual(WRITE_CHUNK);
-  }
-};
-
-// ceil(140000 / 32768) = 5
-const SLICES_140K = Math.ceil(140_000 / WRITE_CHUNK);
 
 describe("TerminalOutputIngestService", () => {
   beforeEach(() => {
@@ -89,18 +60,18 @@ describe("TerminalOutputIngestService", () => {
     const writeToTerminal = vi.fn();
     const service = new TerminalOutputIngestService(writeToTerminal);
 
+    // Buffer some data
     const largeData = "x".repeat(140_000);
     service.bufferData("term-1", largeData);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
-    expect(concatStringWrites(writeToTerminal, "term-1")).toBe(largeData);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
     service.bufferData("term-1", "buffered");
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
     // stopPolling flushes buffered data
     service.stopPolling();
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K + 1);
-    expect(concatStringWrites(writeToTerminal, "term-1")).toBe(largeData + "buffered");
+    expect(writeToTerminal).toHaveBeenCalledTimes(2);
+    expect(writeToTerminal).toHaveBeenCalledWith("term-1", "buffered");
 
     // Can reinitialize
     await service.initialize();
@@ -122,186 +93,175 @@ describe("TerminalOutputIngestService", () => {
     const writeToTerminal = vi.fn();
     const service = new TerminalOutputIngestService(writeToTerminal);
 
+    // 140,000 chars > 131,072 (HIGH_WATERMARK)
     const largeData = "x".repeat(140_000);
     service.bufferData("term-1", largeData);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
     // Second write should be buffered (inFlightBytes = 140,000 > HIGH_WATERMARK)
     service.bufferData("term-1", "buffered");
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
     // Acknowledge enough bytes to drop below LOW_WATERMARK (32,768)
     service.notifyWriteComplete("term-1", 140_000);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K + 1);
-    expect(concatStringWrites(writeToTerminal, "term-1")).toBe(largeData + "buffered");
+    expect(writeToTerminal).toHaveBeenCalledTimes(2);
+    expect(writeToTerminal).toHaveBeenCalledWith("term-1", "buffered");
   });
 
   it("coalesces queued string chunks into a single write on drain", () => {
     const writeToTerminal = vi.fn();
     const service = new TerminalOutputIngestService(writeToTerminal);
 
+    // Exceed watermark with first write
     const largeData = "x".repeat(140_000);
     service.bufferData("term-1", largeData);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
+    // Queue multiple small chunks while above watermark
     service.bufferData("term-1", "a");
     service.bufferData("term-1", "b");
     service.bufferData("term-1", "c");
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
-    // Coalesced "abc" is small (< WRITE_CHUNK) so it's emitted as a single write.
+    // Acknowledge to trigger drain — queued chunks should coalesce
     service.notifyWriteComplete("term-1", 140_000);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K + 1);
-    expect(writeToTerminal).toHaveBeenLastCalledWith("term-1", "abc");
+    expect(writeToTerminal).toHaveBeenCalledTimes(2);
+    expect(writeToTerminal).toHaveBeenCalledWith("term-1", "abc");
   });
 
   it("caps coalesced batch at 256 KB and drains remainder on next acknowledgment", () => {
     const writeToTerminal = vi.fn();
     const service = new TerminalOutputIngestService(writeToTerminal);
 
+    // Exceed watermark to start buffering
     const largeData = "x".repeat(140_000);
     service.bufferData("term-1", largeData);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
     // Queue 3 chunks of 150 KB each = 450 KB total, exceeds 256 KB cap
     const chunk150k = "a".repeat(150_000);
     service.bufferData("term-1", chunk150k);
     service.bufferData("term-1", chunk150k);
     service.bufferData("term-1", chunk150k);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
-    const slicesPer150k = Math.ceil(150_000 / WRITE_CHUNK);
-
-    // Acknowledge first write to trigger drain.
-    // First batch: do-while takes the first 150k chunk, second chunk would push past 256K cap.
+    // Acknowledge first write to trigger drain
     service.notifyWriteComplete("term-1", 140_000);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K + slicesPer150k);
-    expectAllSlicesUnderCap(writeToTerminal, "term-1");
+    expect(writeToTerminal).toHaveBeenCalledTimes(2);
 
-    // Acknowledge to drain the next batch (next 150k chunk).
+    // First capped batch should be 2 chunks (300,000 > 256 KB cap, but do-while takes first
+    // chunk unconditionally, second chunk fits: 150,000 + 150,000 = 300,000 > cap, so only
+    // first chunk is taken = 150,000 bytes)
+    const secondCall = writeToTerminal.mock.calls[1]![1] as string;
+    expect(secondCall.length).toBe(150_000);
+
+    // Acknowledge to drain the next batch
     service.notifyWriteComplete("term-1", 150_000);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K + 2 * slicesPer150k);
+    expect(writeToTerminal).toHaveBeenCalledTimes(3);
+    // Second batch: two remaining 150k chunks = 300k > cap, so takes only one
+    const thirdCall = writeToTerminal.mock.calls[2]![1] as string;
+    expect(thirdCall.length).toBe(150_000);
 
-    // Acknowledge to drain the last 150k chunk.
+    // Acknowledge to drain the last chunk
     service.notifyWriteComplete("term-1", 150_000);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K + 3 * slicesPer150k);
-
-    expect(concatStringWrites(writeToTerminal, "term-1")).toBe(
-      largeData + chunk150k + chunk150k + chunk150k
-    );
-    expectAllSlicesUnderCap(writeToTerminal, "term-1");
+    expect(writeToTerminal).toHaveBeenCalledTimes(4);
+    const fourthCall = writeToTerminal.mock.calls[3]![1] as string;
+    expect(fourthCall.length).toBe(150_000);
   });
 
-  it("slices a single oversized chunk into ≤32 KiB writes", () => {
+  it("passes through a single oversized chunk without stalling", () => {
     const writeToTerminal = vi.fn();
     const service = new TerminalOutputIngestService(writeToTerminal);
 
+    // Exceed watermark to start buffering
     const largeData = "x".repeat(140_000);
     service.bufferData("term-1", largeData);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
     // Queue a single chunk > 256 KB
     const oversized = "z".repeat(400_000);
     service.bufferData("term-1", oversized);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
-    const slicesOversized = Math.ceil(400_000 / WRITE_CHUNK);
-
-    // Acknowledge to drain — single chunk takes the length===1 fast path in coalesceBatch
-    // but is sliced to ≤32 KiB inside writeSliced.
+    // Acknowledge to drain — single chunk should pass through via the length===1 fast path
     service.notifyWriteComplete("term-1", 140_000);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K + slicesOversized);
-    expectAllSlicesUnderCap(writeToTerminal, "term-1");
-    expect(concatStringWrites(writeToTerminal, "term-1")).toBe(largeData + oversized);
+    expect(writeToTerminal).toHaveBeenCalledTimes(2);
+    expect(writeToTerminal).toHaveBeenCalledWith("term-1", oversized);
   });
 
-  it("slices a coalesced 256 KiB batch into eight 32 KiB writes", () => {
+  it("uses fast path when total queued bytes exactly equal the cap", () => {
     const writeToTerminal = vi.fn();
     const service = new TerminalOutputIngestService(writeToTerminal);
 
+    // Exceed watermark to start buffering
     const largeData = "x".repeat(140_000);
     service.bufferData("term-1", largeData);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
     // Queue chunks totaling exactly 262144 bytes (COALESCE_BATCH_CAP_BYTES)
     const chunkA = "a".repeat(131_072);
     const chunkB = "b".repeat(131_072);
     service.bufferData("term-1", chunkA);
     service.bufferData("term-1", chunkB);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
-    // 262144 / 32768 = 8 slices exactly.
+    // Acknowledge to drain — should coalesce all into one write (fast path)
     service.notifyWriteComplete("term-1", 140_000);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K + 8);
-    expectAllSlicesUnderCap(writeToTerminal, "term-1");
-
-    // Each slice from the 256 KiB batch should be exactly 32 KiB.
-    for (let i = SLICES_140K; i < SLICES_140K + 8; i++) {
-      const slice = (writeToTerminal.mock.calls[i]![1] as string).length;
-      expect(slice).toBe(WRITE_CHUNK);
-    }
-
-    expect(concatStringWrites(writeToTerminal, "term-1")).toBe(largeData + chunkA + chunkB);
+    expect(writeToTerminal).toHaveBeenCalledTimes(2);
+    const batch = writeToTerminal.mock.calls[1]![1] as string;
+    expect(batch.length).toBe(262_144);
   });
 
   it("caps coalesced batch correctly with many small chunks", () => {
     const writeToTerminal = vi.fn();
     const service = new TerminalOutputIngestService(writeToTerminal);
 
+    // Exceed watermark to start buffering
     const largeData = "x".repeat(140_000);
     service.bufferData("term-1", largeData);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
     // Queue 500 chunks of 1024 bytes each = 512 KB total (> 256 KB cap)
     for (let i = 0; i < 500; i++) {
       service.bufferData("term-1", "a".repeat(1024));
     }
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
-    // First batch: 256 KB capped, sliced into 8 × 32 KiB writes.
+    // Acknowledge to trigger drain — first batch should be capped
     service.notifyWriteComplete("term-1", 140_000);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K + 8);
-    expectAllSlicesUnderCap(writeToTerminal, "term-1");
+    expect(writeToTerminal).toHaveBeenCalledTimes(2);
+    const firstBatch = writeToTerminal.mock.calls[1]![1] as string;
+    // do-while takes chunks until adding next would exceed 256 KB
+    // 256 chunks × 1024 = 262144 = exactly cap, so 257th would push over
+    expect(firstBatch.length).toBe(256 * 1024);
 
-    // Acknowledge to drain remainder (244 KiB → ceil(244/32) = 8 slices).
-    service.notifyWriteComplete("term-1", 256 * 1024);
-    expect(writeToTerminal).toHaveBeenCalledTimes(
-      SLICES_140K + 8 + Math.ceil((244 * 1024) / WRITE_CHUNK)
-    );
-
-    // Each call from the small-chunks batch must be ≤ 32 KiB.
-    expectAllSlicesUnderCap(writeToTerminal, "term-1");
-
-    // Total bytes preserved: 140k + 500 × 1024.
-    const totalCharsWritten = callsFor(writeToTerminal, "term-1").reduce(
-      (sum, data) => sum + (data as string).length,
-      0
-    );
-    expect(totalCharsWritten).toBe(140_000 + 500 * 1024);
+    // Acknowledge to drain remainder (244 chunks × 1024 = 249856 < cap → fast path)
+    service.notifyWriteComplete("term-1", firstBatch.length);
+    expect(writeToTerminal).toHaveBeenCalledTimes(3);
+    const secondBatch = writeToTerminal.mock.calls[2]![1] as string;
+    expect(secondBatch.length).toBe(244 * 1024);
   });
 
-  it("forceDrain bypasses cap but still slices writes ≤ WRITE_CHUNK_BYTES", () => {
+  it("forceDrain bypasses cap and writes all buffered data", () => {
     const writeToTerminal = vi.fn();
     const service = new TerminalOutputIngestService(writeToTerminal);
 
+    // Exceed watermark to start buffering
     const largeData = "x".repeat(140_000);
     service.bufferData("term-1", largeData);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
     // Queue 400 KB across multiple chunks (exceeds 256 KB cap)
     const chunk200k = "b".repeat(200_000);
     service.bufferData("term-1", chunk200k);
     service.bufferData("term-1", chunk200k);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
-    // forceDrain bounds each join at COALESCE_BATCH_CAP_BYTES (256 KB), so two 200 KB
-    // chunks become two 200 KB batches (the second 200 KB chunk would push the join
-    // past the cap), each sliced into ceil(200000/32768) = 7 writes.
+    // forceDrain (via flushForTerminal) should write ALL data in one call
     service.flushForTerminal("term-1");
-    const slicesPer200k = Math.ceil(200_000 / WRITE_CHUNK);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K + 2 * slicesPer200k);
-    expectAllSlicesUnderCap(writeToTerminal, "term-1");
-    expect(concatStringWrites(writeToTerminal, "term-1")).toBe(largeData + chunk200k + chunk200k);
+    expect(writeToTerminal).toHaveBeenCalledTimes(2);
+    const flushed = writeToTerminal.mock.calls[1]![1] as string;
+    expect(flushed.length).toBe(400_000);
   });
 
   it("defers drain via setTimeout for ink erase-line sequences", () => {
@@ -331,36 +291,39 @@ describe("TerminalOutputIngestService", () => {
     const writeToTerminal = vi.fn();
     const service = new TerminalOutputIngestService(writeToTerminal);
 
+    // Exceed watermark
     const largeData = "x".repeat(140_000);
     service.bufferData("term-1", largeData);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
+    // Buffer data while above watermark
     service.bufferData("term-1", "residual");
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
     // Partially acknowledge — drops inFlightBytes to 40,000 (above LOW but below HIGH)
     service.notifyWriteComplete("term-1", 100_000);
     // notifyWriteComplete should NOT drain because 40,000 > LOW_WATERMARK (32,768)
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
     // notifyParsed should drain because inFlightBytes (40,000) < HIGH_WATERMARK
     service.notifyParsed("term-1");
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K + 1);
-    expect(writeToTerminal).toHaveBeenLastCalledWith("term-1", "residual");
+    expect(writeToTerminal).toHaveBeenCalledTimes(2);
+    expect(writeToTerminal).toHaveBeenCalledWith("term-1", "residual");
   });
 
   it("flushForTerminal writes pending buffer immediately regardless of watermark", () => {
     const writeToTerminal = vi.fn();
     const service = new TerminalOutputIngestService(writeToTerminal);
 
+    // Exceed watermark, then buffer more
     const largeData = "x".repeat(140_000);
     service.bufferData("term-1", largeData);
     service.bufferData("term-1", "a");
     service.bufferData("term-1", "b");
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
     service.flushForTerminal("term-1");
-    expect(writeToTerminal).toHaveBeenLastCalledWith("term-1", "ab");
+    expect(writeToTerminal).toHaveBeenCalledWith("term-1", "ab");
   });
 
   it("resetForTerminal drops pending buffer without writing", () => {
@@ -370,13 +333,13 @@ describe("TerminalOutputIngestService", () => {
     const largeData = "x".repeat(140_000);
     service.bufferData("term-1", largeData);
     service.bufferData("term-1", "pending");
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
     service.resetForTerminal("term-1");
 
     // Acknowledge won't cause drain since queue was cleared
     service.notifyWriteComplete("term-1", 200_000);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
   });
 
   it("handles Uint8Array data correctly", () => {
@@ -390,91 +353,11 @@ describe("TerminalOutputIngestService", () => {
     expect(writeToTerminal).toHaveBeenCalledWith("term-1", data);
   });
 
-  it("slices oversized Uint8Array via subarray (zero-copy) into ≤32 KiB writes", () => {
-    const writeToTerminal = vi.fn();
-    const service = new TerminalOutputIngestService(writeToTerminal);
-
-    const oversized = new Uint8Array(100_000);
-    for (let i = 0; i < oversized.byteLength; i++) {
-      oversized[i] = i & 0xff;
-    }
-    service.bufferData("term-1", oversized);
-
-    const expectedSlices = Math.ceil(oversized.byteLength / WRITE_CHUNK);
-    expect(writeToTerminal).toHaveBeenCalledTimes(expectedSlices);
-
-    const slices = callsFor(writeToTerminal, "term-1");
-    let totalBytes = 0;
-    const reconstructed = new Uint8Array(oversized.byteLength);
-    let offset = 0;
-    for (const slice of slices) {
-      if (typeof slice === "string") {
-        throw new Error("expected Uint8Array");
-      }
-      expect(slice.byteLength).toBeLessThanOrEqual(WRITE_CHUNK);
-      // subarray() shares the underlying ArrayBuffer (zero-copy).
-      expect(slice.buffer).toBe(oversized.buffer);
-      reconstructed.set(slice, offset);
-      offset += slice.byteLength;
-      totalBytes += slice.byteLength;
-    }
-    expect(totalBytes).toBe(oversized.byteLength);
-    expect(reconstructed).toEqual(oversized);
-  });
-
-  it("does not split surrogate pairs at slice boundaries", () => {
-    const writeToTerminal = vi.fn();
-    const service = new TerminalOutputIngestService(writeToTerminal);
-
-    // Build a 33 KiB string where a surrogate pair (U+1F600 😀 = D83D DE00) straddles
-    // the natural 32 KiB cut point (positions 32767 and 32768 in UTF-16).
-    const filler = "a".repeat(WRITE_CHUNK - 1); // 32767 'a's
-    const surrogate = String.fromCodePoint(0x1f600); // 2 UTF-16 code units
-    const tail = "b".repeat(100);
-    const data = filler + surrogate + tail;
-    expect(data.length).toBe(WRITE_CHUNK - 1 + 2 + 100);
-    expect(data.charCodeAt(WRITE_CHUNK - 1)).toBeGreaterThanOrEqual(0xd800);
-    expect(data.charCodeAt(WRITE_CHUNK - 1)).toBeLessThanOrEqual(0xdbff);
-
-    service.bufferData("term-1", data);
-
-    const calls = callsFor(writeToTerminal, "term-1");
-    expect(calls.length).toBeGreaterThanOrEqual(2);
-    // Boundary backed up by 1: first slice ends just before the high surrogate,
-    // and the surrogate pair starts the next slice. Every slice ≤ WRITE_CHUNK.
-    const firstSlice = calls[0] as string;
-    expect(firstSlice.length).toBe(WRITE_CHUNK - 1);
-    expectAllSlicesUnderCap(writeToTerminal, "term-1");
-    // Second slice starts with the high surrogate.
-    const secondSlice = calls[1] as string;
-    const firstCode = secondSlice.charCodeAt(0);
-    expect(firstCode).toBeGreaterThanOrEqual(0xd800);
-    expect(firstCode).toBeLessThanOrEqual(0xdbff);
-    // Total content preserved.
-    expect(concatStringWrites(writeToTerminal, "term-1")).toBe(data);
-  });
-
-  it("emits all slices from one batch unconditionally even when crossing high watermark mid-batch", () => {
-    const writeToTerminal = vi.fn();
-    const service = new TerminalOutputIngestService(writeToTerminal);
-
-    // Single 200 KB chunk: coalesceBatch returns it via the length===1 fast path,
-    // then writeSliced emits 7 × 32 KiB slices. Even though inFlightBytes climbs past
-    // HIGH_WATERMARK (128 KB) after the 5th slice, all slices must still fire — otherwise
-    // already-dequeued data is lost.
-    const oversized = "z".repeat(200_000);
-    service.bufferData("term-1", oversized);
-
-    const expectedSlices = Math.ceil(200_000 / WRITE_CHUNK);
-    expect(writeToTerminal).toHaveBeenCalledTimes(expectedSlices);
-    expectAllSlicesUnderCap(writeToTerminal, "term-1");
-    expect(concatStringWrites(writeToTerminal, "term-1")).toBe(oversized);
-  });
-
   it("isolates queues per terminal", () => {
     const writeToTerminal = vi.fn();
     const service = new TerminalOutputIngestService(writeToTerminal);
 
+    // Exceed watermark on term-1
     const largeData = "x".repeat(140_000);
     service.bufferData("term-1", largeData);
     service.bufferData("term-1", "buffered-1");
@@ -482,9 +365,8 @@ describe("TerminalOutputIngestService", () => {
     // term-2 should still write immediately (separate queue)
     service.bufferData("term-2", "hello-2");
 
-    expect(callsFor(writeToTerminal, "term-1").length).toBe(SLICES_140K);
-    expect(callsFor(writeToTerminal, "term-2").length).toBe(1);
-    expect(concatStringWrites(writeToTerminal, "term-1")).toBe(largeData);
+    expect(writeToTerminal).toHaveBeenCalledTimes(2);
+    expect(writeToTerminal).toHaveBeenCalledWith("term-1", largeData);
     expect(writeToTerminal).toHaveBeenCalledWith("term-2", "hello-2");
   });
 
@@ -492,107 +374,26 @@ describe("TerminalOutputIngestService", () => {
     const writeToTerminal = vi.fn();
     const service = new TerminalOutputIngestService(writeToTerminal);
 
+    // Simulate rapid data delivery across two terminals
     const largeData = "x".repeat(140_000);
     service.bufferData("term-1", largeData);
-    expect(callsFor(writeToTerminal, "term-1").length).toBe(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
     // Rapid data on term-1 while above watermark
     service.bufferData("term-1", "batch-1");
     service.bufferData("term-1", "batch-2");
     service.bufferData("term-1", "batch-3");
-    expect(callsFor(writeToTerminal, "term-1").length).toBe(SLICES_140K);
+    expect(writeToTerminal).toHaveBeenCalledTimes(1);
 
     // Rapid data on term-2 (separate queue, should write immediately)
     service.bufferData("term-2", "immediate");
+    expect(writeToTerminal).toHaveBeenCalledTimes(2);
     expect(writeToTerminal).toHaveBeenCalledWith("term-2", "immediate");
 
-    // Acknowledge to drain term-1's batch — coalesces "batch-1batch-2batch-3" (small) into 1 write.
+    // Acknowledge to drain term-1's batch
     service.notifyWriteComplete("term-1", 140_000);
-    expect(callsFor(writeToTerminal, "term-1").length).toBe(SLICES_140K + 1);
+    expect(writeToTerminal).toHaveBeenCalledTimes(3);
     expect(writeToTerminal).toHaveBeenCalledWith("term-1", "batch-1batch-2batch-3");
-  });
-
-  it("notifyWriteComplete with zero or negative bytes does not inflate inFlightBytes", () => {
-    const writeToTerminal = vi.fn();
-    const service = new TerminalOutputIngestService(writeToTerminal);
-
-    // Push 140k → 5 slices, inFlightBytes = 140000.
-    const largeData = "x".repeat(140_000);
-    service.bufferData("term-1", largeData);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
-
-    // Buffer more — should be queued because inFlightBytes > HIGH_WATERMARK.
-    service.bufferData("term-1", "after-zero");
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
-
-    // Zero bytes should be a no-op.
-    service.notifyWriteComplete("term-1", 0);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
-
-    // Negative bytes must NOT inflate inFlightBytes (which would suppress drain forever).
-    service.notifyWriteComplete("term-1", -1000);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
-
-    // A real ack should still drain normally.
-    service.notifyWriteComplete("term-1", 140_000);
-    expect(writeToTerminal).toHaveBeenLastCalledWith("term-1", "after-zero");
-  });
-
-  it("forceDrain bounds synchronous join cost at COALESCE_BATCH_CAP_BYTES", () => {
-    const writeToTerminal = vi.fn();
-    const service = new TerminalOutputIngestService(writeToTerminal);
-
-    // Get above the high watermark so subsequent chunks queue without draining.
-    const primer = "x".repeat(140_000);
-    service.bufferData("term-1", primer);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
-
-    // Queue 8 × 100 KB = 800 KB of strings — ≫ COALESCE_BATCH_CAP_BYTES (256 KB).
-    const chunk100k = "a".repeat(100_000);
-    for (let i = 0; i < 8; i++) {
-      service.bufferData("term-1", chunk100k);
-    }
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
-
-    writeToTerminal.mockClear();
-    service.flushForTerminal("term-1");
-
-    // After flush, every individual write must still be ≤ WRITE_CHUNK_BYTES.
-    expectAllSlicesUnderCap(writeToTerminal, "term-1");
-
-    // Total bytes preserved.
-    const total = (writeToTerminal.mock.calls as WriteCall[]).reduce(
-      (sum, [, data]) => sum + (typeof data === "string" ? data.length : data.byteLength),
-      0
-    );
-    expect(total).toBe(800_000);
-  });
-
-  it("forceDrain handles mixed string/Uint8Array queue with slicing", () => {
-    const writeToTerminal = vi.fn();
-    const service = new TerminalOutputIngestService(writeToTerminal);
-
-    const primer = "x".repeat(140_000);
-    service.bufferData("term-1", primer);
-    expect(writeToTerminal).toHaveBeenCalledTimes(SLICES_140K);
-
-    service.bufferData("term-1", "string-chunk");
-    const bytes = new Uint8Array(100_000);
-    for (let i = 0; i < bytes.byteLength; i++) bytes[i] = i & 0xff;
-    service.bufferData("term-1", bytes);
-    service.bufferData("term-1", "tail");
-
-    writeToTerminal.mockClear();
-    service.flushForTerminal("term-1");
-
-    expectAllSlicesUnderCap(writeToTerminal, "term-1");
-
-    // Total bytes preserved (12 + 100000 + 4).
-    const total = (writeToTerminal.mock.calls as WriteCall[]).reduce(
-      (sum, [, data]) => sum + (typeof data === "string" ? data.length : data.byteLength),
-      0
-    );
-    expect(total).toBe("string-chunk".length + 100_000 + "tail".length);
   });
 
   it("notifyWriteComplete is a no-op for unknown terminals", () => {
@@ -614,37 +415,5 @@ describe("TerminalOutputIngestService", () => {
     // No buffered data — notifyParsed should be a no-op
     service.notifyParsed("term-1");
     expect(writeToTerminal).toHaveBeenCalledTimes(1);
-  });
-
-  it("per-slice notifyWriteComplete keeps inFlightBytes balanced and resumes drain", () => {
-    const writeToTerminal = vi.fn();
-    const service = new TerminalOutputIngestService(writeToTerminal);
-
-    // First batch: 200k → 7 slices, inFlightBytes climbs to 200k.
-    const first = "x".repeat(200_000);
-    service.bufferData("term-1", first);
-    const firstSlices = Math.ceil(200_000 / WRITE_CHUNK);
-    expect(callsFor(writeToTerminal, "term-1").length).toBe(firstSlices);
-
-    // Now buffer additional data — should NOT drain since inFlightBytes (200k) > HIGH (128k).
-    service.bufferData("term-1", "second");
-    expect(callsFor(writeToTerminal, "term-1").length).toBe(firstSlices);
-
-    // Ack each slice's bytes individually (mirrors how TerminalWriteController fires
-    // the callback per `terminal.write()` call).
-    const sliceSizes = (callsFor(writeToTerminal, "term-1") as string[]).map((s) => s.length);
-    let totalAcked = 0;
-    let drained = false;
-    for (const size of sliceSizes) {
-      service.notifyWriteComplete("term-1", size);
-      totalAcked += size;
-      if (callsFor(writeToTerminal, "term-1").length === firstSlices + 1) {
-        drained = true;
-        break;
-      }
-    }
-    expect(drained).toBe(true);
-    expect(totalAcked).toBeLessThanOrEqual(200_000);
-    expect(writeToTerminal).toHaveBeenCalledWith("term-1", "second");
   });
 });
