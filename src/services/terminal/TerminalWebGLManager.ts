@@ -1,7 +1,7 @@
 import type { WebglAddon as WebglAddonType } from "@xterm/addon-webgl";
 import type { IDisposable } from "@xterm/xterm";
 import { getMaxContexts, setMaxContexts as setConfiguredMaxContexts } from "./TerminalWebGLConfig";
-import type { ManagedTerminal } from "./types";
+import { WRITE_BURST_RECENCY_MS, type ManagedTerminal } from "./types";
 
 const WEBGL_DISABLED = import.meta.env.DAINTREE_DISABLE_WEBGL === "1";
 
@@ -104,6 +104,15 @@ export class TerminalWebGLManager {
   private hasLoggedSoftwareSkip = false;
   private lossTimestamps: number[] = [];
   private hasLoggedBreakerTrip = false;
+  // Pool-pressure diagnostics (Tier 0 — silent log). Eviction at a full pool is
+  // expected behaviour in 20–30 terminal tiled fleets and falls back seamlessly
+  // to the DOM renderer, so this is observable-only, not user-facing. Rate
+  // limited to one console.warn per minute, mirroring hasLoggedBreakerTrip.
+  private evictionCount = 0;
+  // -Infinity so the first eviction always crosses the interval and warns,
+  // independent of the absolute clock value (real epoch or a faked time of 0).
+  private lastEvictionWarnAt = Number.NEGATIVE_INFINITY;
+  private static readonly EVICTION_WARN_INTERVAL_MS = 60_000;
   // Queue of pending ensure requests: drained one-per-rAF so each context
   // allocation completes its GPU IPC roundtrip before the next is requested.
   private pendingEnsures = new Map<string, ManagedTerminal>();
@@ -312,9 +321,10 @@ export class TerminalWebGLManager {
     }
 
     if (this.pool.size >= getMaxContexts()) {
-      const evictId = this.lruOrder[0];
+      const evictId = this.pickEvictTarget();
       if (evictId) {
         this.doRelease(evictId);
+        this.recordEvictionForDiagnostics();
       }
     }
 
@@ -458,6 +468,89 @@ export class TerminalWebGLManager {
         );
         this.hasLoggedBreakerTrip = true;
       }
+    }
+  }
+
+  // Eviction priority scorer. Returns the pool id that should give up its
+  // WebGL slot first under pool pressure. Lower tier = evict sooner; LRU
+  // position breaks ties within a tier so existing recency semantics survive.
+  //
+  // Tiers (most → least evictable):
+  //   0  done/idle (no agent, or completed/exited/idle) — DOM renderer is fine
+  //   1  waiting, unfocused, not recently writing — idle between prompts
+  //   2  working but drained (pendingWrites 0, no recent write), unfocused
+  //   3  waiting + in an active write burst (lastWriteAt within window)
+  //   4  focused — user is looking at it; glyph quality matters
+  //   5  working with queued writes — actively streaming output
+  //   6  focused + directing — user typing into a live agent; never evict first
+  //
+  // Reads the live `managed` ref on each pool entry (mutated in place by the
+  // write and agent-state controllers), so no cross-controller coupling.
+  private pickEvictTarget(): string | undefined {
+    const lruIndex = new Map<string, number>();
+    for (let i = 0; i < this.lruOrder.length; i++) {
+      lruIndex.set(this.lruOrder[i]!, i);
+    }
+
+    const now = Date.now();
+    let bestId: string | undefined;
+    let bestTier = Number.POSITIVE_INFINITY;
+    let bestLru = Number.POSITIVE_INFINITY;
+
+    for (const [id, entry] of this.pool) {
+      const m = entry.managed;
+      const state = m.agentState ?? "idle";
+      const focused = m.isFocused === true;
+      const pending = m.pendingWrites ?? 0;
+      const recentlyWriting =
+        m.lastWriteAt !== undefined && now - m.lastWriteAt < WRITE_BURST_RECENCY_MS;
+
+      let tier: number;
+      if (state === "directing" && focused) {
+        tier = 6;
+      } else if (state === "working" && pending > 0) {
+        tier = 5;
+      } else if (focused) {
+        tier = 4;
+      } else if (recentlyWriting && state === "waiting") {
+        // Burst protection only applies to "waiting" — an agent between prompts
+        // that just streamed output. A recent lastWriteAt on a done state
+        // (idle/completed/exited) is a final flush, not an ongoing burst, so
+        // those fall through to tier 0 below.
+        tier = 3;
+      } else if (state === "working" && pending === 0 && !recentlyWriting) {
+        tier = 2;
+      } else if (state === "waiting" && !recentlyWriting) {
+        tier = 1;
+      } else if (state === "idle" || state === "completed" || state === "exited") {
+        tier = 0;
+      } else {
+        // "waiting" while recently writing, or any unmapped state — keep it
+        // above the cleanly-idle tier but below focused/active work.
+        tier = 2;
+      }
+
+      const lru = lruIndex.get(id) ?? Number.POSITIVE_INFINITY;
+      if (tier < bestTier || (tier === bestTier && lru < bestLru)) {
+        bestTier = tier;
+        bestLru = lru;
+        bestId = id;
+      }
+    }
+
+    // Fall back to the LRU front if the pool/LRU ever desynchronise.
+    return bestId ?? this.lruOrder[0]!;
+  }
+
+  private recordEvictionForDiagnostics(): void {
+    this.evictionCount += 1;
+    const now = Date.now();
+    if (now - this.lastEvictionWarnAt > TerminalWebGLManager.EVICTION_WARN_INTERVAL_MS) {
+      console.warn(
+        `[TerminalWebGLManager] Pool pressure: evicted ${this.evictionCount} WebGL context(s) since last warning (pool=${this.pool.size}/${getMaxContexts()})`
+      );
+      this.evictionCount = 0;
+      this.lastEvictionWarnAt = now;
     }
   }
 
