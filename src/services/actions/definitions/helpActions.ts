@@ -87,7 +87,7 @@ export function registerHelpActions(actions: ActionRegistry, callbacks: ActionCa
         notify({
           type: "error",
           title: "Daintree Assistant",
-          message: "Project state is still loading. Try again.",
+          message: "Project state is still loading.",
         });
         return;
       }

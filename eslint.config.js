@@ -384,7 +384,11 @@ export default tseslint.config(
           // `// eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok`
           // so the deliberate choice is documented. Direct-child combinator
           // inside :has() matches the priority:"low" rule pattern above and
-          // prevents false positives from nested sub-objects. See #8097.
+          // prevents false positives from nested sub-objects. Known gap: a
+          // spread-only action (`notify({ type:"error", ...recovery })` where
+          // `recovery` includes `action`) will false-positive — refactor to
+          // an inline `action:` property at the call site if you hit it. See
+          // #8097.
           selector:
             "CallExpression:matches([callee.name=/^(notify|addNotification)$/], [callee.property.name=/^(notify|addNotification)$/]) > ObjectExpression:has(> Property[key.name='type'][value.value='error']):not(:has(> Property[key.name='action'])):not(:has(> Property[key.name='actions']))",
           message:
