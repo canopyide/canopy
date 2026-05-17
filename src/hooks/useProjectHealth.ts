@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { ProjectHealthData } from "../types";
 import { githubClient, projectClient } from "@/clients";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { usePollingLifecycle } from "@/hooks/usePollingLifecycle";
 
 const ACTIVE_POLL_INTERVAL = 30 * 1000;
 const IDLE_POLL_INTERVAL = 5 * 60 * 1000;
@@ -21,32 +22,19 @@ export function useProjectHealth(): UseProjectHealthReturn {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
 
-  const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const isVisibleRef = useRef(!document.hidden);
   const mountedRef = useRef(true);
   const lastErrorRef = useRef<string | null>(null);
-  const inFlightRef = useRef(false);
-  const queuedFetchRef = useRef<{ pending: boolean; force: boolean }>({
-    pending: false,
-    force: false,
-  });
-  const activeFetchIdRef = useRef(0);
-  const invalidatedFetchIdRef = useRef<number | null>(null);
   const projectPathRef = useRef<string | null>(null);
 
-  const fetchHealth = useCallback(async (force = false) => {
-    if (inFlightRef.current) {
-      queuedFetchRef.current.pending = true;
-      queuedFetchRef.current.force = queuedFetchRef.current.force || force;
-      invalidatedFetchIdRef.current = activeFetchIdRef.current;
-      return;
-    }
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
-    try {
-      inFlightRef.current = true;
-      activeFetchIdRef.current += 1;
-      const fetchId = activeFetchIdRef.current;
-
+  const polling = usePollingLifecycle({
+    fetchFn: async ({ force, isInvalidated }) => {
       const project = await projectClient.getCurrent();
       if (!project) {
         if (mountedRef.current) {
@@ -59,18 +47,14 @@ export function useProjectHealth(): UseProjectHealthReturn {
         return;
       }
 
-      setLoading(true);
+      if (mountedRef.current) setLoading(true);
 
-      const result = await githubClient.getProjectHealth(project.path, force);
+      try {
+        const result = await githubClient.getProjectHealth(project.path, force);
 
-      if (mountedRef.current) {
-        if (invalidatedFetchIdRef.current === fetchId) {
-          return;
-        }
-
-        if (projectPathRef.current !== null && projectPathRef.current !== project.path) {
-          return;
-        }
+        if (!mountedRef.current) return;
+        if (isInvalidated()) return;
+        if (projectPathRef.current !== null && projectPathRef.current !== project.path) return;
 
         projectPathRef.current = project.path;
 
@@ -84,144 +68,33 @@ export function useProjectHealth(): UseProjectHealthReturn {
           setError(null);
           lastErrorRef.current = null;
         }
-      }
-    } catch (err) {
-      if (mountedRef.current) {
-        const errorMessage = formatErrorMessage(err, "Failed to fetch project health");
-        setError(errorMessage);
-        lastErrorRef.current = errorMessage;
-      }
-    } finally {
-      if (mountedRef.current) {
-        setLoading(false);
-      }
-      inFlightRef.current = false;
-      if (mountedRef.current && queuedFetchRef.current.pending) {
-        const queuedForce = queuedFetchRef.current.force;
-        queuedFetchRef.current = { pending: false, force: false };
-        void fetchHealth(queuedForce);
-      }
-    }
-  }, []);
-
-  const scheduleNextPoll = useCallback(() => {
-    if (pollTimerRef.current) {
-      clearTimeout(pollTimerRef.current);
-    }
-
-    let interval = isVisibleRef.current ? ACTIVE_POLL_INTERVAL : IDLE_POLL_INTERVAL;
-    if (lastErrorRef.current) {
-      interval = ERROR_BACKOFF_INTERVAL;
-    }
-
-    pollTimerRef.current = setTimeout(() => {
-      fetchHealth().then(() => {
+      } catch (err) {
         if (mountedRef.current) {
-          scheduleNextPoll();
+          const errorMessage = formatErrorMessage(err, "Failed to fetch project health");
+          setError(errorMessage);
+          lastErrorRef.current = errorMessage;
         }
-      });
-    }, interval);
-  }, [fetchHealth]);
-
-  const refresh = useCallback(
-    async (options?: { force?: boolean }) => {
-      if (pollTimerRef.current) {
-        clearTimeout(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-      await fetchHealth(options?.force ?? false);
-      if (mountedRef.current) {
-        scheduleNextPoll();
+      } finally {
+        if (mountedRef.current) setLoading(false);
       }
     },
-    [fetchHealth, scheduleNextPoll]
-  );
-
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      isVisibleRef.current = !document.hidden;
-
-      if (pollTimerRef.current) {
-        clearTimeout(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-
-      if (isVisibleRef.current) {
-        fetchHealth().then(() => {
-          if (mountedRef.current) {
-            scheduleNextPoll();
-          }
-        });
-      } else {
-        scheduleNextPoll();
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [fetchHealth, scheduleNextPoll]);
-
-  useEffect(() => {
-    mountedRef.current = true;
-
-    return () => {
-      mountedRef.current = false;
-      queuedFetchRef.current = { pending: false, force: false };
-      invalidatedFetchIdRef.current = null;
-      if (pollTimerRef.current) {
-        clearTimeout(pollTimerRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    fetchHealth().then(() => {
-      if (mountedRef.current) {
-        scheduleNextPoll();
-      }
-    });
-  }, [fetchHealth, scheduleNextPoll]);
-
-  useEffect(() => {
-    const handleSidebarRefresh = () => {
-      void refresh({ force: true });
-    };
-    window.addEventListener("daintree:refresh-sidebar", handleSidebarRefresh);
-    return () => {
-      window.removeEventListener("daintree:refresh-sidebar", handleSidebarRefresh);
-    };
-  }, [refresh]);
-
-  useEffect(() => {
-    const cleanup = projectClient.onSwitch(() => {
-      if (pollTimerRef.current) {
-        clearTimeout(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-
+    calculateNextInterval: ({ isVisible }) => {
+      if (lastErrorRef.current) return ERROR_BACKOFF_INTERVAL;
+      return isVisible ? ACTIVE_POLL_INTERVAL : IDLE_POLL_INTERVAL;
+    },
+    onProjectSwitch: () => {
+      if (!mountedRef.current) return;
       projectPathRef.current = null;
-
       setHealth(null);
       setLastUpdated(null);
-
-      fetchHealth().then(() => {
-        if (mountedRef.current) {
-          scheduleNextPoll();
-        }
-      });
-    });
-
-    return cleanup;
-  }, [fetchHealth, scheduleNextPoll]);
+    },
+  });
 
   return {
     health,
     loading,
     error,
     lastUpdated,
-    refresh,
+    refresh: polling.refresh,
   };
 }
