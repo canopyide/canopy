@@ -169,6 +169,18 @@ describe("CommitListItem", () => {
     expect(container.querySelector(".grid.transition-\\[grid-template-rows\\]")).toBeNull();
   });
 
+  it("collapsed body region is aria-hidden", () => {
+    const { container } = render(<CommitListItem commit={baseCommit} isExpanded={false} />);
+    const region = container.querySelector(".grid.transition-\\[grid-template-rows\\]");
+    expect(region?.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("expanded body region is not aria-hidden", () => {
+    const { container } = render(<CommitListItem commit={baseCommit} isExpanded />);
+    const region = container.querySelector(".grid.transition-\\[grid-template-rows\\]");
+    expect(region?.getAttribute("aria-hidden")).toBe("false");
+  });
+
   it("hash copy button stops propagation so row toggle does not fire", async () => {
     const onToggle = vi.fn();
     render(<CommitListItem commit={baseCommit} onToggle={onToggle} />);

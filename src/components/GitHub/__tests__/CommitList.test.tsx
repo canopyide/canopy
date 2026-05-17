@@ -142,6 +142,79 @@ describe("CommitList Enter key handling", () => {
     expect(option?.hasAttribute("aria-expanded")).toBe(false);
   });
 
+  it("Load More append preserves existing expansions", async () => {
+    dispatchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        result: { items: [commitWithBody], hasMore: true },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        result: { items: [commitNoBody], hasMore: false },
+      });
+
+    const { container } = render(<CommitList projectPath="/tmp/repo" />);
+
+    await waitFor(() => {
+      expect(container.querySelectorAll("[role='option']").length).toBe(1);
+    });
+
+    const input = container.querySelector("input[role='combobox']");
+    expect(input).not.toBeNull();
+    if (!input) return;
+
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+    });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+
+    const firstOption = container.querySelector("[role='option']");
+    expect(firstOption?.getAttribute("aria-expanded")).toBe("true");
+
+    const loadMore = container.querySelector("#commit-load-more");
+    expect(loadMore).not.toBeNull();
+
+    await act(async () => {
+      fireEvent.click(loadMore!);
+    });
+
+    await waitFor(() => {
+      expect(container.querySelectorAll("[role='option']").length).toBe(2);
+    });
+
+    const firstOptionAfter = container.querySelectorAll("[role='option']")[0];
+    expect(firstOptionAfter?.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("Enter on no-body commit with missing clipboard does not crash", async () => {
+    arrangeDispatchSuccess([commitNoBody]);
+    Object.defineProperty(navigator, "clipboard", {
+      value: undefined,
+      writable: true,
+      configurable: true,
+    });
+
+    const { container } = render(<CommitList projectPath="/tmp/repo" />);
+    await waitFor(() => {
+      expect(container.querySelectorAll("[role='option']").length).toBe(1);
+    });
+
+    const input = container.querySelector("input[role='combobox']");
+    expect(input).not.toBeNull();
+    if (!input) return;
+
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+    });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+
+    // No crash, no unhandled rejection — passes if we reach here.
+  });
+
   it("Enter toggles expansion off when pressed twice on the same commit", async () => {
     arrangeDispatchSuccess([commitWithBody]);
     const { container } = render(<CommitList projectPath="/tmp/repo" />);

@@ -169,6 +169,7 @@ export function CommitListItem({
 
           {hasBody && (
             <div
+              aria-hidden={!isExpanded}
               className={cn(
                 "grid transition-[grid-template-rows] duration-150 ease-out",
                 isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"

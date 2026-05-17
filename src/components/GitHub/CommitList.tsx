@@ -15,6 +15,7 @@ import type { GitCommit, GitCommitListResponse } from "@shared/types/github";
 import { actionService } from "@/services/ActionService";
 import { CommitListSkeleton } from "./GitHubDropdownSkeletons";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { logError } from "@/utils/logger";
 
 interface CommitListProps {
   projectPath: string;
@@ -61,8 +62,11 @@ export function CommitList({ projectPath, branch, onClose, initialCount }: Commi
 
   useEffect(() => {
     setCursorIndex(-1);
-    setExpandedHashes(new Set());
   }, [data]);
+
+  useEffect(() => {
+    setExpandedHashes(new Set());
+  }, [debouncedSearch, projectPath, branch]);
 
   useEffect(() => {
     if (cursorIndex >= 0) {
@@ -179,8 +183,10 @@ export function CommitList({ projectPath, branch, onClose, initialCount }: Commi
           } else if (activeCommit) {
             if (activeCommit.body?.trim()) {
               toggleCommitExpanded(activeCommit.hash);
-            } else {
-              void navigator.clipboard.writeText(activeCommit.hash);
+            } else if (navigator.clipboard) {
+              navigator.clipboard.writeText(activeCommit.hash).catch((error: unknown) => {
+                logError("Failed to copy commit hash", error);
+              });
             }
           }
           break;
