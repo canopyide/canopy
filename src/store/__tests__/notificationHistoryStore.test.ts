@@ -725,12 +725,23 @@ describe("notificationHistorySlice", () => {
       const id = getState().addEntry({ type: "info", message: "live" });
       getState().archiveEntry(id);
       expect(getState().unreadCount).toBe(0);
-      // markUnseenAsToast checks `!entry.seenAsToast` first; since archive
-      // already set seenAsToast to true, this is a regular re-evict path.
+      // markUnseenAsToast is a no-op on archived entries — see the guard in
+      // the slice. Asserting unreadCount stays 0 regardless.
       getState().markUnseenAsToast(id);
-      // unreadCount must still exclude the archived entry even though it's
-      // now seenAsToast=false again.
       expect(getState().unreadCount).toBe(0);
+    });
+
+    it("markUnseenAsToast on archived entry is a no-op (no eviction count tick)", () => {
+      const id = getState().addEntry({ type: "info", message: "seen", seenAsToast: true });
+      getState().archiveEntry(id);
+      expect(getState().evictedToInboxCount).toBe(0);
+      const beforeEntry = getState().entries[0];
+      getState().markUnseenAsToast(id);
+      // Archived entry survives unmodified; evicted counter does not tick.
+      const afterEntry = getState().entries[0];
+      expect(afterEntry).toBe(beforeEntry!);
+      expect(afterEntry!.seenAsToast).toBe(true);
+      expect(getState().evictedToInboxCount).toBe(0);
     });
 
     it("archiveByCorrelationId archives all non-archived entries in the thread", () => {
@@ -840,6 +851,45 @@ describe("notificationHistorySlice", () => {
       const errId = getState().entries[0]!.id;
       getState().addEntry({ type: "success", message: "Reconnected", supersedeKey: key });
       expect(getState().entries.find((e) => e.id === errId)!.archivedAt).not.toBeNull();
+    });
+
+    it("supersedeKey picks the newest live match when two priors share the key", () => {
+      // Normal addEntry auto-archives the prior on every same-key write, so
+      // two live priors only coexist via direct seeding (e.g., from a test or
+      // a future restore-from-disk path). The find() must still pick the
+      // newest (index 0) so the lookup is robust against that shape.
+      const key = "terminal.A.fallback";
+      useNotificationHistoryStore.setState({
+        entries: [
+          {
+            id: "b-newer",
+            type: "error",
+            message: "newer",
+            timestamp: Date.now(),
+            seenAsToast: false,
+            summarized: false,
+            countable: true,
+            archivedAt: null,
+            supersedeKey: key,
+          },
+          {
+            id: "a-older",
+            type: "error",
+            message: "older",
+            timestamp: Date.now() - 1000,
+            seenAsToast: false,
+            summarized: false,
+            countable: true,
+            archivedAt: null,
+            supersedeKey: key,
+          },
+        ],
+        unreadCount: 2,
+      });
+      getState().addEntry({ type: "success", message: "resolve", supersedeKey: key });
+      const entries = getState().entries;
+      expect(entries.find((e) => e.id === "b-newer")!.archivedAt).not.toBeNull();
+      expect(entries.find((e) => e.id === "a-older")!.archivedAt).toBeNull();
     });
 
     it("supersedeKey stores the key on the new entry for future archival", () => {

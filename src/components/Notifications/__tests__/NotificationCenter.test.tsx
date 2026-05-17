@@ -2399,4 +2399,67 @@ describe("archived tab and 'e' archive keybinding", () => {
     render(<NotificationCenter open onClose={vi.fn()} />);
     expect(screen.queryByRole("button", { name: "Archived" })).toBeNull();
   });
+
+  it("'e' on an archived thread does not destroy live entries sharing the correlationId", async () => {
+    setEntries([
+      makeEntry({
+        id: "live",
+        message: "Active partner",
+        correlationId: "panel-1",
+        archivedAt: null,
+        seenAsToast: false,
+      }),
+      makeEntry({
+        id: "arch-a",
+        message: "Done A",
+        correlationId: "panel-1",
+        archivedAt: Date.now(),
+      }),
+      makeEntry({
+        id: "arch-b",
+        message: "Done B",
+        correlationId: "panel-1",
+        archivedAt: Date.now(),
+      }),
+    ]);
+    const { container } = render(<NotificationCenter open onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Archived" }));
+    const list = container.querySelector('[role="list"]') as HTMLElement;
+
+    act(() => {
+      getRows(container)[0]?.focus();
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(list, { key: "e" });
+    });
+
+    // The live entry must survive — pressing 'e' on the archived thread must
+    // not call dismissByCorrelationId across the correlationId boundary.
+    const entries = useNotificationHistoryStore.getState().entries;
+    expect(entries.find((e) => e.id === "live")).not.toBeUndefined();
+  });
+
+  it("Mark all read excludes archived entries from its undo set", () => {
+    setEntries([
+      makeEntry({ id: "live-unread", message: "Live unread", seenAsToast: false }),
+      makeEntry({
+        id: "archived-unread",
+        message: "Archived unread",
+        seenAsToast: false,
+        archivedAt: Date.now(),
+      }),
+    ]);
+    render(<NotificationCenter open onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark all read" }));
+    const archived = useNotificationHistoryStore
+      .getState()
+      .entries.find((e) => e.id === "archived-unread");
+    // Archived entry's seenAsToast must stay false — it's done, not unread.
+    expect(archived!.seenAsToast).toBe(false);
+    // The toast message should report only the live unread count.
+    expect(vi.mocked(notifyLib.notify)).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Marked 1 as read" })
+    );
+  });
 });

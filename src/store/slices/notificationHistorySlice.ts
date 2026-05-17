@@ -156,7 +156,11 @@ export const useNotificationHistoryStore = create<NotificationHistoryState>((set
   markUnseenAsToast: (id, options) =>
     set((state) => {
       const entry = state.entries.find((e) => e.id === id);
-      if (!entry || !entry.seenAsToast) return state;
+      // Archived entries are done — never re-evict them into the unread/
+      // overflow path. Without this guard a late toast expiry would flip
+      // seenAsToast back to false on an archived entry and inflate
+      // evictedToInboxCount even though unreadCount stays correct.
+      if (!entry || !entry.seenAsToast || entry.archivedAt) return state;
       const entries = state.entries.map((e) => (e.id === id ? { ...e, seenAsToast: false } : e));
       return {
         entries,

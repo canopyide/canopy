@@ -466,17 +466,6 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
     void actionService.dispatch(action.actionId as ActionId, action.actionArgs);
   }, []);
 
-  const dismissRow = useCallback(
-    (row: FlatRow) => {
-      if (row.isThread && row.correlationId) {
-        dismissByCorrelationId(row.correlationId);
-      } else {
-        dismissEntry(row.entryId);
-      }
-    },
-    [dismissByCorrelationId, dismissEntry]
-  );
-
   const archiveRow = useCallback(
     (row: FlatRow) => {
       if (row.isThread && row.correlationId) {
@@ -538,10 +527,11 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
           e.preventDefault();
           const row = flatRows[activeIndex];
           if (!row) return;
-          // In the Archived tab, 'e' acts as a permanent delete — there's no
-          // re-archive to perform and users still need a one-key purge path.
+          // In the Archived tab, 'e' permanently deletes the visible (head)
+          // entry. Do NOT route threads through dismissByCorrelationId — a
+          // live entry sharing the same correlationId would also be destroyed.
           if (filter === "archived") {
-            dismissRow(row);
+            dismissEntry(row.entryId);
           } else {
             archiveRow(row);
           }
@@ -558,11 +548,13 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
           return;
       }
     },
-    [rowCount, flatRows, moveFocusTo, dismissRow, archiveRow, dispatchPrimaryAction, filter]
+    [rowCount, flatRows, moveFocusTo, dismissEntry, archiveRow, dispatchPrimaryAction, filter]
   );
 
   const handleMarkAllRead = () => {
-    const ids = entries.filter((e) => !e.seenAsToast).map((e) => e.id);
+    // Archived entries are already done; they must never appear in the
+    // mark-all-read undo set or the "Marked N as read" count.
+    const ids = entries.filter((e) => !e.seenAsToast && !e.archivedAt).map((e) => e.id);
     if (filter === "unread") {
       setFrozenUnreadIds(new Set(ids));
     }
