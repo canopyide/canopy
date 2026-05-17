@@ -458,6 +458,48 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
     expect(store.getState().worktrees.get("wt-1")?.prCiStatus).toBe("SUCCESS");
   });
 
+  it("drops a stale pr-detected that arrives after a worktree-update changed the branch", async () => {
+    // End-to-end race scenario: worktree starts on feature/foo, a PR lookup
+    // was queued against it, the worktree switches to feature/bar (arrives as
+    // a worktree-update snapshot), then the stale pr-detected from the
+    // feature/foo lookup completes and tries to land on the now-bar row.
+    const store = await renderProvider();
+    act(() => {
+      store
+        .getState()
+        .applyUpdate(
+          makeWorktree("wt-1", { branch: "feature/foo" }),
+          store.getState().nextVersion()
+        );
+    });
+
+    // Worktree-update arrives reflecting the branch change to feature/bar.
+    act(() => {
+      emit("worktree-update", {
+        type: "worktree-update",
+        worktree: makeWorktree("wt-1", { branch: "feature/bar", prCiStatus: undefined }),
+      });
+    });
+
+    // The stale pr-detected from the feature/foo lookup arrives late.
+    act(() => {
+      emit("pr-detected", {
+        type: "pr-detected",
+        worktreeId: "wt-1",
+        prNumber: 999,
+        prUrl: "https://example.test/pr/999",
+        prState: "open",
+        prCiStatus: "FAILURE",
+        branchName: "feature/foo",
+      });
+    });
+
+    const wt = store.getState().worktrees.get("wt-1");
+    expect(wt?.branch).toBe("feature/bar");
+    expect(wt?.prNumber).not.toBe(999);
+    expect(wt?.prCiStatus).not.toBe("FAILURE");
+  });
+
   it("applies the overlay when the worktree has no branch (detached HEAD)", async () => {
     const store = await renderProvider();
     act(() => {
@@ -525,17 +567,15 @@ describe("WorktreeStoreProvider pr-cleared handler", () => {
   it("drops the clear when event.branchName mismatches the worktree's current branch", async () => {
     const store = await renderProvider();
     act(() => {
-      store
-        .getState()
-        .applyUpdate(
-          makeWorktree("wt-1", {
-            branch: "feature/bar",
-            prNumber: 42,
-            prUrl: "https://example.test/pr/42",
-            prState: "open",
-          }),
-          store.getState().nextVersion()
-        );
+      store.getState().applyUpdate(
+        makeWorktree("wt-1", {
+          branch: "feature/bar",
+          prNumber: 42,
+          prUrl: "https://example.test/pr/42",
+          prState: "open",
+        }),
+        store.getState().nextVersion()
+      );
     });
 
     act(() => {
@@ -555,17 +595,15 @@ describe("WorktreeStoreProvider pr-cleared handler", () => {
   it("applies the clear when event.branchName matches the worktree's current branch", async () => {
     const store = await renderProvider();
     act(() => {
-      store
-        .getState()
-        .applyUpdate(
-          makeWorktree("wt-1", {
-            branch: "feature/foo",
-            prNumber: 42,
-            prUrl: "https://example.test/pr/42",
-            prState: "open",
-          }),
-          store.getState().nextVersion()
-        );
+      store.getState().applyUpdate(
+        makeWorktree("wt-1", {
+          branch: "feature/foo",
+          prNumber: 42,
+          prUrl: "https://example.test/pr/42",
+          prState: "open",
+        }),
+        store.getState().nextVersion()
+      );
     });
 
     act(() => {
@@ -602,22 +640,74 @@ describe("WorktreeStoreProvider pr-cleared handler", () => {
 
     expect(store.getState().worktrees.get("wt-1")?.prNumber).toBeUndefined();
   });
+
+  it("clears prCiStatus alongside the PR fields (no orphaned CI rollup)", async () => {
+    const store = await renderProvider();
+    act(() => {
+      store
+        .getState()
+        .applyUpdate(
+          makeWorktree("wt-1", { branch: "feature/foo", prNumber: 42, prCiStatus: "FAILURE" }),
+          store.getState().nextVersion()
+        );
+    });
+
+    act(() => {
+      emit("pr-cleared", {
+        type: "pr-cleared",
+        worktreeId: "wt-1",
+        branchName: "feature/foo",
+      });
+    });
+
+    const wt = store.getState().worktrees.get("wt-1");
+    expect(wt?.prNumber).toBeUndefined();
+    expect(wt?.prCiStatus).toBeUndefined();
+  });
+
+  it("drops a stale pr-cleared after a multi-hop branch switch (foo → bar → baz)", async () => {
+    const store = await renderProvider();
+    // Start on baz with a valid PR (the survivor)
+    act(() => {
+      store.getState().applyUpdate(
+        makeWorktree("wt-1", {
+          branch: "feature/baz",
+          prNumber: 999,
+          prUrl: "https://example.test/pr/999",
+          prState: "open",
+          prCiStatus: "SUCCESS",
+        }),
+        store.getState().nextVersion()
+      );
+    });
+
+    // Stale clear arrives from the long-ago `foo` lookup
+    act(() => {
+      emit("pr-cleared", {
+        type: "pr-cleared",
+        worktreeId: "wt-1",
+        branchName: "feature/foo",
+      });
+    });
+
+    const wt = store.getState().worktrees.get("wt-1");
+    expect(wt?.prNumber).toBe(999);
+    expect(wt?.prCiStatus).toBe("SUCCESS");
+  });
 });
 
 describe("WorktreeStoreProvider issue-detected handler", () => {
   it("drops the overlay when event.branchName mismatches the worktree's current branch", async () => {
     const store = await renderProvider();
     act(() => {
-      store
-        .getState()
-        .applyUpdate(
-          makeWorktree("wt-1", {
-            branch: "feature/bar",
-            issueNumber: 100,
-            issueTitle: "Old issue",
-          }),
-          store.getState().nextVersion()
-        );
+      store.getState().applyUpdate(
+        makeWorktree("wt-1", {
+          branch: "feature/bar",
+          issueNumber: 100,
+          issueTitle: "Old issue",
+        }),
+        store.getState().nextVersion()
+      );
     });
 
     act(() => {

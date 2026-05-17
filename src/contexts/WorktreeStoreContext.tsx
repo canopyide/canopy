@@ -267,12 +267,17 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
         const existing = worktrees.get(event.worktreeId);
         if (!existing) return;
         if (!branchesMatch(event.branchName, existing.branch)) return;
+        // Mirror the host: clearing the PR drops the CI rollup too. Without
+        // this, an early-startup window where monitor.hasInitialStatus is
+        // false would skip the worktree-update path and leave prCiStatus
+        // hanging without an associated PR.
         store.getState().applyUpdate(
           {
             ...existing,
             prNumber: undefined,
             prUrl: undefined,
             prState: undefined,
+            prCiStatus: undefined,
             prTitle: undefined,
             prLastUpdatedAt: undefined,
             issueLastUpdatedAt: undefined,

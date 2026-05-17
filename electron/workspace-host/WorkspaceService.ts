@@ -132,6 +132,17 @@ export class WorkspaceService {
       onPRDetected: (worktreeId, data) => {
         const monitor = this.monitors.get(worktreeId);
         if (!monitor) return;
+        // Drop stale overlays whose lookup branch no longer matches the
+        // monitor's current branch. Without this, monitor.setPRInfo +
+        // emitUpdate would bake the stale PR into the worktree-update
+        // snapshot — bypassing the renderer's branch guard (#8074).
+        if (
+          data.branchName !== undefined &&
+          monitor.branch !== undefined &&
+          monitor.branch !== data.branchName
+        ) {
+          return;
+        }
 
         monitor.setPRInfo({
           prNumber: data.prNumber,
@@ -165,6 +176,17 @@ export class WorkspaceService {
       onPRCleared: (worktreeId, data) => {
         const monitor = this.monitors.get(worktreeId);
         if (!monitor) return;
+        // Drop stale clears whose lookup branch no longer matches the
+        // monitor's current branch — see #8074. Same bypass concern as
+        // onPRDetected: emitUpdate would otherwise clear the new branch's
+        // valid PR via the worktree-update snapshot.
+        if (
+          data.branchName !== undefined &&
+          monitor.branch !== undefined &&
+          monitor.branch !== data.branchName
+        ) {
+          return;
+        }
 
         monitor.clearPRInfo();
         if (monitor.hasInitialStatus) {
@@ -180,6 +202,16 @@ export class WorkspaceService {
       onIssueDetected: (worktreeId, data) => {
         const monitor = this.monitors.get(worktreeId);
         if (!monitor) return;
+        // Drop stale overlays whose lookup branch no longer matches the
+        // monitor's current branch — see #8074. emitUpdate would otherwise
+        // carry the stale issue title into the worktree-update snapshot.
+        if (
+          data.branchName !== undefined &&
+          monitor.branch !== undefined &&
+          monitor.branch !== data.branchName
+        ) {
+          return;
+        }
 
         monitor.setIssueTitle(data.issueTitle);
         if (data.issueLastUpdatedAt !== undefined) {
