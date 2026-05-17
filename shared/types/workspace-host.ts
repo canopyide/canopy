@@ -410,8 +410,15 @@ export type WorkspaceHostEvent =
       issueTitle?: string;
       prLastUpdatedAt?: number;
       issueLastUpdatedAt?: number;
+      /** Branch the lookup was initiated against — receiver drops the overlay if the worktree's branch has since changed. */
+      branchName?: string;
     }
-  | { type: "pr-cleared"; worktreeId: string }
+  | {
+      type: "pr-cleared";
+      worktreeId: string;
+      /** Branch the clear was initiated against — receiver drops the overlay if the worktree's branch has since changed. */
+      branchName?: string;
+    }
   // Issue events
   | {
       type: "issue-detected";
@@ -419,6 +426,8 @@ export type WorkspaceHostEvent =
       issueNumber: number;
       issueTitle: string;
       issueLastUpdatedAt?: number;
+      /** Branch the lookup was initiated against — receiver drops the overlay if the worktree's branch has since changed. */
+      branchName?: string;
     }
   | {
       type: "issue-not-found";

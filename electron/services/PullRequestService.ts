@@ -146,7 +146,14 @@ class PullRequestService {
       this.resolvedWorktrees.delete(state.worktreeId);
       this.detectedPRs.delete(state.worktreeId);
 
-      events.emit("sys:pr:cleared", { worktreeId: state.worktreeId, timestamp: Date.now() });
+      // Tag the clear with the OLD branch so the renderer drops it if the
+      // worktree's branch has since moved on again — the clear is only valid
+      // for the branch identity at the time it was decided.
+      events.emit("sys:pr:cleared", {
+        worktreeId: state.worktreeId,
+        branchName: currentContext.branchName,
+        timestamp: Date.now(),
+      });
     }
 
     if (!shouldTrack) {
@@ -166,11 +173,12 @@ class PullRequestService {
 
   private handleWorktreeRemove({ worktreeId }: { worktreeId: string }): void {
     if (this.candidates.has(worktreeId) || this.detectedPRs.has(worktreeId)) {
+      const branchName = this.candidates.get(worktreeId)?.branchName;
       this.candidates.delete(worktreeId);
       this.resolvedWorktrees.delete(worktreeId);
       this.detectedPRs.delete(worktreeId);
 
-      events.emit("sys:pr:cleared", { worktreeId, timestamp: Date.now() });
+      events.emit("sys:pr:cleared", { worktreeId, branchName, timestamp: Date.now() });
 
       logDebug("Worktree removed - cleared PR state", { worktreeId });
     }
@@ -505,6 +513,9 @@ class PullRequestService {
     // detected PR number so GitHubService can use ETag conditional requests
     // to skip GraphQL when nothing has changed.
     const candidatesToRevalidate: PRCheckCandidate[] = [];
+    // Snapshot the lookup-time branch per worktree so a branch change during
+    // the in-flight check doesn't let a stale overlay override the new state.
+    const lookupBranchByWorktreeId = new Map<string, string | undefined>();
     for (const worktreeId of this.resolvedWorktrees) {
       const context = this.candidates.get(worktreeId);
       const detectedPR = this.detectedPRs.get(worktreeId);
@@ -515,6 +526,7 @@ class PullRequestService {
           branchName: context.branchName,
           knownPRNumber: detectedPR.number,
         });
+        lookupBranchByWorktreeId.set(worktreeId, context.branchName);
       }
     }
 
@@ -542,7 +554,11 @@ class PullRequestService {
           this.detectedPRs.delete(worktreeId);
 
           logInfo("PR no longer found during revalidation - clearing state", { worktreeId });
-          events.emit("sys:pr:cleared", { worktreeId, timestamp: Date.now() });
+          events.emit("sys:pr:cleared", {
+            worktreeId,
+            branchName: lookupBranchByWorktreeId.get(worktreeId),
+            timestamp: Date.now(),
+          });
           continue;
         }
 
@@ -590,6 +606,7 @@ class PullRequestService {
             prTitle: newPR.title,
             issueNumber,
             issueTitle: checkResult.issueTitle,
+            branchName: lookupBranchByWorktreeId.get(worktreeId),
             timestamp: Date.now(),
           });
         }
@@ -621,6 +638,9 @@ class PullRequestService {
     }
 
     const activeCandidates: PRCheckCandidate[] = [];
+    // Snapshot the lookup-time branch per worktree so a branch change during
+    // the in-flight check doesn't let a stale overlay override the new state.
+    const lookupBranchByWorktreeId = new Map<string, string | undefined>();
     for (const [worktreeId, context] of this.candidates) {
       if (!this.resolvedWorktrees.has(worktreeId)) {
         activeCandidates.push({
@@ -628,6 +648,7 @@ class PullRequestService {
           issueNumber: context.issueNumber,
           branchName: context.branchName,
         });
+        lookupBranchByWorktreeId.set(worktreeId, context.branchName);
       }
     }
 
@@ -649,6 +670,7 @@ class PullRequestService {
       this.consecutiveErrors = 0;
 
       for (const [worktreeId, checkResult] of result.results) {
+        const lookupBranch = lookupBranchByWorktreeId.get(worktreeId);
         // Emit issue metadata if we have a title (regardless of PR)
         const issueNumber = checkResult.issueNumber ?? this.candidates.get(worktreeId)?.issueNumber;
         if (issueNumber && checkResult.issueTitle) {
@@ -656,6 +678,7 @@ class PullRequestService {
             worktreeId,
             issueNumber,
             issueTitle: checkResult.issueTitle,
+            branchName: lookupBranch,
             timestamp: Date.now(),
           });
         } else if (issueNumber && !checkResult.issueTitle) {
@@ -685,6 +708,7 @@ class PullRequestService {
             prTitle: checkResult.pr.title,
             issueNumber,
             issueTitle: checkResult.issueTitle,
+            branchName: lookupBranch,
             timestamp: Date.now(),
           });
         }

@@ -474,10 +474,14 @@ export type DaintreeEventMap = {
     prTitle?: string;
     issueNumber?: number;
     issueTitle?: string;
+    /** Branch the lookup was initiated against; receivers drop the overlay if the worktree's branch has changed. */
+    branchName?: string;
     timestamp: number;
   };
   "sys:pr:cleared": {
     worktreeId: string;
+    /** Branch the clear was initiated against; receivers drop the overlay if the worktree's branch has changed. */
+    branchName?: string;
     timestamp: number;
   };
 
@@ -485,6 +489,8 @@ export type DaintreeEventMap = {
     worktreeId: string;
     issueNumber: number;
     issueTitle: string;
+    /** Branch the lookup was initiated against; receivers drop the overlay if the worktree's branch has changed. */
+    branchName?: string;
     timestamp: number;
   };
 

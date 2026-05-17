@@ -30,15 +30,19 @@ export interface PRIntegrationCallbacks {
       issueTitle?: string;
       prLastUpdatedAt?: number;
       issueLastUpdatedAt?: number;
+      /** Branch the lookup was initiated against — used by the renderer to drop stale overlays. */
+      branchName?: string;
     }
   ): void;
-  onPRCleared(worktreeId: string): void;
+  onPRCleared(worktreeId: string, data: { branchName?: string }): void;
   onIssueDetected(
     worktreeId: string,
     data: {
       issueNumber: number;
       issueTitle: string;
       issueLastUpdatedAt?: number;
+      /** Branch the lookup was initiated against — used by the renderer to drop stale overlays. */
+      branchName?: string;
     }
   ): void;
   onIssueNotFound(worktreeId: string, issueNumber: number): void;
@@ -88,6 +92,7 @@ export class PRIntegrationService {
           issueTitle: data.issueTitle,
           prLastUpdatedAt: Date.now(),
           issueLastUpdatedAt: data.issueTitle !== undefined ? Date.now() : undefined,
+          branchName: data.branchName,
         });
       })
     );
@@ -98,6 +103,7 @@ export class PRIntegrationService {
           issueNumber: data.issueNumber,
           issueTitle: data.issueTitle,
           issueLastUpdatedAt: Date.now(),
+          branchName: data.branchName,
         });
       })
     );
@@ -110,7 +116,7 @@ export class PRIntegrationService {
 
     this.prEventUnsubscribers.push(
       this.eventBus.on("sys:pr:cleared", (data) => {
-        this.callbacks.onPRCleared(data.worktreeId);
+        this.callbacks.onPRCleared(data.worktreeId, { branchName: data.branchName });
       })
     );
 
