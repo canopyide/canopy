@@ -319,3 +319,41 @@ describe("TooltipContent — collisionPadding default and override (issue #8008)
     expect(typeof lastCall?.className === "string" && lastCall.className).toContain("max-w-xs");
   });
 });
+
+describe("TooltipContent — sticky and hideWhenDetached defaults (issue #8100)", () => {
+  beforeEach(() => {
+    contentSpy.mockClear();
+  });
+
+  it('forwards sticky="partial" and hideWhenDetached by default', () => {
+    render(
+      <FixedDropdownVisibleContext.Provider value={true}>
+        <Tooltip open>
+          <TooltipTrigger>trigger</TooltipTrigger>
+          <TooltipContent>content</TooltipContent>
+        </Tooltip>
+      </FixedDropdownVisibleContext.Provider>
+    );
+
+    const lastCall = contentSpy.mock.calls.at(-1)?.[0];
+    expect(lastCall?.sticky).toBe("partial");
+    expect(lastCall?.hideWhenDetached).toBe(true);
+  });
+
+  it("forwards caller-provided sticky and hideWhenDetached overrides", () => {
+    render(
+      <FixedDropdownVisibleContext.Provider value={true}>
+        <Tooltip open>
+          <TooltipTrigger>trigger</TooltipTrigger>
+          <TooltipContent sticky="always" hideWhenDetached={false}>
+            content
+          </TooltipContent>
+        </Tooltip>
+      </FixedDropdownVisibleContext.Provider>
+    );
+
+    const lastCall = contentSpy.mock.calls.at(-1)?.[0];
+    expect(lastCall?.sticky).toBe("always");
+    expect(lastCall?.hideWhenDetached).toBe(false);
+  });
+});

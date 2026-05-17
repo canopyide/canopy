@@ -18,6 +18,12 @@ describe("Kbd", () => {
     expect(kbd).toBeTruthy();
     expect(kbd?.textContent).toBe("Esc");
   });
+
+  it("applies tabular-nums so digit and letter keys align (issue #8100)", () => {
+    const { container } = render(<Kbd>Esc</Kbd>);
+    const kbd = container.querySelector("kbd");
+    expect(kbd?.className).toContain("tabular-nums");
+  });
 });
 
 describe("KbdChord", () => {
@@ -52,5 +58,14 @@ describe("KbdChord", () => {
     const { container } = render(<KbdChord shortcut="Cmd+K Cmd+S" />);
     const innerKbds = container.querySelectorAll("span kbd");
     expect(innerKbds.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("applies tabular-nums on per-key pills so digit and letter keys align (issue #8100)", () => {
+    const { container } = render(<KbdChord shortcut="Cmd+S" />);
+    const innerKbds = container.querySelectorAll("span kbd");
+    expect(innerKbds.length).toBeGreaterThan(0);
+    innerKbds.forEach((kbd) => {
+      expect(kbd.className).toContain("tabular-nums");
+    });
   });
 });
