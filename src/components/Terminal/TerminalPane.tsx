@@ -57,6 +57,9 @@ import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
 import { useProjectPresetsStore } from "@/store/projectPresetsStore";
 import { terminalClient } from "@/clients";
+import { useHelpPanelStore } from "@/store/helpPanelStore";
+import { openSendToAgentPaletteWithText } from "@/hooks/useSendToAgentPalette";
+import { formatWithBracketedPaste } from "@shared/utils/terminalInputProtocol";
 import type { HybridInputBarHandle } from "./HybridInputBar";
 const LazyHybridInputBar = lazy(() =>
   import("./HybridInputBar").then((m) => ({ default: m.HybridInputBar }))
@@ -890,6 +893,45 @@ function TerminalPaneComponent({
     }
   };
 
+  // "Send to assistant" relays this agent's completion output into the active
+  // assistant session. It's only offered when the assistant terminal exists
+  // and is idle/waiting — writing into a working or directing agent would
+  // corrupt its input mid-stream.
+  const helpTerminalId = useHelpPanelStore((s) => s.terminalId);
+  const helpAgentState = usePanelStore((s) =>
+    helpTerminalId ? s.panelsById[helpTerminalId]?.agentState : undefined
+  );
+  const assistantAvailable =
+    !!helpTerminalId &&
+    helpTerminalId !== id &&
+    (helpAgentState === "idle" || helpAgentState === "waiting");
+
+  const handleSendToAssistant = useCallback(() => {
+    const help = useHelpPanelStore.getState();
+    const helpTid = help.terminalId;
+    if (!helpTid || helpTid === id) return;
+    const state = terminalInstanceService.getAgentState(helpTid);
+    if (state !== "idle" && state !== "waiting") return;
+    const text = terminalInstanceService.captureBufferText(id, 20000);
+    if (!text) return;
+
+    const managed = terminalInstanceService.get(helpTid);
+    if (managed && !managed.terminal.modes.bracketedPasteMode) {
+      terminalClient.write(helpTid, text.replace(/\r?\n/g, "\r"));
+    } else {
+      terminalClient.write(helpTid, formatWithBracketedPaste(text));
+    }
+    terminalInstanceService.notifyUserInput(helpTid);
+    help.setOpen(true);
+    help.requestFocus();
+  }, [id]);
+
+  const handleSendToAgent = useCallback(() => {
+    const text = terminalInstanceService.captureBufferText(id, 20000);
+    if (!text) return;
+    openSendToAgentPaletteWithText(text, id);
+  }, [id]);
+
   const isWorking = agentState === "working";
   const allowPing = !isMaximized && (location !== "grid" || (gridPanelCount ?? 2) > 1);
 
@@ -1158,6 +1200,8 @@ function TerminalPaneComponent({
                 fileCount={changedFileCount}
                 onReview={handleOpenReviewHub}
                 onDismiss={() => setCompletionBannerDismissed(true)}
+                onSendToAssistant={assistantAvailable ? handleSendToAssistant : undefined}
+                onSendToAgent={handleSendToAgent}
               />
             )}
 
