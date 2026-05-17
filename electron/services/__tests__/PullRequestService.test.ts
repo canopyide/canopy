@@ -253,6 +253,79 @@ describe("PullRequestService", () => {
     pullRequestService.destroy();
   });
 
+  it("clears the tripped state when a manual refresh succeeds", async () => {
+    let callCount = 0;
+    const batchCheckLinkedPRs = vi.fn(async () => {
+      callCount++;
+      if (callCount <= 3) {
+        return { results: new Map(), error: "API rate limit exceeded" };
+      }
+      return { results: new Map() };
+    });
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    const paused: DaintreeEventMap["sys:pr:detection-paused"][] = [];
+    const unsubscribe = events.on("sys:pr:detection-paused", (payload) => paused.push(payload));
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/test" })
+    );
+
+    await pullRequestService.start();
+    await vi.advanceTimersToNextTimerAsync();
+    await vi.advanceTimersToNextTimerAsync();
+    expect(paused).toEqual([{ tripped: true }]);
+
+    // A manual refresh that succeeds must clear the renderer-visible errored
+    // badge — without this the badges stay stuck until project re-open.
+    await pullRequestService.refresh();
+    expect(paused).toEqual([{ tripped: true }, { tripped: false }]);
+
+    unsubscribe();
+    pullRequestService.destroy();
+  });
+
+  it("does not re-emit tripped:true on the 4th+ consecutive error", async () => {
+    const batchCheckLinkedPRs = vi.fn(async () => ({
+      results: new Map(),
+      error: "API rate limit exceeded",
+    }));
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    const paused: DaintreeEventMap["sys:pr:detection-paused"][] = [];
+    const unsubscribe = events.on("sys:pr:detection-paused", (payload) => paused.push(payload));
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/test" })
+    );
+
+    await pullRequestService.start();
+    // Drive several backoff cycles: each recovery poll resets the counter,
+    // fails again, and re-reaches the trip threshold. The state is already
+    // tripped, so no duplicate tripped:true and no spurious tripped:false.
+    await vi.advanceTimersToNextTimerAsync();
+    await vi.advanceTimersToNextTimerAsync();
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+    expect(paused).toEqual([{ tripped: true }]);
+
+    unsubscribe();
+    pullRequestService.destroy();
+  });
+
   it("revalidates resolved PRs at 90-second intervals", async () => {
     let checkCallCount = 0;
     const batchCheckLinkedPRs = vi.fn(async (_cwd: string, candidates: PRCheckCandidate[]) => {

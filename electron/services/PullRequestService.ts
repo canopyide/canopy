@@ -95,6 +95,11 @@ class PullRequestService {
   private isPolling: boolean = false;
   private consecutiveErrors: number = 0;
   private nextRetryAt: number = 0;
+  // Tracks whether we've told the renderer the breaker is tripped. Decoupled
+  // from `nextRetryAt`/`isEnabled` so a rate-limit pause never reads as a
+  // circuit-breaker trip, and so the trip/recovery events stay perfectly
+  // paired across every reset path (recovery poll, manual refresh, reset).
+  private circuitBreakerTripped: boolean = false;
   private boostExpiresAt: number | null = null;
   private lastCheckAt: number = Number.NEGATIVE_INFINITY;
   private startupDelayTimer: NodeJS.Timeout | null = null;
@@ -393,6 +398,9 @@ class PullRequestService {
     this.nextRetryAt = 0;
     this.boostExpiresAt = null;
     this.lastCheckAt = Number.NEGATIVE_INFINITY;
+    // Service is being torn down / re-pointed — clear any tripped state so a
+    // stale errored badge doesn't outlive the project it belonged to.
+    this.setCircuitBreakerState(false);
   }
 
   /**
@@ -492,9 +500,12 @@ class PullRequestService {
           this.pollTimer = null;
           if (!this.isPolling) return;
           logDebug("Circuit breaker recovery - running immediate check");
+          // Reset counters so `isEnabled` is true and the check actually runs,
+          // but DON'T clear the renderer state here — a recovery check that
+          // fails again would briefly flash badges healthy. The breaker state
+          // is cleared only on a genuinely successful check (see checkForPRs).
           this.consecutiveErrors = 0;
           this.nextRetryAt = 0;
-          events.emit("sys:pr:detection-paused", { tripped: false });
           void this.checkForPRs()
             .catch((err) => this.handleError(formatErrorMessage(err, "PR check failed")))
             .finally(() => this.scheduleNextPoll());
@@ -779,6 +790,10 @@ class PullRequestService {
       }
 
       this.consecutiveErrors = 0;
+      // A successful batch check is the canonical "detection is working
+      // again" signal — covers the recovery poll, manual refresh, and focus
+      // catch-up paths in one place. Idempotent when never tripped.
+      this.setCircuitBreakerState(false);
 
       for (const [worktreeId, checkResult] of result.results) {
         const lookupBranch = lookupBranchByWorktreeId.get(worktreeId);
@@ -831,6 +846,15 @@ class PullRequestService {
     }
   }
 
+  // Single source of truth for the renderer-visible breaker state. Idempotent:
+  // only emits on an actual transition, so repeated trips (4th+ error) and
+  // every reset path stay paired without duplicate or orphaned events.
+  private setCircuitBreakerState(tripped: boolean): void {
+    if (this.circuitBreakerTripped === tripped) return;
+    this.circuitBreakerTripped = tripped;
+    events.emit("sys:pr:detection-paused", { tripped });
+  }
+
   private handleError(
     errorMsg: string,
     rateLimit?: { kind: "primary" | "secondary"; resumeAt: number }
@@ -862,7 +886,7 @@ class PullRequestService {
         message: "PR detection paused due to errors. Will retry automatically.",
         id: "pr-service-circuit-breaker",
       });
-      events.emit("sys:pr:detection-paused", { tripped: true });
+      this.setCircuitBreakerState(true);
     }
   }
 
