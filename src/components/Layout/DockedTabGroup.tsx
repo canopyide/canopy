@@ -59,6 +59,7 @@ import { buildPanelDuplicateOptions } from "@/services/terminal/panelDuplication
 import { handleDockInteractOutside, handleDockEscapeKeyDown } from "./dockPopoverGuard";
 import { usePreferencesStore } from "@/store";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { DockPopoverChildProvider } from "@/components/ui/DockPopoverChildContext";
 
 // Defer terminal focus by one frame's worth so Radix Popover finishes its
 // open animation before we steal focus into the PTY.
@@ -454,287 +455,289 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   const StateIcon = displayAgentState ? getEffectiveStateIcon(displayAgentState) : null;
 
   return (
-    <Popover open={isOpen} onOpenChange={handleOpenChange}>
-      <TerminalContextMenu terminalId={activePanel.id} forceLocation="dock">
-        <PopoverTrigger asChild>
-          <button
-            data-dock-item=""
-            className={cn(
-              "flex items-center gap-1.5 px-3 h-[var(--dock-item-height)] rounded-[var(--radius-md)] text-xs border transition duration-150 max-w-[280px]",
-              "bg-[var(--dock-item-bg)] border-[var(--dock-item-border)] text-daintree-text/70",
-              "hover:text-daintree-text hover:bg-[var(--dock-item-bg-hover)]",
-              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-[-2px]",
-              "cursor-grab active:cursor-grabbing",
-              isOpen &&
-                "bg-[var(--dock-item-bg-active)] text-daintree-text border-[var(--dock-item-border-active)] ring-1 ring-inset ring-daintree-accent/30",
-              !isOpen &&
-                showDockAgentHighlights &&
-                blockedState === "waiting" &&
-                "bg-[var(--dock-item-bg-waiting)] border-[var(--dock-item-border-waiting)]",
-              isDeprioritized && "opacity-50"
-            )}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (e.detail >= 2) return;
-              if (isOpen) {
-                closeDockTerminal();
-              } else {
-                openDockTerminal(activeTabId);
-              }
-            }}
-            onDoubleClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              const moved = moveTerminalToGrid(activePanel.id);
-              if (moved) closeDockTerminal();
-            }}
-            aria-label={`${activePanel.title} (${panels.length} tabs) - Click to preview, double-click to move to grid, drag to reorder`}
-          >
-            <div className="flex items-center justify-center shrink-0">
-              <TerminalIcon kind={activePanel.kind} chrome={activeChrome} className="w-3.5 h-3.5" />
-            </div>
-            <span className="truncate min-w-[48px] max-w-[140px] font-sans font-medium">
-              {displayTitle}
-            </span>
+    <DockPopoverChildProvider>
+      <Popover open={isOpen} onOpenChange={handleOpenChange}>
+        <TerminalContextMenu terminalId={activePanel.id} forceLocation="dock">
+          <PopoverTrigger asChild>
+            <button
+              data-dock-item=""
+              className={cn(
+                "flex items-center gap-1.5 px-3 h-[var(--dock-item-height)] rounded-[var(--radius-md)] text-xs border transition duration-150 max-w-[280px]",
+                "bg-[var(--dock-item-bg)] border-[var(--dock-item-border)] text-daintree-text/70",
+                "hover:text-daintree-text hover:bg-[var(--dock-item-bg-hover)]",
+                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-[-2px]",
+                "cursor-grab active:cursor-grabbing",
+                isOpen &&
+                  "bg-[var(--dock-item-bg-active)] text-daintree-text border-[var(--dock-item-border-active)] ring-1 ring-inset ring-daintree-accent/30",
+                !isOpen &&
+                  showDockAgentHighlights &&
+                  blockedState === "waiting" &&
+                  "bg-[var(--dock-item-bg-waiting)] border-[var(--dock-item-border-waiting)]",
+                isDeprioritized && "opacity-50"
+              )}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.detail >= 2) return;
+                if (isOpen) {
+                  closeDockTerminal();
+                } else {
+                  openDockTerminal(activeTabId);
+                }
+              }}
+              onDoubleClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const moved = moveTerminalToGrid(activePanel.id);
+                if (moved) closeDockTerminal();
+              }}
+              aria-label={`${activePanel.title} (${panels.length} tabs) - Click to preview, double-click to move to grid, drag to reorder`}
+            >
+              <div className="flex items-center justify-center shrink-0">
+                <TerminalIcon kind={activePanel.kind} chrome={activeChrome} className="w-3.5 h-3.5" />
+              </div>
+              <span className="truncate min-w-[48px] max-w-[140px] font-sans font-medium">
+                {displayTitle}
+              </span>
 
-            {/* Tab count indicator */}
-            <span className="text-[10px] text-daintree-text/40 tabular-nums shrink-0">
-              ({panels.length})
-            </span>
+              {/* Tab count indicator */}
+              <span className="text-[10px] text-daintree-text/40 tabular-nums shrink-0">
+                ({panels.length})
+              </span>
 
-            {isActive && commandText && (
-              <>
-                <div className="h-3 w-px bg-border-subtle shrink-0" aria-hidden="true" />
+              {isActive && commandText && (
+                <>
+                  <div className="h-3 w-px bg-border-subtle shrink-0" aria-hidden="true" />
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="truncate flex-1 min-w-0 text-[11px] text-daintree-text/50 font-mono">
+                        {commandText}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">{commandText}</TooltipContent>
+                  </Tooltip>
+                </>
+              )}
+
+              {displayAgentState && StateIcon && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="truncate flex-1 min-w-0 text-[11px] text-daintree-text/50 font-mono">
-                      {commandText}
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">{commandText}</TooltipContent>
-                </Tooltip>
-              </>
-            )}
-
-            {displayAgentState && StateIcon && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div
-                    className={cn(
-                      "flex items-center shrink-0",
-                      getEffectiveStateColor(displayAgentState)
-                    )}
-                  >
-                    <StateIcon
+                    <div
                       className={cn(
-                        "w-3.5 h-3.5",
-                        displayAgentState === "working" && "animate-spin-slow",
-                        "motion-reduce:animate-none"
+                        "flex items-center shrink-0",
+                        getEffectiveStateColor(displayAgentState)
                       )}
-                      aria-hidden="true"
-                    />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">{`Agent ${displayAgentState}`}</TooltipContent>
-              </Tooltip>
-            )}
-          </button>
-        </PopoverTrigger>
-      </TerminalContextMenu>
-
-      <PopoverContent
-        className="w-[700px] max-w-[90vw] h-[500px] max-h-[80vh] p-0 bg-daintree-bg/95 backdrop-blur-sm border border-[var(--border-dock-popup)] shadow-[var(--shadow-dock-panel-popover)] rounded-[var(--radius-lg)] overflow-hidden"
-        side="top"
-        align="start"
-        sideOffset={10}
-        collisionPadding={collisionPadding}
-        onInteractOutside={(e) => handleDockInteractOutside(e, portalContainer)}
-        onEscapeKeyDown={(e) => handleDockEscapeKeyDown(e, portalContainer)}
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-          if (activePanel.spawnedBy === "mcp") {
-            return;
-          }
-          const focusTarget = getTerminalFocusTarget({
-            preferredTarget: preferredTerminalFocusTarget,
-            hasHybridInputSurface: activeChrome.isAgent,
-            isInputDisabled: backendStatus === "disconnected" || backendStatus === "recovering",
-            hybridInputEnabled,
-          });
-
-          if (focusTarget === "hybridInput") {
-            return;
-          }
-
-          setTimeout(() => terminalInstanceService.focus(activePanel.id), TERMINAL_FOCUS_DELAY_MS);
-        }}
-      >
-        {/* Tab bar at top of popover */}
-        <DndContext
-          sensors={tabSensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleTabDragEnd}
-          modifiers={[restrictToHorizontalAxis, restrictToParentElement]}
-          autoScroll={tabAutoScroll}
-          accessibility={{ announcements: tabAnnouncements }}
-        >
-          <SortableContext items={tabIds} strategy={horizontalListSortingStrategy}>
-            <LayoutGroup id={`dock-tabs-${group.id}`}>
-              <div className="group flex items-stretch border-b border-divider bg-daintree-sidebar shrink-0">
-                <div
-                  ref={setTabListEl}
-                  className="flex items-center min-w-0 flex-1 overflow-x-auto overscroll-x-none scrollbar-none"
-                  role="tablist"
-                  aria-label="Dock panel tabs"
-                  onKeyDown={handleTabListKeyDown}
-                >
-                  {panels.map((panel) => {
-                    const tabChrome = deriveTerminalChrome({
-                      kind: panel.kind,
-                      launchAgentId: panel.launchAgentId,
-                      runtimeIdentity: panel.runtimeIdentity,
-                      detectedAgentId: panel.detectedAgentId,
-                      detectedProcessId: panel.detectedProcessId,
-                      agentState: panel.agentState,
-                      runtimeStatus: panel.runtimeStatus,
-                      exitCode: panel.exitCode,
-                      presetColor: panelPresetColors.get(panel.id),
-                    });
-                    return (
-                      <SortableTabButton
-                        key={panel.id}
-                        id={panel.id}
-                        title={getBaseTitle(panel.title)}
-                        chrome={tabChrome}
-                        kind={panel.kind ?? "terminal"}
-                        agentState={getDockDisplayAgentState(panel)}
-                        isActive={panel.id === activeTabId}
-                        presetColor={panelPresetColors.get(panel.id)}
-                        isUsingFallback={panel.isUsingFallback}
-                        onClick={() => handleTabClick(panel.id)}
-                        onClose={() => handleTabClose(panel.id)}
-                        onRename={(newTitle) => handleTabRename(panel.id, newTitle)}
+                    >
+                      <StateIcon
+                        className={cn(
+                          "w-3.5 h-3.5",
+                          displayAgentState === "working" && "animate-spin-slow",
+                          "motion-reduce:animate-none"
+                        )}
+                        aria-hidden="true"
                       />
-                    );
-                  })}
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">{`Agent ${displayAgentState}`}</TooltipContent>
+                </Tooltip>
+              )}
+            </button>
+          </PopoverTrigger>
+        </TerminalContextMenu>
+
+        <PopoverContent
+          className="w-[700px] max-w-[90vw] h-[500px] max-h-[80vh] p-0 bg-daintree-bg/95 backdrop-blur-sm border border-[var(--border-dock-popup)] shadow-[var(--shadow-dock-panel-popover)] rounded-[var(--radius-lg)] overflow-hidden"
+          side="top"
+          align="start"
+          sideOffset={10}
+          collisionPadding={collisionPadding}
+          onInteractOutside={(e) => handleDockInteractOutside(e, portalContainer)}
+          onEscapeKeyDown={(e) => handleDockEscapeKeyDown(e, portalContainer)}
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            if (activePanel.spawnedBy === "mcp") {
+              return;
+            }
+            const focusTarget = getTerminalFocusTarget({
+              preferredTarget: preferredTerminalFocusTarget,
+              hasHybridInputSurface: activeChrome.isAgent,
+              isInputDisabled: backendStatus === "disconnected" || backendStatus === "recovering",
+              hybridInputEnabled,
+            });
+
+            if (focusTarget === "hybridInput") {
+              return;
+            }
+
+            setTimeout(() => terminalInstanceService.focus(activePanel.id), TERMINAL_FOCUS_DELAY_MS);
+          }}
+        >
+          {/* Tab bar at top of popover */}
+          <DndContext
+            sensors={tabSensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleTabDragEnd}
+            modifiers={[restrictToHorizontalAxis, restrictToParentElement]}
+            autoScroll={tabAutoScroll}
+            accessibility={{ announcements: tabAnnouncements }}
+          >
+            <SortableContext items={tabIds} strategy={horizontalListSortingStrategy}>
+              <LayoutGroup id={`dock-tabs-${group.id}`}>
+                <div className="group flex items-stretch border-b border-divider bg-daintree-sidebar shrink-0">
+                  <div
+                    ref={setTabListEl}
+                    className="flex items-center min-w-0 flex-1 overflow-x-auto overscroll-x-none scrollbar-none"
+                    role="tablist"
+                    aria-label="Dock panel tabs"
+                    onKeyDown={handleTabListKeyDown}
+                  >
+                    {panels.map((panel) => {
+                      const tabChrome = deriveTerminalChrome({
+                        kind: panel.kind,
+                        launchAgentId: panel.launchAgentId,
+                        runtimeIdentity: panel.runtimeIdentity,
+                        detectedAgentId: panel.detectedAgentId,
+                        detectedProcessId: panel.detectedProcessId,
+                        agentState: panel.agentState,
+                        runtimeStatus: panel.runtimeStatus,
+                        exitCode: panel.exitCode,
+                        presetColor: panelPresetColors.get(panel.id),
+                      });
+                      return (
+                        <SortableTabButton
+                          key={panel.id}
+                          id={panel.id}
+                          title={getBaseTitle(panel.title)}
+                          chrome={tabChrome}
+                          kind={panel.kind ?? "terminal"}
+                          agentState={getDockDisplayAgentState(panel)}
+                          isActive={panel.id === activeTabId}
+                          presetColor={panelPresetColors.get(panel.id)}
+                          isUsingFallback={panel.isUsingFallback}
+                          onClick={() => handleTabClick(panel.id)}
+                          onClose={() => handleTabClose(panel.id)}
+                          onRename={(newTitle) => handleTabRename(panel.id, newTitle)}
+                        />
+                      );
+                    })}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAddTab();
+                          }}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          className="shrink-0 p-1.5 hover:bg-daintree-text/10 text-daintree-text/40 hover:text-daintree-text transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
+                          aria-label="Duplicate panel as new tab"
+                          type="button"
+                        >
+                          <CopyPlus className="w-3 h-3" aria-hidden="true" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">Duplicate panel as new tab</TooltipContent>
+                    </Tooltip>
+                  </div>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleAddTab();
+                          handlePopOut();
                         }}
                         onPointerDown={(e) => e.stopPropagation()}
-                        className="shrink-0 p-1.5 hover:bg-daintree-text/10 text-daintree-text/40 hover:text-daintree-text transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
-                        aria-label="Duplicate panel as new tab"
-                        type="button"
+                        className="shrink-0 p-1.5 text-daintree-text/40 hover:text-daintree-text hover:bg-daintree-text/10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
+                        aria-label="Open in grid"
                       >
-                        <CopyPlus className="w-3 h-3" aria-hidden="true" />
+                        <SquareArrowOutUpRight className="w-3 h-3" aria-hidden="true" />
                       </button>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom">Duplicate panel as new tab</TooltipContent>
+                    <TooltipContent side="bottom">Open in grid</TooltipContent>
                   </Tooltip>
+                  {hiddenPanels.length > 0 && (
+                    <DropdownMenu>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              onPointerDown={(e) => e.stopPropagation()}
+                              className="relative shrink-0 p-1.5 hover:bg-daintree-text/10 text-daintree-text/40 hover:text-daintree-text transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
+                              aria-label={
+                                activeTabIsHidden
+                                  ? `Show ${hiddenPanels.length} hidden tabs, including active`
+                                  : `Show ${hiddenPanels.length} hidden tabs`
+                              }
+                              aria-haspopup="menu"
+                              data-testid="dock-tabs-overflow"
+                            >
+                              <ChevronDown className="w-3 h-3" aria-hidden="true" />
+                              {activeTabIsHidden && (
+                                <span
+                                  className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-daintree-text/70"
+                                  aria-hidden="true"
+                                />
+                              )}
+                            </button>
+                          </DropdownMenuTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Show hidden tabs</TooltipContent>
+                      </Tooltip>
+                      <DropdownMenuContent
+                        align="end"
+                        className="min-w-[200px] max-w-[320px] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto"
+                      >
+                        {hiddenPanels.map((panel) => {
+                          const tabChrome = deriveTerminalChrome({
+                            kind: panel.kind,
+                            launchAgentId: panel.launchAgentId,
+                            runtimeIdentity: panel.runtimeIdentity,
+                            detectedAgentId: panel.detectedAgentId,
+                            detectedProcessId: panel.detectedProcessId,
+                            agentState: panel.agentState,
+                            runtimeStatus: panel.runtimeStatus,
+                            exitCode: panel.exitCode,
+                            presetColor: panelPresetColors.get(panel.id),
+                          });
+                          const isActive = panel.id === activeTabId;
+                          return (
+                            <DropdownMenuItem
+                              key={panel.id}
+                              onSelect={() => handleTabClick(panel.id)}
+                              aria-current={isActive ? "true" : undefined}
+                              className={cn(
+                                isActive &&
+                                  "font-medium before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-daintree-accent before:content-['']"
+                              )}
+                            >
+                              <span className="shrink-0 mr-2 inline-flex items-center justify-center w-3.5 h-3.5">
+                                <TerminalIcon
+                                  kind={panel.kind ?? "terminal"}
+                                  chrome={tabChrome}
+                                  className="w-3.5 h-3.5"
+                                />
+                              </span>
+                              <span className="truncate">{getBaseTitle(panel.title)}</span>
+                            </DropdownMenuItem>
+                          );
+                        })}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handlePopOut();
-                      }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      className="shrink-0 p-1.5 text-daintree-text/40 hover:text-daintree-text hover:bg-daintree-text/10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
-                      aria-label="Open in grid"
-                    >
-                      <SquareArrowOutUpRight className="w-3 h-3" aria-hidden="true" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Open in grid</TooltipContent>
-                </Tooltip>
-                {hiddenPanels.length > 0 && (
-                  <DropdownMenu>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            onPointerDown={(e) => e.stopPropagation()}
-                            className="relative shrink-0 p-1.5 hover:bg-daintree-text/10 text-daintree-text/40 hover:text-daintree-text transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
-                            aria-label={
-                              activeTabIsHidden
-                                ? `Show ${hiddenPanels.length} hidden tabs, including active`
-                                : `Show ${hiddenPanels.length} hidden tabs`
-                            }
-                            aria-haspopup="menu"
-                            data-testid="dock-tabs-overflow"
-                          >
-                            <ChevronDown className="w-3 h-3" aria-hidden="true" />
-                            {activeTabIsHidden && (
-                              <span
-                                className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-daintree-text/70"
-                                aria-hidden="true"
-                              />
-                            )}
-                          </button>
-                        </DropdownMenuTrigger>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">Show hidden tabs</TooltipContent>
-                    </Tooltip>
-                    <DropdownMenuContent
-                      align="end"
-                      className="min-w-[200px] max-w-[320px] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto"
-                    >
-                      {hiddenPanels.map((panel) => {
-                        const tabChrome = deriveTerminalChrome({
-                          kind: panel.kind,
-                          launchAgentId: panel.launchAgentId,
-                          runtimeIdentity: panel.runtimeIdentity,
-                          detectedAgentId: panel.detectedAgentId,
-                          detectedProcessId: panel.detectedProcessId,
-                          agentState: panel.agentState,
-                          runtimeStatus: panel.runtimeStatus,
-                          exitCode: panel.exitCode,
-                          presetColor: panelPresetColors.get(panel.id),
-                        });
-                        const isActive = panel.id === activeTabId;
-                        return (
-                          <DropdownMenuItem
-                            key={panel.id}
-                            onSelect={() => handleTabClick(panel.id)}
-                            aria-current={isActive ? "true" : undefined}
-                            className={cn(
-                              isActive &&
-                                "font-medium before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-daintree-accent before:content-['']"
-                            )}
-                          >
-                            <span className="shrink-0 mr-2 inline-flex items-center justify-center w-3.5 h-3.5">
-                              <TerminalIcon
-                                kind={panel.kind ?? "terminal"}
-                                chrome={tabChrome}
-                                className="w-3.5 h-3.5"
-                              />
-                            </span>
-                            <span className="truncate">{getBaseTitle(panel.title)}</span>
-                          </DropdownMenuItem>
-                        );
-                      })}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              </div>
-            </LayoutGroup>
-          </SortableContext>
-        </DndContext>
+              </LayoutGroup>
+            </SortableContext>
+          </DndContext>
 
-        {/* Portal target - content is rendered in DockPanelOffscreenContainer and portaled here */}
-        <div
-          ref={portalContainerRef}
-          className="flex-1 min-h-0 flex flex-col"
-          data-dock-portal-target={activePanel.id}
-        />
-      </PopoverContent>
-    </Popover>
+          {/* Portal target - content is rendered in DockPanelOffscreenContainer and portaled here */}
+          <div
+            ref={portalContainerRef}
+            className="flex-1 min-h-0 flex flex-col"
+            data-dock-portal-target={activePanel.id}
+          />
+        </PopoverContent>
+      </Popover>
+    </DockPopoverChildProvider>
   );
 }

@@ -16,9 +16,13 @@ export function handleDockInteractOutside(
     return;
   }
 
-  // Guard 2: Click is on a Radix floating element (DropdownMenu, Tooltip, Select, etc.)
-  // portaled to document.body — these carry data-radix-popper-content-wrapper
-  if (target.closest("[data-radix-popper-content-wrapper]")) {
+  // Guard 2: Click is on a Radix floating element (DropdownMenu, Tooltip, Select,
+  // ContextMenu) descended from this dock popover. These portal to document.body,
+  // so we can't rely on DOM containment — the dock popover's React subtree stamps
+  // `data-dock-popover-child` on its own Radix content via DockPopoverChildContext,
+  // which scopes the guard to *its* descendants rather than every Radix overlay
+  // in the document.
+  if (target.closest("[data-dock-popover-child]")) {
     event.preventDefault();
     return;
   }
