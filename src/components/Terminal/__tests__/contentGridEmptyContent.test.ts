@@ -77,3 +77,30 @@ describe("ContentGrid richer project identity (issue #7472)", () => {
     expect(content).toContain("<GitBranch ");
   });
 });
+
+describe("ContentGridEmptyState surfaces recipes pre-agent-launch (issue #8086)", () => {
+  it("RecipeRunner is gated on the recipe store binding, not hasEverLaunchedAgent", async () => {
+    const content = await readFile(EMPTY_STATE_PATH, "utf-8");
+    // The gate must allow first-run discovery: visible whenever there's an
+    // active worktree and recipes have been bound to a project.
+    expect(content).toContain("hasActiveWorktree && recipesProjectId !== null");
+    // The previous double-gate that hid RecipeRunner until an agent had launched
+    // must no longer apply to RecipeRunner.
+    expect(content).not.toMatch(
+      /hasActiveWorktree && hasEverLaunchedAgent && \(\s*<div[^>]*>\s*<RecipeRunner /
+    );
+  });
+
+  it("RotatingTip stays gated on hasEverLaunchedAgent (teaching content)", async () => {
+    const content = await readFile(EMPTY_STATE_PATH, "utf-8");
+    expect(content).toMatch(
+      /hasActiveWorktree && hasEverLaunchedAgent && \(\s*<div[^>]*>\s*<RotatingTip /
+    );
+  });
+
+  it("subscribes to the recipe store for the pre-load suppression gate", async () => {
+    const content = await readFile(EMPTY_STATE_PATH, "utf-8");
+    expect(content).toContain('from "@/store/recipeStore"');
+    expect(content).toContain("useRecipeStore((state) => state.currentProjectId)");
+  });
+});

@@ -4,6 +4,7 @@ import { ProjectPulseCard } from "@/components/Pulse";
 import { useHomeDir } from "@/hooks/app/useHomeDir";
 import { svgToDataUrl, sanitizeSvg } from "@/lib/svg";
 import { usePanelStore } from "@/store/panelStore";
+import { useRecipeStore } from "@/store/recipeStore";
 import { formatPath, middleTruncate } from "@/utils/textParsing";
 import { RotatingTip } from "./contentGridTips";
 import { RecipeRunner } from "./RecipeRunner/RecipeRunner";
@@ -49,6 +50,10 @@ export function ContentGridEmptyState({
       );
     })
   );
+  // Suppress RecipeRunner until the recipe store has been bound to the current
+  // project — recipes load fire-and-forget, so `currentProjectId === null`
+  // means the load has not started yet and `RecipeRunnerEmpty` would flash.
+  const recipesProjectId = useRecipeStore((state) => state.currentProjectId);
   const { homeDir } = useHomeDir();
 
   const branchLabel =
@@ -149,7 +154,7 @@ export function ContentGridEmptyState({
           </p>
         )}
 
-        {hasActiveWorktree && hasEverLaunchedAgent && (
+        {hasActiveWorktree && recipesProjectId !== null && (
           <div className="mb-6 w-full flex justify-center">
             <RecipeRunner activeWorktreeId={activeWorktreeId} defaultCwd={defaultCwd} />
           </div>
