@@ -1190,6 +1190,98 @@ describe("touched prop — error gating", () => {
     const input = container.querySelector("input");
     expect(input?.getAttribute("aria-describedby")).toBeNull();
   });
+
+  // Each entry: control selector + a render() of the primitive with
+  // error + description + touched=false. aria-describedby must resolve to
+  // exactly the description node — never the (non-rendered) error node.
+  const DESC = "Helps explain the field";
+  const describedByCases: ReadonlyArray<{
+    name: string;
+    selector: string;
+    render: () => ReturnType<typeof render>;
+  }> = [
+    {
+      name: "SettingsInput",
+      selector: "input",
+      render: () =>
+        render(<SettingsInput label="Name" error={ERR} description={DESC} touched={false} />),
+    },
+    {
+      name: "SettingsNumberInput",
+      selector: "input",
+      render: () =>
+        render(
+          <SettingsNumberInput label="Count" error={ERR} description={DESC} touched={false} />
+        ),
+    },
+    {
+      name: "SettingsTextarea",
+      selector: "textarea",
+      render: () =>
+        render(<SettingsTextarea label="Bio" error={ERR} description={DESC} touched={false} />),
+    },
+    {
+      name: "SettingsSelect",
+      selector: '[role="combobox"]',
+      render: () =>
+        render(
+          <SettingsSelect
+            label="Lang"
+            value="en"
+            onValueChange={vi.fn()}
+            options={[{ value: "en", label: "English" }]}
+            error={ERR}
+            description={DESC}
+            touched={false}
+          />
+        ),
+    },
+    {
+      name: "SettingsChoicebox",
+      selector: '[role="radiogroup"]',
+      render: () =>
+        render(
+          <SettingsChoicebox
+            label="Density"
+            value="normal"
+            onChange={vi.fn()}
+            options={MOCK_OPTIONS}
+            error={ERR}
+            description={DESC}
+            touched={false}
+          />
+        ),
+    },
+    {
+      name: "SettingsCheckbox",
+      selector: '[role="checkbox"]',
+      render: () =>
+        render(
+          <SettingsCheckbox
+            label="Agree"
+            description={DESC}
+            checked={false}
+            onChange={vi.fn()}
+            error={ERR}
+            touched={false}
+          />
+        ),
+    },
+  ];
+
+  describedByCases.forEach(({ name, selector, render: renderPrimitive }) => {
+    it(`${name} aria-describedby resolves to description only (not errorId) when touched={false}`, () => {
+      const { container } = renderPrimitive();
+      const control = container.querySelector(selector);
+      const describedBy = control?.getAttribute("aria-describedby");
+      expect(describedBy).toBeTruthy();
+      const ids = describedBy!.split(" ").filter(Boolean);
+      const texts = ids.map((id) => document.getElementById(id)?.textContent);
+      expect(texts).toContain(DESC);
+      expect(texts).not.toContain(ERR);
+      expect(screen.queryByText(ERR)).toBeNull();
+    });
+  });
 });
 
 describe("transition-all regression — field primitives", () => {
