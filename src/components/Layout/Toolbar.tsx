@@ -1161,7 +1161,11 @@ export function Toolbar({
                 "shrink-0 transition-[width] duration-200 data-[fullscreen=true]:duration-[120ms]",
                 isFullscreen && "w-0"
               )}
-              style={isFullscreen ? undefined : { width: "var(--win-caption-width, 138px)" }}
+              style={
+                isFullscreen
+                  ? undefined
+                  : { width: "calc(100% - env(titlebar-area-width, calc(100% - 138px)))" }
+              }
             />
           )}
         </div>
