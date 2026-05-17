@@ -943,8 +943,9 @@ describe("notificationHistorySlice", () => {
         supersedes: oldId,
       });
       // `supersedes` is a write-time directive, not stored state.
-      expect((getState().entries.find((e) => e.id === newId)! as { supersedes?: string }).supersedes)
-        .toBeUndefined();
+      expect(
+        (getState().entries.find((e) => e.id === newId)! as { supersedes?: string }).supersedes
+      ).toBeUndefined();
     });
   });
 });

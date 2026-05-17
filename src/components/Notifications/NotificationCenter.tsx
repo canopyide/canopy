@@ -1,14 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Archive,
-  ArrowDown,
-  Bell,
-  CheckCheck,
-  Ellipsis,
-  Layers,
-  Moon,
-  Trash2,
-} from "lucide-react";
+import { Archive, ArrowDown, Bell, CheckCheck, Ellipsis, Layers, Moon, Trash2 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import {
   useNotificationHistoryStore,
