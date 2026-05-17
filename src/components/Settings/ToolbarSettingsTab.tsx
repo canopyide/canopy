@@ -22,7 +22,6 @@ import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import type { AnyToolbarButtonId } from "@/../../shared/types/toolbar";
 import { BUILT_IN_AGENT_IDS } from "@shared/config/agentIds";
-import { isAgentToolbarVisible } from "../../../shared/utils/agentPinned";
 import {
   TOOLBAR_BUTTON_METADATA,
   isToolbarButtonVisible,
@@ -33,27 +32,23 @@ import { usePluginToolbarButtons } from "@/hooks/usePluginToolbarButtons";
 import { McpServerIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { DRAG_GHOST_OPACITY } from "@/lib/animationUtils";
+import { dispatchToolbarVisibility } from "@/lib/toolbarVisibilityDispatch";
 import { makeSortableAnnouncements } from "@/components/DragDrop/sortableAnnouncements";
 import { SettingsSection } from "./SettingsSection";
 import { SettingsSwitchCard } from "./SettingsSwitchCard";
 
-// Agent-ID writes for visibility route to `agentSettingsStore` (the
-// authoritative IPC-persisted store). Non-agent buttons (including
-// `agent-tray` and plugin buttons) live in `toolbarPreferencesStore`'s
-// `pinnedButtons` map. A version: 5 migration strips stale agent IDs from
-// pre-unification state so they can't shadow the canonical pinned state.
-const AGENT_ID_SET = new Set<string>(BUILT_IN_AGENT_IDS);
-
 interface SortableButtonItemProps {
   buttonId: AnyToolbarButtonId;
   isVisible: boolean;
-  onToggle: (buttonId: AnyToolbarButtonId) => void;
+  side: "left" | "right";
+  onToggle: (buttonId: AnyToolbarButtonId, side: "left" | "right") => void;
   allMetadata: Partial<Record<AnyToolbarButtonId, ToolbarButtonMetadata>>;
 }
 
 function SortableButtonItem({
   buttonId,
   isVisible,
+  side,
   onToggle,
   allMetadata,
 }: SortableButtonItemProps) {
@@ -98,7 +93,7 @@ function SortableButtonItem({
       <input
         type="checkbox"
         checked={isVisible}
-        onChange={() => onToggle(buttonId)}
+        onChange={() => onToggle(buttonId, side)}
         aria-label={`Toggle ${metadata.label} visibility`}
         className="w-4 h-4 rounded border-border-strong bg-daintree-bg text-daintree-accent focus:ring-daintree-accent focus:ring-2"
       />
@@ -111,13 +106,11 @@ export function ToolbarSettingsTab() {
   const launcher = useToolbarPreferencesStore((s) => s.launcher);
   const setLeftButtons = useToolbarPreferencesStore((s) => s.setLeftButtons);
   const setRightButtons = useToolbarPreferencesStore((s) => s.setRightButtons);
-  const toggleButtonVisibility = useToolbarPreferencesStore((s) => s.toggleButtonVisibility);
   const setAlwaysShowDevServer = useToolbarPreferencesStore((s) => s.setAlwaysShowDevServer);
   const setDefaultSelection = useToolbarPreferencesStore((s) => s.setDefaultSelection);
   const reset = useToolbarPreferencesStore((s) => s.reset);
 
   const agentSettings = useAgentSettingsStore((s) => s.settings);
-  const setAgentPinned = useAgentSettingsStore((s) => s.setAgentPinned);
   const agentAvailability = useCliAvailabilityStore((s) => s.availability);
 
   const sensors = useSensors(
@@ -188,32 +181,12 @@ export function ToolbarSettingsTab() {
     setRightButtons(newButtons);
   };
 
-  const handleToggleLeft = (buttonId: AnyToolbarButtonId) => {
-    if (AGENT_ID_SET.has(buttonId)) {
-      // Toggle the *currently visible* state so undefined-pinned agents
-      // resolve to the opposite of the derived state (installed→hide,
-      // missing→show) — see #7673 tri-state semantics.
-      const nextPinned = !isAgentToolbarVisible(
-        agentSettings?.agents?.[buttonId],
-        agentAvailability?.[buttonId]
-      );
-      void setAgentPinned(buttonId, nextPinned);
-      return;
-    }
-    toggleButtonVisibility(buttonId, "left");
-  };
-
-  const handleToggleRight = (buttonId: AnyToolbarButtonId) => {
-    if (AGENT_ID_SET.has(buttonId)) {
-      const nextPinned = !isAgentToolbarVisible(
-        agentSettings?.agents?.[buttonId],
-        agentAvailability?.[buttonId]
-      );
-      void setAgentPinned(buttonId, nextPinned);
-      return;
-    }
-    toggleButtonVisibility(buttonId, "right");
-  };
+  const handleToggle = useCallback(
+    (buttonId: AnyToolbarButtonId, side: "left" | "right") => {
+      dispatchToolbarVisibility(buttonId, side);
+    },
+    []
+  );
 
   return (
     <div className="space-y-6">
@@ -240,7 +213,8 @@ export function ToolbarSettingsTab() {
                     agentSettings,
                     agentAvailability
                   )}
-                  onToggle={handleToggleLeft}
+                  side="left"
+                  onToggle={handleToggle}
                   allMetadata={allMetadata}
                 />
               ))}
@@ -272,7 +246,8 @@ export function ToolbarSettingsTab() {
                     agentSettings,
                     agentAvailability
                   )}
-                  onToggle={handleToggleRight}
+                  side="right"
+                  onToggle={handleToggle}
                   allMetadata={allMetadata}
                 />
               ))}
@@ -335,7 +310,7 @@ export function ToolbarSettingsTab() {
           )}
         >
           <RotateCcw className="w-3.5 h-3.5" />
-          Reset to Defaults
+          Reset toolbar
         </button>
       </div>
     </div>

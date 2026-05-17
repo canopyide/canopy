@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { isAgentPinned, isAgentPinnedById, isAgentToolbarVisible } from "../agentPinned.js";
+import { BUILT_IN_AGENT_IDS } from "../../config/agentIds.js";
+import {
+  BUILT_IN_AGENT_ID_SET,
+  isAgentPinned,
+  isAgentPinnedById,
+  isAgentToolbarVisible,
+} from "../agentPinned.js";
 
 describe("isAgentPinned — opt-in semantics", () => {
   it("returns false for undefined entry", () => {
@@ -91,5 +97,22 @@ describe("isAgentToolbarVisible — tri-state with availability fallback", () =>
   it("treats empty entry as follows-availability", () => {
     expect(isAgentToolbarVisible({}, "ready")).toBe(true);
     expect(isAgentToolbarVisible({}, "missing")).toBe(false);
+  });
+});
+
+describe("BUILT_IN_AGENT_ID_SET", () => {
+  it("contains every BUILT_IN_AGENT_ID and nothing else", () => {
+    expect(BUILT_IN_AGENT_ID_SET.size).toBe(BUILT_IN_AGENT_IDS.length);
+    for (const id of BUILT_IN_AGENT_IDS) {
+      expect(BUILT_IN_AGENT_ID_SET.has(id)).toBe(true);
+    }
+  });
+
+  it("returns false for non-agent toolbar IDs", () => {
+    expect(BUILT_IN_AGENT_ID_SET.has("agent-tray")).toBe(false);
+    expect(BUILT_IN_AGENT_ID_SET.has("terminal")).toBe(false);
+    expect(BUILT_IN_AGENT_ID_SET.has("browser")).toBe(false);
+    expect(BUILT_IN_AGENT_ID_SET.has("settings")).toBe(false);
+    expect(BUILT_IN_AGENT_ID_SET.has("")).toBe(false);
   });
 });

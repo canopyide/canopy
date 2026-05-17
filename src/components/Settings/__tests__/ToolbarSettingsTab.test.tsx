@@ -5,11 +5,14 @@ import type { AgentSettings } from "@shared/types";
 
 const setLeftButtonsMock = vi.fn();
 const setRightButtonsMock = vi.fn();
-const toggleButtonVisibilityMock = vi.fn();
 const setAlwaysShowDevServerMock = vi.fn();
 const setDefaultSelectionMock = vi.fn();
 const resetMock = vi.fn();
-const setAgentPinnedMock = vi.fn().mockResolvedValue(undefined);
+// Hoisted so the vi.mock factory below (also hoisted) can reference it; a
+// plain `const` initializes after the mock factory runs.
+const { dispatchToolbarVisibilityMock } = vi.hoisted(() => ({
+  dispatchToolbarVisibilityMock: vi.fn(),
+}));
 
 interface ToolbarState {
   layout: {
@@ -23,7 +26,6 @@ interface ToolbarState {
   };
   setLeftButtons: typeof setLeftButtonsMock;
   setRightButtons: typeof setRightButtonsMock;
-  toggleButtonVisibility: typeof toggleButtonVisibilityMock;
   setAlwaysShowDevServer: typeof setAlwaysShowDevServerMock;
   setDefaultSelection: typeof setDefaultSelectionMock;
   reset: typeof resetMock;
@@ -34,7 +36,6 @@ let mockToolbarState: ToolbarState = {
   launcher: { alwaysShowDevServer: false, defaultSelection: undefined },
   setLeftButtons: setLeftButtonsMock,
   setRightButtons: setRightButtonsMock,
-  toggleButtonVisibility: toggleButtonVisibilityMock,
   setAlwaysShowDevServer: setAlwaysShowDevServerMock,
   setDefaultSelection: setDefaultSelectionMock,
   reset: resetMock,
@@ -48,17 +49,20 @@ vi.mock("@/store", () => ({
 }));
 
 vi.mock("@/store/agentSettingsStore", () => ({
-  useAgentSettingsStore: (
-    selector: (s: {
-      settings: AgentSettings | null;
-      setAgentPinned: typeof setAgentPinnedMock;
-    }) => unknown
-  ) => selector({ settings: mockAgentSettings, setAgentPinned: setAgentPinnedMock }),
+  useAgentSettingsStore: (selector: (s: { settings: AgentSettings | null }) => unknown) =>
+    selector({ settings: mockAgentSettings }),
 }));
 
 vi.mock("@/store/cliAvailabilityStore", () => ({
   useCliAvailabilityStore: (selector: (s: { availability: undefined }) => unknown) =>
     selector({ availability: undefined }),
+}));
+
+// The component delegates all visibility writes to dispatchToolbarVisibility.
+// Tests assert on the dispatch directly rather than reaching through three
+// store mocks for what is now a single-call boundary.
+vi.mock("@/lib/toolbarVisibilityDispatch", () => ({
+  dispatchToolbarVisibility: dispatchToolbarVisibilityMock,
 }));
 
 vi.mock("@shared/config/agentIds", () => ({
@@ -154,11 +158,10 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
   beforeEach(() => {
     setLeftButtonsMock.mockClear();
     setRightButtonsMock.mockClear();
-    toggleButtonVisibilityMock.mockClear();
     setAlwaysShowDevServerMock.mockClear();
     setDefaultSelectionMock.mockClear();
     resetMock.mockClear();
-    setAgentPinnedMock.mockClear();
+    dispatchToolbarVisibilityMock.mockClear();
 
     mockToolbarState = {
       layout: {
@@ -170,7 +173,6 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
       launcher: { alwaysShowDevServer: false, defaultSelection: undefined },
       setLeftButtons: setLeftButtonsMock,
       setRightButtons: setRightButtonsMock,
-      toggleButtonVisibility: toggleButtonVisibilityMock,
       setAlwaysShowDevServer: setAlwaysShowDevServerMock,
       setDefaultSelection: setDefaultSelectionMock,
       reset: resetMock,
@@ -206,7 +208,7 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
     expect(claudeCheckbox.checked).toBe(true);
   });
 
-  it("routes agent checkbox toggle to setAgentPinned (not toggleButtonVisibility)", () => {
+  it("dispatches agent checkbox toggle through dispatchToolbarVisibility", () => {
     mockAgentSettings = agentSettings({
       claude: { pinned: true },
     });
@@ -214,12 +216,14 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
     const { getByLabelText } = render(<ToolbarSettingsTab />);
     fireEvent.click(getByLabelText("Toggle Claude Agent visibility"));
 
-    expect(setAgentPinnedMock).toHaveBeenCalledTimes(1);
-    expect(setAgentPinnedMock).toHaveBeenCalledWith("claude", false);
-    expect(toggleButtonVisibilityMock).not.toHaveBeenCalled();
+    expect(dispatchToolbarVisibilityMock).toHaveBeenCalledTimes(1);
+    expect(dispatchToolbarVisibilityMock).toHaveBeenCalledWith("claude", "left");
   });
 
-  it("routes agent checkbox toggle upward (unpinned → pinned) via setAgentPinned", () => {
+  it("dispatches an agent toggle on the left side (helper routes by ID, not by side)", () => {
+    // Locks the contract: the component forwards the buttonId + side it
+    // rendered for; routing to setAgentPinned vs toggleButtonVisibility is
+    // the helper's responsibility — covered in toolbarVisibilityDispatch.test.ts.
     mockAgentSettings = agentSettings({
       gemini: { pinned: false },
     });
@@ -227,28 +231,25 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
     const { getByLabelText } = render(<ToolbarSettingsTab />);
     fireEvent.click(getByLabelText("Toggle Gemini Agent visibility"));
 
-    expect(setAgentPinnedMock).toHaveBeenCalledWith("gemini", true);
-    expect(toggleButtonVisibilityMock).not.toHaveBeenCalled();
+    expect(dispatchToolbarVisibilityMock).toHaveBeenCalledWith("gemini", "left");
   });
 
-  it("keeps non-agent checkbox toggle on toggleButtonVisibility", () => {
+  it("dispatches non-agent checkbox toggle with the left side argument", () => {
     const { getByLabelText } = render(<ToolbarSettingsTab />);
     fireEvent.click(getByLabelText("Toggle Terminal visibility"));
 
-    expect(toggleButtonVisibilityMock).toHaveBeenCalledTimes(1);
-    expect(toggleButtonVisibilityMock).toHaveBeenCalledWith("terminal", "left");
-    expect(setAgentPinnedMock).not.toHaveBeenCalled();
+    expect(dispatchToolbarVisibilityMock).toHaveBeenCalledTimes(1);
+    expect(dispatchToolbarVisibilityMock).toHaveBeenCalledWith("terminal", "left");
   });
 
-  it("dispatches `'right'` as the side argument for right-side non-agent toggles", () => {
-    // Locks the side argument so future side-aware store changes can't
-    // silently swallow the right-side branch — both handlers (left, right)
-    // are nominally identical today but each is independently wired.
+  it("forwards `'right'` as the side argument for right-side toggles", () => {
+    // Locks the side argument so a future regression to a single-side
+    // handler can't silently collapse left and right into one call shape.
     const { getByLabelText } = render(<ToolbarSettingsTab />);
     fireEvent.click(getByLabelText("Toggle Copy Context visibility"));
 
-    expect(toggleButtonVisibilityMock).toHaveBeenCalledTimes(1);
-    expect(toggleButtonVisibilityMock).toHaveBeenCalledWith("copy-tree", "right");
+    expect(dispatchToolbarVisibilityMock).toHaveBeenCalledTimes(1);
+    expect(dispatchToolbarVisibilityMock).toHaveBeenCalledWith("copy-tree", "right");
   });
 
   it("reflects pinned agents in the section visible-count summary", () => {
@@ -272,7 +273,7 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
     expect(claudeCheckbox.checked).toBe(false);
   });
 
-  it("handles a right-side agent correctly (routes through setAgentPinned)", () => {
+  it("dispatches a right-side agent toggle with side=right", () => {
     // Relocate codex to the right side — an unlikely but possible layout.
     mockToolbarState.layout = {
       leftButtons: ["agent-tray", "terminal"],
@@ -286,8 +287,7 @@ describe("ToolbarSettingsTab — agent visibility routing", () => {
     const { getByLabelText } = render(<ToolbarSettingsTab />);
     fireEvent.click(getByLabelText("Toggle Codex Agent visibility"));
 
-    expect(setAgentPinnedMock).toHaveBeenCalledWith("codex", false);
-    expect(toggleButtonVisibilityMock).not.toHaveBeenCalled();
+    expect(dispatchToolbarVisibilityMock).toHaveBeenCalledWith("codex", "right");
   });
 });
 
@@ -297,7 +297,7 @@ describe("ToolbarSettingsTab — drag-source vs hidden opacity deconfliction", (
   // magic 0.5. These tests lock the deconfliction so the two values can't
   // silently collapse back together.
   beforeEach(() => {
-    setAgentPinnedMock.mockClear();
+    dispatchToolbarVisibilityMock.mockClear();
     vi.mocked(useSortable).mockImplementation(defaultSortable);
     mockToolbarState = {
       layout: {
@@ -308,7 +308,6 @@ describe("ToolbarSettingsTab — drag-source vs hidden opacity deconfliction", (
       launcher: { alwaysShowDevServer: false, defaultSelection: undefined },
       setLeftButtons: setLeftButtonsMock,
       setRightButtons: setRightButtonsMock,
-      toggleButtonVisibility: toggleButtonVisibilityMock,
       setAlwaysShowDevServer: setAlwaysShowDevServerMock,
       setDefaultSelection: setDefaultSelectionMock,
       reset: resetMock,

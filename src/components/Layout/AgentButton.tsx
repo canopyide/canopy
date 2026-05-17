@@ -19,6 +19,7 @@ import { BrandMark } from "@/components/icons";
 import { getAgentConfig, getMergedPresets } from "@/config/agents";
 import { useAriaKeyshortcuts, useKeybindingDisplay } from "@/hooks";
 import { createTooltipContent } from "@/lib/tooltipShortcut";
+import { dispatchToolbarVisibility } from "@/lib/toolbarVisibilityDispatch";
 import { useWorktrees } from "@/hooks/useWorktrees";
 import { actionService } from "@/services/ActionService";
 import {
@@ -319,7 +320,7 @@ export function AgentButton({
   };
 
   const handleUnpinFromToolbar = () => {
-    void useAgentSettingsStore.getState().setAgentPinned(type, false);
+    dispatchToolbarVisibility(type, "left", false);
   };
 
   // Persist the toolbar pick to the worktree-scoped slot so repeated launches

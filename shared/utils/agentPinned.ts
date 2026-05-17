@@ -1,6 +1,16 @@
+import { BUILT_IN_AGENT_IDS } from "../config/agentIds.js";
 import type { AgentSettings, AgentSettingsEntry } from "../types/agentSettings.js";
 import type { AgentAvailabilityState } from "../types/ipc/system.js";
 import { isAgentInstalled } from "./agentAvailability.js";
+
+/**
+ * Frozen lookup set for the built-in agent IDs — shared by the three places
+ * that need to discriminate agent IDs from non-agent toolbar buttons
+ * (`ToolbarSettingsTab`, `toolbarButtonMetadata`, `useOverflowBadgeSeverity`).
+ * Use {@link isBuiltInAgentId} from `@shared/config/agentIds` when you need a
+ * type guard; this set is for hot-path `.has(id)` checks against `string`s.
+ */
+export const BUILT_IN_AGENT_ID_SET: ReadonlySet<string> = new Set<string>(BUILT_IN_AGENT_IDS);
 
 /**
  * Returns true only when the entry explicitly sets `pinned: true`. Missing
