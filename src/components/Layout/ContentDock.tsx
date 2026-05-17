@@ -284,6 +284,7 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
                 "flex items-center gap-[var(--dock-gap)] overflow-x-auto overscroll-x-none flex-1 min-h-[var(--dock-item-height)] no-scrollbar scroll-smooth px-1 transition-[color,background-color,box-shadow]",
                 isWorktreeSortDragging && "cursor-no-drop",
                 isOver &&
+                  !isWorktreeSortDragging &&
                   "cursor-copy bg-overlay-soft ring-2 ring-border-default ring-inset rounded-[var(--radius-md)]"
               )}
             >
