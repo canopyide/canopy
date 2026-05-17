@@ -115,7 +115,21 @@ describe("WorktreeCard row affordances polish (issue #8099)", () => {
   });
 
   it("Review & Commit button uses inset outline (-2px offset) for its flush rounded-r edge", () => {
-    expect(detailsSource).toContain("focus-visible:outline-offset-[-2px]");
+    expect(detailsSource).toMatch(
+      /rounded-r-\[var\(--radius-lg\)\][\s\S]{0,200}focus-visible:outline-offset-\[-2px\][\s\S]{0,400}aria-label="Open Review & Commit"/
+    );
+  });
+
+  it("sidebar row CSS reveal rules use :has(:focus-visible) so mousedown does not flash", () => {
+    expect(sidebarCss).toMatch(
+      /\[data-worktree-row\]:has\(:focus-visible\)\s+\[data-worktree-row-toolbar\]/
+    );
+    expect(sidebarCss).not.toMatch(
+      /\[data-worktree-row\]:focus-within\s+\[data-worktree-row-toolbar\]/
+    );
+    expect(sidebarCss).not.toMatch(
+      /\[data-worktree-row\]:focus-within\s+\[data-worktree-row-drag-handle\]/
+    );
   });
 
   it("environment popover trigger uses outline (not ring-1) for forced-colors survival", () => {
