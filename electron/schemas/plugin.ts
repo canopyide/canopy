@@ -10,6 +10,7 @@ import type {
   McpServerContribution,
   PluginPermission,
 } from "../../shared/types/plugin.js";
+import type { ForgeProviderContribution } from "../../shared/types/forge.js";
 
 const SAFE_ID_PATTERN = /^[a-zA-Z0-9._-]+$/;
 
@@ -70,6 +71,22 @@ export const McpServerContributionSchema = z.object({
   env: z.record(z.string(), z.string()).optional(),
 });
 
+/**
+ * Reserved contribution point. Shape is validated but the runtime does not
+ * yet act on these entries — `PluginService` logs a warning and skips them.
+ * See `docs/architecture/forge-provider-abstraction.md`. `capabilities` is an
+ * uninterpreted advisory list (informational only); the host gates behavior
+ * on the runtime `ForgeProviderImpl` shape, not these strings.
+ */
+export const ForgeProviderContributionSchema = z.object({
+  id: z.string().min(1).max(64).regex(SAFE_ID_PATTERN),
+  name: z.string().min(1),
+  matches: z.array(z.string().min(1)).min(1),
+  capabilities: z.array(z.string().min(1)).optional(),
+  settingsScopeRef: z.string().min(1).optional(),
+  viewRefs: z.array(z.string().min(1)).optional(),
+});
+
 export const PluginPermissionSchema = z.enum(BUILT_IN_PLUGIN_PERMISSIONS);
 
 export const PluginManifestSchema = z
@@ -101,6 +118,7 @@ export const PluginManifestSchema = z
         menuItems: z.array(MenuItemContributionSchema).default([]),
         views: z.array(ViewContributionSchema).default([]),
         mcpServers: z.array(McpServerContributionSchema).default([]),
+        forgeProviders: z.array(ForgeProviderContributionSchema).default([]),
       })
       .default({
         panels: [],
@@ -108,6 +126,7 @@ export const PluginManifestSchema = z
         menuItems: [],
         views: [],
         mcpServers: [],
+        forgeProviders: [],
       }),
   })
   .strict();
@@ -121,3 +140,4 @@ export type {
   McpServerContribution,
   PluginPermission,
 };
+export type { ForgeProviderContribution };

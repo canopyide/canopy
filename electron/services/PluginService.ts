@@ -279,6 +279,12 @@ export class PluginService {
       );
     }
 
+    if (manifest.contributes.forgeProviders.length > 0) {
+      console.warn(
+        `[PluginService] Plugin "${manifest.name}": contributes.forgeProviders is not yet implemented and will be ignored`
+      );
+    }
+
     // Insert the plugin into the registry BEFORE importing its main module so
     // synchronous host-API calls made during module evaluation (e.g., a plugin
     // that calls host.registerAction/registerHandler at import time) see the

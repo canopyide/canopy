@@ -257,6 +257,100 @@ describe("PluginManifestSchema permissions field", () => {
   });
 });
 
+describe("PluginManifestSchema forgeProviders contribution", () => {
+  const validBase = { name: "acme.forge", version: "1.0.0" };
+
+  it("defaults contributes.forgeProviders to [] when contributes is absent", () => {
+    const result = PluginManifestSchema.safeParse(validBase);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.contributes.forgeProviders).toEqual([]);
+    }
+  });
+
+  it("defaults contributes.forgeProviders to [] when contributes is an empty object", () => {
+    const result = PluginManifestSchema.safeParse({ ...validBase, contributes: {} });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.contributes.forgeProviders).toEqual([]);
+    }
+  });
+
+  it("accepts a fully specified forgeProviders entry", () => {
+    const result = PluginManifestSchema.safeParse({
+      ...validBase,
+      contributes: {
+        forgeProviders: [
+          {
+            id: "github",
+            name: "GitHub",
+            matches: ["github.com"],
+            capabilities: ["issues", "pulls", "reviews", "required-checks", "releases"],
+            settingsScopeRef: "github",
+            viewRefs: ["github-issues", "github-prs"],
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.contributes.forgeProviders).toEqual([
+        {
+          id: "github",
+          name: "GitHub",
+          matches: ["github.com"],
+          capabilities: ["issues", "pulls", "reviews", "required-checks", "releases"],
+          settingsScopeRef: "github",
+          viewRefs: ["github-issues", "github-prs"],
+        },
+      ]);
+    }
+  });
+
+  it("accepts a forgeProviders entry with only required fields", () => {
+    const result = PluginManifestSchema.safeParse({
+      ...validBase,
+      contributes: {
+        forgeProviders: [{ id: "gh", name: "GitHub", matches: ["github.com"] }],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a forgeProviders entry with an empty matches array", () => {
+    const result = PluginManifestSchema.safeParse({
+      ...validBase,
+      contributes: {
+        forgeProviders: [{ id: "gh", name: "GitHub", matches: [] }],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a forgeProviders entry missing required fields", () => {
+    const result = PluginManifestSchema.safeParse({
+      ...validBase,
+      contributes: {
+        forgeProviders: [{ id: "gh" }],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("strips unknown keys on a forgeProviders entry (matches sibling contribution schemas)", () => {
+    const result = PluginManifestSchema.safeParse({
+      ...validBase,
+      contributes: {
+        forgeProviders: [{ id: "gh", name: "GitHub", matches: ["github.com"], unknownKey: true }],
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.contributes.forgeProviders[0]).not.toHaveProperty("unknownKey");
+    }
+  });
+});
+
 describe("PluginService", () => {
   it("returns empty list when plugins directory does not exist", async () => {
     const service = new PluginService(path.join(tmpDir, "nonexistent"));
@@ -2007,6 +2101,40 @@ describe("reserved contribution point warnings", () => {
     );
   });
 
+  it("accepts a contributes.forgeProviders entry and logs a 'not yet implemented' warning", async () => {
+    await writePlugin("forge", {
+      name: "acme.forge",
+      version: "1.0.0",
+      engines: { daintree: "^0.7.0" },
+      contributes: {
+        forgeProviders: [
+          {
+            id: "github",
+            name: "GitHub",
+            matches: ["github.com"],
+            capabilities: ["issues", "pulls", "reviews"],
+            settingsScopeRef: "github",
+            viewRefs: ["github-issues"],
+          },
+        ],
+      },
+    });
+
+    const service = new PluginService(tmpDir, "0.7.5");
+    await service.initialize();
+
+    expect(service.listPlugins()).toHaveLength(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Plugin "acme.forge": contributes.forgeProviders is not yet implemented'
+      )
+    );
+    // Reserved + ignored: a forge-only manifest has no registry side effects.
+    expect(registerPanelKind).not.toHaveBeenCalled();
+    expect(registerToolbarButton).not.toHaveBeenCalled();
+    expect(registerPluginMenuItem).not.toHaveBeenCalled();
+  });
+
   it("does not warn about reserved points when the manifest omits them", async () => {
     await writePlugin("plain", {
       name: "acme.plain",
@@ -2021,6 +2149,7 @@ describe("reserved contribution point warnings", () => {
     const warnMessages = warnSpy.mock.calls.map((call: unknown[]) => String(call[0]));
     expect(warnMessages.some((m: string) => m.includes("contributes.views"))).toBe(false);
     expect(warnMessages.some((m: string) => m.includes("contributes.mcpServers"))).toBe(false);
+    expect(warnMessages.some((m: string) => m.includes("contributes.forgeProviders"))).toBe(false);
   });
 
   it("does not warn when reserved arrays are explicitly present but empty", async () => {
@@ -2028,7 +2157,7 @@ describe("reserved contribution point warnings", () => {
       name: "acme.explicit-empty",
       version: "1.0.0",
       engines: { daintree: "^0.7.0" },
-      contributes: { views: [], mcpServers: [] },
+      contributes: { views: [], mcpServers: [], forgeProviders: [] },
     });
 
     const service = new PluginService(tmpDir, "0.7.5");
@@ -2038,6 +2167,7 @@ describe("reserved contribution point warnings", () => {
     const warnMessages = warnSpy.mock.calls.map((call: unknown[]) => String(call[0]));
     expect(warnMessages.some((m: string) => m.includes("contributes.views"))).toBe(false);
     expect(warnMessages.some((m: string) => m.includes("contributes.mcpServers"))).toBe(false);
+    expect(warnMessages.some((m: string) => m.includes("contributes.forgeProviders"))).toBe(false);
   });
 
   it("still processes other contributions when reserved points are present", async () => {
