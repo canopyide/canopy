@@ -7,6 +7,7 @@ import {
   useContext,
   useEffect,
   type MouseEvent as ReactMouseEvent,
+  type MutableRefObject,
 } from "react";
 import {
   DndContext,
@@ -26,9 +27,11 @@ import {
   type DragOverEvent,
   type CollisionDetection,
   type Modifier,
+  type Active,
   type Announcements,
   type MeasuringConfiguration,
   type MouseSensorOptions,
+  type Over,
   type ScreenReaderInstructions,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
@@ -201,7 +204,7 @@ function getDragLabel(data: unknown): string {
  * `worktree-sort-{id}` for the sortable handle and `worktree-drop-{id}` for
  * the row's drop target — both should announce the same human-readable label.
  */
-function getOverDragLabel(over: { id: string | number; data: { current: unknown } }): string {
+function getOverDragLabel(over: Over): string {
   const sortDragId = parseWorktreeSortDragId(over.id);
   if (sortDragId) return resolveWorktreeLabel(sortDragId);
   if (typeof over.id === "string" && over.id.startsWith("worktree-drop-")) {
@@ -227,30 +230,64 @@ const dragScreenReaderInstructions: ScreenReaderInstructions = {
     "To pick up a draggable item, press Space or Enter. While dragging, use the arrow keys to move. Press Space or Enter again to drop, or Escape to cancel.",
 };
 
-const dragAnnouncements: Announcements = {
-  onDragStart({ active }) {
-    return `Picked up ${getDragLabel(active.data.current)}`;
-  },
-  onDragOver({ active, over }) {
-    const label = getDragLabel(active.data.current);
-    if (over) {
-      const overLabel = getOverDragLabel(over);
-      return `${label} is over ${overLabel}`;
-    }
-    return `${label} is no longer over a droppable area`;
-  },
-  onDragEnd({ active, over }) {
-    const label = getDragLabel(active.data.current);
-    if (over) {
+export interface DragAnnouncementRefs {
+  isKeyboardDragRef: MutableRefObject<boolean>;
+  pinnedLabelRef: MutableRefObject<string>;
+  pinnedSourceIndexRef: MutableRefObject<number | null>;
+  pinnedTotalRef: MutableRefObject<number | null>;
+}
+
+/**
+ * Build the dnd-kit `Announcements` object for the global drag surface.
+ *
+ * Drag state has to be pinned at pickup time (label, source index, total) so
+ * the drop string survives mid-drag filter mutations; refs supply that pin
+ * via the sibling `DragAnnouncementMonitor` and the factory closes over
+ * them. The factory is exported pure so unit tests can drive the lifecycle
+ * with controlled refs and label resolvers.
+ *
+ * Pointer drags suppress `onDragOver` (return `undefined`) so the polite
+ * live region isn't flooded — the visual placeholder already conveys hover
+ * state, and dnd-kit's measuring loop fires `onDragOver` at the
+ * `MEASURING_CONFIG.frequency` cadence. Keyboard drags keep the running
+ * "X is over Y" prose since the user has no visual cursor to track.
+ */
+export function createDragAnnouncements(
+  refs: DragAnnouncementRefs,
+  resolveActiveLabel: (active: Active) => string,
+  resolveOverLabel: (over: Over) => string
+): Announcements {
+  return {
+    onDragStart({ active }) {
+      return `Picked up ${resolveActiveLabel(active)}. Press arrow keys to move, Space to drop, Escape to cancel.`;
+    },
+    onDragOver({ active, over }) {
+      if (!refs.isKeyboardDragRef.current) return undefined;
+      const label = resolveActiveLabel(active);
+      if (over) {
+        return `${label} is over ${resolveOverLabel(over)}`;
+      }
+      return `${label} is no longer over a droppable area`;
+    },
+    onDragEnd({ active, over }) {
+      const label = resolveActiveLabel(active);
+      if (!over) {
+        return `${label} returned to its original position`;
+      }
+      const overData = over.data.current as { sortable?: { index?: number } } | undefined;
+      const destIndex = overData?.sortable?.index ?? refs.pinnedSourceIndexRef.current;
+      const total = refs.pinnedTotalRef.current;
+      if (typeof destIndex === "number" && total !== null && total > 0) {
+        return `Dropped ${label} at position ${destIndex + 1} of ${total}`;
+      }
       return `Dropped ${label}`;
-    }
-    return `${label} returned to its original position`;
-  },
-  onDragCancel({ active }) {
-    const label = getDragLabel(active.data.current);
-    return `Drag cancelled. ${label} returned to its original position`;
-  },
-};
+    },
+    onDragCancel({ active }) {
+      const label = resolveActiveLabel(active);
+      return `Drag cancelled. ${label} returned to its original position`;
+    },
+  };
+}
 
 function isWorktreeDragData(
   data: DragData | WorktreeDragData | undefined
@@ -274,6 +311,55 @@ function getEventCoordinates(event: Event): { x: number; y: number } | null {
   }
   const pointerEvent = event as PointerEvent;
   return { x: pointerEvent.clientX, y: pointerEvent.clientY };
+}
+
+// Inner component that uses useDndMonitor to pin drag state for the
+// announcement factory (must be inside DndContext). Detects the activator
+// modality (pointer vs keyboard) — Announcements callbacks only receive
+// `{active, over}`, so the keyboard flag has to be plumbed in via refs.
+function DragAnnouncementMonitor({ refs }: { refs: DragAnnouncementRefs }) {
+  useDndMonitor({
+    onDragStart({ activatorEvent, active }) {
+      refs.isKeyboardDragRef.current =
+        typeof KeyboardEvent !== "undefined" && activatorEvent instanceof KeyboardEvent;
+      refs.pinnedLabelRef.current = getDragLabel(active.data.current);
+
+      const data = active.data.current as
+        | {
+            sourceIndex?: number;
+            dragStartOrder?: unknown[];
+            sortable?: { index?: number; items?: unknown[] };
+          }
+        | undefined;
+      const sortableIndex = typeof data?.sortable?.index === "number" ? data.sortable.index : null;
+      const explicitSource = typeof data?.sourceIndex === "number" ? data.sourceIndex : null;
+      refs.pinnedSourceIndexRef.current = sortableIndex ?? explicitSource;
+
+      const sortableTotal = data?.sortable?.items?.length;
+      const dragOrderTotal = Array.isArray(data?.dragStartOrder)
+        ? data.dragStartOrder.length
+        : undefined;
+      refs.pinnedTotalRef.current =
+        typeof sortableTotal === "number"
+          ? sortableTotal
+          : typeof dragOrderTotal === "number"
+            ? dragOrderTotal
+            : null;
+    },
+    onDragEnd() {
+      refs.isKeyboardDragRef.current = false;
+      refs.pinnedLabelRef.current = "";
+      refs.pinnedSourceIndexRef.current = null;
+      refs.pinnedTotalRef.current = null;
+    },
+    onDragCancel() {
+      refs.isKeyboardDragRef.current = false;
+      refs.pinnedLabelRef.current = "";
+      refs.pinnedSourceIndexRef.current = null;
+      refs.pinnedTotalRef.current = null;
+    },
+  });
+  return null;
 }
 
 // Inner component that uses useDndMonitor to track cursor position (must be inside DndContext)
@@ -389,6 +475,27 @@ export function DndProvider({ children }: DndProviderProps) {
   const [overContainer, setOverContainer] = useState<"grid" | "dock" | null>(null);
   const [isWorktreeSortActive, setIsWorktreeSortActive] = useState(false);
   const [activeSortWorktree, setActiveSortWorktree] = useState<WorktreeSnapshot | null>(null);
+
+  // Refs pinned by `DragAnnouncementMonitor` at pickup and read by the
+  // memoized `dragAnnouncements` factory. Identity is stable for the
+  // provider's lifetime so the `useMemo` below can use an empty dep list.
+  const isKeyboardDragRef = useRef(false);
+  const pinnedLabelRef = useRef<string>("");
+  const pinnedSourceIndexRef = useRef<number | null>(null);
+  const pinnedTotalRef = useRef<number | null>(null);
+  const announcementRefs = useMemo<DragAnnouncementRefs>(
+    () => ({ isKeyboardDragRef, pinnedLabelRef, pinnedSourceIndexRef, pinnedTotalRef }),
+    []
+  );
+  const dragAnnouncements = useMemo(
+    () =>
+      createDragAnnouncements(
+        announcementRefs,
+        (a) => getDragLabel(a.data.current),
+        getOverDragLabel
+      ),
+    [announcementRefs]
+  );
 
   // Ref to track overContainer for stable collision detection (avoids infinite loops)
   const overContainerRef = useRef<"grid" | "dock" | null>(null);
@@ -1170,6 +1277,7 @@ export function DndProvider({ children }: DndProviderProps) {
       <DndPlaceholderContext.Provider value={placeholderContextValue}>
         {children}
       </DndPlaceholderContext.Provider>
+      <DragAnnouncementMonitor refs={announcementRefs} />
       <DragOverlayWithCursorTracking
         activeTerminal={activeTerminal}
         activeWorktree={activeSortWorktree}
