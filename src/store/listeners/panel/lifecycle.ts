@@ -62,6 +62,11 @@ export async function handleFallbackTriggered(data: {
   const fromPreset = mergedPresets.find((p) => p.id === fromPresetId);
   const fromName = fromPreset?.name ?? fromPresetId;
 
+  // Pair the fallback error/success notifications so a later "switched to
+  // fallback preset" success archives the prior error from the inbox instead
+  // of leaving a stale "unavailable" row behind.
+  const fallbackSupersedeKey = `terminal.${terminalId}.fallback`;
+
   if (!nextPresetId) {
     // Chain exhausted: surface a single error notification. No respawn.
     const isExhausted = chain.length > 0;
@@ -73,6 +78,7 @@ export async function handleFallbackTriggered(data: {
         ? `All fallback presets were tried. Configure fallback presets or restart the terminal manually.`
         : `${fromName} provider is unreachable. Configure fallbacks in Settings to auto-recover.`,
       duration: 12000,
+      supersedeKey: fallbackSupersedeKey,
       action: {
         label: "Open agent settings",
         actionId: "app.settings.openTab",
@@ -98,6 +104,7 @@ export async function handleFallbackTriggered(data: {
       title: "Fallback preset missing",
       message: `Preset "${nextPresetId}" is no longer configured. Check fallback settings or restart the terminal.`,
       duration: 12000,
+      supersedeKey: fallbackSupersedeKey,
       action: {
         label: "Open agent settings",
         actionId: "app.settings.openTab",
@@ -139,6 +146,7 @@ export async function handleFallbackTriggered(data: {
           reason === "auth"
             ? `${fromName} authentication failed — now running "${nextPreset.name}".`
             : `${fromName} unreachable — now running "${nextPreset.name}".`,
+        supersedeKey: fallbackSupersedeKey,
       });
     } else {
       notify({
@@ -147,6 +155,7 @@ export async function handleFallbackTriggered(data: {
         title: "Fallback activation failed",
         message: `Could not switch to "${nextPreset.name}": ${result.error ?? "unknown error"}`,
         duration: 12000,
+        supersedeKey: fallbackSupersedeKey,
       });
     }
   } finally {

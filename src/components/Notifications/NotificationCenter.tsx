@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, Bell, CheckCheck, Ellipsis, Layers, Moon, Trash2 } from "lucide-react";
+import {
+  Archive,
+  ArrowDown,
+  Bell,
+  CheckCheck,
+  Ellipsis,
+  Layers,
+  Moon,
+  Trash2,
+} from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import {
   useNotificationHistoryStore,
@@ -164,6 +173,8 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
   const markUnseenAsToast = useNotificationHistoryStore((s) => s.markUnseenAsToast);
   const dismissEntry = useNotificationHistoryStore((s) => s.dismissEntry);
   const dismissByCorrelationId = useNotificationHistoryStore((s) => s.dismissByCorrelationId);
+  const archiveEntry = useNotificationHistoryStore((s) => s.archiveEntry);
+  const archiveByCorrelationId = useNotificationHistoryStore((s) => s.archiveByCorrelationId);
 
   const {
     quietUntil,
@@ -188,7 +199,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
   const lastClosedAt = useUIStore((s) => s.lastNotificationCenterClosedAt);
   const resetLastClosedAt = useUIStore((s) => s.resetNotificationCenterLastClosedAt);
 
-  const [filter, setFilter] = useState<"all" | "unread">("all");
+  const [filter, setFilter] = useState<"all" | "unread" | "archived">("all");
   const [frozenUnreadIds, setFrozenUnreadIds] = useState<Set<string> | null>(null);
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
   const [dividerEl, setDividerEl] = useState<HTMLDivElement | null>(null);
@@ -279,31 +290,42 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
   }, [showJumpPill]);
 
   const filteredEntries = useMemo(() => {
-    if (filter === "all") return entries;
-    if (frozenUnreadIds) {
-      return entries.filter((e) => !e.seenAsToast || frozenUnreadIds.has(e.id));
+    if (filter === "archived") {
+      return entries.filter((e) => e.archivedAt !== null);
     }
-    return entries.filter((e) => !e.seenAsToast);
+    if (filter === "all") {
+      // Archived entries belong to the Archived tab only — they're done.
+      return entries.filter((e) => e.archivedAt === null);
+    }
+    if (frozenUnreadIds) {
+      return entries.filter(
+        (e) => e.archivedAt === null && (!e.seenAsToast || frozenUnreadIds.has(e.id))
+      );
+    }
+    return entries.filter((e) => e.archivedAt === null && !e.seenAsToast);
   }, [entries, filter, frozenUnreadIds]);
 
   const { needsAttentionGroups, chronoSections, dividerGroupId } = useMemo(() => {
     // Pinned reflects the global unread severe-threads set so it stays the
-    // same in All and Unread filter views. Chrono respects the active filter.
-    const rawGroups = groupByCorrelationId(entries);
-    const pinned = rawGroups
-      .filter((g) => {
-        if (!isUnreadGroup(g)) return false;
-        const sev = getWorstSeverity(g.entries);
-        return sev === "error" || sev === "warning";
-      })
-      .sort((a, b) => {
-        const sevDiff =
-          SEVERITY_WEIGHTS[getWorstSeverity(b.entries)] -
-          SEVERITY_WEIGHTS[getWorstSeverity(a.entries)];
-        if (sevDiff !== 0) return sevDiff;
-        return b.latestTimestamp - a.latestTimestamp;
-      })
-      .slice(0, NEEDS_ATTENTION_CAP);
+    // same in All and Unread filter views. Hidden in Archived — pinned is for
+    // active items only. Chrono respects the active filter.
+    const pinned =
+      filter === "archived"
+        ? []
+        : groupByCorrelationId(entries.filter((e) => e.archivedAt === null))
+            .filter((g) => {
+              if (!isUnreadGroup(g)) return false;
+              const sev = getWorstSeverity(g.entries);
+              return sev === "error" || sev === "warning";
+            })
+            .sort((a, b) => {
+              const sevDiff =
+                SEVERITY_WEIGHTS[getWorstSeverity(b.entries)] -
+                SEVERITY_WEIGHTS[getWorstSeverity(a.entries)];
+              if (sevDiff !== 0) return sevDiff;
+              return b.latestTimestamp - a.latestTimestamp;
+            })
+            .slice(0, NEEDS_ATTENTION_CAP);
 
     const chronoGroups = groupByCorrelationId(filteredEntries);
     const sections: ContextSection[] = groupByContext
@@ -311,7 +333,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
       : [{ key: "all", groups: chronoGroups }];
 
     let divider: string | null = null;
-    if (lastClosedAt > 0) {
+    if (lastClosedAt > 0 && filter !== "archived") {
       for (const g of chronoGroups) {
         if (g.latestTimestamp > lastClosedAt) {
           divider = g.correlationId ?? g.entries[0]?.id ?? null;
@@ -325,7 +347,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
       chronoSections: sections,
       dividerGroupId: divider,
     };
-  }, [entries, filteredEntries, groupByContext, lastClosedAt]);
+  }, [entries, filteredEntries, groupByContext, lastClosedAt, filter]);
 
   const totalChronoGroups = chronoSections.reduce((sum, s) => sum + s.groups.length, 0);
 
@@ -455,6 +477,17 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
     [dismissByCorrelationId, dismissEntry]
   );
 
+  const archiveRow = useCallback(
+    (row: FlatRow) => {
+      if (row.isThread && row.correlationId) {
+        archiveByCorrelationId(row.correlationId);
+      } else {
+        archiveEntry(row.entryId);
+      }
+    },
+    [archiveByCorrelationId, archiveEntry]
+  );
+
   const moveFocusTo = useCallback((index: number) => {
     const target = rowRefs.current.get(index);
     if (target) {
@@ -504,7 +537,14 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
         case "e": {
           e.preventDefault();
           const row = flatRows[activeIndex];
-          if (row) dismissRow(row);
+          if (!row) return;
+          // In the Archived tab, 'e' acts as a permanent delete — there's no
+          // re-archive to perform and users still need a one-key purge path.
+          if (filter === "archived") {
+            dismissRow(row);
+          } else {
+            archiveRow(row);
+          }
           return;
         }
         case "Enter": {
@@ -518,7 +558,7 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
           return;
       }
     },
-    [rowCount, flatRows, moveFocusTo, dismissRow, dispatchPrimaryAction]
+    [rowCount, flatRows, moveFocusTo, dismissRow, archiveRow, dispatchPrimaryAction, filter]
   );
 
   const handleMarkAllRead = () => {
@@ -603,6 +643,22 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
                 )}
               >
                 Unread
+              </button>
+              <button
+                type="button"
+                aria-pressed={filter === "archived"}
+                onClick={() => {
+                  setFilter("archived");
+                  setFrozenUnreadIds(null);
+                }}
+                className={cn(
+                  "inline-flex items-center px-2 py-0.5 text-[11px] rounded-full transition-colors",
+                  filter === "archived"
+                    ? "bg-filter-selected-bg-strong text-daintree-text font-medium"
+                    : "text-daintree-text/60 hover:text-daintree-text hover:bg-tint/[0.04]"
+                )}
+              >
+                Archived
               </button>
             </>
           )}
@@ -715,7 +771,15 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
           className="h-full overflow-y-auto"
         >
           {totalChronoGroups === 0 && needsAttentionGroups.length === 0 ? (
-            filter === "unread" && entries.length > 0 ? (
+            filter === "archived" && entries.length > 0 ? (
+              <EmptyState
+                variant="user-cleared"
+                scale="canvas"
+                title="No archived notifications"
+                icon={<Archive />}
+                className="py-10"
+              />
+            ) : filter === "unread" && entries.length > 0 ? (
               // Canvas scale: the bell dropdown is a 360px panel-style surface that
               // mirrors GitHubResourceList ("connection-gated panel" example in
               // CLAUDE.md). The "Notifications appear here" guidance and the

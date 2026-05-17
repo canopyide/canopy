@@ -169,6 +169,63 @@ describe("notify()", () => {
       });
       expect(useNotificationHistoryStore.getState().entries[0]!.correlationId).toBe("panel-abc");
     });
+
+    it("forwards supersedeKey to the history entry", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({
+        type: "error",
+        message: "Disconnected",
+        priority: "high",
+        supersedeKey: "host.conn",
+      });
+      expect(useNotificationHistoryStore.getState().entries[0]!.supersedeKey).toBe("host.conn");
+    });
+
+    it("supersedeKey on a later notify archives the prior matching entry", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({
+        type: "error",
+        message: "Disconnected",
+        priority: "high",
+        supersedeKey: "host.conn",
+      });
+      const errId = useNotificationHistoryStore.getState().entries[0]!.id;
+      notify({
+        type: "success",
+        message: "Reconnected",
+        priority: "high",
+        supersedeKey: "host.conn",
+      });
+      const entries = useNotificationHistoryStore.getState().entries;
+      expect(entries.find((e) => e.id === errId)!.archivedAt).not.toBeNull();
+    });
+
+    it("supersedes (exact id) on a later notify archives the named entry", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({
+        type: "error",
+        message: "Disconnected",
+        priority: "high",
+      });
+      const errId = useNotificationHistoryStore.getState().entries[0]!.id;
+      notify({
+        type: "success",
+        message: "Recovered",
+        priority: "high",
+        supersedes: errId,
+      });
+      expect(
+        useNotificationHistoryStore.getState().entries.find((e) => e.id === errId)!.archivedAt
+      ).not.toBeNull();
+    });
+
+    it("supersede has no effect when fields are absent (existing callers unchanged)", () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      notify({ type: "info", message: "a", priority: "high" });
+      notify({ type: "info", message: "b", priority: "high" });
+      const entries = useNotificationHistoryStore.getState().entries;
+      expect(entries.every((e) => e.archivedAt === null)).toBe(true);
+    });
   });
 
   describe("history actions — forwards serializable descriptors", () => {
