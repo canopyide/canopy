@@ -9,6 +9,10 @@ const DESTRUCTIVE_CONFIRM_LABEL_RE =
 const GENERIC_CONFIRM_LABEL_RE =
   /^\s*(ok|confirm|yes|save|continue|proceed|done|got it|accept|apply|submit)\s*$/i;
 
+const ARE_YOU_SURE_TITLE_RE = /^\s*are\s+you\s+sure/i;
+
+const CANNOT_BE_UNDONE_BODY_RE = /cannot be undone|can'?t be undone/i;
+
 const devWarnedKeys = new Set<string>();
 
 export const __devWarnedKeys = devWarnedKeys;
@@ -19,6 +23,10 @@ function warnOnce(key: string, message: string) {
   devWarnedKeys.add(key);
   // eslint-disable-next-line no-console
   console.error(message);
+}
+
+function getNodeText(node: React.ReactNode): string {
+  return typeof node === "string" ? node : "";
 }
 
 type ConfirmDialogBaseProps = {
@@ -86,6 +94,22 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
     warnOnce(
       `typed-name-variant:${variant}`,
       `[ConfirmDialog] typedNameTarget="${rawTypedNameTarget}" was set with variant="${variant}". The typed-name gate is intended for destructive actions; use variant="destructive".`
+    );
+  }
+
+  const titleText = getNodeText(title);
+  if (titleText && ARE_YOU_SURE_TITLE_RE.test(titleText)) {
+    warnOnce(
+      "title-are-you-sure",
+      `[ConfirmDialog] title="${titleText}" starts with "Are you sure". Per the Daintree microcopy rule, title should be a sentence-case question naming the entity (e.g., "Delete 'foo'?") — never a generic "Are you sure?".`
+    );
+  }
+
+  const bodyText = `${getNodeText(description)} ${getNodeText(children)}`;
+  if (CANNOT_BE_UNDONE_BODY_RE.test(bodyText)) {
+    warnOnce(
+      "body-cannot-be-undone",
+      `[ConfirmDialog] body contains "cannot be undone". Per the Daintree microcopy rule, the body must state the specific consequence (what gets deleted, where it lives, what recovery exists) — generic irreversibility copy adds no information.`
     );
   }
 
