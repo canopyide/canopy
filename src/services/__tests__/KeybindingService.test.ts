@@ -740,6 +740,164 @@ describe("KeybindingService", () => {
     });
   });
 
+  describe("lastInvalidKey echo — issue #8105", () => {
+    function startCmdKChord(service: KeybindingService): void {
+      setPlatform("MacIntel");
+      const cmdK = createKeyboardEvent({
+        key: "k",
+        code: "KeyK",
+        metaKey: true,
+      });
+      service.resolveKeybinding(cmdK);
+      expect(service.getPendingChord()).not.toBeNull();
+    }
+
+    it("returns null initially", () => {
+      const service = new KeybindingService();
+      expect(service.getLastInvalidKey()).toBeNull();
+    });
+
+    it("captures the attempted combo when a second key is unrecognized after a chord prefix", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      startCmdKChord(service);
+
+      // Press an unrecognized second key — bare "Y" with no modifier is neither
+      // a chord completion under Cmd+K nor a standalone shortcut.
+      const bareY = createKeyboardEvent({
+        key: "y",
+        code: "KeyY",
+      });
+      service.resolveKeybinding(bareY);
+
+      expect(service.getPendingChord()).toBeNull();
+      expect(service.getLastInvalidKey()).toBe("y");
+    });
+
+    it("notifies listeners synchronously when lastInvalidKey is set via resolveKeybinding", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      startCmdKChord(service);
+
+      // Snapshot the listener captured value at notify-time. The renderer
+      // pattern reads getLastInvalidKey() inside the subscriber, so the field
+      // MUST already be populated before clearPendingChord() fires the notify.
+      let observedAtNotify: string | null | undefined;
+      service.subscribe(() => {
+        observedAtNotify = service.getLastInvalidKey();
+      });
+
+      const bareY = createKeyboardEvent({
+        key: "y",
+        code: "KeyY",
+      });
+      service.resolveKeybinding(bareY);
+
+      expect(observedAtNotify).toBe("y");
+    });
+
+    it("does not set lastInvalidKey when a chord completes successfully", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      service.registerBinding({
+        actionId: "test.chordOk",
+        combo: "Cmd+K Cmd+Z",
+        scope: "global",
+        priority: 99,
+      });
+      startCmdKChord(service);
+
+      const cmdZ = createKeyboardEvent({
+        key: "z",
+        code: "KeyZ",
+        metaKey: true,
+      });
+      const match = service.findMatchingAction(cmdZ);
+      expect(match?.actionId).toBe("test.chordOk");
+      expect(service.getLastInvalidKey()).toBeNull();
+    });
+
+    it("does not set lastInvalidKey when clearPendingChord is called directly (Escape/Backspace path)", () => {
+      const service = new KeybindingService();
+      startCmdKChord(service);
+
+      service.clearPendingChord();
+      expect(service.getPendingChord()).toBeNull();
+      expect(service.getLastInvalidKey()).toBeNull();
+    });
+
+    it("does not set lastInvalidKey when the chord auto-clear timeout fires", () => {
+      vi.useFakeTimers();
+      try {
+        const service = new KeybindingService();
+        startCmdKChord(service);
+
+        vi.advanceTimersByTime(2000);
+        expect(service.getPendingChord()).toBeNull();
+        expect(service.getLastInvalidKey()).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not set lastInvalidKey for an unrecognized standalone key with no pending chord", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+
+      // No chord pending — a bare unrecognized key must not surface as invalid;
+      // it's just a key the app doesn't bind.
+      const bareY = createKeyboardEvent({
+        key: "y",
+        code: "KeyY",
+      });
+      service.resolveKeybinding(bareY);
+
+      expect(service.getLastInvalidKey()).toBeNull();
+    });
+
+    it("clearLastInvalidKey resets to null and notifies listeners", () => {
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      startCmdKChord(service);
+      const bareY = createKeyboardEvent({ key: "y", code: "KeyY" });
+      service.resolveKeybinding(bareY);
+      expect(service.getLastInvalidKey()).toBe("y");
+
+      const listener = vi.fn();
+      service.subscribe(listener);
+
+      service.clearLastInvalidKey();
+      expect(service.getLastInvalidKey()).toBeNull();
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it("clearLastInvalidKey is a no-op (no notify) when already null", () => {
+      const service = new KeybindingService();
+      const listener = vi.fn();
+      service.subscribe(listener);
+
+      service.clearLastInvalidKey();
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it("setting a new pending chord after an invalid key does not auto-clear lastInvalidKey at the service layer", () => {
+      // The renderer side (ChordIndicator) clears the echo when a new prefix
+      // starts. The service should NOT silently overwrite — that's the
+      // component's concern, and keeping the boundary clean lets the renderer
+      // sequence the echo against the new prefix as it sees fit.
+      setPlatform("MacIntel");
+      const service = new KeybindingService();
+      startCmdKChord(service);
+      const bareY = createKeyboardEvent({ key: "y", code: "KeyY" });
+      service.resolveKeybinding(bareY);
+      expect(service.getLastInvalidKey()).toBe("y");
+
+      // Start a new chord — service-side lastInvalidKey is unchanged.
+      startCmdKChord(service);
+      expect(service.getLastInvalidKey()).toBe("y");
+    });
+  });
+
   describe("popPendingChord", () => {
     it("is a no-op when no chord is pending", () => {
       const service = new KeybindingService();

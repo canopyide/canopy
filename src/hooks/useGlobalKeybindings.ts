@@ -189,3 +189,10 @@ const getPendingChordSnapshot = () => keybindingService.getPendingChord();
 export function usePendingChord(): string | null {
   return useSyncExternalStore(subscribeToPendingChord, getPendingChordSnapshot);
 }
+
+const subscribeToLastInvalidKey = (callback: () => void) => keybindingService.subscribe(callback);
+const getLastInvalidKeySnapshot = () => keybindingService.getLastInvalidKey();
+
+export function useLastInvalidKey(): string | null {
+  return useSyncExternalStore(subscribeToLastInvalidKey, getLastInvalidKeySnapshot);
+}

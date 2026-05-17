@@ -26,6 +26,7 @@ class KeybindingService {
   private scopeStack: KeyScope[] = ["global"];
   private currentScope: KeyScope = "global";
   private pendingChord: string | null = null;
+  private lastInvalidKey: string | null = null;
   private chordTimeout: NodeJS.Timeout | null = null;
   private listeners = new Set<() => void>();
 
@@ -310,6 +311,16 @@ class KeybindingService {
     this.clearPendingChord();
   }
 
+  getLastInvalidKey(): string | null {
+    return this.lastInvalidKey;
+  }
+
+  clearLastInvalidKey(): void {
+    if (this.lastInvalidKey === null) return;
+    this.lastInvalidKey = null;
+    this.notifyListeners();
+  }
+
   normalizeKeyForBinding(event: KeyboardEvent): string {
     return normalizeKeyForBinding(event);
   }
@@ -402,6 +413,14 @@ class KeybindingService {
 
     // Clear pending chord if we found a match or no chord prefix
     if (bestMatch || !foundChordPrefix) {
+      // When a pending chord exists and the second key is neither a chord
+      // completion nor a recognized standalone, surface the attempted combo
+      // so the HUD can echo it before the exit animation. Must be set
+      // before clearPendingChord() — the synchronous notifyListeners() call
+      // inside that method is when subscribers read the snapshot.
+      if (this.pendingChord && !bestMatch && !foundChordPrefix) {
+        this.lastInvalidKey = currentCombo;
+      }
       this.clearPendingChord();
     }
 
