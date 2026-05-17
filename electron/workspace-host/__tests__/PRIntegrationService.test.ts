@@ -33,6 +33,7 @@ function makeCallbacks(): PRIntegrationCallbacks {
     onPRCleared: vi.fn(),
     onIssueDetected: vi.fn(),
     onIssueNotFound: vi.fn(),
+    onDetectionPaused: vi.fn(),
   };
 }
 
