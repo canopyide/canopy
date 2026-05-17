@@ -41,7 +41,7 @@ describe("PRIntegrationService", () => {
   let callbacks: PRIntegrationCallbacks;
   interface PullRequestServiceLike {
     initialize(rootPath: string): void;
-    start(): Promise<void>;
+    start(startupDelayMs?: number): Promise<void>;
     stop(): void;
     reset(): void;
     refresh(): Promise<void>;
@@ -181,10 +181,12 @@ describe("PRIntegrationService", () => {
       expect(prServiceMock.stop).toHaveBeenCalledTimes(1);
     });
 
-    it("resume() starts the underlying service", () => {
+    it("resume() starts the underlying service with no startup jitter", () => {
       const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
       service.resume();
       expect(prServiceMock.start).toHaveBeenCalledTimes(1);
+      // Focus-restore is not a crash-recovery path — jitter is skipped.
+      expect(prServiceMock.start).toHaveBeenCalledWith(0);
     });
   });
 

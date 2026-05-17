@@ -5,7 +5,7 @@ import { GitHubAuth } from "../services/github/GitHubAuth.js";
 
 interface PullRequestServiceLike {
   initialize(rootPath: string): void;
-  start(): Promise<void>;
+  start(startupDelayMs?: number): Promise<void>;
   stop(): void;
   reset(): void;
   refresh(): Promise<void>;
@@ -161,7 +161,10 @@ export class PRIntegrationService {
   }
 
   resume(): void {
-    void this.prService.start();
+    // Focus-restore, not a crash-recovery path — skip the startup jitter so
+    // the user sees fresh PR state promptly. The 5s checkForPRs() floor still
+    // prevents a double-check if a poll just ran.
+    void this.prService.start(0);
   }
 
   updateToken(token: string | null, projectRootPath: string | null): void {

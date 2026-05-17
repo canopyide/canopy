@@ -15,9 +15,26 @@ import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 // GitHub API quota during background sessions.
 const FOCUSED_POLL_INTERVAL_MS = 30 * 1000;
 const BLURRED_POLL_INTERVAL_MS = 2 * 60 * 1000;
-// Minimum gap between blur→focus catch-up polls. Matches SWR's 5s
-// `focusThrottleInterval` convention so rapid alt-tabbing doesn't burst the API.
+// Minimum gap between automatic checkForPRs() invocations (focus catch-up,
+// debounced branch-change recheck, post-restart startup check, poll backoff).
+// Matches SWR's 5s `focusThrottleInterval` convention so rapid alt-tabbing —
+// and a fleet-wide host-restart burst — don't hammer the GitHub API. Manual
+// refresh() bypasses this by resetting `lastCheckAt` first.
 const FOCUS_CATCHUP_THROTTLE_MS = 5 * 1000;
+
+// Randomised delay before the first checkForPRs() after start(). The
+// workspace-host's own restart is jittered, but the singleton's resolved-PR
+// state wipes on restart, so without this every candidate worktree refetches
+// at once — and across many windows whose hosts crashed together, that's a
+// synchronised GitHub API burst right when GitHub itself may still be flaky.
+// A short uniform spread (not the error-indexed `computeBackoff`) decorrelates
+// the fleet. `resume()` (focus-restore) passes 0 to skip the jitter.
+const STARTUP_JITTER_MIN_MS = 500;
+const STARTUP_JITTER_MAX_MS = 2_500;
+
+function randomBetween(min: number, max: number): number {
+  return min + Math.random() * (max - min);
+}
 
 // AWS full-jitter backoff: sleep = random_between(floor, min(cap, base * 2^attempt))
 // See https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
@@ -78,8 +95,10 @@ class PullRequestService {
   private isPolling: boolean = false;
   private consecutiveErrors: number = 0;
   private nextRetryAt: number = 0;
-  private lastFocusCatchupAt: number = Number.NEGATIVE_INFINITY;
   private boostExpiresAt: number | null = null;
+  private lastCheckAt: number = Number.NEGATIVE_INFINITY;
+  private startupDelayTimer: NodeJS.Timeout | null = null;
+  private startupDelayResolve: (() => void) | null = null;
 
   get isEnabled(): boolean {
     return this.nextRetryAt === 0 || Date.now() >= this.nextRetryAt;
@@ -184,7 +203,7 @@ class PullRequestService {
     }
   }
 
-  private scheduleDebounceCheck(): void {
+  private scheduleDebounceCheck(delayMs: number = UPDATE_DEBOUNCE_MS): void {
     if (this.updateDebounceTimer) {
       clearTimeout(this.updateDebounceTimer);
     }
@@ -192,19 +211,49 @@ class PullRequestService {
     this.updateDebounceTimer = setTimeout(() => {
       this.updateDebounceTimer = null;
 
-      if (this.hasUnresolvedCandidates() && this.isEnabled) {
-        logDebug("Running debounced PR check", { candidateCount: this.candidates.size });
-        void this.checkForPRs().catch((err) =>
-          logWarn("Debounced PR check failed", {
-            error: formatErrorMessage(err, "Debounced PR check failed"),
-          })
-        );
-
-        if (!this.pollTimer) {
-          this.scheduleNextPoll();
-        }
+      if (!this.hasUnresolvedCandidates() || !this.isEnabled) {
+        return;
       }
-    }, UPDATE_DEBOUNCE_MS);
+
+      // Startup jitter still pending: skip entirely. handleWorktreeUpdate
+      // already updated the candidate map synchronously, so the upcoming
+      // jittered initial check (runInitialCheck → checkForPRs) will pick
+      // this candidate up. Running here would bypass the jitter and recreate
+      // the synchronised post-restart burst (#8072).
+      if (this.startupDelayTimer !== null) {
+        return;
+      }
+
+      // A branch-change recheck inside the 5s floor is deferred until the
+      // floor clears rather than dropped to the next poll tick — keeps
+      // branch switches responsive (≤5s) without bursting the API.
+      const waitMs = this.msUntilCheckAllowed();
+      if (waitMs > 0) {
+        this.scheduleDebounceCheck(waitMs);
+        return;
+      }
+
+      logDebug("Running debounced PR check", { candidateCount: this.candidates.size });
+      void this.checkForPRs().catch((err) =>
+        logWarn("Debounced PR check failed", {
+          error: formatErrorMessage(err, "Debounced PR check failed"),
+        })
+      );
+
+      if (!this.pollTimer) {
+        this.scheduleNextPoll();
+      }
+    }, delayMs);
+  }
+
+  /**
+   * Milliseconds until an automatic checkForPRs() is allowed again under the
+   * 5s floor. 0 means a check may proceed now. `lastCheckAt` is only advanced
+   * when a real GitHub batch is attempted, so throttled/skipped calls never
+   * push this window forward (avoids a no-progress reschedule loop).
+   */
+  private msUntilCheckAllowed(): number {
+    return Math.max(0, FOCUS_CATCHUP_THROTTLE_MS - (Date.now() - this.lastCheckAt));
   }
 
   public initialize(cwd: string): void {
@@ -212,7 +261,15 @@ class PullRequestService {
     logInfo("PullRequestService initialized", { cwd });
   }
 
-  public start(intervalMs?: number): Promise<void> {
+  /**
+   * Start polling. The first check is delayed by a randomised
+   * STARTUP_JITTER_MIN..MAX window so a fleet-wide host restart doesn't fire a
+   * synchronised PR refetch burst. Pass `startupDelayMs = 0` to check
+   * immediately (focus-restore / resume(), which is not a crash-recovery
+   * path). The returned promise resolves after the (delayed) first check, or
+   * immediately if stop()/reset() cancels the pending delay.
+   */
+  public start(startupDelayMs?: number): Promise<void> {
     if (this.isPolling) {
       logWarn("PullRequestService already polling");
       return Promise.resolve();
@@ -223,23 +280,55 @@ class PullRequestService {
       return Promise.resolve();
     }
 
-    if (intervalMs) {
-      this.pollIntervalMs = intervalMs;
-    }
-
     this.isPolling = true;
     this.nextRetryAt = 0;
     this.consecutiveErrors = 0;
 
-    logInfo("PullRequestService started", { intervalMs: this.pollIntervalMs });
+    const delay = startupDelayMs ?? randomBetween(STARTUP_JITTER_MIN_MS, STARTUP_JITTER_MAX_MS);
 
+    logInfo("PullRequestService started", {
+      intervalMs: this.pollIntervalMs,
+      startupDelayMs: Math.round(delay),
+    });
+
+    if (delay <= 0) {
+      return this.runInitialCheck();
+    }
+
+    return new Promise<void>((resolve) => {
+      this.startupDelayResolve = resolve;
+      this.startupDelayTimer = setTimeout(() => {
+        this.startupDelayTimer = null;
+        this.startupDelayResolve = null;
+        void this.runInitialCheck().finally(resolve);
+      }, delay);
+    });
+  }
+
+  private runInitialCheck(): Promise<void> {
     return this.checkForPRs().finally(() => {
       this.scheduleNextPoll();
       this.scheduleRevalidation();
     });
   }
 
+  private clearStartupDelay(): void {
+    if (this.startupDelayTimer) {
+      clearTimeout(this.startupDelayTimer);
+      this.startupDelayTimer = null;
+    }
+    // Resolve a still-pending start() promise so callers awaiting it (e.g.
+    // PRIntegrationService.initialize) don't hang when stop()/reset() cancels
+    // the jitter before the first check runs.
+    if (this.startupDelayResolve) {
+      const resolve = this.startupDelayResolve;
+      this.startupDelayResolve = null;
+      resolve();
+    }
+  }
+
   public stop(): void {
+    this.clearStartupDelay();
     if (this.pollTimer) {
       clearTimeout(this.pollTimer);
       this.pollTimer = null;
@@ -282,6 +371,9 @@ class PullRequestService {
     // their CI status — which contradicts the "I want fresh data now"
     // semantics of a manual refresh.
     this.resolvedWorktrees.clear();
+    // Manual refresh is an explicit "I want fresh data now" — bypass the 5s
+    // floor by clearing the throttle clock before the direct checkForPRs().
+    this.lastCheckAt = Number.NEGATIVE_INFINITY;
     await this.checkForPRs();
 
     if (this.isPolling) {
@@ -299,8 +391,8 @@ class PullRequestService {
     this.detectedPRs.clear();
     this.consecutiveErrors = 0;
     this.nextRetryAt = 0;
-    this.lastFocusCatchupAt = Number.NEGATIVE_INFINITY;
     this.boostExpiresAt = null;
+    this.lastCheckAt = Number.NEGATIVE_INFINITY;
   }
 
   /**
@@ -325,19 +417,20 @@ class PullRequestService {
       return;
     }
 
-    const now = Date.now();
-    if (now - this.lastFocusCatchupAt < FOCUS_CATCHUP_THROTTLE_MS) {
-      logDebug("Skipping PR focus catch-up — within throttle window", {
-        sinceLastMs: now - this.lastFocusCatchupAt,
-      });
-      return;
-    }
-
     if (!this.hasUnresolvedCandidates() || !this.isEnabled) {
       return;
     }
 
-    this.lastFocusCatchupAt = now;
+    // Cheap pre-filter against the shared 5s floor. checkForPRs() is the
+    // authoritative throttle gate (lesson #3333 — one guard at the choke
+    // point), but skipping the pollTimer clear/reschedule here avoids
+    // starving the poll loop when a user alt-tabs rapidly.
+    if (this.msUntilCheckAllowed() > 0) {
+      logDebug("Skipping PR focus catch-up — within throttle window", {
+        waitMs: this.msUntilCheckAllowed(),
+      });
+      return;
+    }
 
     // Cancel the scheduled poll and run an immediate check; the .finally
     // re-arms the timer at the new (focused) cadence. Avoids waiting up to
@@ -419,6 +512,11 @@ class PullRequestService {
       interval = computeBackoff(this.consecutiveErrors);
       logDebug("Using backoff interval", { errors: this.consecutiveErrors, intervalMs: interval });
     }
+
+    // computeBackoff can return sub-5s intervals; raise the next tick to the
+    // throttle boundary so the timer fires exactly when checkForPRs() would
+    // be admitted again, instead of churning through throttled no-op wakeups.
+    interval = Math.max(interval, this.msUntilCheckAllowed());
 
     this.pollTimer = setTimeout(() => {
       this.pollTimer = null;
@@ -656,6 +754,18 @@ class PullRequestService {
       logDebug("No candidates to check for PRs");
       return;
     }
+
+    // Shared 5s floor across all automatic trigger paths (startup, poll,
+    // backoff, focus catch-up, debounced branch-change). Manual refresh()
+    // bypasses by resetting lastCheckAt first. The clock advances only here —
+    // on an admitted real batch attempt — so skipped calls never push the
+    // window forward.
+    const waitMs = this.msUntilCheckAllowed();
+    if (waitMs > 0) {
+      logDebug("Skipping PR check — within throttle window", { waitMs });
+      return;
+    }
+    this.lastCheckAt = Date.now();
 
     logDebug("Checking PRs for candidates", { count: activeCandidates.length });
 

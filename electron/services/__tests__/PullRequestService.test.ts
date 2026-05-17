@@ -187,7 +187,7 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/test" })
     );
 
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(callCount).toBe(1);
 
     // Step through the first two backoff polls. Using
@@ -251,7 +251,7 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/reval" })
     );
 
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     // start() calls checkForPRs (resolves wt-1), then schedules revalidation
     expect(checkCallCount).toBe(1);
 
@@ -311,7 +311,7 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/throw-test" })
     );
 
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(callCount).toBe(1);
 
     // Advance to the normal poll timer (30s focused default) — checkForPRs throws
@@ -396,7 +396,7 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/reval-throw" })
     );
 
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(revalidationCallCount).toBe(1);
 
     // Advance 90s — first revalidation fires and throws
@@ -441,7 +441,7 @@ describe("PullRequestService", () => {
       "sys:worktree:update",
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/debounce-throw" })
     );
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(callCount).toBe(1);
 
     // Trigger a branch change to cause a debounced check
@@ -450,8 +450,10 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/debounce-throw-2" })
     );
 
-    // Advance past debounce timer (100ms) to trigger the throwing checkForPRs
-    await vi.advanceTimersByTimeAsync(100);
+    // The debounce (100ms) lands inside the 5s floor opened by start(0)'s
+    // initial check, so it re-arms and the throwing checkForPRs only fires
+    // once the floor clears (~5s).
+    await vi.advanceTimersByTimeAsync(5000);
     expect(callCount).toBe(2);
     expect(logWarnMock).toHaveBeenCalledWith("PR check failed", {
       error: "Debounce kaboom",
@@ -581,7 +583,7 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/cadence" })
     );
 
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(callCount).toBe(1);
 
     pullRequestService.setFocusCadence(false);
@@ -615,7 +617,7 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/catchup" })
     );
 
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(callCount).toBe(1);
 
     // Blur, then focus — should immediately catch up
@@ -648,16 +650,20 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/throttle" })
     );
 
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(callCount).toBe(1);
 
-    // First focus → catch-up fires
+    // start(0)'s initial check opened the 5s floor, so let it clear before
+    // exercising the focus catch-up throttle.
+    await vi.advanceTimersByTimeAsync(6 * 1000);
+
+    // First focus after the floor cleared → catch-up fires
     pullRequestService.setFocusCadence(false);
     pullRequestService.setFocusCadence(true);
     await vi.advanceTimersByTimeAsync(0);
     expect(callCount).toBe(2);
 
-    // Second blur→focus within 5s → no extra poll
+    // Second blur→focus within 5s of that catch-up → no extra poll
     await vi.advanceTimersByTimeAsync(2 * 1000);
     pullRequestService.setFocusCadence(false);
     pullRequestService.setFocusCadence(true);
@@ -691,7 +697,7 @@ describe("PullRequestService", () => {
     pullRequestService.setFocusCadence(false);
     expect(batchCheckLinkedPRs).not.toHaveBeenCalled();
 
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     // start() preserves the blurred cadence set while idle
     expect(batchCheckLinkedPRs).toHaveBeenCalledTimes(1);
 
@@ -733,8 +739,12 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/leak" })
     );
 
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(callCount).toBe(1);
+
+    // Clear the 5s floor opened by start(0)'s initial check so the focus
+    // catch-up below isn't throttled.
+    await vi.advanceTimersByTimeAsync(6 * 1000);
 
     // Focus regain — fires catch-up that hangs awaiting `resolveCheck`.
     pullRequestService.setFocusCadence(true);
@@ -756,7 +766,7 @@ describe("PullRequestService", () => {
     pullRequestService.destroy();
   });
 
-  it("polls at 30s by default after start() with no interval argument", async () => {
+  it("polls at the 30s focused cadence by default after start(0)", async () => {
     let callCount = 0;
     const batchCheckLinkedPRs = vi.fn(async () => {
       callCount++;
@@ -774,7 +784,7 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/default" })
     );
 
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(callCount).toBe(1);
 
     // Under the old 60s clamp this would have required 60s
@@ -806,7 +816,7 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/backoff" })
     );
 
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(pullRequestService.getStatus().consecutiveErrors).toBe(1);
 
     // Step two backoff polls to trip the circuit breaker.
@@ -867,10 +877,11 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-rev", branch: "feature/rev" })
     );
 
-    // start() schedules the revalidation timer (refresh() alone doesn't).
+    // start(0) schedules the revalidation timer (refresh() alone doesn't) and
+    // bypasses the startup jitter so the first check runs synchronously.
     // The first poll returns PENDING, so the adaptive boost activates and the
     // next revalidation fires at the 30s boosted cadence, not the 90s baseline.
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(detected.at(-1)?.prCiStatus).toBe("PENDING");
 
     // After CI flips to SUCCESS, the change-detection should re-emit.
@@ -966,7 +977,7 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/boost" })
     );
 
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(checkCallCount).toBe(1);
 
     // 30s boosted revalidation fires because the first poll returned PENDING.
@@ -1017,7 +1028,7 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/expected" })
     );
 
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(checkCallCount).toBe(1);
 
     await vi.advanceTimersByTimeAsync(30 * 1000);
@@ -1065,7 +1076,7 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/decay" })
     );
 
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(checkCallCount).toBe(1); // initial check, PENDING → boost armed
 
     // 30s boosted reval fires, also returns PENDING (extends the boost).
@@ -1124,7 +1135,7 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/green" })
     );
 
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(checkCallCount).toBe(1);
 
     // 30s should NOT fire a revalidation — boost is not armed for SUCCESS.
@@ -1185,7 +1196,7 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/ceiling" })
     );
 
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(checkCallCount).toBe(1); // PENDING → boost armed, expires in 15 min
 
     // From here on, every revalidation returns result.error. The boost
@@ -1261,7 +1272,7 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/refresh-clears-boost" })
     );
 
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(checkCallCount).toBe(1); // PENDING → boost armed
 
     // Flip CI to SUCCESS and refresh — refresh should clear the boost, run a
@@ -1318,7 +1329,7 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/de-track" })
     );
 
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(checkCallCount).toBe(1); // PENDING → boost armed
 
     // Same branch, but the worktree is now the main worktree — de-track without
@@ -1384,7 +1395,7 @@ describe("PullRequestService", () => {
       makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/reset-clears-boost" })
     );
 
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(checkCallCount).toBe(1); // PENDING → boost armed
 
     // Reset wipes all state; restart with a non-pending result, the cadence
@@ -1396,7 +1407,7 @@ describe("PullRequestService", () => {
       "sys:worktree:update",
       makeWorktreeSnapshot({ worktreeId: "wt-2", branch: "feature/reset-clears-boost-2" })
     );
-    await pullRequestService.start();
+    await pullRequestService.start(0);
     expect(checkCallCount).toBe(2);
 
     // 30s after restart — no boost.
@@ -1407,6 +1418,186 @@ describe("PullRequestService", () => {
     await vi.advanceTimersByTimeAsync(60 * 1000);
     expect(checkCallCount).toBe(3);
 
+    pullRequestService.destroy();
+  });
+
+  it("delays the first check by a randomised startup jitter (default start())", async () => {
+    const batchCheckLinkedPRs = vi.fn(async () => ({ results: new Map() }));
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/jitter" })
+    );
+
+    const started = pullRequestService.start();
+    // No synchronous burst — the post-restart fleet decorrelation guarantee.
+    expect(batchCheckLinkedPRs).not.toHaveBeenCalled();
+
+    // Below STARTUP_JITTER_MIN_MS (500ms) the check cannot have fired yet.
+    await vi.advanceTimersByTimeAsync(499);
+    expect(batchCheckLinkedPRs).not.toHaveBeenCalled();
+
+    // Past STARTUP_JITTER_MAX_MS (2500ms) it must have fired exactly once.
+    await vi.advanceTimersByTimeAsync(2500);
+    await started;
+    expect(batchCheckLinkedPRs).toHaveBeenCalledTimes(1);
+
+    pullRequestService.destroy();
+  });
+
+  it("stop() during the startup jitter cancels the check and resolves start()", async () => {
+    const batchCheckLinkedPRs = vi.fn(async () => ({ results: new Map() }));
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/jitter-stop" })
+    );
+
+    const started = pullRequestService.start();
+    pullRequestService.stop();
+
+    // start() must not hang when the pending jitter is cancelled.
+    await started;
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(batchCheckLinkedPRs).not.toHaveBeenCalled();
+
+    pullRequestService.destroy();
+  });
+
+  it("reset() during the startup jitter cancels the check and resolves start()", async () => {
+    const batchCheckLinkedPRs = vi.fn(async () => ({ results: new Map() }));
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/jitter-reset" })
+    );
+
+    const started = pullRequestService.start();
+    pullRequestService.reset();
+
+    await started;
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(batchCheckLinkedPRs).not.toHaveBeenCalled();
+
+    pullRequestService.destroy();
+  });
+
+  it("manual refresh() bypasses the 5s floor opened by the prior check", async () => {
+    let callCount = 0;
+    const batchCheckLinkedPRs = vi.fn(async () => {
+      callCount++;
+      return { results: new Map() };
+    });
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/refresh-bypass" })
+    );
+
+    await pullRequestService.start(0);
+    expect(callCount).toBe(1);
+
+    // Immediately (well inside the 5s floor) a manual refresh still runs.
+    await pullRequestService.refresh();
+    expect(callCount).toBe(2);
+
+    pullRequestService.destroy();
+  });
+
+  it("does not bypass the startup jitter via a debounced worktree update", async () => {
+    const batchCheckLinkedPRs = vi.fn(async () => ({ results: new Map() }));
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/seed" })
+    );
+
+    const started = pullRequestService.start();
+
+    // A worktree update arrives during the jitter window (e.g. the
+    // WorkspaceService initial scan after a host restart) → 100ms debounce.
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-2", branch: "feature/burst" })
+    );
+
+    // Past the debounce (100ms) but still inside the jitter floor (<500ms):
+    // the debounced check must defer to the pending jitter, not fire.
+    await vi.advanceTimersByTimeAsync(400);
+    expect(batchCheckLinkedPRs).not.toHaveBeenCalled();
+
+    // Once the jitter clears, a single initial check covers both candidates.
+    await vi.advanceTimersByTimeAsync(2500);
+    await started;
+    expect(batchCheckLinkedPRs).toHaveBeenCalledTimes(1);
+    expect((batchCheckLinkedPRs.mock.calls[0] as unknown[])[1]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ worktreeId: "wt-1" }),
+        expect.objectContaining({ worktreeId: "wt-2" }),
+      ])
+    );
+
+    pullRequestService.destroy();
+  });
+
+  it("wires the normal poll timer after the jittered initial check", async () => {
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0); // jitter → 500ms
+    let callCount = 0;
+    const batchCheckLinkedPRs = vi.fn(async () => {
+      callCount++;
+      return { results: new Map() };
+    });
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/jitter-poll" })
+    );
+
+    const started = pullRequestService.start();
+    await vi.advanceTimersByTimeAsync(500);
+    await started;
+    expect(callCount).toBe(1); // jittered initial check
+
+    await vi.advanceTimersByTimeAsync(30 * 1000);
+    expect(callCount).toBe(2); // normal 30s poll wired in the jittered path
+
+    randomSpy.mockRestore();
     pullRequestService.destroy();
   });
 });
