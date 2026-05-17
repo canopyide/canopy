@@ -200,8 +200,9 @@ describe("Toolbar layout — issue #2584 project switcher collision", () => {
     });
 
     it("derives spacer width from the WCO env(titlebar-area-width) expression", () => {
-      expect(source).toContain("env(titlebar-area-width");
-      expect(source).toContain("calc(100% - 138px)");
+      expect(source).toContain(
+        "calc(100vw - env(titlebar-area-width, calc(100vw - 138px)))"
+      );
       expect(source).not.toContain("var(--win-caption-width");
     });
 

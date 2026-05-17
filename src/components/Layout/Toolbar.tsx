@@ -1164,7 +1164,7 @@ export function Toolbar({
               style={
                 isFullscreen
                   ? undefined
-                  : { width: "calc(100% - env(titlebar-area-width, calc(100% - 138px)))" }
+                  : { width: "calc(100vw - env(titlebar-area-width, calc(100vw - 138px)))" }
               }
             />
           )}
