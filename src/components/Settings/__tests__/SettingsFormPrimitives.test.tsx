@@ -897,17 +897,25 @@ describe("SettingsSwitch", () => {
     expect(switchEl?.classList.contains("h-6")).toBe(true);
   });
 
-  it("uses specific transitions (not transition-all)", () => {
+  it("uses specific transitions (not transition-all) with asymmetric track/thumb timing", () => {
     const { container } = render(
       <SettingsSwitch checked={false} onCheckedChange={vi.fn()} aria-label="Test switch" />
     );
     const switchEl = container.querySelector('[role="switch"]');
     expect(switchEl?.className).toContain("transition-colors");
     expect(switchEl?.className).not.toContain("transition-all");
+    expect(switchEl?.className).toContain("duration-200");
+    expect(switchEl?.className).toContain("ease-out");
+    expect(switchEl?.className).not.toContain("duration-150");
+    expect(switchEl?.className).not.toContain("ease-in-out");
 
     const thumb = switchEl?.querySelector("[data-state]");
     expect(thumb?.className).toContain("transition-transform");
     expect(thumb?.className).not.toContain("transition-all");
+    expect(thumb?.className).toContain("duration-100");
+    expect(thumb?.className).toContain("ease-[var(--ease-out-expo)]");
+    expect(thumb?.className).not.toContain("duration-150");
+    expect(thumb?.className).not.toContain("ease-in-out");
   });
 
   it("applies accent color scheme by default", () => {
