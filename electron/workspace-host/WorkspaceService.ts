@@ -1117,11 +1117,11 @@ export class WorkspaceService {
       let { newBranch } = options;
       let { fromRemote = false, useExistingBranch = false } = options;
 
-      // Authoritative validation gate. Every caller (IPC, MCP, recipes,
-      // worktree:create-for-task) reaches this method, so any branch-name or
-      // parent-dir issue caught here surfaces a clear error instead of
-      // bubbling up as a low-level git fatal. #7033. Also rejects argv-shaped
-      // names (leading dash) and git-special characters before any git call.
+      // Authoritative validation gate. Every caller (IPC, MCP, recipes)
+      // reaches this method, so any branch-name or parent-dir issue caught
+      // here surfaces a clear error instead of bubbling up as a low-level
+      // git fatal. #7033. Also rejects argv-shaped names (leading dash) and
+      // git-special characters before any git call.
       if (typeof newBranch !== "string" || newBranch.trim().length === 0) {
         throw new Error("Branch name cannot be empty");
       }

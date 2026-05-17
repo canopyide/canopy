@@ -56,8 +56,6 @@ export const channelToCategory: Record<string, IpcChannelCategory> = {
   "artifact:save-to-file": "artifactOps",
   "worktree:create": "gitOps",
   "worktree:delete": "gitOps",
-  "worktree:create-for-task": "gitOps",
-  "worktree:cleanup-task": "gitOps",
   "git:get-file-diff": "gitOps",
   "git:get-project-pulse": "gitOps",
   "git:list-commits": "gitOps",

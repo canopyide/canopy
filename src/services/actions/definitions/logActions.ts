@@ -346,11 +346,11 @@ export function registerLogActions(actions: ActionRegistry, _callbacks: ActionCa
     scope: "renderer",
     argsSchema: z.object({
       category: z
-        .enum(["system", "agent", "task", "server", "file", "ui", "watcher", "artifact"])
+        .enum(["system", "agent", "server", "file", "ui", "watcher", "artifact"])
         .optional()
         .describe("Filter by event category"),
       categories: z
-        .array(z.enum(["system", "agent", "task", "server", "file", "ui", "watcher", "artifact"]))
+        .array(z.enum(["system", "agent", "server", "file", "ui", "watcher", "artifact"]))
         .optional()
         .describe("Filter by multiple categories"),
       types: z.array(z.string()).optional().describe("Filter by event type strings"),

@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import type { NotificationPayload, AgentState, TaskState, EventCategory } from "../types/index.js";
+import type { NotificationPayload, AgentState, EventCategory } from "../types/index.js";
 import type { EventContext } from "../../shared/types/events.js";
 import type { GitHubPRCIStatus } from "../../shared/types/github.js";
 import type { WorktreeSnapshot as WorktreeState } from "../../shared/types/workspace-host.js";
@@ -300,38 +300,6 @@ export const EVENT_META: Record<keyof DaintreeEventMap, EventMetadata> = {
     requiresTimestamp: true,
     description: "Terminal PTY exited (natural, kill, graceful-shutdown, or dispose)",
   },
-
-  // Task events
-  "task:created": {
-    category: "task",
-    requiresContext: true,
-    requiresTimestamp: true,
-    description: "New task created",
-  },
-  "task:assigned": {
-    category: "task",
-    requiresContext: true,
-    requiresTimestamp: true,
-    description: "Task assigned to agent",
-  },
-  "task:state-changed": {
-    category: "task",
-    requiresContext: true,
-    requiresTimestamp: true,
-    description: "Task state changed",
-  },
-  "task:completed": {
-    category: "task",
-    requiresContext: true,
-    requiresTimestamp: true,
-    description: "Task completed successfully",
-  },
-  "task:failed": {
-    category: "task",
-    requiresContext: true,
-    requiresTimestamp: true,
-    description: "Task failed",
-  },
 };
 
 export function getEventCategory(eventType: keyof DaintreeEventMap): EventCategory {
@@ -354,7 +322,6 @@ export type WithContext<T> = T & BaseEventPayload;
 
 export type SystemEventType = Extract<keyof DaintreeEventMap, `sys:${string}`>;
 export type AgentEventType = Extract<keyof DaintreeEventMap, `agent:${string}`>;
-export type TaskEventType = Extract<keyof DaintreeEventMap, `task:${string}`>;
 export type FileEventType = Extract<keyof DaintreeEventMap, `file:${string}`>;
 export type UIEventType = Extract<keyof DaintreeEventMap, `ui:${string}`>;
 
@@ -777,59 +744,6 @@ export type DaintreeEventMap = {
   };
 
   // Task Lifecycle Events (Future-proof for task management)
-
-  /**
-   * Emitted when a new task is created.
-   * Tasks are units of work that can be assigned to agents.
-   * WARNING: The description field may contain sensitive information.
-   * Consumers should sanitize before logging/persisting.
-   */
-  "task:created": WithContext<{
-    taskId: string;
-    description: string;
-    worktreeId?: string;
-  }>;
-
-  /**
-   * Emitted when a task is assigned to an agent.
-   */
-  "task:assigned": WithContext<{
-    taskId: string;
-    agentId: string;
-  }>;
-
-  /**
-   * Emitted when a task's state changes.
-   */
-  "task:state-changed": WithContext<{
-    taskId: string;
-    state: TaskState;
-    previousState?: TaskState;
-  }>;
-
-  /**
-   * Emitted when a task is completed successfully.
-   */
-  "task:completed": WithContext<{
-    taskId: string;
-    agentId?: string;
-    runId?: string;
-    worktreeId?: string;
-    result: string;
-    artifacts?: string[];
-    data?: Record<string, unknown>;
-  }>;
-
-  /**
-   * Emitted when a task fails.
-   */
-  "task:failed": WithContext<{
-    taskId: string;
-    agentId?: string;
-    runId?: string;
-    worktreeId?: string;
-    error: string;
-  }>;
 };
 
 /**
@@ -891,11 +805,6 @@ export const ALL_EVENT_TYPES: Array<keyof DaintreeEventMap> = [
   "terminal:reliability-metric",
   "terminal:state-changed",
   "terminal:exited",
-  "task:created",
-  "task:assigned",
-  "task:state-changed",
-  "task:completed",
-  "task:failed",
 ];
 
 export class TypedEventBus {

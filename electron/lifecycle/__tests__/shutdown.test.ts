@@ -56,22 +56,6 @@ vi.mock("../../services/AgentAvailabilityStore.js", () => ({
   disposeAgentAvailabilityStore: vi.fn(),
 }));
 
-vi.mock("../../services/AgentRouter.js", () => ({
-  disposeAgentRouter: vi.fn(),
-}));
-
-vi.mock("../../services/TaskOrchestrator.js", () => ({
-  disposeTaskOrchestrator: vi.fn(),
-}));
-
-const taskQueueServiceMock = vi.hoisted(() => ({
-  flushPersistence: vi.fn(() => Promise.resolve()),
-}));
-
-vi.mock("../../services/TaskQueueService.js", () => ({
-  taskQueueService: taskQueueServiceMock,
-}));
-
 vi.mock("../../services/PtyClient.js", () => ({
   disposePtyClient: vi.fn(),
 }));
@@ -321,11 +305,8 @@ describe("registerShutdownHandler", () => {
   });
 
   describe("SQLite connection close", () => {
-    it("flushes task persistence before dispose and closeSharedDb", async () => {
+    it("disposes db maintenance before closeSharedDb", async () => {
       const callOrder: string[] = [];
-      taskQueueServiceMock.flushPersistence.mockImplementation(async () => {
-        callOrder.push("flushPersistence");
-      });
       dbMaintenanceMock.dispose.mockImplementation(async () => {
         callOrder.push("dispose");
       });
@@ -340,26 +321,7 @@ describe("registerShutdownHandler", () => {
         expect(appMock.exit).toHaveBeenCalledWith(0);
       });
 
-      expect(callOrder).toEqual(["flushPersistence", "dispose", "closeSharedDb"]);
-    });
-
-    it("still closes the database and exits when flushPersistence rejects", async () => {
-      taskQueueServiceMock.flushPersistence.mockRejectedValueOnce(new Error("flush boom"));
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-      const { beforeQuitCb } = await setup({});
-      await beforeQuitCb(makeEvent());
-
-      await vi.waitFor(() => {
-        expect(appMock.exit).toHaveBeenCalledWith(0);
-      });
-
-      expect(closeSharedDbMock.closeSharedDb).toHaveBeenCalled();
-      expect(warnSpy).toHaveBeenCalledWith(
-        "[MAIN] Failed to flush task persistence:",
-        expect.any(Error)
-      );
-      warnSpy.mockRestore();
+      expect(callOrder).toEqual(["dispose", "closeSharedDb"]);
     });
 
     it("still calls closeSharedDb and exits when dispose fails", async () => {

@@ -11,7 +11,6 @@ import { CHANNELS } from "../ipc/channels.js";
 import { handleDirectoryOpen } from "../menu.js";
 import { projectStore } from "../services/ProjectStore.js";
 import { scratchStore } from "../services/ScratchStore.js";
-import { taskQueueService } from "../services/TaskQueueService.js";
 import { gitHubTokenHealthService } from "../services/github/GitHubTokenHealthService.js";
 import {
   agentConnectivityService,
@@ -27,11 +26,6 @@ import {
   initializePowerSaveBlockerService,
   disposePowerSaveBlockerService,
 } from "../services/PowerSaveBlockerService.js";
-import { initializeAgentRouter, disposeAgentRouter } from "../services/AgentRouter.js";
-import {
-  initializeTaskOrchestrator,
-  disposeTaskOrchestrator,
-} from "../services/TaskOrchestrator.js";
 import { runSmokeFunctionalChecks } from "../services/smokeTest.js";
 import { getHibernationService } from "../services/HibernationService.js";
 import { getSystemSleepService } from "../services/SystemSleepService.js";
@@ -386,13 +380,9 @@ export async function setupWindowServices(
       pty.setActiveProject(win.id, null);
     }
 
-    const availabilityStore = initializeAgentAvailabilityStore();
-    const agentRouter = initializeAgentRouter(availabilityStore);
+    initializeAgentAvailabilityStore();
     initializePowerSaveBlockerService();
-    console.log("[MAIN] AgentAvailabilityStore, AgentRouter, and PowerSaveBlocker initialized");
-
-    initializeTaskOrchestrator(pty, agentRouter);
-    console.log("[MAIN] TaskOrchestrator initialized");
+    console.log("[MAIN] AgentAvailabilityStore and PowerSaveBlocker initialized");
 
     const processArgvCli = !getProcessArgvCliHandled() ? extractCliPath(process.argv) : null;
     const skipDefaultSpawn =
@@ -464,17 +454,6 @@ export async function setupWindowServices(
     }
   } else if (projectPathForWorktrees && !workspaceReady) {
     console.warn("[MAIN] Workspace service unavailable - skipping worktree loading");
-  }
-
-  // Task queue & workflow (startup restore only — not for unbound or path windows)
-  if (restoreProject && !opts.initialProjectPath) {
-    console.log("[MAIN] Initializing task queue for current project:", restoreProject.name);
-    try {
-      await taskQueueService.initialize(restoreProject.id);
-      console.log("[MAIN] Task queue initialized for current project");
-    } catch (error) {
-      console.error("[MAIN] Failed to initialize task queue:", error);
-    }
   }
 
   // Smoke test
@@ -600,8 +579,6 @@ export async function setupWindowServices(
       // module load errors during teardown are non-fatal
     }
 
-    disposeTaskOrchestrator();
-    disposeAgentRouter();
     disposePowerSaveBlockerService();
     disposeAgentAvailabilityStore();
 

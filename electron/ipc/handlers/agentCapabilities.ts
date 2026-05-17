@@ -25,12 +25,10 @@ function toAgentMetadata(config: AgentConfig, agentId: string): AgentMetadata {
     tooltip: config.tooltip,
     usageUrl: config.usageUrl,
     capabilities: config.capabilities,
-    routing: config.routing,
     hasDetection: !!config.detection,
     hasVersionConfig: !!config.version,
     hasUpdateConfig: !!config.update,
     hasInstallHelp: !!config.install,
-    hasRoutingConfig: !!config.routing,
     isBuiltIn,
     isUserDefined: !isBuiltIn,
   };

@@ -156,9 +156,6 @@ export interface Worktree {
   /** Reason git considers this worktree prunable, if provided */
   prunableReason?: string;
 
-  /** Task ID for task-scoped worktree orchestration */
-  taskId?: string;
-
   /** Current or last completed lifecycle script status */
   lifecycleStatus?: WorktreeLifecycleStatus;
 

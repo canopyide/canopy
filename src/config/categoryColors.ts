@@ -47,11 +47,6 @@ export const EVENT_CATEGORY_STYLES: Record<EventCategory, EventCategoryStyle> = 
     label: "Agent",
     color: "bg-cat-green/20 text-cat-green border-cat-green/30",
   },
-  task: {
-    shortLabel: "TSK",
-    label: "Task",
-    color: "bg-cat-teal/20 text-cat-teal border-cat-teal/30",
-  },
   server: {
     shortLabel: "SRV",
     label: "Server",

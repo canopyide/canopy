@@ -3,8 +3,7 @@ import type { Project } from "../types/index.js";
 import type { HandlerDependencies } from "../ipc/types.js";
 import { projectStore, DEFAULT_PROJECT_EMOJI } from "./ProjectStore.js";
 import { logBuffer } from "./LogBuffer.js";
-import { taskQueueService } from "./TaskQueueService.js";
-import { taskWorktreeService } from "./TaskWorktreeService.js";
+import { gitServiceCache } from "./GitServiceCache.js";
 import { contextInjectionTracker } from "./ContextInjectionTracker.js";
 import { CHANNELS } from "../ipc/channels.js";
 import { broadcastToRenderer } from "../ipc/utils.js";
@@ -197,8 +196,7 @@ export class ProjectSwitchService {
       this.deps.eventBuffer?.onProjectSwitch
         ? safeCall(() => this.deps.eventBuffer!.onProjectSwitch())
         : Promise.resolve(),
-      safeCall(() => taskQueueService.onProjectSwitch(projectId)),
-      safeCall(() => taskWorktreeService.onProjectSwitch()),
+      safeCall(() => gitServiceCache.clear()),
       safeCall(() => contextInjectionTracker.onProjectSwitch()),
     ]);
 
@@ -208,8 +206,7 @@ export class ProjectSwitchService {
           "PtyClient",
           "LogBuffer",
           "EventBuffer",
-          "TaskQueueService",
-          "TaskWorktreeService",
+          "GitServiceCache",
           "ContextInjectionTracker",
         ];
         console.error(`[ProjectSwitch] ${serviceNames[index]} cleanup failed:`, result.reason);
