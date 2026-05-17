@@ -4,6 +4,7 @@ import { ProjectPulseCard } from "@/components/Pulse";
 import { useHomeDir } from "@/hooks/app/useHomeDir";
 import { svgToDataUrl, sanitizeSvg } from "@/lib/svg";
 import { usePanelStore } from "@/store/panelStore";
+import { useRecipeStore } from "@/store/recipeStore";
 import { formatPath, middleTruncate } from "@/utils/textParsing";
 import { RotatingTip } from "./contentGridTips";
 import { RecipeRunner } from "./RecipeRunner/RecipeRunner";
@@ -49,6 +50,13 @@ export function ContentGridEmptyState({
       );
     })
   );
+  // Suppress RecipeRunner until the recipe store has settled for the current
+  // project — `loadRecipes()` sets `currentProjectId` synchronously before any
+  // IPC resolves, so we also need `!isLoading` to avoid flashing
+  // `RecipeRunnerEmpty` ("Create your first recipe") while in-repo recipes are
+  // still in flight.
+  const recipesProjectId = useRecipeStore((state) => state.currentProjectId);
+  const recipesLoading = useRecipeStore((state) => state.isLoading);
   const { homeDir } = useHomeDir();
 
   const branchLabel =
@@ -149,7 +157,7 @@ export function ContentGridEmptyState({
           </p>
         )}
 
-        {hasActiveWorktree && hasEverLaunchedAgent && (
+        {hasActiveWorktree && recipesProjectId !== null && !recipesLoading && (
           <div className="mb-6 w-full flex justify-center">
             <RecipeRunner activeWorktreeId={activeWorktreeId} defaultCwd={defaultCwd} />
           </div>
