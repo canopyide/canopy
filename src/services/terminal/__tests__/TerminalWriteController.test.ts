@@ -181,6 +181,10 @@ describe("TerminalWriteController.write", () => {
     // managed object is being torn down, so leaving its counter at 1 is
     // harmless. This mirrors the pre-extraction behavior in TIS.
     expect(managed.pendingWrites).toBe(1);
+
+    // The stale-identity guard returns before the lastWriteAt stamp, so the
+    // torn-down instance never gets burst protection it no longer needs.
+    expect(managed.lastWriteAt).toBeUndefined();
   });
 
   it("posts ack/notify only after terminal.write resolves, not synchronously", () => {
@@ -195,6 +199,7 @@ describe("TerminalWriteController.write", () => {
     controller.write("t1", "abc");
 
     expect(managed.pendingWrites).toBe(1);
+    expect(managed.lastWriteAt).toBeUndefined();
     expect(deps.acknowledgePortData).not.toHaveBeenCalled();
     expect(deps.acknowledgeData).not.toHaveBeenCalled();
     expect(deps.notifyWriteComplete).not.toHaveBeenCalled();
@@ -202,6 +207,7 @@ describe("TerminalWriteController.write", () => {
     captured?.();
 
     expect(managed.pendingWrites).toBe(0);
+    expect(managed.lastWriteAt).toBeTypeOf("number");
     expect(deps.acknowledgePortData).toHaveBeenCalledWith("t1", 3);
     expect(deps.acknowledgeData).toHaveBeenCalledWith("t1", 3);
     expect(deps.notifyWriteComplete).toHaveBeenCalledWith("t1", 3);

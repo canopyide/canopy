@@ -479,7 +479,7 @@ export class TerminalWebGLManager {
   //   0  done/idle (no agent, or completed/exited/idle) — DOM renderer is fine
   //   1  waiting, unfocused, not recently writing — idle between prompts
   //   2  working but drained (pendingWrites 0, no recent write), unfocused
-  //   3  in an active write burst (lastWriteAt within window), not working
+  //   3  waiting + in an active write burst (lastWriteAt within window)
   //   4  focused — user is looking at it; glyph quality matters
   //   5  working with queued writes — actively streaming output
   //   6  focused + directing — user typing into a live agent; never evict first
@@ -512,7 +512,11 @@ export class TerminalWebGLManager {
         tier = 5;
       } else if (focused) {
         tier = 4;
-      } else if (recentlyWriting && state !== "working") {
+      } else if (recentlyWriting && state === "waiting") {
+        // Burst protection only applies to "waiting" — an agent between prompts
+        // that just streamed output. A recent lastWriteAt on a done state
+        // (idle/completed/exited) is a final flush, not an ongoing burst, so
+        // those fall through to tier 0 below.
         tier = 3;
       } else if (state === "working" && pending === 0 && !recentlyWriting) {
         tier = 2;
@@ -543,7 +547,7 @@ export class TerminalWebGLManager {
     const now = Date.now();
     if (now - this.lastEvictionWarnAt > TerminalWebGLManager.EVICTION_WARN_INTERVAL_MS) {
       console.warn(
-        `[TerminalWebGLManager] Pool pressure: evicted ${this.evictionCount} WebGL context(s) in the last minute (pool=${this.pool.size}/${getMaxContexts()})`
+        `[TerminalWebGLManager] Pool pressure: evicted ${this.evictionCount} WebGL context(s) since last warning (pool=${this.pool.size}/${getMaxContexts()})`
       );
       this.evictionCount = 0;
       this.lastEvictionWarnAt = now;

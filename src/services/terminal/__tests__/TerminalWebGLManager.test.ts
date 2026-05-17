@@ -1051,6 +1051,99 @@ describe("TerminalWebGLManager", () => {
       expect(localManager.isActive("idle1")).toBe(true);
     });
 
+    it("evicts a recently-flushed done terminal (tier 0) before a waiting one (tier 1)", async () => {
+      // Regression: an exited/completed agent that just printed a final line
+      // has a recent lastWriteAt, but that flush is not an ongoing burst — it
+      // must stay tier 0 and be evicted before an idle "waiting" terminal.
+      vi.useFakeTimers();
+      vi.setSystemTime(1_000_000);
+      installRafShim();
+      try {
+        const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
+        const max = TerminalWebGLManager.MAX_CONTEXTS;
+        const { localManager, disposeFor } = await makePriorityManager();
+
+        // Filler streaming terminals (tier 5) — never the target.
+        for (let i = 0; i < max - 2; i++) {
+          localManager.ensureContext(
+            `work${i}`,
+            makeManagedTerminal({ agentState: "working", pendingWrites: 2 })
+          );
+        }
+        // Waiting, no recent write → tier 1.
+        localManager.ensureContext(
+          "waiting",
+          makeManagedTerminal({ agentState: "waiting", pendingWrites: 0, isFocused: false })
+        );
+        // Exited, just flushed a final line → must remain tier 0, not tier 3.
+        localManager.ensureContext(
+          "exited",
+          makeManagedTerminal({
+            agentState: "exited",
+            pendingWrites: 0,
+            isFocused: false,
+            lastWriteAt: Date.now() - 1,
+          })
+        );
+
+        localManager.ensureContext("extra", makeManagedTerminal({ agentState: "working" }));
+
+        expect(localManager.isActive("exited")).toBe(false);
+        expect(disposeFor("exited")).toHaveBeenCalledTimes(1);
+        expect(localManager.isActive("waiting")).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("treats exactly WRITE_BURST_RECENCY_MS ago as stale (strict < boundary)", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(1_000_000);
+      installRafShim();
+      try {
+        const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
+        const { WRITE_BURST_RECENCY_MS } = await import("../types");
+        const max = TerminalWebGLManager.MAX_CONTEXTS;
+        const { localManager, disposeFor } = await makePriorityManager();
+
+        const now = Date.now();
+        for (let i = 0; i < max - 2; i++) {
+          localManager.ensureContext(
+            `work${i}`,
+            makeManagedTerminal({ agentState: "working", pendingWrites: 2 })
+          );
+        }
+        // Exactly at the window edge → stale (tier 1), since the check is `<`.
+        localManager.ensureContext(
+          "edge",
+          makeManagedTerminal({
+            agentState: "waiting",
+            pendingWrites: 0,
+            isFocused: false,
+            lastWriteAt: now - WRITE_BURST_RECENCY_MS,
+          })
+        );
+        // One millisecond inside the window → recent (tier 3).
+        localManager.ensureContext(
+          "inside",
+          makeManagedTerminal({
+            agentState: "waiting",
+            pendingWrites: 0,
+            isFocused: false,
+            lastWriteAt: now - WRITE_BURST_RECENCY_MS + 1,
+          })
+        );
+
+        localManager.ensureContext("extra", makeManagedTerminal({ agentState: "working" }));
+
+        expect(localManager.isActive("edge")).toBe(false);
+        expect(disposeFor("edge")).toHaveBeenCalledTimes(1);
+        expect(localManager.isActive("inside")).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("rate-limits the pool-pressure warning to once per minute", async () => {
       vi.useFakeTimers();
       vi.setSystemTime(0);
