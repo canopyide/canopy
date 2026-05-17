@@ -408,9 +408,13 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
     expect(service.webGLManager.isActive("t1")).toBe(false);
   });
 
-  it("tier demotion during hide-dwell cancels dwell and releases immediately", () => {
-    // Tier demotion is an authoritative signal — it should release the WebGL
-    // context immediately rather than waiting for the visibility hide-dwell.
+  it("tier demotion during hide-dwell releases WebGL and leaves no dangling timer", () => {
+    // Tier demotion is an authoritative signal — when it fires (via the
+    // TIER_DOWNGRADE_HYSTERESIS_MS=500 timer) the onTierApplied BACKGROUND
+    // branch calls cancelWebGLHideTimer + releaseContext. Both the hide-dwell
+    // (500ms) and the tier-hysteresis (500ms) timers are scheduled in the
+    // same tick, so the cancel here is the defensive guarantee that the dwell
+    // timer can't fire later on a stale pool slot.
     const managed = makeMockManaged({
       lastAppliedTier: TerminalRefreshTier.FOCUSED,
       getRefreshTier: () => TerminalRefreshTier.BACKGROUND,
@@ -420,10 +424,10 @@ describe("TerminalInstanceService - visibility-driven WebGL lease", () => {
 
     service.setVisible("t1", false);
     expect(service.webGLManager.isActive("t1")).toBe(true);
+    expect(managed.webGLHideTimer).toBeDefined();
 
-    // Tier demotion fires — should release immediately, dwell cancelled.
     service.applyRendererPolicy("t1", TerminalRefreshTier.BACKGROUND);
-    vi.advanceTimersByTime(500); // tier hysteresis
+    vi.advanceTimersByTime(500);
 
     expect(service.webGLManager.isActive("t1")).toBe(false);
     expect(managed.webGLHideTimer).toBeUndefined();

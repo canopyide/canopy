@@ -1789,13 +1789,6 @@ class TerminalInstanceService {
   }
 
   hibernate(id: string): void {
-    const managed = this.instances.get(id);
-    if (managed) {
-      // Hibernation routes through onTerminalDestroyed (bypassing
-      // releaseContext) — cancel the dwell timer so it can't fire after
-      // the pool entry is gone.
-      this.cancelWebGLHideTimer(managed);
-    }
     this.hibernationManager.hibernate(id);
   }
 
