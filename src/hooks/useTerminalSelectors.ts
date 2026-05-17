@@ -4,6 +4,7 @@ import { usePanelStore, type TerminalInstance } from "@/store/panelStore";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import type { WorktreeSnapshot } from "@shared/types";
 import { isTerminalOrphaned, isTerminalVisible } from "@/lib/terminalVisibility";
+import { isTerminalErrorClusterEligible } from "@/store/fleetEligibility";
 export { isTerminalOrphaned, isTerminalVisible };
 
 let _cachedWorktrees: Map<string, WorktreeSnapshot> | null = null;
@@ -99,6 +100,23 @@ export function useWaitingTerminals(): TerminalInstance[] {
 export function useWaitingTerminalIds(): string[] {
   const waiting = useWaitingTerminals();
   return useMemo(() => waiting.map((t) => t.id), [waiting]);
+}
+
+export function useErrorTerminals(): TerminalInstance[] {
+  return usePanelStore(
+    useShallow((state) => {
+      const out: TerminalInstance[] = [];
+      for (const id of state.panelIds) {
+        const t = state.panelsById[id];
+        if (!t) continue;
+        if (t.agentState !== "exited") continue;
+        if (typeof t.exitCode !== "number" || t.exitCode === 0) continue;
+        if (!isTerminalErrorClusterEligible(t)) continue;
+        out.push(t);
+      }
+      return out;
+    })
+  );
 }
 
 export function useBackgroundedTerminals(): TerminalInstance[] {
