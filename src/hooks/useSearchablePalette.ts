@@ -1,12 +1,4 @@
-import {
-  useState,
-  useCallback,
-  useMemo,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useDeferredValue,
-} from "react";
+import { useState, useCallback, useMemo, useEffect, useRef, useDeferredValue } from "react";
 import Fuse, { type IFuseOptions, type FuseResultMatch } from "fuse.js";
 import { usePaletteStore, type PaletteId } from "@/store/paletteStore";
 
@@ -152,25 +144,32 @@ export function useSearchablePalette<T>(
   // the reset to fire on every render, clobbering ArrowDown navigation.
   const prevResultsRef = useRef<{ ids: string; length: number }>({ ids: "", length: 0 });
 
-  // Track the ID of the currently selected item so that when the results
-  // change (typing to narrow), we can follow the same item to its new index
-  // instead of snapping selection back to the first navigable row. The
-  // selectNext/selectPrevious callbacks use functional updaters, so a single
-  // post-commit effect is the only place that can stay in sync across every
-  // mutation path (open/close/nav/hover/external setSelectedIndex).
+  // Track the ID of the currently selected item so that when results change
+  // (e.g. typing to narrow) the next render can follow the same item to its
+  // new index instead of snapping selection back to the first navigable row.
   //
-  // We deliberately do NOT clear the ref when results[selectedIndex] is
-  // undefined: during a narrowing query the previous selectedIndex can point
-  // past the new results length for one render, and the results-change effect
-  // (which fires AFTER this layout effect on the same commit) needs the prior
-  // ID to attempt the follow lookup.
+  // The ID is captured IMPERATIVELY inside updateSelectedIndex below — never
+  // from an effect that observes `results[selectedIndex]`. An effect-based
+  // observer would write the wrong ID when results change underneath a stale
+  // (still-in-bounds) selectedIndex: e.g. items [alpha, beta, bravo], user
+  // selects beta at index 1, query removes alpha → new results [beta, bravo]
+  // with selectedIndex still = 1. An effect would read results[1] = bravo and
+  // overwrite the ref before the follow lookup could use the prior ID.
   const selectedItemIdRef = useRef<string | null>(null);
-  useLayoutEffect(() => {
-    const item = results[selectedIndex];
-    if (item != null) {
-      selectedItemIdRef.current = getItemId(item);
-    }
-  }, [selectedIndex, results, getItemId]);
+
+  const updateSelectedIndex = useCallback(
+    (next: number | ((prev: number) => number)): void => {
+      setSelectedIndex((prev) => {
+        const value = typeof next === "function" ? next(prev) : next;
+        const item = results[value];
+        if (item != null) {
+          selectedItemIdRef.current = getItemId(item);
+        }
+        return value;
+      });
+    },
+    [results, getItemId]
+  );
 
   useEffect(() => {
     if (!resetOnResultsChange) return;
@@ -196,18 +195,17 @@ export function useSearchablePalette<T>(
         (item) => getItemId(item) === selectedItemIdRef.current
       );
       if (followIndex >= 0 && (!canNavigate || canNavigate(results[followIndex]!))) {
-        setSelectedIndex(followIndex);
+        updateSelectedIndex(followIndex);
         return;
       }
     }
 
     if (canNavigate && length > 0) {
-      const firstNavigable = findNavigable(0, 1);
-      setSelectedIndex(firstNavigable);
+      updateSelectedIndex(findNavigable(0, 1));
     } else {
-      setSelectedIndex(0);
+      updateSelectedIndex(0);
     }
-  }, [results, resetOnResultsChange, canNavigate, findNavigable, getItemId]);
+  }, [results, resetOnResultsChange, canNavigate, findNavigable, getItemId, updateSelectedIndex]);
 
   const open = useCallback(() => {
     if (paletteId != null) {
@@ -219,8 +217,8 @@ export function useSearchablePalette<T>(
     // Reset to the first navigable item (not blindly 0) so that
     // palettes with disabled leading items start on the correct row.
     const firstNav = canNavigate && results.length > 0 ? findNavigable(0, 1) : 0;
-    setSelectedIndex(firstNav);
-  }, [paletteId, canNavigate, results.length, findNavigable]);
+    updateSelectedIndex(firstNav);
+  }, [paletteId, canNavigate, results.length, findNavigable, updateSelectedIndex]);
 
   const close = useCallback(() => {
     if (paletteId != null) {
@@ -229,8 +227,8 @@ export function useSearchablePalette<T>(
       setLocalIsOpen(false);
     }
     setQuery("");
-    setSelectedIndex(0);
-  }, [paletteId]);
+    updateSelectedIndex(0);
+  }, [paletteId, updateSelectedIndex]);
 
   const toggle = useCallback(() => {
     if (isOpen) {
@@ -242,19 +240,19 @@ export function useSearchablePalette<T>(
 
   const selectPrevious = useCallback(() => {
     if (results.length === 0) return;
-    setSelectedIndex((prev) => {
+    updateSelectedIndex((prev) => {
       const next = prev <= 0 ? results.length - 1 : prev - 1;
       return canNavigate ? findNavigable(next, -1) : next;
     });
-  }, [results.length, canNavigate, findNavigable]);
+  }, [results.length, canNavigate, findNavigable, updateSelectedIndex]);
 
   const selectNext = useCallback(() => {
     if (results.length === 0) return;
-    setSelectedIndex((prev) => {
+    updateSelectedIndex((prev) => {
       const next = prev >= results.length - 1 ? 0 : prev + 1;
       return canNavigate ? findNavigable(next, 1) : next;
     });
-  }, [results.length, canNavigate, findNavigable]);
+  }, [results.length, canNavigate, findNavigable, updateSelectedIndex]);
 
   return {
     isOpen,
@@ -268,7 +266,7 @@ export function useSearchablePalette<T>(
     close,
     toggle,
     setQuery,
-    setSelectedIndex,
+    setSelectedIndex: updateSelectedIndex,
     selectPrevious,
     selectNext,
   };

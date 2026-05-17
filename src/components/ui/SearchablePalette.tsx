@@ -249,7 +249,13 @@ export function SearchablePalette<T>({
   // by its string content rather than the (changing) selectedItem reference.
   // Without this, arrow-key navigation rebuilds <PaletteFooterHints/> on every
   // selection change even when the label text is identical across items.
-  const rawActionLabel = getActionLabel ? getActionLabel(selectedItem) : null;
+  //
+  // Honour the documented precedence (getFooter > footer > getActionLabel):
+  // skip the getActionLabel call entirely when a higher-precedence footer is
+  // supplied, so consumers aren't surprised by getActionLabel side-effects
+  // when its output would be discarded anyway.
+  const actionLabelActive = !getFooter && footer === undefined && getActionLabel != null;
+  const rawActionLabel = actionLabelActive ? getActionLabel!(selectedItem) : null;
   const actionLabelFooter = useMemo(() => {
     if (rawActionLabel == null) return null;
     const actionLabel = rawActionLabel.trim() || "Select";

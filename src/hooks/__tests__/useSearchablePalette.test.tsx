@@ -227,6 +227,38 @@ describe("useSearchablePalette", () => {
       expect(result.current.results[result.current.selectedIndex]?.id).toBe("bravo");
     });
 
+    it("follows the previously selected item when the stale index stays in bounds (regression for in-bounds case)", () => {
+      // Edge case: filter removes items BEFORE the selected item, so the stale
+      // selectedIndex still lands inside the new results array but at a
+      // different item. An effect-based ref observer would write the wrong
+      // item ID here. Verifies the imperative-capture fix.
+      const items: PaletteItem[] = [
+        { id: "alpha", name: "Alpha" },
+        { id: "beta", name: "Beta" },
+        { id: "bravo", name: "Bravo" },
+      ];
+
+      const { result } = renderHook(() =>
+        useSearchablePalette<PaletteItem>({ items, filterFn: filterByName })
+      );
+
+      // User selects "Beta" at index 1.
+      act(() => {
+        result.current.setSelectedIndex(1);
+      });
+      expect(result.current.results[result.current.selectedIndex]?.id).toBe("beta");
+
+      // User types "b" — Alpha drops out. Results: [Beta, Bravo].
+      // selectedIndex=1 stays in bounds but now points at Bravo. Follow must
+      // chase the user-selected Beta (now index 0), not blindly accept Bravo.
+      act(() => {
+        result.current.setQuery("b");
+      });
+      expect(result.current.results.map((i) => i.id)).toEqual(["beta", "bravo"]);
+      expect(result.current.selectedIndex).toBe(0);
+      expect(result.current.results[result.current.selectedIndex]?.id).toBe("beta");
+    });
+
     it("falls back to first navigable when the previously selected item is filtered out", () => {
       const items: PaletteItem[] = [
         { id: "alpha", name: "Alpha" },
