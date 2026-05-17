@@ -104,17 +104,32 @@ describe("Toolbar responsive design — issue #4133", () => {
       expect(source).toMatch(/data-severity=\{severity\}/);
     });
 
-    it("builds a dynamic tooltip listing the hidden buttons", () => {
-      expect(source).toContain("itemLabels");
-      expect(source).toMatch(/\$\{overflowIds\.length\} more — /);
+    it("builds a terse count-only tooltip — no enumerated list (issue #8159)", () => {
+      // The enumerated list re-announced the full set on every focus pass
+      // and went stale on resize; it must be gone entirely.
+      expect(source).not.toContain("itemLabels");
+      expect(source).not.toMatch(/\$\{overflowIds\.length\} more — /);
+      // Tooltip is "More — {n} item(s)" / "More — {n} problem(s)".
+      expect(source).toContain("`More — ${n} ${n === 1 ? \"item\" : \"items\"}`");
+      expect(source).toContain("`More — ${n} ${n === 1 ? \"problem\" : \"problems\"}`");
     });
 
-    it("supplies a fallback label for voice-recording so the count and named list stay aligned", () => {
-      // voice-recording is absent from OVERFLOW_MENU_META on purpose — it
-      // has no dropdown rendering — so the tooltip must look it up
-      // separately or the spoken count would exceed the list.
-      expect(source).toContain('id === "voice-recording"');
-      expect(source).toContain('"Voice recording"');
+    it("escalates tooltip/aria noun to 'problem' for actionable severity (issue #8159)", () => {
+      expect(source).toContain(
+        'const hasProblem = severity === "critical" || severity === "warning";'
+      );
+    });
+
+    it("uses a stable, count-bearing aria-label instead of the enumerated list (issue #8159)", () => {
+      // voice-recording special-casing is gone — the tooltip/aria-label no
+      // longer enumerate, so the count/list alignment hack is unnecessary.
+      expect(source).not.toContain('id === "voice-recording"');
+      expect(source).not.toContain('"Voice recording"');
+      // aria-label is purpose-naming + count; severity escalates the noun.
+      expect(source).toContain("`More toolbar items — ${n} hidden`");
+      expect(source).toContain(
+        "`More toolbar items — ${n} ${n === 1 ? \"problem\" : \"problems\"} hidden`"
+      );
     });
   });
 

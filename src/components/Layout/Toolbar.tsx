@@ -860,22 +860,20 @@ export function Toolbar({
     severity: OverflowBadgeSeverity
   ) => {
     if (overflowIds.length === 0) return null;
-    // voice-recording is intentionally absent from OVERFLOW_MENU_META — it
-    // doesn't render a dropdown menu item and has no actionable target while
-    // already active. Surface it in the tooltip/aria-label only so the
-    // count and the named list stay in sync.
-    const itemLabels = overflowIds
-      .map((id) => {
-        if (id === "voice-recording") return "Voice recording";
-        return OVERFLOW_MENU_META[id]?.label ?? pluginOverflowMeta[id]?.label;
-      })
-      .filter((label): label is string => Boolean(label));
-    const tooltipText =
-      itemLabels.length > 0
-        ? `${overflowIds.length} more — ${itemLabels.join(", ")}`
-        : `${overflowIds.length} more toolbar items`;
-    const ariaLabel =
-      itemLabels.length > 0 ? tooltipText : `${overflowIds.length} more toolbar items`;
+    // Keep the accessible name stable and terse: a comma-enumerated list
+    // re-announces the full set on every focus pass and goes stale as
+    // resize-driven overflow changes. Surface only the purpose plus a
+    // count, escalating the noun to "problem(s)" when severity is
+    // actionable (critical/warning) so screen-reader users still learn
+    // there's something to act on without the list churn.
+    const n = overflowIds.length;
+    const hasProblem = severity === "critical" || severity === "warning";
+    const tooltipText = hasProblem
+      ? `More — ${n} ${n === 1 ? "problem" : "problems"}`
+      : `More — ${n} ${n === 1 ? "item" : "items"}`;
+    const ariaLabel = hasProblem
+      ? `More toolbar items — ${n} ${n === 1 ? "problem" : "problems"} hidden`
+      : `More toolbar items — ${n} hidden`;
     return (
       <DropdownMenu>
         <Tooltip>
