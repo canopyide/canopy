@@ -109,6 +109,37 @@ describe("useAgentDiscoveryOnboarding — availability first-seen", () => {
     expect(onboardingMock.recordAvailabilityFirstSeen).toHaveBeenCalledWith(["gemini"]);
   });
 
+  it("does not re-record ids already populated by hydration", async () => {
+    onboardingMock.get.mockResolvedValue({
+      ...baseState,
+      availabilityFirstSeen: { claude: 12345 },
+    });
+    const { result } = renderHook(() => useAgentDiscoveryOnboarding());
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+
+    await act(async () => {
+      await recordAgentAvailabilityFirstSeen(["claude"]);
+    });
+
+    expect(onboardingMock.recordAvailabilityFirstSeen).not.toHaveBeenCalled();
+    expect(result.current.availabilityFirstSeen.claude).toBe(12345);
+  });
+
+  it("drops non-finite persisted timestamps on hydration", async () => {
+    onboardingMock.get.mockResolvedValue({
+      ...baseState,
+      availabilityFirstSeen: {
+        claude: "yesterday" as unknown as number,
+        gemini: Number.NaN,
+        codex: 1700000000000,
+      },
+    });
+    const { result } = renderHook(() => useAgentDiscoveryOnboarding());
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+
+    expect(result.current.availabilityFirstSeen).toEqual({ codex: 1700000000000 });
+  });
+
   it("exposes a 14-day TTL window", () => {
     expect(AGENT_DISCOVERY_TTL_MS).toBe(14 * 24 * 60 * 60 * 1000);
   });

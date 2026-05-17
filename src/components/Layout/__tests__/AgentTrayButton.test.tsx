@@ -1018,6 +1018,36 @@ describe("AgentTrayButton", () => {
     expect(queryByTestId("agent-tray-new-dot-gemini")).toBeTruthy();
   });
 
+  it("renders the new dot and aria-label on a preset agent (SplitLaunchItem path)", () => {
+    const availability = { claude: "ready" } as unknown as CliAvailability;
+    mockSettings = settingsWith({ claude: { pinned: false } });
+    mockWelcomeCardDismissed = true;
+    mockSeenAgentIds = [];
+    mockMergedPresetsFn = (agentId: string) =>
+      agentId === "claude" ? [{ id: "user-alpha", name: "Alpha" }] : [];
+
+    const { getByTestId, getAllByTestId } = render(
+      <AgentTrayButton agentAvailability={availability} />
+    );
+    expect(getByTestId("agent-tray-new-dot-claude")).toBeTruthy();
+    const trigger = getAllByTestId("submenu-trigger")[0]!;
+    expect(trigger.getAttribute("aria-label")).toContain(", new");
+  });
+
+  it("does not let a non-numeric persisted first-seen value pin the dot on forever", () => {
+    const availability = { claude: "ready" } as unknown as CliAvailability;
+    mockSettings = settingsWith({});
+    mockWelcomeCardDismissed = true;
+    mockSeenAgentIds = [];
+    // A corrupt value reaching the component: `now - "oops"` is NaN and
+    // `NaN > TTL` is false, so the TTL filter must not silently drop the dot.
+    // (The real hook also sanitizes upstream — covered in the hook test.)
+    mockAvailabilityFirstSeen = { claude: "oops" as unknown as number };
+
+    const { queryByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
+    expect(queryByTestId("agent-tray-new-dot-claude")).toBeTruthy();
+  });
+
   it("ignores panels from other worktrees for session detection", () => {
     const availability = { claude: "ready" } as unknown as CliAvailability;
     mockSettings = settingsWith({ claude: { pinned: false } });

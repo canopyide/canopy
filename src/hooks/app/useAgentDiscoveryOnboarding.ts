@@ -10,6 +10,20 @@ import { isElectronAvailable } from "@/hooks/useElectron";
  */
 export const AGENT_DISCOVERY_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
+/**
+ * Keeps only finite-number timestamps. A non-numeric value (manual store
+ * edit, partial migration) would make `now - value` NaN, and `NaN > TTL` is
+ * always false — the discovery dot would then linger forever for that agent.
+ */
+function sanitizeFirstSeen(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, number> = {};
+  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "number" && Number.isFinite(value)) out[id] = value;
+  }
+  return out;
+}
+
 interface AgentDiscoveryState {
   loaded: boolean;
   seenAgentIds: string[];
@@ -47,10 +61,7 @@ async function hydrate(): Promise<void> {
       useAgentDiscoveryStore.setState({
         loaded: true,
         seenAgentIds: Array.isArray(state.seenAgentIds) ? state.seenAgentIds : [],
-        availabilityFirstSeen:
-          state.availabilityFirstSeen && typeof state.availabilityFirstSeen === "object"
-            ? state.availabilityFirstSeen
-            : {},
+        availabilityFirstSeen: sanitizeFirstSeen(state.availabilityFirstSeen),
         welcomeCardDismissed: state.welcomeCardDismissed === true,
         setupBannerDismissed: state.setupBannerDismissed === true,
       });

@@ -1563,6 +1563,10 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
     args: [agentIds: string[]];
     result: OnboardingState;
   };
+  "onboarding:record-availability-first-seen": {
+    args: [agentIds: string[]];
+    result: OnboardingState;
+  };
   "onboarding:dismiss-welcome-card": {
     args: [];
     result: OnboardingState;

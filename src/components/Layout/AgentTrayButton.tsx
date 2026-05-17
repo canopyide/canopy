@@ -208,7 +208,14 @@ function SplitLaunchItem({ row, onLaunch }: SplitLaunchItemProps) {
               <row.Icon brandColor={getBrandColorHex(row.id)} />
             </BrandMark>
           </span>
-          {row.name}
+          <span className="flex-1">{row.name}</span>
+          {row.isNew && (
+            <span
+              data-testid={`agent-tray-new-dot-${row.id}`}
+              className="ml-1 h-1.5 w-1.5 shrink-0 rounded-full bg-status-info ring-1 ring-daintree-sidebar"
+              aria-hidden="true"
+            />
+          )}
         </span>
         <span
           className="flex items-center px-2 py-1.5 border-l border-daintree-border/50"

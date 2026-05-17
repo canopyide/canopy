@@ -20,6 +20,18 @@ const DEFAULT_CHECKLIST: ChecklistState = {
 
 const SKIP_E2E = process.env.DAINTREE_E2E_SKIP_FIRST_RUN_DIALOGS === "1";
 
+// Keep only finite-number timestamps. A non-numeric persisted value would
+// make `Date.now() - value` NaN in the renderer's TTL check, and `NaN > TTL`
+// is always false — the discovery dot would then never age out.
+function sanitizeFirstSeen(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, number> = {};
+  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "number" && Number.isFinite(value)) out[id] = value;
+  }
+  return out;
+}
+
 function getOnboardingState(): OnboardingState {
   if (SKIP_E2E) {
     return {
@@ -72,10 +84,7 @@ function getOnboardingState(): OnboardingState {
     seenAgentIds: Array.isArray(raw.seenAgentIds)
       ? (raw.seenAgentIds as string[]).filter((id) => typeof id === "string")
       : [],
-    availabilityFirstSeen:
-      raw.availabilityFirstSeen && typeof raw.availabilityFirstSeen === "object"
-        ? raw.availabilityFirstSeen
-        : {},
+    availabilityFirstSeen: sanitizeFirstSeen(raw.availabilityFirstSeen),
     welcomeCardDismissed: raw.welcomeCardDismissed === true,
     // Treat any already-completed onboarding as implicit banner dismissal —
     // without this, upgraded users who finished onboarding before #5131 see
