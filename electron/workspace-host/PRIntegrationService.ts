@@ -14,6 +14,7 @@ interface PullRequestServiceLike {
     candidateCount: number;
     resolvedCount: number;
     isEnabled: boolean;
+    detectionStateTripped: boolean;
   };
 }
 
@@ -152,7 +153,9 @@ export class PRIntegrationService {
       candidateCount: status.candidateCount,
       resolvedPRCount: status.resolvedCount,
       lastCheckTime: undefined,
-      circuitBreakerTripped: !status.isEnabled,
+      // Use the dedicated breaker flag, NOT `!isEnabled`: a rate-limit pause
+      // also disables polling but must not show the "detection paused" badge.
+      circuitBreakerTripped: status.detectionStateTripped,
     };
   }
 

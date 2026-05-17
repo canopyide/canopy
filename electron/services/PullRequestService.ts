@@ -393,12 +393,13 @@ class PullRequestService {
     this.detectedPRs.clear();
     this.consecutiveErrors = 0;
     this.nextRetryAt = 0;
-    // Silent clear (no emit): reset() runs on project switch / service
-    // teardown where the worktree port re-attaches and the renderer re-seeds
-    // the breaker state via fetchInitialState(). Emitting here would race the
-    // port handoff; clearing the tracking flag keeps a later genuine trip
-    // from being suppressed as a no-op transition.
-    this.detectionStateTripped = false;
+    // reset() runs on project switch, service teardown, and token removal
+    // (updateToken(null) → reset()). Token removal does NOT re-attach the
+    // worktree port, so a silent clear would strand a tripped glyph in the
+    // renderer until the next wake. setDetectionState only emits on a genuine
+    // true→false transition, so this is a no-op when not tripped and cannot
+    // suppress a later genuine trip (the flag is false afterward).
+    this.setDetectionState(false);
     this.boostExpiresAt = null;
     this.lastCheckAt = Number.NEGATIVE_INFINITY;
   }
@@ -894,6 +895,7 @@ class PullRequestService {
     candidateCount: number;
     resolvedCount: number;
     consecutiveErrors: number;
+    detectionStateTripped: boolean;
   } {
     return {
       isPolling: this.isPolling,
@@ -901,6 +903,10 @@ class PullRequestService {
       candidateCount: this.candidates.size,
       resolvedCount: this.resolvedWorktrees.size,
       consecutiveErrors: this.consecutiveErrors,
+      // Distinct from `!isEnabled`: a rate-limit pause also disables polling
+      // but does NOT trip the circuit breaker. The badge ambient signal must
+      // only reflect the genuine 3-error breaker, not a transient 429 pause.
+      detectionStateTripped: this.detectionStateTripped,
     };
   }
 }

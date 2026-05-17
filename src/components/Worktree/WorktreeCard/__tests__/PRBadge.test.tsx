@@ -62,13 +62,16 @@ describe("PRBadge circuit-breaker glyph", () => {
     mockMissingToken = false;
   });
 
-  it("shows the paused glyph and tooltip line when prDetectionPaused is true", () => {
-    renderBadge({ prDetectionPaused: true });
+  it("shows the CloudOff glyph and tooltip line when prDetectionPaused is true", () => {
+    const { container } = renderBadge({ prDetectionPaused: true });
 
     const button = screen.getByRole("button");
     expect(button.getAttribute("aria-label")).toContain("PR detection paused");
+    // The CloudOff lucide icon must actually render in the badge button.
+    expect(button.querySelector(".lucide-cloud-off")).toBeTruthy();
     // Radix renders tooltip content plus a visually-hidden a11y duplicate.
     expect(screen.getAllByText("PR detection paused — retrying").length).toBeGreaterThan(0);
+    expect(container).toBeTruthy();
   });
 
   it("does not show the glyph or tooltip line when prDetectionPaused is false", () => {
@@ -76,6 +79,7 @@ describe("PRBadge circuit-breaker glyph", () => {
 
     const button = screen.getByRole("button");
     expect(button.getAttribute("aria-label")).not.toContain("PR detection paused");
+    expect(button.querySelector(".lucide-cloud-off")).toBeNull();
     expect(screen.queryByText("PR detection paused — retrying")).toBeNull();
   });
 

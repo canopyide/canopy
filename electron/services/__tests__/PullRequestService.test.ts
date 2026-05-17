@@ -299,6 +299,41 @@ describe("PullRequestService", () => {
     pullRequestService.destroy();
   });
 
+  it("does not emit sys:pr:detection-state for rate-limit pauses", async () => {
+    const batchCheckLinkedPRs = vi.fn(async () => ({
+      results: new Map(),
+      error: "secondary rate limit",
+      rateLimit: { kind: "secondary" as const, resumeAt: Date.now() + 60_000 },
+    }));
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    const states: DaintreeEventMap["sys:pr:detection-state"][] = [];
+    const unsubscribe = events.on("sys:pr:detection-state", (p) => states.push(p));
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/test" })
+    );
+
+    await pullRequestService.start(0);
+    await vi.advanceTimersToNextTimerAsync();
+    await vi.advanceTimersToNextTimerAsync();
+
+    // Rate-limit pause disables polling but must NOT trip the breaker signal.
+    expect(pullRequestService.getStatus().isEnabled).toBe(false);
+    expect(pullRequestService.getStatus().consecutiveErrors).toBe(0);
+    expect(pullRequestService.getStatus().detectionStateTripped).toBe(false);
+    expect(states).toHaveLength(0);
+
+    unsubscribe();
+    pullRequestService.destroy();
+  });
+
   it("revalidates resolved PRs at 90-second intervals", async () => {
     let checkCallCount = 0;
     const batchCheckLinkedPRs = vi.fn(async (_cwd: string, candidates: PRCheckCandidate[]) => {

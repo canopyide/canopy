@@ -50,6 +50,7 @@ describe("PRIntegrationService", () => {
       candidateCount: number;
       resolvedCount: number;
       isEnabled: boolean;
+      detectionStateTripped: boolean;
     };
   }
 
@@ -69,6 +70,7 @@ describe("PRIntegrationService", () => {
         candidateCount: 0,
         resolvedCount: 0,
         isEnabled: true,
+        detectionStateTripped: false,
       })),
     };
   });
@@ -116,6 +118,7 @@ describe("PRIntegrationService", () => {
         candidateCount: 7,
         resolvedCount: 3,
         isEnabled: true,
+        detectionStateTripped: false,
       }));
       const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
 
@@ -130,12 +133,13 @@ describe("PRIntegrationService", () => {
       });
     });
 
-    it("reports circuitBreakerTripped when service is disabled", () => {
+    it("reports circuitBreakerTripped when the breaker has tripped", () => {
       prServiceMock.getStatus = vi.fn(() => ({
         isPolling: false,
         candidateCount: 0,
         resolvedCount: 0,
         isEnabled: false,
+        detectionStateTripped: true,
       }));
       const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
 
@@ -143,6 +147,23 @@ describe("PRIntegrationService", () => {
 
       expect(status.circuitBreakerTripped).toBe(true);
       expect(status.isRunning).toBe(false);
+    });
+
+    it("does NOT report circuitBreakerTripped during a rate-limit pause (isEnabled false, breaker not tripped)", () => {
+      // A 429 sets nextRetryAt (isEnabled → false) but never trips the
+      // 3-error breaker, so the badge "detection paused" signal must stay off.
+      prServiceMock.getStatus = vi.fn(() => ({
+        isPolling: true,
+        candidateCount: 2,
+        resolvedCount: 1,
+        isEnabled: false,
+        detectionStateTripped: false,
+      }));
+      const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
+
+      const status = service.getStatus();
+
+      expect(status.circuitBreakerTripped).toBe(false);
     });
   });
 
