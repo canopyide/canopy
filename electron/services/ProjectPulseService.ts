@@ -17,7 +17,22 @@ interface CacheEntry {
   pulse: ProjectPulse;
   timestamp: number;
   headSha: string | null;
+  headBranch: string | undefined;
 }
+
+interface HeadProbeResult {
+  sha: string | null;
+  branch: string | undefined;
+}
+
+// Sentinel returned by probeHeadSha when the worktree path was deleted —
+// distinct from `null` (which means "valid repo with no commits"). Keeps the
+// equality check honest so a missing path doesn't silently match a cached
+// empty pulse.
+const PROBE_MISSING_PATH_SENTINEL = "__missing__";
+// Sentinel for unexpected probe errors. Never matches a cached SHA so the
+// caller always falls through to a real recompute (fail open to freshness).
+const PROBE_ERROR_SENTINEL = "__probe-error__";
 
 const CACHE_TTL_MS = 60_000;
 const MAX_CACHE_SIZE = 100;
@@ -118,18 +133,26 @@ export class ProjectPulseService {
     const cached = this.cache.get(cacheKey);
 
     if (!options.forceRefresh && cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-      // Lightweight probe: if HEAD hasn't moved, serve the cached pulse.
-      // Falls through to recompute when the SHA differs so commits, rebases,
-      // and branch switches surface inside the TTL window.
-      const currentSha = await this.probeHeadSha(options.worktreePath);
-      if (currentSha === cached.headSha) {
+      // Lightweight probe: if HEAD and the current branch both still match
+      // the cached entry, serve the cache. Falls through to recompute when
+      // either changes so commits, rebases, AND branch switches (e.g.
+      // checkout to a new branch at the same SHA) surface inside the TTL.
+      const probe = await this.probeHead(options.worktreePath);
+      // Re-check the cache entry: invalidate() may have fired during the
+      // await above, deleting the entry. Use the freshly-fetched entry so
+      // we don't serve data that was just invalidated.
+      const fresh = this.cache.get(cacheKey);
+      if (fresh === cached && probe.sha === cached.headSha && probe.branch === cached.headBranch) {
         logProjectPulseDebug("ProjectPulse cache hit", { cacheKey });
         return cached.pulse;
       }
-      logProjectPulseDebug("ProjectPulse SHA changed, recomputing", {
+      logProjectPulseDebug("ProjectPulse cache invalidated by probe", {
         cacheKey,
         cachedSha: cached.headSha,
-        currentSha,
+        currentSha: probe.sha,
+        cachedBranch: cached.headBranch,
+        currentBranch: probe.branch,
+        entryStillPresent: fresh === cached,
       });
     }
 
@@ -147,9 +170,14 @@ export class ProjectPulseService {
 
     const promise = (async () => {
       try {
-        const { pulse, headSha } = await this.computePulse(options, controller!.signal);
+        const { pulse, headSha, headBranch } = await this.computePulse(options, controller!.signal);
         if (!controller!.signal.aborted) {
-          this.cache.set(cacheKey, { pulse, timestamp: Date.now(), headSha });
+          this.cache.set(cacheKey, {
+            pulse,
+            timestamp: Date.now(),
+            headSha,
+            headBranch,
+          });
           this.pruneCache();
         }
         return pulse;
@@ -180,33 +208,45 @@ export class ProjectPulseService {
     }
   }
 
-  // Reads HEAD with the shared no-commits taxonomy. Used by the cheap probe in
-  // getPulse — no signal so a pending invalidate can't abort the validity check
-  // and trick the caller into a needless recompute.
-  private async probeHeadSha(worktreePath: string): Promise<string | null> {
+  // Reads HEAD + current branch with the shared no-commits taxonomy. Used by
+  // the cheap probe in getPulse — no signal so a pending invalidate can't
+  // abort the validity check and trick the caller into a needless recompute.
+  private async probeHead(worktreePath: string): Promise<HeadProbeResult> {
     if (!existsSync(worktreePath)) {
-      return null;
+      // Distinct from no-commits null so a deleted worktree falls through to
+      // computePulse (which throws "Worktree path does not exist") instead of
+      // serving a stale empty-repo cache.
+      return { sha: PROBE_MISSING_PATH_SENTINEL, branch: undefined };
     }
     try {
       const git = createHardenedGit(worktreePath);
-      const out = await git.raw(["rev-parse", "--verify", "HEAD"]);
-      return out.trim() || null;
+      const shaOut = await git.raw(["rev-parse", "--verify", "HEAD"]);
+      const sha = shaOut.trim() || null;
+      let branch: string | undefined;
+      try {
+        const branchOut = await git.raw(["rev-parse", "--abbrev-ref", "HEAD"]);
+        const trimmed = branchOut.trim();
+        branch = trimmed === "HEAD" ? undefined : trimmed;
+      } catch {
+        branch = undefined;
+      }
+      return { sha, branch };
     } catch (error) {
       const message = formatErrorMessage(error, "Failed to probe git HEAD");
       if (isNoCommitsError(message)) {
-        return null;
+        return { sha: null, branch: undefined };
       }
       // Unexpected error: fall through to recompute rather than silently
       // serving stale data.
       logProjectPulseDebug("ProjectPulse HEAD probe failed", { worktreePath, error: message });
-      return "__probe-error__";
+      return { sha: PROBE_ERROR_SENTINEL, branch: undefined };
     }
   }
 
   private async computePulse(
     options: GetProjectPulseOptions,
     signal?: AbortSignal
-  ): Promise<{ pulse: ProjectPulse; headSha: string | null }> {
+  ): Promise<{ pulse: ProjectPulse; headSha: string | null; headBranch: string | undefined }> {
     const {
       worktreePath,
       worktreeId,
@@ -236,7 +276,7 @@ export class ProjectPulseService {
       const errorMessage = formatErrorMessage(error, "Failed to read git HEAD");
       if (isNoCommitsError(errorMessage)) {
         logProjectPulseDebug("Repository has no commits, returning empty pulse", { worktreeId });
-        return { pulse: this.createEmptyPulse(options), headSha: null };
+        return { pulse: this.createEmptyPulse(options), headSha: null, headBranch: undefined };
       }
       logError("Failed to get HEAD revision", {
         error: errorMessage,
@@ -330,7 +370,7 @@ export class ProjectPulseService {
       durationMs: Date.now() - startTime,
     });
 
-    return { pulse, headSha };
+    return { pulse, headSha, headBranch: branch };
   }
 
   private async computeHeatmap(git: SimpleGit, rangeDays: PulseRangeDays): Promise<HeatCell[]> {
