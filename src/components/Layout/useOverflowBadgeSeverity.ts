@@ -7,11 +7,7 @@ import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import { useAgentDiscoveryOnboarding } from "@/hooks/app/useAgentDiscoveryOnboarding";
 import { agentStateDotColor } from "@/components/Worktree/AgentStatusIndicator";
 import { getRuntimeOrBootAgentId } from "@/utils/terminalType";
-import {
-  BUILT_IN_AGENT_IDS,
-  isBuiltInAgentId,
-  type BuiltInAgentId,
-} from "@shared/config/agentIds";
+import { BUILT_IN_AGENT_IDS, isBuiltInAgentId, type BuiltInAgentId } from "@shared/config/agentIds";
 import type { AgentState } from "@shared/types";
 import { isAgentLaunchable } from "../../../shared/utils/agentAvailability";
 import type { AnyToolbarButtonId } from "@/../../shared/types/toolbar";

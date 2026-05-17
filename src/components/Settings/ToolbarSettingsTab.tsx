@@ -181,12 +181,9 @@ export function ToolbarSettingsTab() {
     setRightButtons(newButtons);
   };
 
-  const handleToggle = useCallback(
-    (buttonId: AnyToolbarButtonId, side: "left" | "right") => {
-      dispatchToolbarVisibility(buttonId, side);
-    },
-    []
-  );
+  const handleToggle = useCallback((buttonId: AnyToolbarButtonId, side: "left" | "right") => {
+    dispatchToolbarVisibility(buttonId, side);
+  }, []);
 
   return (
     <div className="space-y-6">
