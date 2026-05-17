@@ -1035,6 +1035,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                 <EmptyState
                   variant="filtered-empty"
                   scale="sidebar"
+                  instant
                   title={
                     hasFacetFiltersActive && activeFacetFilterCount > 0
                       ? `No worktrees match ${QUICK_STATE_LABELS[quickStateFilter]} with ${activeFacetFilterCount} ${
@@ -1058,6 +1059,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                 <EmptyState
                   variant="filtered-empty"
                   scale="sidebar"
+                  instant
                   title={
                     hasQuery
                       ? `No matches for "${truncateSearchQuery(query.trim())}"`
