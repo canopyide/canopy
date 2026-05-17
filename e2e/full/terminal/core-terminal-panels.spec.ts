@@ -123,6 +123,10 @@ test.describe.serial("Core: Terminal & Panels", () => {
       await openTerminal(window);
       const panel = getFirstGridPanel(window);
       await expect(panel).toBeVisible({ timeout: T_LONG });
+      // Linux CI shard 2/4 of full-terminal has shown a state where two grid
+      // panels exist after a single openTerminal click — surfaces the leak
+      // here rather than inside the duplicate-tab assertion below.
+      await expect.poll(() => getGridPanelCount(window), { timeout: T_MEDIUM }).toBe(1);
     });
 
     test("rename terminal by editing title", async () => {
@@ -153,6 +157,11 @@ test.describe.serial("Core: Terminal & Panels", () => {
     test("duplicate terminal as new tab", async () => {
       const { window } = ctx;
 
+      // Sanity check the precondition before duplicating. If something earlier
+      // in the serial block leaked an extra panel, fail here with a clearer
+      // signal than the post-duplicate count assertion.
+      await expect.poll(() => getGridPanelCount(window), { timeout: T_MEDIUM }).toBe(1);
+
       const panel = getFirstGridPanel(window);
       const duplicateBtn = panel.locator(SEL.panel.duplicate).first();
       await duplicateBtn.click({ force: true, timeout: T_MEDIUM });
@@ -163,8 +172,7 @@ test.describe.serial("Core: Terminal & Panels", () => {
       const tabs = tabList.locator(SEL.panel.tab);
       await expect(tabs).toHaveCount(2, { timeout: T_MEDIUM });
 
-      const count = await getGridPanelCount(window);
-      expect(count).toBe(1);
+      await expect.poll(() => getGridPanelCount(window), { timeout: T_MEDIUM }).toBe(1);
     });
 
     test("restart terminal session", async () => {

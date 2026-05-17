@@ -426,8 +426,12 @@ jobs:
       platform: ${{ inputs.platform || 'all' }}
 
   # Six domain buckets, each a reusable-workflow call expanded across the OS
-  # matrix inside e2e.yml. With platform=non-windows that's 6 buckets × 2 OSes
-  # = 12 independent jobs running in parallel.
+  # matrix inside e2e.yml. e2e.yml auto-shards every full-* suite 4 ways
+  # (#8053), so with platform=non-windows that's 6 buckets × 2 OSes × 4 shards
+  # = 48 independent jobs running in parallel — a hung shard takes out 1/4 of
+  # one bucket instead of stalling the whole nightly. No knob needed here:
+  # sharding is keyed on `suite` inside e2e.yml. The e2e-nightly call below
+  # passes suite=nightly, which stays unsharded (serialized leak heuristic).
   e2e-full:
     needs: [check, test]
     strategy:

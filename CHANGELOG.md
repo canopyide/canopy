@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.11.1] - 2026-05-17
+
+Stability follow-up to v0.11.0. Walks back two terminal rendering regressions, refreshes project stats on trash and restore without waiting for the 5s poll, and lets the Daintree Assistant resume across project-view LRU eviction. The release pipeline also splits into three independent per-OS workflows.
+
+### Features
+
+- Daintree Assistant survives project-view LRU eviction via PendingHelpHibernationStore — agent resume tokens are flushed before revocation and reclaimed on next open
+
+### Bug Fixes
+
+- Restore VISIBLE-tier WebGL eligibility for agent panes — fixes warped block / box-drawing glyphs (U+2584 and friends) on unfocused tiled fleet panes, walking back the focused-only mitigation
+- Revert the 32 KiB terminal write slicer — restores correct backpressure ACK accounting and in-order writes (the slicer's batch fan-out broke `acknowledgePortData`)
+- ProjectStatsService subscribes to `terminal:trashed` and `terminal:restored` so stats recompute on the next debounce window instead of waiting up to 5s
+- Replace the Eclipse icon with Moon in BackgroundContainer
+
+### Other Changes
+
+- Release pipeline split into three per-OS workflows (release-macos.yml, release-linux.yml, release-windows.yml) — each OS publishes independently the moment its own pipeline goes green (#8052)
+- Full-\* E2E buckets shard 4-way to cut serial Windows wall-time from ~39min to ~10min (#8053)
+- Drop screenshot rendering from gating CI (#8054)
+- Windows smoke timeouts and per-run retry support
+- E2E concurrency scoped per platform so the per-OS release workflows don't cancel each other
+- Poll-guard the duplicate-tab assertion in `core-terminal-panels` to stabilise it under shard 2/4 timing
+- Remove dead ProjectMruSwitcherOverlay component
+
 ## [0.11.0] - 2026-05-16
 
 Windows reaches feature parity with macOS and Linux — NSIS and Store builds, native menu/keybinding gaps closed, UTF-8 in fallback shells, agent command-launch parity. Alongside the Windows push: a deeper resilience pass on pty-host, watchers, and crash recovery; destructive-action confirms widened to every remote push; the banner family converges on shared chrome; and another EmptyState / skeleton sweep removes the last full-area Spinners.

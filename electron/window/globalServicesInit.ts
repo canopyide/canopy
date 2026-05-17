@@ -605,6 +605,25 @@ export async function initGlobalServices(
       console.error("[MAIN] Failed to wire HelpSessionService MCP registry:", err);
     }
 
+    // Load the pending-hibernation file and wire it into HelpSessionService
+    // synchronously, BEFORE the deferred queue drains. Project-view eviction
+    // fires inside `pvm.switchTo()` and can run as soon as the user does the
+    // first project switch — which can be before `APP_FIRST_INTERACTIVE`
+    // releases the deferred queue. A missed wire-up means the capture-on-
+    // eviction path silently no-ops and the user's first cross-project
+    // switch loses its hibernation entry. Wiring here mirrors the
+    // setMcpRegistry rationale above. Disk I/O is a single small JSON read.
+    try {
+      const { getPendingHelpHibernationStore } =
+        await import("../services/PendingHelpHibernationStore.js");
+      const pendingStore = getPendingHelpHibernationStore();
+      await pendingStore.load();
+      const { helpSessionService } = await import("../services/HelpSessionService.js");
+      helpSessionService.setPendingHibernationStore(pendingStore);
+    } catch (err) {
+      console.warn("[MAIN] Failed to wire pending-hibernation store:", err);
+    }
+
     registerDeferredTask({
       name: "mcp-server",
       run: async () => {

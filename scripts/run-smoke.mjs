@@ -148,8 +148,12 @@ function validateSmokeOutput(runIndex, runCount, result) {
 async function main() {
   await assertBuildArtifacts();
 
-  const defaultRuns = process.platform === "win32" && process.env.CI ? 3 : 1;
+  const isWindowsCI = process.platform === "win32" && Boolean(process.env.CI);
+  const defaultRuns = isWindowsCI ? 3 : 1;
+  const defaultRetries = isWindowsCI ? 1 : 0;
   const runCount = parsePositiveInt(process.env.SMOKE_RUNS, defaultRuns);
+  const retries = Number.parseInt(process.env.SMOKE_RETRIES ?? "", 10);
+  const retriesPerRun = Number.isFinite(retries) && retries >= 0 ? retries : defaultRetries;
   const timeoutMs = parsePositiveInt(process.env.SMOKE_TIMEOUT_MS, 210_000);
   const extraArgs = (process.env.SMOKE_EXTRA_ARGS ?? "")
     .split(/\s+/)
@@ -157,17 +161,48 @@ async function main() {
     .filter(Boolean);
 
   for (let i = 1; i <= runCount; i++) {
-    const result = await runElectronSmokeOnce({
-      runIndex: i,
-      runCount,
-      timeoutMs,
-      extraArgs,
-    });
-    validateSmokeOutput(i, runCount, result);
-    console.log(`[SMOKE-RUNNER] Run ${i}/${runCount}: PASS`);
+    const maxAttempts = retriesPerRun + 1;
+    let lastError;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const result = await runElectronSmokeOnce({
+          runIndex: i,
+          runCount,
+          timeoutMs,
+          extraArgs,
+        });
+        validateSmokeOutput(i, runCount, result);
+        if (attempt > 1) {
+          console.log(
+            `[SMOKE-RUNNER] Run ${i}/${runCount}: PASS (on attempt ${attempt}/${maxAttempts})`
+          );
+        } else {
+          console.log(`[SMOKE-RUNNER] Run ${i}/${runCount}: PASS`);
+        }
+        lastError = undefined;
+        break;
+      } catch (error) {
+        lastError = error;
+        const message = error instanceof Error ? error.message : String(error);
+        if (attempt < maxAttempts) {
+          console.warn(
+            `[SMOKE-RUNNER] Run ${i}/${runCount}: attempt ${attempt}/${maxAttempts} failed — retrying. Cause: ${message}`
+          );
+        } else {
+          console.error(
+            `[SMOKE-RUNNER] Run ${i}/${runCount}: exhausted ${maxAttempts} attempt(s). Last cause: ${message}`
+          );
+        }
+      }
+    }
+    if (lastError) {
+      throw lastError;
+    }
   }
 
-  console.log(`[SMOKE-RUNNER] All ${runCount} smoke run(s) passed`);
+  console.log(
+    `[SMOKE-RUNNER] All ${runCount} smoke run(s) passed (up to ${retriesPerRun} retry/retries per run)`
+  );
 }
 
 main().catch((error) => {

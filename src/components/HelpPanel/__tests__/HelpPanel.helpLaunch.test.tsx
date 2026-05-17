@@ -10,6 +10,7 @@ const {
   mockMarkTerminal,
   mockProvisionSession,
   mockRevokeSession,
+  mockTakePendingHibernation,
   mockGetAssistantSupportedAgentIds,
   mockGetHelpAssistantSettings,
   mockGetAgentVersion,
@@ -31,6 +32,7 @@ const {
   mockMarkTerminal: vi.fn().mockResolvedValue(undefined),
   mockProvisionSession: vi.fn().mockResolvedValue(null),
   mockRevokeSession: vi.fn().mockResolvedValue(undefined),
+  mockTakePendingHibernation: vi.fn().mockResolvedValue(null),
   mockGetAssistantSupportedAgentIds: vi.fn(() => ["claude"]),
   mockGetHelpAssistantSettings: vi.fn().mockResolvedValue({
     docSearch: true,
@@ -324,6 +326,8 @@ function resetState() {
   });
   mockRevokeSession.mockReset();
   mockRevokeSession.mockResolvedValue(undefined);
+  mockTakePendingHibernation.mockReset();
+  mockTakePendingHibernation.mockResolvedValue(null);
   mockGetAssistantSupportedAgentIds.mockReset();
   mockGetAssistantSupportedAgentIds.mockReturnValue(["claude"]);
   mockGetHelpAssistantSettings.mockReset();
@@ -383,6 +387,7 @@ beforeEach(() => {
           markTerminal: mockMarkTerminal,
           provisionSession: mockProvisionSession,
           revokeSession: mockRevokeSession,
+          takePendingHibernation: mockTakePendingHibernation,
         },
         helpAssistant: {
           getSettings: mockGetHelpAssistantSettings,
@@ -2026,7 +2031,12 @@ describe("HelpPanel — + New session destructive reset", () => {
   });
 });
 
-describe("HelpPanel — visibilitychange teardown vs. system sleep (issue #6758)", () => {
+// The renderer no longer tears down the assistant on visibility-hidden.
+// PTY/MCP lifecycle is owned by main; hibernation capture for true LRU
+// eviction happens in `HelpSessionService.revokeByWebContentsId`. These
+// tests defend against regressions that would reintroduce the prior bug
+// where project-switching destroyed the assistant.
+describe("HelpPanel — assistant survives visibility-hidden (project switch persistence)", () => {
   function mountWithBoundTerminal() {
     helpPanelState.terminalId = "term-sleep";
     helpPanelState.agentId = "claude";
@@ -2042,7 +2052,23 @@ describe("HelpPanel — visibilitychange teardown vs. system sleep (issue #6758)
     });
   }
 
-  it("skips teardown when document.hidden flips during system suspend", async () => {
+  it("does not tear down on visibility-hidden during a project switch (cached view)", async () => {
+    await act(async () => {
+      mountWithBoundTerminal();
+    });
+
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await flushAsync();
+
+    expect(panelStoreState.removePanel).not.toHaveBeenCalled();
+    expect(mockRevokeSession).not.toHaveBeenCalled();
+    expect(helpPanelState.clearTerminal).not.toHaveBeenCalled();
+  });
+
+  it("does not tear down on visibility-hidden during system suspend", async () => {
     await act(async () => {
       mountWithBoundTerminal();
     });
@@ -2060,307 +2086,153 @@ describe("HelpPanel — visibilitychange teardown vs. system sleep (issue #6758)
     expect(panelStoreState.removePanel).not.toHaveBeenCalled();
     expect(mockRevokeSession).not.toHaveBeenCalled();
     expect(helpPanelState.clearTerminal).not.toHaveBeenCalled();
+  });
+
+  it("does not call systemSleep.getMetrics — visibility is no longer a teardown signal", async () => {
+    await act(async () => {
+      mountWithBoundTerminal();
+    });
+
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await flushAsync();
+
     expect(mockSystemSleepGetMetrics).not.toHaveBeenCalled();
   });
 
-  it("skips teardown when getMetrics reports the system is currently sleeping (race fallback)", async () => {
-    mockSystemSleepGetMetrics.mockResolvedValueOnce({
-      totalSleepMs: 0,
-      sleepPeriods: [],
-      isCurrentlySleeping: true,
-      currentSleepStart: Date.now(),
-    });
+  it("re-evaluates auto-launch on visibility restore so a missing terminal can re-launch", async () => {
+    // Mount without a bound terminal so auto-launch sits gated on visibility.
+    helpPanelState.terminalId = null;
+    helpPanelState.agentId = null;
+    helpPanelState.preferredAgentId = "claude";
+    helpPanelState.sessionId = null;
 
-    await act(async () => {
-      mountWithBoundTerminal();
-    });
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "term-restored" } });
 
+    // Start hidden so the initial mount's auto-launch short-circuits.
     Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+
     await act(async () => {
-      document.dispatchEvent(new Event("visibilitychange"));
+      render(<HelpPanel width={380} />);
     });
     await flushAsync();
 
-    expect(mockSystemSleepGetMetrics).toHaveBeenCalledTimes(1);
-    expect(panelStoreState.removePanel).not.toHaveBeenCalled();
-    expect(mockRevokeSession).not.toHaveBeenCalled();
-  });
+    expect(mockDispatch).not.toHaveBeenCalled();
 
-  it("tears down when getMetrics reports the system is awake (project switch / window close path)", async () => {
-    await act(async () => {
-      mountWithBoundTerminal();
-    });
-
-    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
-    await act(async () => {
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-    await flushAsync();
-
-    expect(mockSystemSleepGetMetrics).toHaveBeenCalledTimes(1);
-    expect(panelStoreState.removePanel).toHaveBeenCalledWith("term-sleep");
-    expect(mockRevokeSession).toHaveBeenCalledWith("session-sleep");
-    expect(helpPanelState.clearTerminal).toHaveBeenCalled();
-  });
-
-  it("tears down (safe fallback) when getMetrics rejects", async () => {
-    mockSystemSleepGetMetrics.mockRejectedValueOnce(new Error("ipc broken"));
-
-    await act(async () => {
-      mountWithBoundTerminal();
-    });
-
-    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
-    await act(async () => {
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-    await flushAsync();
-
-    expect(mockSystemSleepGetMetrics).toHaveBeenCalledTimes(1);
-    expect(mockLogError).toHaveBeenCalled();
-    expect(panelStoreState.removePanel).toHaveBeenCalledWith("term-sleep");
-    expect(mockRevokeSession).toHaveBeenCalledWith("session-sleep");
-  });
-
-  it("skips teardown if the document becomes visible before getMetrics resolves", async () => {
-    let resolveMetrics:
-      | ((value: {
-          totalSleepMs: number;
-          sleepPeriods: never[];
-          isCurrentlySleeping: boolean;
-          currentSleepStart: number | null;
-        }) => void)
-      | null = null;
-    mockSystemSleepGetMetrics.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveMetrics = resolve;
-        })
-    );
-
-    await act(async () => {
-      mountWithBoundTerminal();
-    });
-
-    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
-    await act(async () => {
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-
+    // Restore visibility — epoch bump retriggers auto-launch.
     Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
     await act(async () => {
-      resolveMetrics?.({
-        totalSleepMs: 0,
-        sleepPeriods: [],
-        isCurrentlySleeping: false,
-        currentSleepStart: null,
-      });
+      document.dispatchEvent(new Event("visibilitychange"));
     });
     await flushAsync();
 
-    expect(panelStoreState.removePanel).not.toHaveBeenCalled();
-    expect(mockRevokeSession).not.toHaveBeenCalled();
-  });
-
-  it("skips teardown if onSuspend arrives while getMetrics is in flight", async () => {
-    let resolveMetrics:
-      | ((value: {
-          totalSleepMs: number;
-          sleepPeriods: never[];
-          isCurrentlySleeping: boolean;
-          currentSleepStart: number | null;
-        }) => void)
-      | null = null;
-    mockSystemSleepGetMetrics.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveMetrics = resolve;
-        })
+    expect(mockDispatch).toHaveBeenCalledTimes(1);
+    expect(mockDispatch).toHaveBeenCalledWith(
+      "agent.launch",
+      expect.objectContaining({ agentId: "claude" }),
+      { source: "user" }
     );
-
-    await act(async () => {
-      mountWithBoundTerminal();
-    });
-
-    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
-    await act(async () => {
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-
-    act(() => {
-      systemSleepListeners.suspend.forEach((cb) => cb());
-    });
-
-    await act(async () => {
-      resolveMetrics?.({
-        totalSleepMs: 0,
-        sleepPeriods: [],
-        isCurrentlySleeping: false,
-        currentSleepStart: null,
-      });
-    });
-    await flushAsync();
-
-    expect(panelStoreState.removePanel).not.toHaveBeenCalled();
-    expect(mockRevokeSession).not.toHaveBeenCalled();
-  });
-
-  it("clears the suspend guard on wake so subsequent visibilitychange tears down normally", async () => {
-    await act(async () => {
-      mountWithBoundTerminal();
-    });
-
-    act(() => {
-      systemSleepListeners.suspend.forEach((cb) => cb());
-    });
-    act(() => {
-      systemSleepListeners.wake.forEach((cb) => cb(1000));
-    });
-
-    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
-    await act(async () => {
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-    await flushAsync();
-
-    expect(mockSystemSleepGetMetrics).toHaveBeenCalledTimes(1);
-    expect(panelStoreState.removePanel).toHaveBeenCalledWith("term-sleep");
-    expect(mockRevokeSession).toHaveBeenCalledWith("session-sleep");
+    expect(mockProvisionSession).toHaveBeenCalledTimes(1);
   });
 });
 
-describe("HelpPanel — visibilitychange re-launch after teardown (issue #7201)", () => {
-  function mountWithBoundTerminal(preferredAgentId: string | null = "claude") {
-    helpPanelState.terminalId = "term-7201";
-    helpPanelState.agentId = "claude";
-    helpPanelState.preferredAgentId = preferredAgentId;
-    helpPanelState.sessionId = "session-7201";
-    panelStoreState.panelsById = { "term-7201": { id: "term-7201" } };
-    return render(<HelpPanel width={380} />);
-  }
-
-  async function flushAsync() {
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-  }
-
-  it("resets hasAutoLaunched in teardown and re-launches on visibility restore", async () => {
-    mockGetFolderPath.mockResolvedValue("/help");
-    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "term-relaunched" } });
-
-    await act(async () => {
-      mountWithBoundTerminal();
-    });
-
-    // Trigger visibility hide (project switch / window hide).
-    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
-    await act(async () => {
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-    await flushAsync();
-
-    // Teardown should have fired.
-    expect(panelStoreState.removePanel).toHaveBeenCalledWith("term-7201");
-    expect(helpPanelState.clearTerminal).toHaveBeenCalled();
-
-    // Simulate the real store mutation that clearTerminal() would perform.
+describe("HelpPanel — resume from main-captured hibernation (eviction recovery)", () => {
+  it("seeds hibernate from main and resumes the conversation on auto-launch", async () => {
     helpPanelState.terminalId = null;
     helpPanelState.agentId = null;
+    helpPanelState.preferredAgentId = "claude";
     helpPanelState.sessionId = null;
+    helpPanelState.hibernateSessions = {};
 
-    // Reset spies to measure post-restore calls.
-    panelStoreState.removePanel.mockClear();
-    helpPanelState.clearTerminal.mockClear();
-    mockDispatch.mockClear();
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockTakePendingHibernation.mockResolvedValueOnce({
+      agentId: "claude",
+      agentSessionId: "resume-id-from-main",
+      cwd: "/help/session-dir",
+    });
+    // Mirror the real store mutation so the downstream hibernate lookup
+    // observes the entry the controller just merged. Default mock just
+    // tracks the call; here we also write through to the in-memory state.
+    helpPanelState.setHibernateSession = vi.fn(
+      (projectId: string, entry: { sessionId: string; cwd: string; agentId: string }) => {
+        helpPanelState.hibernateSessions[projectId] = entry;
+      }
+    );
+    panelStoreState.addPanel.mockResolvedValueOnce("term-resumed");
 
-    // Restore visibility.
     Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
     await act(async () => {
-      document.dispatchEvent(new Event("visibilitychange"));
+      render(<HelpPanel width={380} />);
     });
-    await flushAsync();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
-    // Auto-launch must fire for the preferred agent and re-provision the session.
-    expect(mockDispatch).toHaveBeenCalledTimes(1);
+    expect(mockTakePendingHibernation).toHaveBeenCalledWith(projectStoreState.currentProject?.id);
+    expect(helpPanelState.setHibernateSession).toHaveBeenCalledWith(
+      projectStoreState.currentProject?.id,
+      expect.objectContaining({
+        sessionId: "resume-id-from-main",
+        agentId: "claude",
+      })
+    );
+    // Resume path goes through addPanel — assert the captured resume ID is
+    // actually threaded into the spawn command so a regression that wires
+    // addPanel without the resume token would fail.
+    expect(panelStoreState.addPanel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "terminal",
+        launchAgentId: "claude",
+        command: expect.stringContaining("resume-id-from-main"),
+      })
+    );
+    // Fresh launch dispatch must NOT fire on the resume path.
+    expect(mockDispatch).not.toHaveBeenCalledWith(
+      "agent.launch",
+      expect.anything(),
+      expect.anything()
+    );
+    // Resume consumes the hibernate entry once committed.
+    expect(helpPanelState.clearHibernateSession).toHaveBeenCalledWith(
+      projectStoreState.currentProject?.id
+    );
+  });
+
+  it("falls through to a fresh launch when main has no pending hibernation", async () => {
+    helpPanelState.terminalId = null;
+    helpPanelState.agentId = null;
+    helpPanelState.preferredAgentId = "claude";
+    helpPanelState.sessionId = null;
+    helpPanelState.hibernateSessions = {};
+
+    mockGetFolderPath.mockResolvedValue("/help");
+    mockTakePendingHibernation.mockResolvedValueOnce(null);
+    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "term-cold" } });
+
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    await act(async () => {
+      render(<HelpPanel width={380} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockTakePendingHibernation).toHaveBeenCalled();
+    expect(helpPanelState.setHibernateSession).not.toHaveBeenCalled();
     expect(mockDispatch).toHaveBeenCalledWith(
       "agent.launch",
       expect.objectContaining({ agentId: "claude" }),
       { source: "user" }
     );
-    expect(mockProvisionSession).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not launch while document.hidden after teardown resets hasAutoLaunched", async () => {
-    mockGetFolderPath.mockResolvedValue("/help");
-
-    await act(async () => {
-      mountWithBoundTerminal();
-    });
-
-    // Trigger visibility hide.
-    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
-    await act(async () => {
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-    await flushAsync();
-
-    // Simulate the real store mutation.
-    helpPanelState.terminalId = null;
-
-    // Clear any launch from the initial mount.
-    mockDispatch.mockClear();
-
-    // Re-render — auto-launch effect must NOT fire because document.hidden is true.
-    await act(async () => {
-      // Re-render triggered by state change.
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(mockDispatch).not.toHaveBeenCalled();
-  });
-
-  it("re-launches the single supported agent after visibility restore when no preference is set", async () => {
-    cliAvailabilityState.availability = { claude: "ready" };
-    mockGetFolderPath.mockResolvedValue("/help");
-    mockDispatch.mockResolvedValue({ ok: true, result: { terminalId: "term-auto" } });
-
-    await act(async () => {
-      mountWithBoundTerminal(null);
-    });
-
-    // Trigger visibility hide.
-    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
-    await act(async () => {
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-    await flushAsync();
-
-    // Simulate teardown effect.
-    helpPanelState.terminalId = null;
-    helpPanelState.agentId = null;
-    helpPanelState.sessionId = null;
-
-    panelStoreState.removePanel.mockClear();
-    mockDispatch.mockClear();
-
-    // Restore visibility.
-    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
-    await act(async () => {
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-    await flushAsync();
-
-    // Single-supported-agent path should fire (via handleSelectAgent).
-    expect(mockDispatch).toHaveBeenCalledTimes(1);
-    expect(mockDispatch).toHaveBeenCalledWith(
-      "agent.launch",
-      expect.objectContaining({ agentId: "claude" }),
-      { source: "user" }
-    );
-    expect(mockProvisionSession).toHaveBeenCalledTimes(1);
   });
 });
 

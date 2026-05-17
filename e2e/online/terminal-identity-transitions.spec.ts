@@ -6,9 +6,6 @@ import {
   type Page,
   type TestInfo,
 } from "@playwright/test";
-import path from "path";
-import { fileURLToPath } from "url";
-import { mkdirSync } from "fs";
 import {
   launchApp,
   closeApp,
@@ -23,9 +20,6 @@ import { openTerminal, getFirstGridPanel } from "../helpers/panels";
 import { SEL } from "../helpers/selectors";
 import { configureClaudeAuthEnv, hasClaudeApiKey } from "../helpers/claudeAuth";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const SCREENSHOT_DIR = path.resolve(__dirname, "../../test-results/terminal-identity-transitions");
 const MAX_DIAGNOSTIC_LINES = 1_500;
 const AGENT_IDLE_STICKINESS_MS = 45_000;
 const ANSI_ESCAPE_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
@@ -465,7 +459,6 @@ function createIdentityDiagnostics(appCtx: AppContext): IdentityDiagnostics {
 // prop-threading leaks that let one read lag behind another.
 test.describe("Terminal chrome ↔ live process identity (bidirectional)", () => {
   test.beforeAll(async () => {
-    mkdirSync(SCREENSHOT_DIR, { recursive: true });
     const { dir, cleanup } = createFixtureRepo({ name: "identity-transitions" });
     fixtureDir = dir;
     fixtureCleanup = cleanup;
@@ -544,11 +537,6 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
       await expectPanelHasAgentState(panel);
       await expectWorktreeTracksAgent(window, claudePanelId, "claude");
       await diagnostics?.captureSnapshot("cold-launch Claude promoted", window);
-
-      await window.screenshot({
-        path: path.join(SCREENSHOT_DIR, "1a-claude-launched.png"),
-        fullPage: false,
-      });
     });
 
     await test.step("wait for Claude to reach welcome or any interactive prompt", async () => {
@@ -607,11 +595,6 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
       await expectPanelHasNoAgentState(panel);
       await expectWorktreeTracksPlainTerminal(window, claudePanelId);
       await diagnostics?.captureSnapshot("cold-launched Claude demoted", window);
-
-      await window.screenshot({
-        path: path.join(SCREENSHOT_DIR, "1b-claude-demoted.png"),
-        fullPage: false,
-      });
     });
 
     // ---------------------------------------------------------------------
@@ -638,11 +621,6 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
       expect(await panel.getAttribute("data-detected-agent-id")).toBeNull();
       await expectPanelHeaderIcon(panel, "terminal");
       await diagnostics?.captureSnapshot("plain terminal open", window);
-
-      await window.screenshot({
-        path: path.join(SCREENSHOT_DIR, "2a-plain-terminal-open.png"),
-        fullPage: false,
-      });
       void plainPanel;
     });
 
@@ -682,11 +660,6 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
       await expectPanelHasAgentState(panel);
       await expectWorktreeTracksAgent(window, plainPanelId, "claude");
       await diagnostics?.captureSnapshot("plain terminal promoted to Claude", window);
-
-      await window.screenshot({
-        path: path.join(SCREENSHOT_DIR, "2b-plain-promoted.png"),
-        fullPage: false,
-      });
     });
 
     await test.step("typed Claude remains agent-branded after idle wait", async () => {
@@ -736,11 +709,6 @@ test.describe("Terminal chrome ↔ live process identity (bidirectional)", () =>
       await expectPanelHasNoAgentState(panel);
       await expectWorktreeTracksPlainTerminal(window, plainPanelId);
       await diagnostics?.captureSnapshot("promoted plain terminal demoted", window);
-
-      await window.screenshot({
-        path: path.join(SCREENSHOT_DIR, "3-full-cycle-demoted.png"),
-        fullPage: false,
-      });
     });
   });
 });

@@ -1,0 +1,365 @@
+name: Release (macOS)
+
+# Per-OS release workflow (#8052). macOS, Linux, and Windows each run their
+# own full vertical slice (checks → unit tests → e2e → build → R2 upload →
+# website notify) triggered by the same `v*` tag. A hung or failing Windows
+# job no longer strands a green macOS/Linux build behind it — each OS
+# publishes the moment its own pipeline is green, and re-running a failed OS
+# is a single-workflow re-trigger instead of a full release re-run. The R2
+# layout is already per-OS independent (`*.dmg`/`*.zip`/`latest-mac.yml` here
+# vs `*.AppImage`/`latest-linux.yml` vs `*.exe`/`latest.yml`), and
+# electron-updater on each OS only polls its own YAML, so there is no shared
+# state to coordinate.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      skip_notarization:
+        description: "Skip macOS notarization (use when Apple's service is down)"
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: "Dry run — exercise the full pipeline (gates + build + sign + notarize) without publishing to R2 or the website"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  # Per-OS so re-running macOS never queues behind a passing Windows/Linux run.
+  group: release-macos-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check
+        run: npm run check
+
+  unit-tests:
+    name: Unit Tests (macOS)
+    runs-on: macos-14
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm run test
+
+  e2e-core-gate:
+    needs: [checks, unit-tests]
+    uses: ./.github/workflows/e2e.yml
+    with:
+      suite: core
+      platform: macos
+
+  # The six full-* domain buckets. e2e.yml auto-shards each one 4 ways
+  # (#8053), so a single hung Windows-style spec — here, a hung macOS spec —
+  # takes out 1/4 of one bucket instead of the whole macOS release.
+  e2e-full-gate:
+    needs: [checks, unit-tests]
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - full-terminal
+          - full-worktree
+          - full-presets
+          - full-platform
+          - full-panels
+          - full-resilience
+    uses: ./.github/workflows/e2e.yml
+    with:
+      suite: ${{ matrix.suite }}
+      platform: macos
+
+  e2e-online-gate:
+    needs: [checks, unit-tests]
+    uses: ./.github/workflows/e2e.yml
+    with:
+      suite: online
+      platform: macos
+    secrets: inherit
+
+  build-daintree:
+    needs: [checks, unit-tests, e2e-core-gate, e2e-full-gate, e2e-online-gate]
+    name: Build Daintree (macOS)
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Resolve update metadata prefix
+        shell: bash
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [[ "$PKG_VERSION" == *-rc* ]]; then
+            echo "UPDATE_METADATA_PREFIX=rc" >> "$GITHUB_ENV"
+          elif [[ "$PKG_VERSION" == *-beta* ]]; then
+            echo "UPDATE_METADATA_PREFIX=beta" >> "$GITHUB_ENV"
+          else
+            echo "UPDATE_METADATA_PREFIX=latest" >> "$GITHUB_ENV"
+          fi
+
+      - name: Verify version matches tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match package.json version ($PKG_VERSION)"
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Import macOS certificates
+        uses: apple-actions/import-codesign-certs@v6
+        with:
+          p12-file-base64: ${{ secrets.MAC_CERTS }}
+          p12-password: ${{ secrets.MAC_CERTS_PASSWORD }}
+          keychain-password: ${{ secrets.MAC_CERTS_PASSWORD }}
+
+      - name: Prepare Apple API key
+        run: |
+          mkdir -p "$RUNNER_TEMP/apple"
+          printf '%s' "$APPLE_API_KEY_CONTENT" > "$RUNNER_TEMP/apple/AuthKey.p8"
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
+
+      - name: Build (macOS)
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERTS }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
+          APPLE_API_KEY: ${{ runner.temp }}/apple/AuthKey.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          DEBUG: electron-builder,electron-notarize*,electron-osx-sign*
+          npm_config_build_from_source: "true"
+        run: |
+          npm run build
+          PUBLISH_FLAG="always"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "::warning::Dry run — skipping publish to electron-builder targets"
+            PUBLISH_FLAG="never"
+          fi
+          EXTRA_ARGS=""
+          if [ "${{ inputs.skip_notarization }}" = "true" ]; then
+            echo "::warning::Skipping macOS notarization (manually disabled)"
+            EXTRA_ARGS="-c.mac.notarize=false"
+          fi
+          npx electron-builder --config electron-builder.config.cjs --publish "$PUBLISH_FLAG" -c.buildDependenciesFromSource=true $EXTRA_ARGS
+
+      - name: Verify macOS notarization staple
+        if: inputs.skip_notarization != true
+        shell: bash
+        run: |
+          set -euo pipefail
+          # x64 has no arch suffix because electron-builder treats it as the default arch
+          # (builder-util getArchSuffix returns "" for the default); arm64 and universal do.
+          apps=(
+            "release/mac-arm64/Daintree.app"
+            "release/mac/Daintree.app"
+            "release/mac-universal/Daintree.app"
+          )
+          for app in "${apps[@]}"; do
+            if [[ ! -d "$app" ]]; then
+              echo "::error::Missing expected macOS app bundle: $app"
+              exit 1
+            fi
+            echo "--- codesign: $app"
+            codesign --verify --deep --strict --verbose=4 "$app"
+            echo "--- stapler validate: $app"
+            xcrun stapler validate "$app"
+            echo "--- spctl (diagnostic only): $app"
+            spctl --assess --type execute --verbose --ignore-cache --no-cache "$app" || true
+          done
+
+      - name: Validate update metadata (macOS)
+        shell: bash
+        run: |
+          node scripts/ci/generate-update-metadata.mjs mac "release/${UPDATE_METADATA_PREFIX}-mac.yml"
+          if [ ! -f "release/${UPDATE_METADATA_PREFIX}-mac.yml" ]; then
+            echo "::error::Missing release/${UPDATE_METADATA_PREFIX}-mac.yml - macOS auto-update metadata was not generated"
+            exit 1
+          fi
+          DMG_COUNT=$(find release -maxdepth 1 -name '*.dmg' | wc -l | tr -d ' ')
+          ZIP_COUNT=$(find release -maxdepth 1 -name '*.zip' | wc -l | tr -d ' ')
+          if [ "$DMG_COUNT" -ne 3 ] || [ "$ZIP_COUNT" -ne 3 ]; then
+            echo "::error::Expected 3 DMGs and 3 ZIPs, got $DMG_COUNT DMGs and $ZIP_COUNT ZIPs"
+            find release -maxdepth 1 \( -name '*.dmg' -o -name '*.zip' \) -exec ls -la {} +
+            exit 1
+          fi
+          echo "✓ Found $DMG_COUNT DMGs, $ZIP_COUNT ZIPs, and ${UPDATE_METADATA_PREFIX}-mac.yml"
+          node scripts/ci/validate-update-metadata.mjs "release/${UPDATE_METADATA_PREFIX}-mac.yml"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-daintree-macos-14
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
+            release/*.yml
+          retention-days: 7
+          if-no-files-found: error
+
+  publish-daintree:
+    if: startsWith(github.ref, 'refs/tags/v') && inputs.dry_run != true
+    needs: [build-daintree]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Resolve update metadata prefix
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$TAG_VERSION" == *-rc* ]]; then
+            echo "UPDATE_METADATA_PREFIX=rc" >> "$GITHUB_ENV"
+          elif [[ "$TAG_VERSION" == *-beta* ]]; then
+            echo "UPDATE_METADATA_PREFIX=beta" >> "$GITHUB_ENV"
+          else
+            echo "UPDATE_METADATA_PREFIX=latest" >> "$GITHUB_ENV"
+          fi
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: release-daintree-macos-14
+          path: release/
+
+      - name: List release files
+        run: ls -lah release/
+
+      - name: Install gate dependencies
+        shell: bash
+        run: npm install --no-save --no-audit --no-fund --ignore-scripts js-yaml semver
+
+      - name: Check version is monotonically increasing
+        shell: bash
+        env:
+          UPDATE_METADATA_PREFIX: ${{ env.UPDATE_METADATA_PREFIX }}
+          # Per-OS scope (#8052): only macOS metadata is present in this
+          # workflow's release/ dir. Per-platform monotonicity is the only
+          # invariant electron-updater enforces; cross-OS alignment is not.
+          RELEASE_PLATFORMS: mac
+        run: node scripts/ci/check-version-monotonic.mjs
+
+      - name: Upload binaries to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.DAINTREE_R2_BUCKET }}
+        run: |
+          aws s3 sync release/ "s3://${R2_BUCKET}/releases/" \
+            --endpoint-url "${R2_ENDPOINT}" \
+            --no-progress \
+            --exclude "*" \
+            --include "*.dmg" \
+            --include "*.zip" \
+            --include "*.blockmap" \
+            --cache-control "public, max-age=31536000, immutable"
+
+      - name: Verify binaries reachable on R2
+        shell: bash
+        env:
+          PUBLISH_URL: https://updates.daintree.org/releases/
+        run: node scripts/ci/verify-r2-uploads.mjs
+
+      - name: Upload metadata to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.DAINTREE_R2_BUCKET }}
+        run: |
+          aws s3 sync release/ "s3://${R2_BUCKET}/releases/" \
+            --endpoint-url "${R2_ENDPOINT}" \
+            --no-progress \
+            --exclude "*" \
+            --include "${UPDATE_METADATA_PREFIX}-mac.yml" \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+      - name: Notify website of new release
+        shell: bash
+        env:
+          WEBSITE_WEBHOOK_SECRET: ${{ secrets.WEBSITE_WEBHOOK_SECRET }}
+        run: |
+          sleep 1
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST https://daintree.org/api/refresh-releases \
+            -H "Authorization: Bearer ${WEBSITE_WEBHOOK_SECRET}")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "Response (HTTP ${HTTP_CODE}): ${BODY}"
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "::warning::Website refresh failed (HTTP ${HTTP_CODE})"
+          fi

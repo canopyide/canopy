@@ -36,7 +36,6 @@ import { actionService } from "@/services/ActionService";
 import { useEscapeStack } from "@/hooks/useEscapeStack";
 import { suppressSidebarResizes } from "@/lib/sidebarToggle";
 import { TerminalRefreshTier } from "@/types";
-import { logError } from "@/utils/logger";
 import { CLOSE_CONFIRM_AGENT_STATES } from "@shared/types/agent";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { TABBABLE_SELECTOR } from "@/lib/accessibility";
@@ -185,43 +184,25 @@ export function HelpPanel({
     visibilityEpoch,
   ]);
 
-  // visibilitychange touches DOM events and lives in the component. The
-  // controller decides whether teardown should proceed.
+  // The renderer being hidden is NOT a teardown signal. A hidden renderer
+  // means one of: project-switch cached, project-switch about-to-be-evicted,
+  // window minimize, or system sleep. The assistant must survive all four —
+  // PTY/MCP lifecycle is owned by main, hibernation capture for true eviction
+  // happens in `HelpSessionService.revokeByWebContentsId`, and sleep is
+  // already a no-op because PTY pauses/resumes. Restore bumps the epoch so
+  // `_maybeAutoLaunch` re-evaluates (the auto-launch path short-circuits
+  // while hidden).
   useEffect(() => {
-    let cancelled = false;
-
     const handler = () => {
-      if (document.hidden) {
-        if (controller.isSystemSuspended()) return;
-        // Race: visibilitychange may fire before the suspend IPC reaches
-        // the renderer. Confirm with the main process before tearing down.
-        void window.electron.systemSleep
-          .getMetrics()
-          .then((metrics) => {
-            if (cancelled) return;
-            if (metrics.isCurrentlySleeping) return;
-            if (!document.hidden) return;
-            if (controller.isSystemSuspended()) return;
-            controller.tearDownForViewHidden();
-          })
-          .catch((err: unknown) => {
-            if (cancelled) return;
-            logError("HelpPanel: failed to read systemSleep metrics", err);
-            if (!document.hidden) return;
-            if (controller.isSystemSuspended()) return;
-            controller.tearDownForViewHidden();
-          });
-      } else {
+      if (!document.hidden) {
         setVisibilityEpoch((e) => e + 1);
       }
     };
-
     document.addEventListener("visibilitychange", handler);
     return () => {
-      cancelled = true;
       document.removeEventListener("visibilitychange", handler);
     };
-  }, [controller]);
+  }, []);
 
   // Revoke the bound help session if the underlying PTY panel disappears
   // from the panel store. The controller's `_pendingNewTerminalId` guard

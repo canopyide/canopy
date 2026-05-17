@@ -67,6 +67,43 @@ export function extractVersion(parsed, label) {
   return raw;
 }
 
+/**
+ * Resolve which platforms this gate run should check. Per-OS release
+ * workflows (#8052) each publish only their own platform's metadata, so the
+ * gate must scope to just that platform — checking `mac` from the Windows
+ * workflow would fail on a missing local artifact. `RELEASE_PLATFORMS` is a
+ * comma-separated subset of PLATFORMS; unset means "all" (the historical
+ * single-workflow behavior, still used by tests and any caller that downloads
+ * every platform's artifacts). Per-platform monotonicity is the only
+ * invariant electron-updater actually cares about — cross-OS version
+ * alignment was never a real constraint, so narrowing the scope is strictly
+ * more correct, not a weakening.
+ */
+export function resolvePlatforms(raw) {
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return { ok: true, platforms: [...PLATFORMS] };
+  }
+  const requested = String(raw)
+    .split(",")
+    .map((p) => p.trim().toLowerCase())
+    .filter(Boolean);
+  if (requested.length === 0) {
+    return { ok: true, platforms: [...PLATFORMS] };
+  }
+  const unknown = requested.filter((p) => !PLATFORMS.includes(p));
+  if (unknown.length > 0) {
+    return {
+      ok: false,
+      error:
+        `RELEASE_PLATFORMS contains unknown platform(s): ${unknown.join(", ")}. ` +
+        `Expected a comma-separated subset of: ${PLATFORMS.join(", ")}.`,
+    };
+  }
+  // Preserve PLATFORMS order and dedupe so downstream index-based reporting
+  // stays stable regardless of how the env var was written.
+  return { ok: true, platforms: PLATFORMS.filter((p) => requested.includes(p)) };
+}
+
 export function validatePrefix(prefix) {
   if (!prefix) {
     return {
@@ -178,12 +215,21 @@ async function main() {
     fail(prefixCheck.error);
   }
 
+  const platformsCheck = resolvePlatforms(process.env.RELEASE_PLATFORMS);
+  if (!platformsCheck.ok) {
+    fail(platformsCheck.error);
+  }
+  const platforms = platformsCheck.platforms;
+  if (platforms.length < PLATFORMS.length) {
+    console.log(`[monotonic] scoped to platform(s): ${platforms.join(", ")}`);
+  }
+
   const releaseDir = process.env.RELEASE_DIR ?? "release";
 
   let locals;
   try {
     locals = await Promise.all(
-      PLATFORMS.map((platform) => readLocalVersion(releaseDir, prefix, platform))
+      platforms.map((platform) => readLocalVersion(releaseDir, prefix, platform))
     );
   } catch (error) {
     fail(error instanceof Error ? error.message : String(error));
@@ -193,7 +239,7 @@ async function main() {
   const mismatches = locals.filter((entry) => entry.version !== newVersion);
   if (mismatches.length > 0) {
     const summary = locals
-      .map((entry, idx) => `${PLATFORMS[idx]}=${entry.version} (${entry.filePath})`)
+      .map((entry, idx) => `${platforms[idx]}=${entry.version} (${entry.filePath})`)
       .join(" ");
     fail(
       `platform artifacts disagree on the new version: ${summary} — ` +
@@ -205,12 +251,12 @@ async function main() {
   // linux regression both surface in the same `::error::` annotation block,
   // rather than fail-fast hiding the second issue until the first is rerun.
   const fetchResults = await Promise.allSettled(
-    PLATFORMS.map((platform) => fetchLiveVersion(prefix, platform))
+    platforms.map((platform) => fetchLiveVersion(prefix, platform))
   );
 
   const failures = [];
-  for (let i = 0; i < PLATFORMS.length; i++) {
-    const platform = PLATFORMS[i];
+  for (let i = 0; i < platforms.length; i++) {
+    const platform = platforms[i];
     const settled = fetchResults[i];
     if (settled.status === "rejected") {
       const reason = settled.reason;

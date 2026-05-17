@@ -1,0 +1,303 @@
+name: Release (Linux)
+
+# Per-OS release workflow (#8052) — see release-macos.yml for the rationale.
+# Linux owns `*.AppImage`, `*.deb`, and `latest-linux.yml` on R2; nothing it
+# uploads can touch macOS or Windows metadata.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run — exercise the full pipeline (gates + build) without publishing to R2 or the website"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: release-linux-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check
+        run: npm run check
+
+  unit-tests:
+    name: Unit Tests (Linux)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm run test
+
+  e2e-core-gate:
+    needs: [checks, unit-tests]
+    uses: ./.github/workflows/e2e.yml
+    with:
+      suite: core
+      platform: linux
+
+  e2e-full-gate:
+    needs: [checks, unit-tests]
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - full-terminal
+          - full-worktree
+          - full-presets
+          - full-platform
+          - full-panels
+          - full-resilience
+    uses: ./.github/workflows/e2e.yml
+    with:
+      suite: ${{ matrix.suite }}
+      platform: linux
+
+  e2e-online-gate:
+    needs: [checks, unit-tests]
+    uses: ./.github/workflows/e2e.yml
+    with:
+      suite: online
+      platform: linux
+    secrets: inherit
+
+  build-daintree:
+    needs: [checks, unit-tests, e2e-core-gate, e2e-full-gate, e2e-online-gate]
+    name: Build Daintree (Linux)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Resolve update metadata prefix
+        shell: bash
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [[ "$PKG_VERSION" == *-rc* ]]; then
+            echo "UPDATE_METADATA_PREFIX=rc" >> "$GITHUB_ENV"
+          elif [[ "$PKG_VERSION" == *-beta* ]]; then
+            echo "UPDATE_METADATA_PREFIX=beta" >> "$GITHUB_ENV"
+          else
+            echo "UPDATE_METADATA_PREFIX=latest" >> "$GITHUB_ENV"
+          fi
+
+      - name: Verify version matches tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match package.json version ($PKG_VERSION)"
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libarchive-tools \
+            libxss-dev \
+            libsecret-1-dev \
+            libnss3-dev \
+            libnotify-dev \
+            libxkbfile-dev
+
+      - name: Build
+        shell: bash
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          DEBUG: electron-builder,electron-notarize*,electron-osx-sign*
+        run: |
+          npm run build
+          PUBLISH_FLAG="always"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "::warning::Dry run — skipping publish to electron-builder targets"
+            PUBLISH_FLAG="never"
+          fi
+          npx electron-builder --config electron-builder.config.cjs --publish "$PUBLISH_FLAG"
+
+      - name: Validate update metadata (Linux)
+        shell: bash
+        run: |
+          node scripts/ci/generate-update-metadata.mjs linux "release/${UPDATE_METADATA_PREFIX}-linux.yml"
+          if [ ! -f "release/${UPDATE_METADATA_PREFIX}-linux.yml" ]; then
+            echo "::error::Missing release/${UPDATE_METADATA_PREFIX}-linux.yml - Linux auto-update metadata was not generated"
+            exit 1
+          fi
+          node scripts/ci/validate-update-metadata.mjs "release/${UPDATE_METADATA_PREFIX}-linux.yml"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-daintree-ubuntu-22.04
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/*.blockmap
+            release/*.yml
+          retention-days: 7
+          if-no-files-found: error
+
+  publish-daintree:
+    if: startsWith(github.ref, 'refs/tags/v') && inputs.dry_run != true
+    needs: [build-daintree]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Resolve update metadata prefix
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$TAG_VERSION" == *-rc* ]]; then
+            echo "UPDATE_METADATA_PREFIX=rc" >> "$GITHUB_ENV"
+          elif [[ "$TAG_VERSION" == *-beta* ]]; then
+            echo "UPDATE_METADATA_PREFIX=beta" >> "$GITHUB_ENV"
+          else
+            echo "UPDATE_METADATA_PREFIX=latest" >> "$GITHUB_ENV"
+          fi
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: release-daintree-ubuntu-22.04
+          path: release/
+
+      - name: List release files
+        run: ls -lah release/
+
+      - name: Install gate dependencies
+        shell: bash
+        run: npm install --no-save --no-audit --no-fund --ignore-scripts js-yaml semver
+
+      - name: Check version is monotonically increasing
+        shell: bash
+        env:
+          UPDATE_METADATA_PREFIX: ${{ env.UPDATE_METADATA_PREFIX }}
+          RELEASE_PLATFORMS: linux
+        run: node scripts/ci/check-version-monotonic.mjs
+
+      - name: Upload binaries to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.DAINTREE_R2_BUCKET }}
+        run: |
+          aws s3 sync release/ "s3://${R2_BUCKET}/releases/" \
+            --endpoint-url "${R2_ENDPOINT}" \
+            --no-progress \
+            --exclude "*" \
+            --include "*.AppImage" \
+            --include "*.deb" \
+            --include "*.blockmap" \
+            --cache-control "public, max-age=31536000, immutable"
+
+      - name: Verify binaries reachable on R2
+        shell: bash
+        env:
+          PUBLISH_URL: https://updates.daintree.org/releases/
+        run: node scripts/ci/verify-r2-uploads.mjs
+
+      - name: Upload metadata to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.DAINTREE_R2_BUCKET }}
+        run: |
+          aws s3 sync release/ "s3://${R2_BUCKET}/releases/" \
+            --endpoint-url "${R2_ENDPOINT}" \
+            --no-progress \
+            --exclude "*" \
+            --include "${UPDATE_METADATA_PREFIX}-linux.yml" \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+      - name: Notify website of new release
+        shell: bash
+        env:
+          WEBSITE_WEBHOOK_SECRET: ${{ secrets.WEBSITE_WEBHOOK_SECRET }}
+        run: |
+          sleep 1
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST https://daintree.org/api/refresh-releases \
+            -H "Authorization: Bearer ${WEBSITE_WEBHOOK_SECRET}")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "Response (HTTP ${HTTP_CODE}): ${BODY}"
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "::warning::Website refresh failed (HTTP ${HTTP_CODE})"
+          fi

@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Eclipse, Layers, ChevronDown, ChevronRight } from "lucide-react";
+import { Moon, Layers, ChevronDown, ChevronRight } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
@@ -157,7 +157,7 @@ export function BackgroundContainer({ compact = false }: BackgroundContainerProp
           aria-label={`Background: ${count} panel${count === 1 ? "" : "s"}`}
         >
           <span className="relative">
-            <Eclipse className="w-3.5 h-3.5 text-daintree-text/50" aria-hidden="true" />
+            <Moon className="w-3.5 h-3.5 text-daintree-text/50" aria-hidden="true" />
             {compact && count > 0 && (
               <span className="absolute -top-1.5 -right-1.5 z-10 flex items-center justify-center min-w-[14px] h-[14px] px-0.5 rounded-full text-[10px] font-bold tabular-nums shadow-sm bg-daintree-text/20 text-daintree-text">
                 {count > 9 ? "9+" : count}

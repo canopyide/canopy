@@ -196,6 +196,26 @@ describe("ProjectStatsService adversarial", () => {
     svc.stop();
   });
 
+  it("terminal:trashed and terminal:restored trigger a debounced recompute", async () => {
+    // Trash-flow latency guard. The kill path is already covered by
+    // `agent:state-changed`; only the soft-delete trash/restore paths
+    // would otherwise wait for the 5s poll.
+    const ptyClient = makePtyClient();
+    projectStoreMock.getAllProjects.mockReturnValue([{ id: "p1" }]);
+    const svc = new ProjectStatsService(ptyClient as never);
+    svc.start();
+    ptyClient.getAllTerminalsAsync.mockClear();
+
+    eventEmitter.emit("terminal:trashed");
+    eventEmitter.emit("terminal:restored");
+    await vi.advanceTimersByTimeAsync(200);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(ptyClient.getAllTerminalsAsync).toHaveBeenCalledTimes(1);
+    svc.stop();
+  });
+
   it("debounce coalesces a burst of agent:state-changed events into one compute", async () => {
     const ptyClient = makePtyClient();
     projectStoreMock.getAllProjects.mockReturnValue([{ id: "p1" }]);

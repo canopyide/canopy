@@ -159,7 +159,7 @@ A separate workflow for fine-grained ad-hoc runs of a single test file with conf
 
 ### Release Gating
 
-`release.yml` runs checks, unit tests, and the e2e gates (`core` + the six `full-*` buckets fanned out as a matrix + `online`) before platform packaging starts. `core` and `online` gate releases on all three OSes (macOS, Linux, Windows); the `full-*` buckets gate on non-Windows runners only — a full Windows run takes ~5–6 hours, so it isn't gated anywhere (it was dropped from nightly for the same reason). Nightly runs `core` and `online` across all three OSes; the `full-*` buckets and the memory-leak `nightly` project run on macOS and Linux only.
+Releases run as three independent per-OS workflows (`release-macos.yml`, `release-linux.yml`, `release-windows.yml`, #8052), each triggered by the same `v*` tag. Every workflow runs checks, unit tests, and that OS's e2e gates (`core` + the six `full-*` buckets fanned out as a matrix + `online`) before that OS's platform packaging starts, then publishes that OS's artifacts to R2 the moment its own pipeline is green — a failed or hung OS only delays itself. Because each `full-*` bucket auto-shards 4 ways inside `e2e.yml` (#8053), a full Windows bucket finishes in ~10min wall-time instead of ~39min serial, so Windows `full-*` now gates the Windows release (it no longer takes ~5–6 hours). Nightly is unchanged: it runs `core` and `online` across all three OSes; the `full-*` buckets and the memory-leak `nightly` project run on macOS and Linux only (still serially across OSes, but each `full-*` bucket is auto-sharded there too).
 
 ### Cross-Platform Matrix
 
