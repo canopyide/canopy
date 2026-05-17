@@ -27,8 +27,6 @@ import type {
   CreateWorktreeOptions,
   BranchInfo,
   WorktreeConfig,
-  CreateForTaskPayload,
-  CleanupTaskOptions,
   AttachIssuePayload,
   IssueAssociation,
 } from "./worktree.js";
@@ -208,24 +206,6 @@ export interface ElectronAPI {
     getDefaultPath(rootPath: string, branchName: string): Promise<string>;
     getAvailableBranch(rootPath: string, branchName: string): Promise<string>;
     delete(worktreeId: string, force?: boolean, deleteBranch?: boolean): Promise<void>;
-    /**
-     * Create a worktree for a specific task with auto-generated collision-safe branch name.
-     * @param payload - Contains taskId, optional baseBranch, and optional description
-     * @returns The created worktree state including the assigned taskId
-     */
-    createForTask(payload: CreateForTaskPayload): Promise<WorktreeState>;
-    /**
-     * Get all worktrees linked to a specific task.
-     * @param taskId - The task ID to filter by
-     * @returns Array of worktree states matching the taskId
-     */
-    getByTaskId(taskId: string): Promise<WorktreeState[]>;
-    /**
-     * Cleanup worktrees associated with a task.
-     * @param taskId - The task ID whose worktrees should be cleaned up
-     * @param options - Optional: { force: boolean, deleteBranch: boolean } (defaults: force=true, deleteBranch=true)
-     */
-    cleanupTask(taskId: string, options?: CleanupTaskOptions): Promise<void>;
     attachIssue(payload: AttachIssuePayload): Promise<void>;
     detachIssue(worktreeId: string): Promise<void>;
     getIssueAssociation(worktreeId: string): Promise<IssueAssociation | null>;

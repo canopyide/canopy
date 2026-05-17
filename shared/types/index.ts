@@ -35,7 +35,7 @@ export type {
 export type { NotificationType, Notification, NotificationPayload } from "./notification.js";
 
 // Agent types
-export type { AgentState, TaskState, RunRecord, AgentStateChangeTrigger } from "./agent.js";
+export type { AgentState, AgentStateChangeTrigger } from "./agent.js";
 
 // Panel types
 export type {
@@ -506,16 +506,6 @@ export type {
   ChecklistItemId,
   HelpAssistantTier,
 } from "./ipc/maps.js";
-
-// Task Queue types - DAG-based task management
-export type {
-  TaskResult,
-  TaskRecord,
-  CreateTaskParams,
-  TaskFilter,
-  DagValidationResult,
-  TaskStateChangePayload,
-} from "./task.js";
 
 // Editor integration types - external editor configuration and discovery
 export type {

@@ -18,8 +18,8 @@ const logBufferMock = vi.hoisted(() => ({
   onProjectSwitch: vi.fn(() => undefined),
 }));
 
-const taskQueueServiceMock = vi.hoisted(() => ({
-  onProjectSwitch: vi.fn(async () => undefined),
+const gitServiceCacheMock = vi.hoisted(() => ({
+  clear: vi.fn(() => undefined),
 }));
 
 const sendToRendererMock = vi.hoisted(() => vi.fn());
@@ -41,12 +41,8 @@ vi.mock("../LogBuffer.js", () => ({
   logBuffer: logBufferMock,
 }));
 
-vi.mock("../TaskQueueService.js", () => ({
-  taskQueueService: taskQueueServiceMock,
-}));
-
-vi.mock("../TaskWorktreeService.js", () => ({
-  taskWorktreeService: { onProjectSwitch: vi.fn() },
+vi.mock("../GitServiceCache.js", () => ({
+  gitServiceCache: gitServiceCacheMock,
 }));
 
 vi.mock("../ContextInjectionTracker.js", () => ({
@@ -114,7 +110,7 @@ describe("ProjectSwitchService", () => {
     );
 
     logBufferMock.onProjectSwitch.mockImplementation(() => undefined);
-    taskQueueServiceMock.onProjectSwitch.mockResolvedValue(undefined);
+    gitServiceCacheMock.clear.mockImplementation(() => undefined);
   });
 
   const MOCK_WINDOW_ID = 42;
@@ -237,8 +233,8 @@ describe("ProjectSwitchService", () => {
     logBufferMock.onProjectSwitch.mockImplementation(() => {
       throw new Error("logBuffer sync throw");
     });
-    taskQueueServiceMock.onProjectSwitch.mockImplementation(() => {
-      throw new Error("taskQueue sync throw");
+    gitServiceCacheMock.clear.mockImplementation(() => {
+      throw new Error("gitServiceCache sync throw");
     });
 
     await expect(service.switchProject("project-new")).resolves.toMatchObject({
@@ -263,13 +259,7 @@ describe("ProjectSwitchService", () => {
     expect(sendToRendererMock).not.toHaveBeenCalled();
   });
 
-  it("starts loading new project while supporting cleanup is still in progress", async () => {
-    let resolveTaskQueue!: () => void;
-    const taskQueuePromise = new Promise<undefined>((resolve) => {
-      resolveTaskQueue = () => resolve(undefined);
-    });
-    taskQueueServiceMock.onProjectSwitch.mockReturnValue(taskQueuePromise);
-
+  it("starts loading new project in parallel with supporting cleanup", async () => {
     const loadProjectMock = vi.fn(async () => undefined);
     const { service } = createService({
       worktreeService: {
@@ -285,7 +275,6 @@ describe("ProjectSwitchService", () => {
 
     expect(loadProjectMock).toHaveBeenCalledWith("/tmp/new", MOCK_WINDOW_ID);
 
-    resolveTaskQueue();
     await expect(switchPromise).resolves.toMatchObject({ id: "project-new" });
   });
 

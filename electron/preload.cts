@@ -708,14 +708,6 @@ const api: ElectronAPI = {
     delete: (worktreeId: string, force?: boolean, deleteBranch?: boolean) =>
       _unwrappingInvoke(CHANNELS.WORKTREE_DELETE, { worktreeId, force, deleteBranch }),
 
-    createForTask: (payload: { taskId: string; baseBranch?: string; description?: string }) =>
-      _unwrappingInvoke(CHANNELS.WORKTREE_CREATE_FOR_TASK, payload),
-
-    getByTaskId: (taskId: string) => _unwrappingInvoke(CHANNELS.WORKTREE_GET_BY_TASK_ID, taskId),
-
-    cleanupTask: (taskId: string, options?: { force?: boolean; deleteBranch?: boolean }) =>
-      _unwrappingInvoke(CHANNELS.WORKTREE_CLEANUP_TASK, taskId, options),
-
     attachIssue: (payload: AttachIssuePayload) =>
       _unwrappingInvoke(CHANNELS.WORKTREE_ATTACH_ISSUE, payload),
 

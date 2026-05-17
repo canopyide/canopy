@@ -291,15 +291,6 @@ export function EventDetail({ event, className }: EventDetailProps) {
                     onToggle={handleContextToggle}
                   />
                 )}
-                {event.payload.taskId !== undefined && (
-                  <ContextPill
-                    label="Task"
-                    value={event.payload.taskId}
-                    filterKey="taskId"
-                    currentFilters={filters}
-                    onToggle={handleContextToggle}
-                  />
-                )}
                 {event.payload.runId !== undefined && (
                   <ContextPill
                     label="Run"

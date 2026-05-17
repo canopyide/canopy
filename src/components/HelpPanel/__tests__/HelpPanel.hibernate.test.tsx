@@ -140,7 +140,6 @@ vi.mock("@/config/agents", () => ({
 
 vi.mock("@shared/types/agentSettings", () => ({
   buildResumeCommand: (...args: unknown[]) => mockBuildResumeCommand(...args),
-  AgentRoutingConfigSchema: { optional: () => undefined },
 }));
 
 vi.mock("@/services/ActionService", () => ({

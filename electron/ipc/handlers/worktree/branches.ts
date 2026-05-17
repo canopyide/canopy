@@ -2,7 +2,7 @@ import { CHANNELS } from "../../channels.js";
 import type { HandlerDependencies } from "../../types.js";
 import { generateWorktreePath, validatePathPattern } from "../../../../shared/utils/pathPattern.js";
 import { resolveWorktreePattern } from "../../../utils/worktreePattern.js";
-import { taskWorktreeService } from "../../../services/TaskWorktreeService.js";
+import { gitServiceCache } from "../../../services/GitServiceCache.js";
 import { typedHandle } from "../../utils.js";
 
 export function registerWorktreeBranchHandlers(deps: HandlerDependencies): () => void {
@@ -78,7 +78,7 @@ export function registerWorktreeBranchHandlers(deps: HandlerDependencies): () =>
 
     const initialPath = generateWorktreePath(rootPath, branchName, pattern);
 
-    const gitService = taskWorktreeService.getGitService(rootPath);
+    const gitService = gitServiceCache.getGitService(rootPath);
     return gitService.findAvailablePath(initialPath);
   };
   handlers.push(typedHandle(CHANNELS.WORKTREE_GET_DEFAULT_PATH, handleWorktreeGetDefaultPath));
@@ -101,7 +101,7 @@ export function registerWorktreeBranchHandlers(deps: HandlerDependencies): () =>
       throw new Error("Invalid branchName: must be a non-empty string");
     }
 
-    const gitService = taskWorktreeService.getGitService(rootPath);
+    const gitService = gitServiceCache.getGitService(rootPath);
     return gitService.findAvailableBranchName(branchName);
   };
   handlers.push(

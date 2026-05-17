@@ -30,8 +30,6 @@ import type {
   CreateWorktreeOptions,
   BranchInfo,
   WorktreeConfig,
-  CreateForTaskPayload,
-  CleanupTaskOptions,
   AttachIssuePayload,
   DetachIssuePayload,
   IssueAssociation,
@@ -278,18 +276,6 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
   };
   "worktree:delete": {
     args: [payload: WorktreeDeletePayload];
-    result: void;
-  };
-  "worktree:create-for-task": {
-    args: [payload: CreateForTaskPayload];
-    result: WorktreeState;
-  };
-  "worktree:get-by-task-id": {
-    args: [taskId: string];
-    result: WorktreeState[];
-  };
-  "worktree:cleanup-task": {
-    args: [taskId: string, options?: CleanupTaskOptions];
     result: void;
   };
   "worktree:attach-issue": {

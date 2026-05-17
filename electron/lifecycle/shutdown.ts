@@ -8,10 +8,6 @@ import {
   getAgentAvailabilityStore,
 } from "../services/AgentAvailabilityStore.js";
 import { disposePowerSaveBlockerService } from "../services/PowerSaveBlockerService.js";
-import { disposeAgentRouter } from "../services/AgentRouter.js";
-
-import { disposeTaskOrchestrator } from "../services/TaskOrchestrator.js";
-import { taskQueueService } from "../services/TaskQueueService.js";
 import { disposePtyClient } from "../services/PtyClient.js";
 import { disposeWorkspaceClient } from "../services/WorkspaceClient.js";
 import { disposeMainProcessWatchdog } from "../services/MainProcessWatchdogClient.js";
@@ -149,8 +145,6 @@ export function registerShutdownHandler(deps: ShutdownDeps): void {
             .then(({ helpSessionService }) => helpSessionService.revokeAll())
             .catch(() => {}),
           new Promise<void>((resolve) => {
-            disposeTaskOrchestrator();
-            disposeAgentRouter();
             disposePowerSaveBlockerService();
             disposeAgentAvailabilityStore();
             if (ptyClient) {
@@ -195,12 +189,6 @@ export function registerShutdownHandler(deps: ShutdownDeps): void {
         if (stopDisk) {
           stopDisk();
           deps.setStopDiskSpaceMonitor(null);
-        }
-
-        try {
-          await taskQueueService.flushPersistence();
-        } catch (error) {
-          console.warn("[MAIN] Failed to flush task persistence:", error);
         }
 
         try {
