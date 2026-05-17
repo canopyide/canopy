@@ -56,6 +56,11 @@ import {
   getToolbarButtonConfig,
 } from "../../../shared/config/toolbarButtonRegistry.js";
 import { clearPluginMenuRegistry, getPluginMenuItems } from "../pluginMenuRegistry.js";
+import {
+  clearForgeProviderRegistry,
+  getRegisteredForgeProviders,
+  listMatchingProviders,
+} from "../forgeProviderRegistry.js";
 
 function makeCtx(pluginId: string, overrides: Partial<PluginIpcContext> = {}): PluginIpcContext {
   return {
@@ -120,6 +125,7 @@ afterEach(async () => {
     clearPanelKindRegistry();
     clearToolbarButtonRegistry();
     clearPluginMenuRegistry();
+    clearForgeProviderRegistry();
     storeState.clear();
     for (const key of globalMarkers) {
       delete (globalThis as Record<string, unknown>)[key];
@@ -371,6 +377,69 @@ describe("PluginService integration — menu item contributions", () => {
         location: "terminal",
       },
     });
+  });
+});
+
+describe("PluginService integration — forge provider contributions", () => {
+  it("registers a manifest forgeProviders entry and unregisters it on unload", async () => {
+    await writePlugin("acme.forge-plugin", {
+      name: "acme.forge-plugin",
+      version: "1.0.0",
+      contributes: {
+        forgeProviders: [
+          {
+            id: "github",
+            name: "GitHub",
+            matches: ["github.com"],
+            capabilities: ["issues", "pulls"],
+          },
+        ],
+      },
+    });
+
+    const service = new PluginService(tmpDir, "0.0.0");
+    await service.initialize();
+
+    const registered = getRegisteredForgeProviders();
+    expect(registered).toHaveLength(1);
+    expect(registered[0]).toEqual({
+      pluginId: "acme.forge-plugin",
+      contribution: {
+        id: "github",
+        name: "GitHub",
+        matches: ["github.com"],
+        capabilities: ["issues", "pulls"],
+      },
+    });
+
+    const matches = listMatchingProviders("https://github.com/owner/repo.git");
+    expect(matches).toHaveLength(1);
+    expect(matches[0].pluginId).toBe("acme.forge-plugin");
+
+    service.unloadPlugin("acme.forge-plugin");
+
+    expect(getRegisteredForgeProviders()).toHaveLength(0);
+    expect(listMatchingProviders("https://github.com/owner/repo.git")).toEqual([]);
+  });
+
+  it("registers multiple forgeProviders entries from one manifest", async () => {
+    await writePlugin("acme.multi-forge", {
+      name: "acme.multi-forge",
+      version: "1.0.0",
+      contributes: {
+        forgeProviders: [
+          { id: "primary", name: "Primary", matches: ["primary.example"] },
+          { id: "secondary", name: "Secondary", matches: ["secondary.example"] },
+        ],
+      },
+    });
+
+    const service = new PluginService(tmpDir, "0.0.0");
+    await service.initialize();
+
+    expect(getRegisteredForgeProviders()).toHaveLength(2);
+    expect(listMatchingProviders("https://primary.example/repo")).toHaveLength(1);
+    expect(listMatchingProviders("https://secondary.example/repo")).toHaveLength(1);
   });
 });
 

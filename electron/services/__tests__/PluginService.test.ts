@@ -42,6 +42,10 @@ vi.mock("../pluginMenuRegistry.js", () => ({
   registerPluginMenuItem: vi.fn(),
   unregisterPluginMenuItems: vi.fn(),
 }));
+vi.mock("../forgeProviderRegistry.js", () => ({
+  registerForgeProviders: vi.fn(),
+  unregisterForgeProviders: vi.fn(),
+}));
 
 import { PluginService } from "../PluginService.js";
 import { PluginManifestSchema } from "../../schemas/plugin.js";
@@ -58,6 +62,7 @@ import {
   unregisterPluginToolbarButtons,
 } from "../../../shared/config/toolbarButtonRegistry.js";
 import { registerPluginMenuItem, unregisterPluginMenuItems } from "../pluginMenuRegistry.js";
+import { registerForgeProviders, unregisterForgeProviders } from "../forgeProviderRegistry.js";
 import { CHANNELS } from "../../ipc/channels.js";
 
 function makeCtx(pluginId: string, overrides: Partial<PluginIpcContext> = {}): PluginIpcContext {
@@ -1315,6 +1320,7 @@ describe("Plugin unload lifecycle", () => {
     expect(unregisterPluginMenuItems).toHaveBeenCalledWith("acme.unloadable");
     expect(unregisterPluginToolbarButtons).toHaveBeenCalledWith("acme.unloadable");
     expect(unregisterPluginPanelKinds).toHaveBeenCalledWith("acme.unloadable");
+    expect(unregisterForgeProviders).toHaveBeenCalledWith("acme.unloadable");
   });
 
   it("unloadPlugin removes the plugin from hasPlugin and listPlugins", async () => {
@@ -1356,6 +1362,7 @@ describe("Plugin unload lifecycle", () => {
     expect(unregisterPluginMenuItems).not.toHaveBeenCalled();
     expect(unregisterPluginToolbarButtons).not.toHaveBeenCalled();
     expect(unregisterPluginPanelKinds).not.toHaveBeenCalled();
+    expect(unregisterForgeProviders).not.toHaveBeenCalled();
   });
 
   it("unloadPlugin is idempotent across repeated calls", async () => {
@@ -1372,6 +1379,7 @@ describe("Plugin unload lifecycle", () => {
     expect(unregisterPluginMenuItems).toHaveBeenCalledTimes(1);
     expect(unregisterPluginToolbarButtons).toHaveBeenCalledTimes(1);
     expect(unregisterPluginPanelKinds).toHaveBeenCalledTimes(1);
+    expect(unregisterForgeProviders).toHaveBeenCalledTimes(1);
   });
 
   it("registers plugin before importing main so sync host-API calls see it as loaded", async () => {
@@ -2300,7 +2308,7 @@ describe("reserved contribution point warnings", () => {
     );
   });
 
-  it("accepts a contributes.forgeProviders entry and logs a 'not yet implemented' warning", async () => {
+  it("registers a contributes.forgeProviders entry with the forge provider registry", async () => {
     await writePlugin("forge", {
       name: "acme.forge",
       version: "1.0.0",
@@ -2323,15 +2331,35 @@ describe("reserved contribution point warnings", () => {
     await service.initialize();
 
     expect(service.listPlugins()).toHaveLength(1);
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining(
-        'Plugin "acme.forge": contributes.forgeProviders is not yet implemented'
-      )
-    );
-    // Reserved + ignored: a forge-only manifest has no registry side effects.
+    expect(registerForgeProviders).toHaveBeenCalledWith("acme.forge", [
+      {
+        id: "github",
+        name: "GitHub",
+        matches: ["github.com"],
+        capabilities: ["issues", "pulls", "reviews"],
+        settingsScopeRef: "github",
+        viewRefs: ["github-issues"],
+      },
+    ]);
+    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("contributes.forgeProviders"));
+    // A forge-only manifest does not touch the other registries.
     expect(registerPanelKind).not.toHaveBeenCalled();
     expect(registerToolbarButton).not.toHaveBeenCalled();
     expect(registerPluginMenuItem).not.toHaveBeenCalled();
+  });
+
+  it("does not call registerForgeProviders when the manifest declares no forgeProviders", async () => {
+    await writePlugin("forge-none", {
+      name: "acme.forge-none",
+      version: "1.0.0",
+      engines: { daintree: "^0.7.0" },
+    });
+
+    const service = new PluginService(tmpDir, "0.7.5");
+    await service.initialize();
+
+    expect(service.listPlugins()).toHaveLength(1);
+    expect(registerForgeProviders).not.toHaveBeenCalled();
   });
 
   it("does not warn about reserved points when the manifest omits them", async () => {

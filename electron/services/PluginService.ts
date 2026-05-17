@@ -29,6 +29,7 @@ import {
   unregisterPluginToolbarButtons,
 } from "../../shared/config/toolbarButtonRegistry.js";
 import { registerPluginMenuItem, unregisterPluginMenuItems } from "./pluginMenuRegistry.js";
+import { registerForgeProviders, unregisterForgeProviders } from "./forgeProviderRegistry.js";
 import { broadcastToRenderer } from "../ipc/utils.js";
 import { CHANNELS } from "../ipc/channels.js";
 import type { LoadedPluginInfo } from "../../shared/types/plugin.js";
@@ -381,9 +382,7 @@ export class PluginService {
     }
 
     if (manifest.contributes.forgeProviders.length > 0) {
-      console.warn(
-        `[PluginService] Plugin "${manifest.name}": contributes.forgeProviders is not yet implemented and will be ignored`
-      );
+      registerForgeProviders(manifest.name, manifest.contributes.forgeProviders);
     }
 
     // Insert the plugin into the registry BEFORE importing its main module so
@@ -683,6 +682,7 @@ export class PluginService {
     unregisterPluginMenuItems(pluginId);
     unregisterPluginToolbarButtons(pluginId);
     unregisterPluginPanelKinds(pluginId);
+    unregisterForgeProviders(pluginId);
     this.plugins.delete(pluginId);
   }
 
