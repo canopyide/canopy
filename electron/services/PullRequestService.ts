@@ -95,7 +95,6 @@ class PullRequestService {
   private isPolling: boolean = false;
   private consecutiveErrors: number = 0;
   private nextRetryAt: number = 0;
-  private lastFocusCatchupAt: number = Number.NEGATIVE_INFINITY;
   private boostExpiresAt: number | null = null;
   private lastCheckAt: number = Number.NEGATIVE_INFINITY;
   private startupDelayTimer: NodeJS.Timeout | null = null;
@@ -392,7 +391,6 @@ class PullRequestService {
     this.detectedPRs.clear();
     this.consecutiveErrors = 0;
     this.nextRetryAt = 0;
-    this.lastFocusCatchupAt = Number.NEGATIVE_INFINITY;
     this.boostExpiresAt = null;
     this.lastCheckAt = Number.NEGATIVE_INFINITY;
   }
