@@ -31,6 +31,7 @@ export interface WorktreeViewState {
   error: string | null;
   isInitialized: boolean;
   isReconnecting: boolean;
+  reconnectingAt: number | null;
 }
 
 export interface WorktreeViewActions {
@@ -57,6 +58,7 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
     error: null,
     isInitialized: false,
     isReconnecting: false,
+    reconnectingAt: null,
 
     nextVersion() {
       return ++versionCounter;
@@ -83,6 +85,7 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
           isInitialized: true,
           error: null,
           isReconnecting: false,
+          reconnectingAt: null,
         });
         return;
       }
@@ -94,6 +97,7 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
         isInitialized: true,
         error: null,
         isReconnecting: false,
+        reconnectingAt: null,
       });
     },
 
@@ -142,12 +146,16 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
         error: message,
         isInitialized: false,
         isReconnecting: false,
+        reconnectingAt: null,
         isLoading: false,
       });
     },
 
     setReconnecting(reconnecting: boolean) {
-      set({ isReconnecting: reconnecting });
+      set({
+        isReconnecting: reconnecting,
+        reconnectingAt: reconnecting ? Date.now() : null,
+      });
     },
   }));
 }

@@ -4,20 +4,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import { actionService } from "@/services/ActionService";
 import { useDeferredLoading } from "@/hooks/useDeferredLoading";
 import { UI_SKELETON_GATE_MS } from "@/lib/animationUtils";
-
-const RELATIVE_TIME_FORMATTER = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-
-function formatLastFetched(epochMs: number, now: number = Date.now()): string {
-  const deltaSeconds = Math.round((epochMs - now) / 1000);
-  const absSeconds = Math.abs(deltaSeconds);
-  if (absSeconds < 60) return RELATIVE_TIME_FORMATTER.format(deltaSeconds, "second");
-  const deltaMinutes = Math.round(deltaSeconds / 60);
-  if (Math.abs(deltaMinutes) < 60) return RELATIVE_TIME_FORMATTER.format(deltaMinutes, "minute");
-  const deltaHours = Math.round(deltaMinutes / 60);
-  if (Math.abs(deltaHours) < 24) return RELATIVE_TIME_FORMATTER.format(deltaHours, "hour");
-  const deltaDays = Math.round(deltaHours / 24);
-  return RELATIVE_TIME_FORMATTER.format(deltaDays, "day");
-}
+import { formatRelativeTime } from "@/lib/formatRelativeTime";
 
 interface UpstreamSyncBadgeProps {
   aheadCount: number | undefined;
@@ -80,7 +67,7 @@ export function UpstreamSyncBadge({
           <div>GitHub authentication failed</div>
           <div className="text-daintree-text/70 mt-0.5">Click to reconnect GitHub</div>
           {lastFetchedAt != null && (
-            <div className="text-text-muted">Last fetched {formatLastFetched(lastFetchedAt)}</div>
+            <div className="text-text-muted">Last fetched {formatRelativeTime(lastFetchedAt)}</div>
           )}
         </TooltipContent>
       </Tooltip>
@@ -126,7 +113,7 @@ export function UpstreamSyncBadge({
           </div>
         )}
         {lastFetchedAt != null && (
-          <div className="text-text-muted">Last fetched {formatLastFetched(lastFetchedAt)}</div>
+          <div className="text-text-muted">Last fetched {formatRelativeTime(lastFetchedAt)}</div>
         )}
       </TooltipContent>
     </Tooltip>

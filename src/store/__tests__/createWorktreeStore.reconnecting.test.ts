@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWorktreeStore } from "@/store/createWorktreeStore";
 import type { WorktreeSnapshot } from "@shared/types";
 
@@ -76,6 +76,97 @@ describe("createWorktreeStore — reconnecting state", () => {
     store.getState().setReconnecting(true);
     store.getState().setReconnecting(false);
     expect(store.getState().isReconnecting).toBe(false);
+  });
+});
+
+describe("createWorktreeStore — reconnectingAt timestamp", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("starts with reconnectingAt=null", () => {
+    const store = createWorktreeStore();
+    expect(store.getState().reconnectingAt).toBeNull();
+  });
+
+  it("setReconnecting(true) captures Date.now() in reconnectingAt", () => {
+    const store = createWorktreeStore();
+    const before = Date.now();
+    store.getState().setReconnecting(true);
+    expect(store.getState().reconnectingAt).toBe(before);
+  });
+
+  it("setReconnecting(false) clears reconnectingAt to null", () => {
+    const store = createWorktreeStore();
+    store.getState().setReconnecting(true);
+    expect(store.getState().reconnectingAt).not.toBeNull();
+    store.getState().setReconnecting(false);
+    expect(store.getState().reconnectingAt).toBeNull();
+  });
+
+  it("repeated setReconnecting(true) refreshes the timestamp baseline", () => {
+    const store = createWorktreeStore();
+    store.getState().setReconnecting(true);
+    const first = store.getState().reconnectingAt;
+    vi.advanceTimersByTime(5000);
+    store.getState().setReconnecting(true);
+    const second = store.getState().reconnectingAt;
+    expect(second).not.toBeNull();
+    expect(second).toBeGreaterThan(first ?? 0);
+  });
+
+  it("applySnapshot normal-path clears reconnectingAt", () => {
+    const store = createWorktreeStore();
+    store.getState().setReconnecting(true);
+    expect(store.getState().reconnectingAt).not.toBeNull();
+
+    const version = store.getState().nextVersion();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], version);
+
+    expect(store.getState().reconnectingAt).toBeNull();
+  });
+
+  it("applySnapshot no-op early-return path clears reconnectingAt", () => {
+    const store = createWorktreeStore();
+
+    // Hydrate so the value-equality early-return path triggers on the next call
+    const v1 = store.getState().nextVersion();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], v1);
+    store.getState().setReconnecting(true);
+    expect(store.getState().reconnectingAt).not.toBeNull();
+
+    const v2 = store.getState().nextVersion();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], v2);
+
+    expect(store.getState().reconnectingAt).toBeNull();
+  });
+
+  it("setFatalError clears reconnectingAt", () => {
+    const store = createWorktreeStore();
+    store.getState().setReconnecting(true);
+    expect(store.getState().reconnectingAt).not.toBeNull();
+
+    store.getState().setFatalError("host crashed");
+
+    expect(store.getState().reconnectingAt).toBeNull();
+  });
+
+  it("stale-version applySnapshot does NOT clear reconnectingAt", () => {
+    const store = createWorktreeStore();
+
+    const v1 = store.getState().nextVersion();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], v1);
+
+    store.getState().setReconnecting(true);
+    const captured = store.getState().reconnectingAt;
+    store.getState().applySnapshot([makeSnapshot("wt-stale")], v1);
+
+    expect(store.getState().reconnectingAt).toBe(captured);
   });
 });
 
