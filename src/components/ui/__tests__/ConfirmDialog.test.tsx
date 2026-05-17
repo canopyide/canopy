@@ -581,6 +581,55 @@ describe("ConfirmDialog — typed-name gate", () => {
   });
 });
 
+describe("ConfirmDialog — initialFocus prop forwarding", () => {
+  beforeEach(() => {
+    __devWarnedKeys.clear();
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllEnvs();
+  });
+
+  async function flushRaf() {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }
+
+  it("defaults destructive variant to Cancel focus", async () => {
+    render(
+      <ConfirmDialog
+        isOpen={true}
+        onClose={() => {}}
+        title="Delete 'foo'?"
+        confirmLabel="Delete worktree"
+        onConfirm={() => {}}
+        variant="destructive"
+      />
+    );
+    await flushRaf();
+
+    expect(document.activeElement?.getAttribute("data-confirm-role")).toBe("cancel");
+  });
+
+  it('forwards initialFocus="confirm" to focus the Confirm button on destructive variant', async () => {
+    render(
+      <ConfirmDialog
+        isOpen={true}
+        onClose={() => {}}
+        title="Delete 'foo'?"
+        confirmLabel="Delete worktree"
+        onConfirm={() => {}}
+        variant="destructive"
+        initialFocus="confirm"
+      />
+    );
+    await flushRaf();
+
+    expect(document.activeElement?.getAttribute("data-confirm-role")).toBe("confirm");
+  });
+});
+
 describe("ConfirmDialog — are-you-sure title guard", () => {
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
@@ -736,6 +785,40 @@ describe("ConfirmDialog — cannot-be-undone body guard", () => {
 
     const messages = errorSpy.mock.calls.map((call: unknown[]) => String(call[0] ?? ""));
     expect(messages.some((m) => m.includes("cannot be undone"))).toBe(true);
+  });
+
+  it('warns on the curly-quote contraction "can’t be undone"', () => {
+    render(
+      <ConfirmDialog
+        isOpen={true}
+        onClose={() => {}}
+        title="Delete 'foo'?"
+        description={"This can’t be undone."}
+        confirmLabel="Delete worktree"
+        onConfirm={() => {}}
+        variant="destructive"
+      />
+    );
+
+    const messages = errorSpy.mock.calls.map((call: unknown[]) => String(call[0] ?? ""));
+    expect(messages.some((m) => m.includes("cannot be undone"))).toBe(true);
+  });
+
+  it('is silent for apostrophe-less "cant be undone" (typo)', () => {
+    render(
+      <ConfirmDialog
+        isOpen={true}
+        onClose={() => {}}
+        title="Delete 'foo'?"
+        description="This cant be undone."
+        confirmLabel="Delete worktree"
+        onConfirm={() => {}}
+        variant="destructive"
+      />
+    );
+
+    const messages = errorSpy.mock.calls.map((call: unknown[]) => String(call[0] ?? ""));
+    expect(messages.some((m) => m.includes("cannot be undone"))).toBe(false);
   });
 
   it('warns on the contraction "can\'t be undone"', () => {

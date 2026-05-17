@@ -1,6 +1,10 @@
 import type React from "react";
 import { useEffect, useState } from "react";
-import { AppDialog, type DialogZIndex } from "@/components/ui/AppDialog";
+import {
+  AppDialog,
+  type DialogInitialFocus,
+  type DialogZIndex,
+} from "@/components/ui/AppDialog";
 import { TypedNameConfirmInput } from "@/components/ui/TypedNameConfirmInput";
 
 const DESTRUCTIVE_CONFIRM_LABEL_RE =
@@ -11,7 +15,7 @@ const GENERIC_CONFIRM_LABEL_RE =
 
 const ARE_YOU_SURE_TITLE_RE = /^\s*are\s+you\s+sure/i;
 
-const CANNOT_BE_UNDONE_BODY_RE = /cannot be undone|can'?t be undone/i;
+const CANNOT_BE_UNDONE_BODY_RE = /cannot be undone|can['’]t be undone/i;
 
 const devWarnedKeys = new Set<string>();
 
@@ -40,6 +44,7 @@ type ConfirmDialogBaseProps = {
   onConfirm: () => void | Promise<void>;
   isConfirmLoading?: boolean;
   zIndex?: DialogZIndex;
+  initialFocus?: DialogInitialFocus;
 };
 
 export type ConfirmDialogProps =
@@ -65,6 +70,7 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
     isConfirmLoading = false,
     variant,
     zIndex,
+    initialFocus,
   } = props;
   const rawTypedNameTarget = (props as { typedNameTarget?: string }).typedNameTarget;
   const typedNameTarget = variant === "destructive" ? rawTypedNameTarget : undefined;
@@ -122,7 +128,14 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
   };
 
   return (
-    <AppDialog isOpen={isOpen} onClose={handleClose} size="sm" variant={variant} zIndex={zIndex}>
+    <AppDialog
+      isOpen={isOpen}
+      onClose={handleClose}
+      size="sm"
+      variant={variant}
+      zIndex={zIndex}
+      initialFocus={initialFocus}
+    >
       <AppDialog.Header>
         <AppDialog.Title>{title}</AppDialog.Title>
         {onClose && <AppDialog.CloseButton />}
