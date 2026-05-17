@@ -1006,4 +1006,24 @@ describe("PluginService integration — forge provider contributions", () => {
     service.unloadPlugin("acme.forge-unload");
     expect(forgeProviderRegistry.getActiveProvider("https://github.com/o/r")).toBeNull();
   });
+
+  it("unregisters an eager descriptor-only provider on unload (no activate)", async () => {
+    await writePlugin("acme.forge-eager-unload", {
+      name: "acme.forge-eager-unload",
+      version: "1.0.0",
+      contributes: {
+        forgeProviders: [{ id: "gh", name: "GitHub", matches: ["github.com"] }],
+      },
+    });
+
+    const service = new PluginService(tmpDir, "0.0.0");
+    await service.initialize();
+    expect(service.hasPlugin("acme.forge-eager-unload")).toBe(true);
+
+    service.unloadPlugin("acme.forge-eager-unload");
+    // The defensive unregisterAll() in unloadPlugin clears descriptor-only
+    // entries that never had an impl bound (flushPluginEventCleanups alone
+    // would miss them — no host disposer was ever created).
+    expect(forgeProviderRegistry.listMatchingProviders("https://github.com/o/r")).toEqual([]);
+  });
 });

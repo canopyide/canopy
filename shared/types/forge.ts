@@ -339,7 +339,12 @@ export interface ForgeProviderContribution {
   id: string;
   /** Display label in Preferences → Forge Integrations. */
   name: string;
-  /** Hostname or glob patterns for git remote URLs; first matching provider wins. */
+  /**
+   * Git-remote hostnames this provider handles; the first registered provider
+   * whose list contains a remote's hostname wins. Exact-hostname matching only
+   * at this stage — glob patterns are reserved for later work. SSH scp-style
+   * remotes must be normalized to HTTPS before routing.
+   */
   matches: string[];
   /** Informational capability hints; the host does not interpret these. */
   capabilities?: ForgeCapabilityHint[];

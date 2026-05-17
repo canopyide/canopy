@@ -1442,6 +1442,7 @@ type CreateHostShape = (pluginId: string) => {
     pluginId: string;
     registerHandler: (channel: string, handler: (...args: unknown[]) => unknown) => void;
     broadcastToRenderer: (channel: string, payload: unknown) => void;
+    registerForgeProvider: (descriptor: { id: string }, impl: unknown) => () => void;
   };
   revoke: () => void;
 };
@@ -1512,6 +1513,9 @@ describe("createHost (plugin activation API)", () => {
       /host revoked: registerHandler/
     );
     expect(() => host.broadcastToRenderer("x", null)).toThrow(/host revoked: broadcastToRenderer/);
+    expect(() => host.registerForgeProvider({ id: "gh" }, {})).toThrow(
+      /host revoked: registerForgeProvider/
+    );
   });
 });
 

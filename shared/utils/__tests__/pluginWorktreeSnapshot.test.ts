@@ -49,6 +49,25 @@ describe("toPluginWorktreeSnapshot", () => {
     }
   });
 
+  it("projects exactly the documented allowlist keys", () => {
+    const out = toPluginWorktreeSnapshot(makeSnapshot());
+    expect(Object.keys(out).sort()).toEqual([
+      "aheadCount",
+      "behindCount",
+      "branch",
+      "createdAt",
+      "id",
+      "isCurrent",
+      "isMainWorktree",
+      "lastActivityTimestamp",
+      "linked",
+      "mood",
+      "name",
+      "path",
+      "worktreeId",
+    ]);
+  });
+
   it("sets `linked` to null (provider routing not yet wired)", () => {
     expect(toPluginWorktreeSnapshot(makeSnapshot()).linked).toBeNull();
     // Even when the internal snapshot carries no PR/issue data at all.

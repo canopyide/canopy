@@ -61,6 +61,17 @@ describe("ForgeProviderRegistry", () => {
       expect(() => dispose()).not.toThrow();
     });
 
+    it("throws on a second register() for an already-bound provider", () => {
+      const implA = makeImpl("a");
+      const implB = makeImpl("b");
+      const d1 = registry.register("acme.gh", ghDescriptor, implA);
+      expect(() => registry.register("acme.gh", ghDescriptor, implB)).toThrow(/already registered/);
+      // The original registration is untouched and still disposable.
+      expect(registry.getActiveProvider("https://github.com/x/y")).toBe(implA);
+      d1();
+      expect(registry.getActiveProvider("https://github.com/x/y")).toBeNull();
+    });
+
     it("supports multiple providers from one plugin, first registered wins", () => {
       const a = makeImpl("a");
       const b = makeImpl("b");
@@ -83,6 +94,15 @@ describe("ForgeProviderRegistry", () => {
       registry.registerDescriptorOnly("acme.gh", ghContribution);
       // Runtime descriptor omits `matches` (declared statically in manifest).
       registry.register("acme.gh", { id: "github" }, impl);
+      expect(registry.getActiveProvider("https://github.com/a/b")).toBe(impl);
+    });
+
+    it("preserves manifest matches when register() passes an explicit undefined", () => {
+      const impl = makeImpl();
+      registry.registerDescriptorOnly("acme.gh", ghContribution);
+      // JS plugin explicitly sets matches to undefined — must not clobber the
+      // statically-declared manifest matches.
+      registry.register("acme.gh", { id: "github", matches: undefined }, impl);
       expect(registry.getActiveProvider("https://github.com/a/b")).toBe(impl);
     });
 

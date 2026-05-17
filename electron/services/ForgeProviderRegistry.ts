@@ -11,6 +11,19 @@ import type {
  */
 const PROVIDER_FULL_ID_RE = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-zA-Z0-9._-]*$/;
 
+/**
+ * Strip keys whose value is `undefined` so a JS plugin passing
+ * `{ id, matches: undefined }` cannot clobber a statically-declared manifest
+ * field when the runtime descriptor is merged over the eager one.
+ */
+function definedOnly<T extends object>(obj: T): Partial<T> {
+  const out: Partial<T> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) (out as Record<string, unknown>)[k] = v;
+  }
+  return out;
+}
+
 interface RegistryEntry {
   pluginId: string;
   fullId: string;
@@ -103,9 +116,23 @@ export class ForgeProviderRegistry {
     }
     const list = this.getList(pluginId);
     let entry = list.find((e) => e.fullId === fullId);
+    if (entry && entry.impl != null) {
+      // A second register() for an already-bound provider would force two
+      // disposers to share one entry reference — disposing either silently
+      // removes the live provider. Re-registration must go through the
+      // disposer first; this keeps each disposer bound to its own entry.
+      throw new Error(
+        `Forge provider "${fullId}" is already registered. Dispose the previous ` +
+          `registration before registering it again.`
+      );
+    }
     if (entry) {
-      // Merge: runtime descriptor fields override/extend the manifest entry.
-      entry.descriptor = { ...entry.descriptor, ...descriptor, id: descriptor.id };
+      // Intended eager→lazy upgrade: bind the impl onto the manifest-declared
+      // descriptor. Runtime descriptor fields override/extend it; explicit
+      // `undefined` values must NOT clobber statically-declared manifest
+      // fields (e.g. `matches`), so they are filtered before merging. This is
+      // the only disposer for this entry (registerDescriptorOnly returns void).
+      entry.descriptor = { ...entry.descriptor, ...definedOnly(descriptor), id: descriptor.id };
       entry.impl = impl;
     } else {
       entry = { pluginId, fullId, descriptor: { ...descriptor }, impl };
