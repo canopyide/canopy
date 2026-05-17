@@ -110,8 +110,8 @@ describe("Toolbar responsive design — issue #4133", () => {
       expect(source).not.toContain("itemLabels");
       expect(source).not.toMatch(/\$\{overflowIds\.length\} more — /);
       // Tooltip is "More — {n} item(s)" / "More — {n} problem(s)".
-      expect(source).toContain("`More — ${n} ${n === 1 ? \"item\" : \"items\"}`");
-      expect(source).toContain("`More — ${n} ${n === 1 ? \"problem\" : \"problems\"}`");
+      expect(source).toContain('`More — ${n} ${n === 1 ? "item" : "items"}`');
+      expect(source).toContain('`More — ${n} ${n === 1 ? "problem" : "problems"}`');
     });
 
     it("escalates tooltip/aria noun to 'problem' for actionable severity (issue #8159)", () => {
@@ -128,7 +128,7 @@ describe("Toolbar responsive design — issue #4133", () => {
       // aria-label is purpose-naming + count; severity escalates the noun.
       expect(source).toContain("`More toolbar items — ${n} hidden`");
       expect(source).toContain(
-        "`More toolbar items — ${n} ${n === 1 ? \"problem\" : \"problems\"} hidden`"
+        '`More toolbar items — ${n} ${n === 1 ? "problem" : "problems"} hidden`'
       );
     });
   });
