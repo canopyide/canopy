@@ -261,15 +261,38 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
         // a project switch (#4670).
         const projectPath = useProjectStore.getState().currentProject?.path;
         if (!projectPath) return;
-        mutateCacheEntries(projectPath, "pr", (entry) => {
+        mutateCacheEntries(projectPath, "pr", (entry, keyRemainder) => {
+          // keyRemainder is `${filterState}:${sortOrder}`; filterState values
+          // ("open" | "closed" | "merged" | "all") contain no colons. Unknown
+          // values fall back to "all" semantics (keep the row, only patch CI)
+          // so a malformed key can never silently evict a PR.
+          const filterState = keyRemainder.split(":")[0];
+          const isFilteredSlot =
+            filterState === "open" || filterState === "closed" || filterState === "merged";
+
           let changed = false;
-          const items = entry.items.map((item) => {
+          const items: (typeof entry.items)[number][] = [];
+          for (const item of entry.items) {
             const pr = item as GitHubPR;
-            if (pr.number !== event.prNumber) return item;
-            if (pr.ciStatus === event.prCiStatus) return item;
+            if (pr.number !== event.prNumber) {
+              items.push(item);
+              continue;
+            }
+            // The PR's state no longer matches this filtered slot (e.g. a
+            // closed PR still sitting in the "open" slot). Drop the row so the
+            // sidebar badge and dropdown converge on the next filter switch
+            // instead of waiting out the 45s TTL.
+            if (isFilteredSlot && pr.state.toLowerCase() !== event.prState) {
+              changed = true;
+              continue;
+            }
+            if (pr.ciStatus === event.prCiStatus) {
+              items.push(item);
+              continue;
+            }
             changed = true;
-            return { ...pr, ciStatus: event.prCiStatus };
-          });
+            items.push({ ...pr, ciStatus: event.prCiStatus });
+          }
           if (!changed) return null;
           return { ...entry, items };
         });
