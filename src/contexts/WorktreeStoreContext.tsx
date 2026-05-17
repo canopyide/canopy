@@ -38,11 +38,13 @@ interface PRDetectedEvent {
   issueTitle?: string;
   prLastUpdatedAt?: number;
   issueLastUpdatedAt?: number;
+  branchName?: string;
 }
 
 interface PRClearedEvent {
   type: "pr-cleared";
   worktreeId: string;
+  branchName?: string;
 }
 
 interface IssueDetectedEvent {
@@ -51,12 +53,25 @@ interface IssueDetectedEvent {
   issueNumber: number;
   issueTitle: string;
   issueLastUpdatedAt?: number;
+  branchName?: string;
 }
 
 interface IssueNotFoundEvent {
   type: "issue-not-found";
   worktreeId: string;
   issueNumber: number;
+}
+
+// Drop overlays whose lookup branch no longer matches the worktree's current
+// branch — they raced against a branch change and would corrupt the row.
+// Treat undefined on either side as "allow" (older host code may omit the
+// field, and detached HEAD has no branch to compare against).
+function branchesMatch(
+  eventBranch: string | undefined,
+  currentBranch: string | undefined
+): boolean {
+  if (eventBranch === undefined || currentBranch === undefined) return true;
+  return eventBranch === currentBranch;
 }
 
 interface WorktreeActivatedEvent {
@@ -203,6 +218,7 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
         const { worktrees } = store.getState();
         const existing = worktrees.get(event.worktreeId);
         if (!existing) return;
+        if (!branchesMatch(event.branchName, existing.branch)) return;
         // Full-replace semantics for prCiStatus mirror the backend
         // (WorktreeMonitor.setPRInfo): undefined means "no checks", not
         // "preserve prior value." Merging with ?? would let stale CI rollups
@@ -250,6 +266,7 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
         const { worktrees } = store.getState();
         const existing = worktrees.get(event.worktreeId);
         if (!existing) return;
+        if (!branchesMatch(event.branchName, existing.branch)) return;
         store.getState().applyUpdate(
           {
             ...existing,
@@ -271,6 +288,7 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
         const { worktrees } = store.getState();
         const existing = worktrees.get(event.worktreeId);
         if (!existing) return;
+        if (!branchesMatch(event.branchName, existing.branch)) return;
         store.getState().applyUpdate(
           {
             ...existing,

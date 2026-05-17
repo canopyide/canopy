@@ -379,6 +379,108 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
     expect(getGeneration(key)).toBe(genBefore);
   });
 
+  it("drops the overlay when event.branchName mismatches the worktree's current branch", async () => {
+    const store = await renderProvider();
+    act(() => {
+      store
+        .getState()
+        .applyUpdate(
+          makeWorktree("wt-1", { branch: "feature/bar", prCiStatus: "FAILURE", prNumber: 99 }),
+          store.getState().nextVersion()
+        );
+    });
+
+    act(() => {
+      emit("pr-detected", {
+        type: "pr-detected",
+        worktreeId: "wt-1",
+        prNumber: 42,
+        prUrl: "https://example.test/pr/42",
+        prState: "open",
+        prCiStatus: "SUCCESS",
+        branchName: "feature/foo",
+      });
+    });
+
+    const wt = store.getState().worktrees.get("wt-1");
+    expect(wt?.prNumber).toBe(99);
+    expect(wt?.prCiStatus).toBe("FAILURE");
+  });
+
+  it("applies the overlay when event.branchName matches the worktree's current branch", async () => {
+    const store = await renderProvider();
+    act(() => {
+      store
+        .getState()
+        .applyUpdate(
+          makeWorktree("wt-1", { branch: "feature/foo" }),
+          store.getState().nextVersion()
+        );
+    });
+
+    act(() => {
+      emit("pr-detected", {
+        type: "pr-detected",
+        worktreeId: "wt-1",
+        prNumber: 42,
+        prUrl: "https://example.test/pr/42",
+        prState: "open",
+        prCiStatus: "SUCCESS",
+        branchName: "feature/foo",
+      });
+    });
+
+    expect(store.getState().worktrees.get("wt-1")?.prCiStatus).toBe("SUCCESS");
+  });
+
+  it("applies the overlay when the event omits branchName (older host backward compat)", async () => {
+    const store = await renderProvider();
+    act(() => {
+      store
+        .getState()
+        .applyUpdate(
+          makeWorktree("wt-1", { branch: "feature/foo" }),
+          store.getState().nextVersion()
+        );
+    });
+
+    act(() => {
+      emit("pr-detected", {
+        type: "pr-detected",
+        worktreeId: "wt-1",
+        prNumber: 42,
+        prUrl: "https://example.test/pr/42",
+        prState: "open",
+        prCiStatus: "SUCCESS",
+      });
+    });
+
+    expect(store.getState().worktrees.get("wt-1")?.prCiStatus).toBe("SUCCESS");
+  });
+
+  it("applies the overlay when the worktree has no branch (detached HEAD)", async () => {
+    const store = await renderProvider();
+    act(() => {
+      store
+        .getState()
+        .applyUpdate(makeWorktree("wt-1", { branch: undefined }), store.getState().nextVersion());
+    });
+
+    act(() => {
+      emit("pr-detected", {
+        type: "pr-detected",
+        worktreeId: "wt-1",
+        prNumber: 42,
+        prUrl: "https://example.test/pr/42",
+        prState: "open",
+        prCiStatus: "SUCCESS",
+        branchName: "feature/foo",
+      });
+    });
+
+    expect(store.getState().worktrees.get("wt-1")?.prCiStatus).toBe("SUCCESS");
+  });
+
   it("uses the project path read at event time so closures cannot go stale", async () => {
     const store = await renderProvider();
     act(() => {
@@ -416,5 +518,169 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
 
     expect((getCache(newKey)?.items[0] as GitHubPR).ciStatus).toBe("SUCCESS");
     expect((getCache(oldKey)?.items[0] as GitHubPR).ciStatus).toBe("PENDING");
+  });
+});
+
+describe("WorktreeStoreProvider pr-cleared handler", () => {
+  it("drops the clear when event.branchName mismatches the worktree's current branch", async () => {
+    const store = await renderProvider();
+    act(() => {
+      store
+        .getState()
+        .applyUpdate(
+          makeWorktree("wt-1", {
+            branch: "feature/bar",
+            prNumber: 42,
+            prUrl: "https://example.test/pr/42",
+            prState: "open",
+          }),
+          store.getState().nextVersion()
+        );
+    });
+
+    act(() => {
+      emit("pr-cleared", {
+        type: "pr-cleared",
+        worktreeId: "wt-1",
+        branchName: "feature/foo",
+      });
+    });
+
+    const wt = store.getState().worktrees.get("wt-1");
+    expect(wt?.prNumber).toBe(42);
+    expect(wt?.prUrl).toBe("https://example.test/pr/42");
+    expect(wt?.prState).toBe("open");
+  });
+
+  it("applies the clear when event.branchName matches the worktree's current branch", async () => {
+    const store = await renderProvider();
+    act(() => {
+      store
+        .getState()
+        .applyUpdate(
+          makeWorktree("wt-1", {
+            branch: "feature/foo",
+            prNumber: 42,
+            prUrl: "https://example.test/pr/42",
+            prState: "open",
+          }),
+          store.getState().nextVersion()
+        );
+    });
+
+    act(() => {
+      emit("pr-cleared", {
+        type: "pr-cleared",
+        worktreeId: "wt-1",
+        branchName: "feature/foo",
+      });
+    });
+
+    const wt = store.getState().worktrees.get("wt-1");
+    expect(wt?.prNumber).toBeUndefined();
+    expect(wt?.prUrl).toBeUndefined();
+    expect(wt?.prState).toBeUndefined();
+  });
+
+  it("applies the clear when the event omits branchName (older host backward compat)", async () => {
+    const store = await renderProvider();
+    act(() => {
+      store
+        .getState()
+        .applyUpdate(
+          makeWorktree("wt-1", { branch: "feature/foo", prNumber: 42 }),
+          store.getState().nextVersion()
+        );
+    });
+
+    act(() => {
+      emit("pr-cleared", {
+        type: "pr-cleared",
+        worktreeId: "wt-1",
+      });
+    });
+
+    expect(store.getState().worktrees.get("wt-1")?.prNumber).toBeUndefined();
+  });
+});
+
+describe("WorktreeStoreProvider issue-detected handler", () => {
+  it("drops the overlay when event.branchName mismatches the worktree's current branch", async () => {
+    const store = await renderProvider();
+    act(() => {
+      store
+        .getState()
+        .applyUpdate(
+          makeWorktree("wt-1", {
+            branch: "feature/bar",
+            issueNumber: 100,
+            issueTitle: "Old issue",
+          }),
+          store.getState().nextVersion()
+        );
+    });
+
+    act(() => {
+      emit("issue-detected", {
+        type: "issue-detected",
+        worktreeId: "wt-1",
+        issueNumber: 200,
+        issueTitle: "New issue",
+        branchName: "feature/foo",
+      });
+    });
+
+    const wt = store.getState().worktrees.get("wt-1");
+    expect(wt?.issueNumber).toBe(100);
+    expect(wt?.issueTitle).toBe("Old issue");
+  });
+
+  it("applies the overlay when event.branchName matches the worktree's current branch", async () => {
+    const store = await renderProvider();
+    act(() => {
+      store
+        .getState()
+        .applyUpdate(
+          makeWorktree("wt-1", { branch: "feature/foo" }),
+          store.getState().nextVersion()
+        );
+    });
+
+    act(() => {
+      emit("issue-detected", {
+        type: "issue-detected",
+        worktreeId: "wt-1",
+        issueNumber: 200,
+        issueTitle: "Issue title",
+        branchName: "feature/foo",
+      });
+    });
+
+    const wt = store.getState().worktrees.get("wt-1");
+    expect(wt?.issueNumber).toBe(200);
+    expect(wt?.issueTitle).toBe("Issue title");
+  });
+
+  it("applies the overlay when the event omits branchName (older host backward compat)", async () => {
+    const store = await renderProvider();
+    act(() => {
+      store
+        .getState()
+        .applyUpdate(
+          makeWorktree("wt-1", { branch: "feature/foo" }),
+          store.getState().nextVersion()
+        );
+    });
+
+    act(() => {
+      emit("issue-detected", {
+        type: "issue-detected",
+        worktreeId: "wt-1",
+        issueNumber: 200,
+        issueTitle: "Issue title",
+      });
+    });
+
+    expect(store.getState().worktrees.get("wt-1")?.issueNumber).toBe(200);
   });
 });

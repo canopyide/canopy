@@ -159,9 +159,10 @@ export class WorkspaceService {
           issueTitle: data.issueTitle,
           prLastUpdatedAt: data.prLastUpdatedAt,
           issueLastUpdatedAt: data.issueLastUpdatedAt,
+          branchName: data.branchName,
         });
       },
-      onPRCleared: (worktreeId) => {
+      onPRCleared: (worktreeId, data) => {
         const monitor = this.monitors.get(worktreeId);
         if (!monitor) return;
 
@@ -173,6 +174,7 @@ export class WorkspaceService {
         this.sendEvent({
           type: "pr-cleared",
           worktreeId,
+          branchName: data.branchName,
         });
       },
       onIssueDetected: (worktreeId, data) => {
@@ -193,6 +195,7 @@ export class WorkspaceService {
           issueNumber: data.issueNumber,
           issueTitle: data.issueTitle,
           issueLastUpdatedAt: data.issueLastUpdatedAt,
+          branchName: data.branchName,
         });
       },
       onIssueNotFound: (worktreeId, issueNumber) => {

@@ -183,6 +183,10 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const deferredWorktrees = useDeferredValue(worktrees);
   const [isRefreshing, startRefreshTransition] = useTransition();
   const showRefreshSpinner = useDeferredLoading(isRefreshing, UI_DOHERTY_THRESHOLD);
+  // Gate the "Reconnecting…" indicator behind the Doherty threshold so routine
+  // sub-400ms port replacements don't flash the spinner. A real host crash
+  // takes 2–4s to recover, well past the threshold.
+  const showReconnecting = useDeferredLoading(isReconnecting, UI_DOHERTY_THRESHOLD);
   const currentProject = useProjectStore((state) => state.currentProject);
   useProjectSettings();
   const { availability, agentSettings } = useAgentLauncher();
@@ -923,7 +927,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       <div className="group/header flex items-center justify-between px-4 py-2 border-b border-divider bg-transparent shrink-0">
         <div className="flex items-baseline gap-1.5">
           <h2 className="text-daintree-text font-semibold text-sm tracking-wide">Worktrees</h2>
-          {isReconnecting && (
+          {showReconnecting && (
             <span
               role="status"
               aria-live="polite"
