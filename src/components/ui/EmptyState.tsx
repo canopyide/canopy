@@ -98,7 +98,17 @@ function getRawDescription(props: EmptyStateProps): ReactNode {
 
 function getTransitionKey(props: EmptyStateProps): string {
   const desc = getRawDescription(props);
-  const descKey = desc === undefined || desc === null || desc === false ? "" : String(desc);
+  // Stringify only string/number descriptions for the key; JSX descriptions
+  // serialize to "[object Object]" which would collapse distinct nodes into
+  // the same key. For JSX descriptions, fall back to a sentinel — the
+  // transition will fire on any other prop change (title, variant, scale)
+  // and JSX-description-only swaps are an edge case at canvas scale.
+  let descKey = "";
+  if (typeof desc === "string" || typeof desc === "number") {
+    descKey = String(desc);
+  } else if (desc !== undefined && desc !== null && desc !== false) {
+    descKey = "[node]";
+  }
   return `${props.variant}|${props.scale}|${props.title}|${descKey}`;
 }
 
@@ -178,6 +188,11 @@ export function EmptyState(props: EmptyStateProps) {
           <div
             key={`prev-${generation}`}
             aria-hidden="true"
+            // `inert` removes the outgoing subtree from the tab order *and*
+            // the accessibility tree so the stale `action` button (e.g.,
+            // "Clear search") can't take focus during the 100–250ms exit.
+            // `aria-hidden` alone leaves it focusable via keyboard.
+            inert
             className="[grid-area:1/1] flex flex-col items-center gap-2 pointer-events-none motion-safe:animate-out motion-safe:fade-out motion-safe:duration-[100ms]"
             onAnimationEnd={handleExitEnd}
           >

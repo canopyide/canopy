@@ -405,6 +405,31 @@ describe("EmptyState", () => {
       const outgoing = container.querySelector(".motion-safe\\:animate-out");
       expect(outgoing?.getAttribute("aria-hidden")).toBe("true");
     });
+
+    it("marks the outgoing cell as inert so stale actions can't take focus", () => {
+      // Regression guard: an `aria-hidden` cell still keeps its descendants
+      // in the tab order. `inert` removes both. The stale `action` button in
+      // an outgoing filtered-empty cell (e.g. "Clear search") would otherwise
+      // be focusable for up to 250ms during the exit animation.
+      const { rerender, container } = render(
+        <EmptyState
+          variant="filtered-empty"
+          scale="popover"
+          title='No matches for "fo"'
+          action={<button data-testid="stale-action">Clear search</button>}
+        />
+      );
+      rerender(
+        <EmptyState
+          variant="filtered-empty"
+          scale="popover"
+          title='No matches for "foo"'
+          action={<button data-testid="fresh-action">Clear search</button>}
+        />
+      );
+      const outgoing = container.querySelector(".motion-safe\\:animate-out");
+      expect(outgoing?.hasAttribute("inert")).toBe(true);
+    });
   });
 
   describe("instant prop", () => {
