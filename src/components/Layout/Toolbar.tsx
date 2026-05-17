@@ -203,14 +203,11 @@ export function Toolbar({
   // (e.g. `feature/...-pill` instead of `feature/migrate-from-…`). The full
   // value still appears in the tooltip on hover/focus.
   const truncatedBranchName = branchName ? middleTruncate(branchName, 24) : undefined;
-  // Source of truth for runtime-only fields (processCount, isPinned) the
-  // context menu needs to gate its items. `currentProject` (Project type)
-  // doesn't carry those — they live on the SearchableProject derived in the
-  // palette hook.
-  const activeSearchableProject = useMemo(
-    () => projectSwitcher.results.find((project) => project.isActive),
-    [projectSwitcher.results]
-  );
+  // Runtime-only fields (processCount, isPinned) the context menu needs to
+  // gate its items. `currentProject` (Project type) doesn't carry those —
+  // they live on the SearchableProject derived from the full project list
+  // in the palette hook, independent of the 15-item `results` window.
+  const activeSearchableProject = projectSwitcher.activeProject;
   const tooltipLabel = currentProject
     ? branchName
       ? `${currentProject.name} / ${branchName}`

@@ -46,6 +46,13 @@ export interface UseProjectSwitcherPaletteReturn {
   mode: ProjectSwitcherMode;
   query: string;
   results: SearchableProject[];
+  /**
+   * Active project view-model derived from the full searchable list. Always
+   * present when there is a current project, even if it falls outside the
+   * 15-item `results` window — surfaces of the active project (e.g. the
+   * toolbar pill) need pinned/processCount without depending on recency.
+   */
+  activeProject: SearchableProject | undefined;
   selectedIndex: number;
   open: (mode?: ProjectSwitcherMode) => void;
   close: () => void;
@@ -229,6 +236,11 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
 
     return rankProjectMatches(query, sortedProjects).slice(0, MAX_RESULTS);
   }, [query, sortedProjects]);
+
+  const activeProject = useMemo<SearchableProject | undefined>(
+    () => searchableProjects.find((project) => project.isActive),
+    [searchableProjects]
+  );
 
   useEffect(() => {
     if (results.length === 0) {
@@ -686,6 +698,7 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
     mode,
     query,
     results,
+    activeProject,
     selectedIndex,
     open,
     close,

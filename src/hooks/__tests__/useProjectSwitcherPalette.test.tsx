@@ -444,6 +444,21 @@ describe("useProjectSwitcherPalette", () => {
       expect(result.current.removeConfirmProject).toBeNull();
     });
 
+    it("exposes activeProject derived from the full searchable list", async () => {
+      const { result } = renderHook(() => useProjectSwitcherPalette());
+
+      await waitFor(() => {
+        expect(result.current.results).toHaveLength(2);
+      });
+
+      // The active project must surface independently of the 15-item
+      // `results` window so consumers like the toolbar pill can read its
+      // pinned/processCount fields even when the active project would fall
+      // outside the recency-capped list.
+      expect(result.current.activeProject?.id).toBe("project-1");
+      expect(result.current.activeProject?.isActive).toBe(true);
+    });
+
     it("shows error notification when closeActiveProject fails", async () => {
       notifyMock.mockClear();
       projectState.closeActiveProject.mockRejectedValueOnce(new Error("close failed"));

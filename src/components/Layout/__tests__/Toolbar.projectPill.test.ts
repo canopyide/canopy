@@ -96,6 +96,14 @@ describe("Toolbar project pill polish — issue #8174", () => {
       expect(source).toContain("Unpin project");
     });
 
+    it("derives the active SearchableProject from the hook's full-list field", () => {
+      // The hook exposes a dedicated `activeProject` field derived from the
+      // full searchable list, not the 15-item `results` window. This keeps
+      // pin/processCount gating correct when the user has many projects and
+      // the active one falls outside `results`.
+      expect(source).toContain("projectSwitcher.activeProject");
+    });
+
     it("offers copy path using navigator.clipboard.writeText", () => {
       expect(source).toContain("navigator.clipboard.writeText");
       expect(source).toContain("Copy path");
