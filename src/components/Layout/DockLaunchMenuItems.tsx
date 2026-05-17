@@ -3,6 +3,9 @@ import { Globe, MonitorPlay, SquareTerminal } from "lucide-react";
 import { BrandMark, Workflow } from "@/components/icons";
 import { useRecipeStore } from "@/store/recipeStore";
 import type { RecipeContext } from "@/utils/recipeVariables";
+import { actionService } from "@/services/ActionService";
+import type { AgentAvailabilityState } from "@shared/types";
+import { isAgentBlocked, isAgentLaunchable } from "@shared/utils/agentAvailability";
 
 type MenuComponent = React.ElementType;
 type LaunchAgentIcon = React.ComponentType<{ className?: string; brandColor?: string }>;
@@ -18,7 +21,7 @@ export interface DockLaunchAgent {
   name: string;
   icon?: LaunchAgentIcon;
   brandColor?: string;
-  isEnabled: boolean;
+  availability?: AgentAvailabilityState;
 }
 
 interface DockLaunchMenuItemsProps {
@@ -53,11 +56,30 @@ export function DockLaunchMenuItems({
           <C.Label>Launch agent</C.Label>
           {agents.map((agent) => {
             const Icon = agent.icon;
+            const isLaunchable = isAgentLaunchable(agent.availability);
+            const blocked = isAgentBlocked(agent.availability);
+            // Mirrors AgentButton.tsx: a non-launchable but installed agent
+            // dims and routes to its settings subtab so the user can resolve
+            // the precondition instead of bouncing off a disabled row.
+            const settingsTooltip = blocked
+              ? `${agent.name} is blocked by endpoint security. Click to configure.`
+              : `${agent.name} needs setup. Click to configure.`;
             return (
               <C.Item
                 key={agent.id}
-                disabled={!agent.isEnabled}
-                onSelect={() => onLaunchAgent(agent.id)}
+                className={!isLaunchable ? "opacity-70" : undefined}
+                title={!isLaunchable ? settingsTooltip : undefined}
+                onSelect={() => {
+                  if (isLaunchable) {
+                    onLaunchAgent(agent.id);
+                  } else {
+                    void actionService.dispatch(
+                      "app.settings.openTab",
+                      { tab: "agents", subtab: agent.id },
+                      { source: "menu" }
+                    );
+                  }
+                }}
               >
                 {Icon ? (
                   <BrandMark brandColor={agent.brandColor} className="w-3.5 h-3.5 mr-2">
