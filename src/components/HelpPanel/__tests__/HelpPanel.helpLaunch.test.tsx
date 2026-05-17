@@ -2729,13 +2729,15 @@ describe("HelpPanel — HybridInputBar wiring (issue #8185)", () => {
 
     const { container } = render(<HelpPanel width={380} />);
 
-    // Simulate CodeMirror focus by attaching a fake element to document.body
-    // that matches `.cm-editor` via `.closest`.
+    // Simulate CodeMirror focus inside the assistant panel — `closest(".cm-editor")`
+    // matches and `panelRef.current?.contains(active)` is true.
+    const panel = container.querySelector("#daintree-assistant-panel");
+    expect(panel).not.toBeNull();
     const editor = document.createElement("div");
     editor.className = "cm-editor";
     const textarea = document.createElement("textarea");
     editor.appendChild(textarea);
-    container.appendChild(editor);
+    panel!.appendChild(editor);
     textarea.focus();
     expect(document.activeElement).toBe(textarea);
 
@@ -2748,5 +2750,34 @@ describe("HelpPanel — HybridInputBar wiring (issue #8185)", () => {
     });
 
     expect(helpPanelState.setOpen).not.toHaveBeenCalledWith(false);
+  });
+
+  it("Escape with focus inside a .cm-editor OUTSIDE the panel still closes it", () => {
+    setupBoundTerminal();
+
+    render(<HelpPanel width={380} />);
+
+    // Simulate a CodeMirror editor in a different panel (e.g. FileViewer) by
+    // attaching it to document.body — outside the assistant panel root.
+    const editor = document.createElement("div");
+    editor.className = "cm-editor";
+    const textarea = document.createElement("textarea");
+    editor.appendChild(textarea);
+    document.body.appendChild(editor);
+    textarea.focus();
+    expect(document.activeElement).toBe(textarea);
+
+    const escapeMock = vi.mocked(useEscapeStack);
+    const callback = escapeMock.mock.calls.at(-1)?.[1];
+    expect(callback).toBeTypeOf("function");
+
+    act(() => {
+      callback?.();
+    });
+
+    // External CodeMirror must not trap the assistant's Escape handler.
+    expect(helpPanelState.setOpen).toHaveBeenCalledWith(false);
+
+    document.body.removeChild(editor);
   });
 });

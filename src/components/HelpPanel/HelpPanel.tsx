@@ -292,13 +292,17 @@ export function HelpPanel({
         // first (when available), then the xterm input as fallback. The bar
         // ref is null during the lazy Suspense window — in that case fall back
         // to xterm so cold-load opens still focus something.
+        //
+        // `focusWithCursorAtEnd()` schedules `view.focus()` inside its own
+        // requestAnimationFrame (HybridInputBar.tsx:538), so we cannot
+        // synchronously check `document.activeElement` after calling it. We
+        // trust the bar's internal rAF to take focus when its ref is present
+        // — no xterm fallback in that branch, otherwise CodeMirror would
+        // steal focus from xterm one frame later and produce a focus flicker.
         if (terminalId && terminal && terminal.spawnStatus !== "missing-cli") {
           if (showHybridInputBar && inputBarRef.current) {
             inputBarRef.current.focusWithCursorAtEnd();
-            const after = document.activeElement;
-            if (after?.closest?.(".cm-editor") && panelRef.current?.contains(after)) {
-              return;
-            }
+            return;
           }
           terminalInstanceService.focus(terminalId);
           const after = document.activeElement;
@@ -442,10 +446,14 @@ export function HelpPanel({
   // Esc-to-close. The xterm-helper-textarea check lets Escape reach the
   // running PTY when the assistant terminal has focus; the .cm-editor check
   // lets the HybridInputBar dismiss its autocomplete / expanded modal first.
+  // Both guards are scoped to the panel so a focused CodeMirror or xterm in a
+  // different panel (e.g. FileViewer, a grid terminal) can't trap Escape here.
   const handleEscape = useCallback(() => {
     const active = document.activeElement as HTMLElement | null;
-    if (active?.closest(".xterm-helper-textarea")) return;
-    if (active?.closest(".cm-editor")) return;
+    if (active && panelRef.current?.contains(active)) {
+      if (active.closest(".xterm-helper-textarea")) return;
+      if (active.closest(".cm-editor")) return;
+    }
     handleClose();
   }, [handleClose]);
   useEscapeStack(isOpen, handleEscape);
@@ -540,6 +548,7 @@ export function HelpPanel({
                     launchAgentId={agentId ?? undefined}
                     getRefreshTier={getRefreshTier}
                     cwd={terminal.cwd}
+                    hasBottomBar={showHybridInputBar}
                   />
                 </Suspense>
               </div>
