@@ -234,6 +234,11 @@ describe("Toolbar layout — issue #2584 project switcher collision", () => {
       expect(source).toMatch(/data-fullscreen=\{isFullscreen \? "true" : undefined\}/);
     });
 
+    it("applies the Tier 3 timing to both the macOS and Windows spacers", () => {
+      const tier3 = /duration-200 data-\[fullscreen=true\]:duration-\[120ms\]/g;
+      expect((source.match(tier3) ?? []).length).toBeGreaterThanOrEqual(2);
+    });
+
     it("spacer is decorative (aria-hidden) and not focusable as a toolbar item", () => {
       const spacerBlock = source.slice(
         source.indexOf("isWindows() &&"),
