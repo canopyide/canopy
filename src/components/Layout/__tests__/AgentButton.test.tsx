@@ -1169,4 +1169,88 @@ describe("AgentButton preset UX", () => {
       }
     });
   });
+
+  describe("tooltip and aria copy (issue #8173)", () => {
+    function tooltipTexts(getAllByTestId: (id: string) => HTMLElement[]): string[] {
+      return getAllByTestId("tooltip-content").map((el) => el.textContent ?? "");
+    }
+
+    it("loading tooltip uses the Unicode ellipsis and the aria-label omits it", () => {
+      mockMergedPresetsFn = () => [];
+
+      const { getByRole, getAllByTestId } = render(
+        <AgentButton type="claude" availability={undefined} />
+      );
+
+      // Tooltip carries U+2026, no redundant "availability", no ASCII "...".
+      expect(tooltipTexts(getAllByTestId)).toContain("Checking Claude CLI…");
+      // Aria-label is the plain accessible name — punctuation glyphs like the
+      // ellipsis are meaningless to screen readers and must not leak in.
+      expect(getByRole("button").getAttribute("aria-label")).toBe("Checking Claude CLI");
+    });
+
+    it("loading copy holds in the split-button (with-presets) branch", () => {
+      mockMergedPresetsFn = () => [{ id: "p", name: "P" }];
+
+      const { getByTestId, getAllByRole, getAllByTestId } = render(
+        <AgentButton type="claude" availability={undefined} />
+      );
+
+      expect(tooltipTexts(getAllByTestId)).toContain("Checking Claude CLI…");
+      const chevronIcon = getByTestId("chevron-icon");
+      const primary = getAllByRole("button").find((b) => !b.contains(chevronIcon));
+      expect(primary!.getAttribute("aria-label")).toBe("Checking Claude CLI");
+    });
+
+    it("non-launchable copy is verb-noun with no gesture language", () => {
+      const cases: Array<[string, string]> = [
+        ["missing", "Install Claude CLI"],
+        ["installed", "Configure Claude"],
+        ["blocked", "Configure Claude"],
+      ];
+      for (const [state, expected] of cases) {
+        mockMergedPresetsFn = () => [];
+        const { getByRole, getAllByTestId, unmount } = render(
+          <AgentButton
+            type="claude"
+            availability={state as unknown as CliAvailability[string]}
+          />
+        );
+        expect(tooltipTexts(getAllByTestId)).toContain(expected);
+        expect(getByRole("button").getAttribute("aria-label")).toBe(expected);
+        unmount();
+      }
+    });
+
+    it("ready aria-label drops the redundant 'Agent' suffix", () => {
+      mockMergedPresetsFn = () => [];
+
+      const { getByRole } = render(
+        <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
+      );
+
+      expect(getByRole("button").getAttribute("aria-label")).toBe("Start Claude");
+    });
+
+    it("unauthenticated state keeps the aria-label clean while the tooltip carries the sign-in cue", () => {
+      mockSettings = settingsWith({ claude: { presetId: "user-blue" } });
+      mockMergedPresetsFn = () => [{ id: "user-blue", name: "Blue" }];
+
+      const { getByTestId, getAllByRole, getAllByTestId } = render(
+        <AgentButton
+          type="claude"
+          availability={"unauthenticated" as unknown as CliAvailability[string]}
+        />
+      );
+
+      const launchTooltip = tooltipTexts(getAllByTestId).find((t) => t.startsWith("Start "));
+      expect(launchTooltip).toContain("sign-in not detected");
+
+      const chevronIcon = getByTestId("chevron-icon");
+      const primary = getAllByRole("button").find((b) => !b.contains(chevronIcon));
+      // The sign-in suffix is a tooltip-only cue; it must not bleed into the
+      // accessible name.
+      expect(primary!.getAttribute("aria-label")).toBe("Start Claude");
+    });
+  });
 });
