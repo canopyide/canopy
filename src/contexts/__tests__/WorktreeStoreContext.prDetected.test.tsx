@@ -561,6 +561,205 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
     expect((getCache(newKey)?.items[0] as GitHubPR).ciStatus).toBe("SUCCESS");
     expect((getCache(oldKey)?.items[0] as GitHubPR).ciStatus).toBe("PENDING");
   });
+
+  it("evicts a PR from the 'open' slot once it closes", async () => {
+    const store = await renderProvider();
+    act(() => {
+      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+    });
+
+    const key = buildCacheKey("/repo/proj", "pr", "open", "created");
+    setCache(key, {
+      items: [
+        { ...makePR(42, "PENDING"), state: "OPEN" },
+        { ...makePR(43, "SUCCESS"), state: "OPEN" },
+      ],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: 1,
+    });
+    const genBefore = getGeneration(key);
+
+    act(() => {
+      emit("pr-detected", {
+        type: "pr-detected",
+        worktreeId: "wt-1",
+        prNumber: 42,
+        prUrl: "https://example.test/pr/42",
+        prState: "closed",
+        prCiStatus: "FAILURE",
+      });
+    });
+
+    const items = getCache(key)?.items as GitHubPR[];
+    expect(items.find((it) => it.number === 42)).toBeUndefined();
+    expect(items.find((it) => it.number === 43)).toBeDefined();
+    expect(getGeneration(key)).toBe(genBefore + 1);
+  });
+
+  it("evicts a closed PR from every 'open' sort slot in one event", async () => {
+    const store = await renderProvider();
+    act(() => {
+      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+    });
+
+    const createdKey = buildCacheKey("/repo/proj", "pr", "open", "created");
+    const updatedKey = buildCacheKey("/repo/proj", "pr", "open", "updated");
+    for (const key of [createdKey, updatedKey]) {
+      setCache(key, {
+        items: [{ ...makePR(42, "PENDING"), state: "OPEN" }],
+        endCursor: null,
+        hasNextPage: false,
+        timestamp: 1,
+      });
+    }
+    const genCreatedBefore = getGeneration(createdKey);
+    const genUpdatedBefore = getGeneration(updatedKey);
+
+    act(() => {
+      emit("pr-detected", {
+        type: "pr-detected",
+        worktreeId: "wt-1",
+        prNumber: 42,
+        prUrl: "https://example.test/pr/42",
+        prState: "closed",
+        prCiStatus: "FAILURE",
+      });
+    });
+
+    expect(
+      (getCache(createdKey)?.items as GitHubPR[]).find((it) => it.number === 42)
+    ).toBeUndefined();
+    expect(
+      (getCache(updatedKey)?.items as GitHubPR[]).find((it) => it.number === 42)
+    ).toBeUndefined();
+    expect(getGeneration(createdKey)).toBe(genCreatedBefore + 1);
+    expect(getGeneration(updatedKey)).toBe(genUpdatedBefore + 1);
+  });
+
+  it("evicts a PR from the 'open' slot once it merges", async () => {
+    const store = await renderProvider();
+    act(() => {
+      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+    });
+
+    const key = buildCacheKey("/repo/proj", "pr", "open", "created");
+    setCache(key, {
+      items: [{ ...makePR(42, "SUCCESS"), state: "OPEN" }],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: 1,
+    });
+    const genBefore = getGeneration(key);
+
+    act(() => {
+      emit("pr-detected", {
+        type: "pr-detected",
+        worktreeId: "wt-1",
+        prNumber: 42,
+        prUrl: "https://example.test/pr/42",
+        prState: "merged",
+        prCiStatus: "SUCCESS",
+      });
+    });
+
+    expect((getCache(key)?.items as GitHubPR[]).find((it) => it.number === 42)).toBeUndefined();
+    expect(getGeneration(key)).toBe(genBefore + 1);
+  });
+
+  it("evicts a PR from the 'closed' slot once it reopens", async () => {
+    const store = await renderProvider();
+    act(() => {
+      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+    });
+
+    const key = buildCacheKey("/repo/proj", "pr", "closed", "created");
+    setCache(key, {
+      items: [{ ...makePR(42, "FAILURE"), state: "CLOSED" }],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: 1,
+    });
+    const genBefore = getGeneration(key);
+
+    act(() => {
+      emit("pr-detected", {
+        type: "pr-detected",
+        worktreeId: "wt-1",
+        prNumber: 42,
+        prUrl: "https://example.test/pr/42",
+        prState: "open",
+        prCiStatus: "PENDING",
+      });
+    });
+
+    expect((getCache(key)?.items as GitHubPR[]).find((it) => it.number === 42)).toBeUndefined();
+    expect(getGeneration(key)).toBe(genBefore + 1);
+  });
+
+  it("keeps the row in a CI-only rollup where the state is unchanged", async () => {
+    const store = await renderProvider();
+    act(() => {
+      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+    });
+
+    const key = buildCacheKey("/repo/proj", "pr", "open", "created");
+    setCache(key, {
+      items: [{ ...makePR(42, "PENDING"), state: "OPEN" }],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: 1,
+    });
+    const genBefore = getGeneration(key);
+
+    act(() => {
+      emit("pr-detected", {
+        type: "pr-detected",
+        worktreeId: "wt-1",
+        prNumber: 42,
+        prUrl: "https://example.test/pr/42",
+        prState: "open",
+        prCiStatus: "SUCCESS",
+      });
+    });
+
+    const pr42 = (getCache(key)?.items as GitHubPR[]).find((it) => it.number === 42);
+    expect(pr42).toBeDefined();
+    expect(pr42?.ciStatus).toBe("SUCCESS");
+    expect(getGeneration(key)).toBe(genBefore + 1);
+  });
+
+  it("keeps a state-changed PR in the 'all' slot, only patching CI", async () => {
+    const store = await renderProvider();
+    act(() => {
+      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+    });
+
+    const key = buildCacheKey("/repo/proj", "pr", "all", "created");
+    setCache(key, {
+      items: [{ ...makePR(42, "PENDING"), state: "OPEN" }],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: 1,
+    });
+    const genBefore = getGeneration(key);
+
+    act(() => {
+      emit("pr-detected", {
+        type: "pr-detected",
+        worktreeId: "wt-1",
+        prNumber: 42,
+        prUrl: "https://example.test/pr/42",
+        prState: "merged",
+        prCiStatus: "SUCCESS",
+      });
+    });
+
+    const pr42 = (getCache(key)?.items as GitHubPR[]).find((it) => it.number === 42);
+    expect(pr42).toBeDefined();
+    expect(pr42?.ciStatus).toBe("SUCCESS");
+    expect(getGeneration(key)).toBe(genBefore + 1);
+  });
 });
 
 describe("WorktreeStoreProvider pr-cleared handler", () => {
