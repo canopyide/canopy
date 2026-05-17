@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 type AutoScrollConfig = {
   threshold: { x: number; y: number };
   acceleration: number;
+  canScroll: (el: Element) => boolean;
 };
 
 /**
@@ -23,6 +24,7 @@ function autoScrollConfig(prefersReducedMotion: boolean | null): AutoScrollConfi
   return {
     threshold: { x: 0, y: 0.08 },
     acceleration: prefersReducedMotion ? 5 : 10,
+    canScroll: (el: Element) => el.scrollHeight > el.clientHeight,
   };
 }
 
@@ -61,5 +63,33 @@ describe("DndContext autoScroll config", () => {
     // we have to honor the preference manually. Halving acceleration keeps
     // autoscroll functional but takes the edge off the velocity ramp.
     expect(autoScrollConfig(true).acceleration).toBe(5);
+  });
+
+  describe("canScroll filter", () => {
+    // Defensive against a future horizontally-scrollable ancestor: with
+    // threshold.x = 0, dnd-kit's getScrollDirectionAndSpeed divides by zero
+    // and produces Infinity scroll speed when a horizontally-scrollable
+    // ancestor exists and is not pinned at its right edge. Filtering to
+    // vertically-overflowing ancestors only sidesteps that path entirely.
+    const { canScroll } = autoScrollConfig(false);
+
+    function fakeElement(scrollHeight: number, clientHeight: number): Element {
+      return { scrollHeight, clientHeight } as unknown as Element;
+    }
+
+    it("accepts ancestors with vertical overflow", () => {
+      expect(canScroll(fakeElement(800, 400))).toBe(true);
+    });
+
+    it("rejects ancestors without vertical overflow", () => {
+      expect(canScroll(fakeElement(400, 400))).toBe(false);
+    });
+
+    it("rejects horizontally-only-scrollable ancestors (the divide-by-zero guard)", () => {
+      // clientHeight === scrollHeight means no vertical overflow even if the
+      // ancestor scrolls horizontally — skip it so threshold.x = 0 never
+      // produces Infinity speed.
+      expect(canScroll(fakeElement(200, 200))).toBe(false);
+    });
   });
 });

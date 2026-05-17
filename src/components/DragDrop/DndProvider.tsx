@@ -433,11 +433,16 @@ export function DndProvider({ children }: DndProviderProps) {
   // sidebar). Halve acceleration under reduced-motion since CSS reduced-motion
   // doesn't affect JS-driven autoscroll. Threshold is fractional (0–1) ×
   // container size in dnd-kit 6, so 0.08 ≈ a 40px band on a ~500px viewport.
+  // canScroll restricts to vertically-overflowing ancestors only: defensive
+  // against a future horizontally-scrollable ancestor, which would otherwise
+  // hit Infinity speed inside dnd-kit's getScrollDirectionAndSpeed via the
+  // `acceleration * abs(delta / threshold.width)` divide-by-zero path.
   const prefersReducedMotion = useReducedMotion();
   const autoScroll = useMemo(
     () => ({
       threshold: { x: 0, y: 0.08 },
       acceleration: prefersReducedMotion ? 5 : 10,
+      canScroll: (el: Element) => el.scrollHeight > el.clientHeight,
     }),
     [prefersReducedMotion]
   );
