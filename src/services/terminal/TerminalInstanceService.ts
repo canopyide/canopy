@@ -46,10 +46,17 @@ export { isNonKeyboardInput } from "./inputUtils";
 // `forceXtermReflow` from this module don't need to update their imports.
 export { forceXtermReflow };
 
-// Debounce on the visibility-driven WebGL restore path. Hide is immediate;
-// show waits this long before re-acquiring so rapid tab/panel toggles don't
-// thrash WebglAddon load/unload (each cycle reallocates GPU resources).
+// Debounce on the visibility-driven WebGL restore path. Show waits this long
+// before re-acquiring so rapid tab/panel toggles don't thrash WebglAddon
+// load/unload (each cycle reallocates GPU resources).
 const WEBGL_RESTORE_DEBOUNCE_MS = 100;
+
+// Release hysteresis on the visibility-driven hide path. Holding the context
+// for this long before releasing covers normal panel-toggle and focus-cycle
+// cadences (~100–300ms) without over-occupying the 12-slot WebGL pool under
+// multi-terminal hide. Authoritative release paths (tier demotion, agent
+// demotion, destroy, hibernation) cancel this timer and release immediately.
+const WEBGL_HIDE_DWELL_MS = 500;
 
 function canAutoInitializeTerminalIngest(): boolean {
   return (
@@ -248,6 +255,9 @@ class TerminalInstanceService {
             this.webGLManager.ensureContext(id, managed);
           } else if (!managed.isVisible) {
             // Keep WebGL while visible — releasing here causes a one-frame renderer gap.
+            // Tier demotion is an authoritative signal — cancel any pending
+            // hide-dwell and release immediately.
+            this.cancelWebGLHideTimer(managed);
             const hadWebGL = this.webGLManager.isActive(id);
             this.webGLManager.releaseContext(id);
             // Only refresh for a visible terminal — repainting an offscreen
@@ -511,6 +521,7 @@ class TerminalInstanceService {
         clearTimeout(managed.webGLRestoreTimer);
         managed.webGLRestoreTimer = undefined;
       }
+      this.cancelWebGLHideTimer(managed);
 
       if (isVisible) {
         // Revealing an on-screen terminal — make sure it doesn't get hibernated.
@@ -569,10 +580,18 @@ class TerminalInstanceService {
           this.webGLManager.ensureContext(id, current);
         }, WEBGL_RESTORE_DEBOUNCE_MS);
       } else {
-        // Going offscreen. Release the WebGL context immediately to free a
-        // pool slot — xterm falls back to the DOM renderer until the
-        // terminal becomes visible again.
-        this.webGLManager.releaseContext(id);
+        // Going offscreen. Hold the WebGL context for WEBGL_HIDE_DWELL_MS so
+        // rapid hide→show cycles (panel toggles, focus oscillation) don't
+        // churn the pool. The timer callback re-fetches `managed` to avoid
+        // stale refs (same pattern as webGLRestoreTimer above) and re-checks
+        // isVisible so a show during the dwell window keeps the context.
+        managed.webGLHideTimer = window.setTimeout(() => {
+          const current = this.instances.get(id);
+          if (!current) return;
+          current.webGLHideTimer = undefined;
+          if (current.isVisible) return;
+          this.webGLManager.releaseContext(id);
+        }, WEBGL_HIDE_DWELL_MS);
 
         // If we're already in a hibernation-eligible tier, onTierApplied
         // won't fire to start the timer — do it here instead.
@@ -946,6 +965,13 @@ class TerminalInstanceService {
       managed.attachRevealDisposable = undefined;
     }
     managed.hostElement.style.opacity = "";
+  }
+
+  private cancelWebGLHideTimer(managed: ManagedTerminal): void {
+    if (managed.webGLHideTimer !== undefined) {
+      clearTimeout(managed.webGLHideTimer);
+      managed.webGLHideTimer = undefined;
+    }
   }
 
   attach(id: string, container: HTMLElement): ManagedTerminal | null {
@@ -1727,6 +1753,9 @@ class TerminalInstanceService {
     // pane gets its blinking cursor back.
     this.applyCursorBlinkPolicy(managed);
     restoreScrollback(managed);
+    // Agent demotion is authoritative — cancel any pending hide-dwell so the
+    // timer can't fire later and call releaseContext on a stale slot.
+    this.cancelWebGLHideTimer(managed);
     this.webGLManager.releaseContext(id);
     this.maybeReflowTerminal(managed);
   }
@@ -1848,6 +1877,10 @@ class TerminalInstanceService {
     if (managed.webGLRestoreTimer !== undefined) {
       clearTimeout(managed.webGLRestoreTimer);
       managed.webGLRestoreTimer = undefined;
+    }
+    if (managed.webGLHideTimer !== undefined) {
+      clearTimeout(managed.webGLHideTimer);
+      managed.webGLHideTimer = undefined;
     }
 
     managed.lastActivityMarker?.dispose();

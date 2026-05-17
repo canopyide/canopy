@@ -45,6 +45,16 @@ export class TerminalHibernationManager {
       clearTimeout(managed.hibernationTimer);
       managed.hibernationTimer = undefined;
     }
+    // Cancel any in-flight visibility-driven hide-dwell — hibernation is
+    // authoritative and routes through onTerminalDestroyed (bypassing
+    // releaseContext), so we don't want a stray timer firing later. Done
+    // here, after the early-return guards above, so a hibernate() call that
+    // bails on an active agent leaves the dwell timer running to handle the
+    // release on its own.
+    if (managed.webGLHideTimer !== undefined) {
+      clearTimeout(managed.webGLHideTimer);
+      managed.webGLHideTimer = undefined;
+    }
 
     this.deps.destroyRestoreState(id);
     this.deps.resetBufferedOutput(id);
