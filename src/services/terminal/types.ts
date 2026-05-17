@@ -70,6 +70,12 @@ export interface ManagedTerminal {
   // suppress the "new output" indicator while the user is actively scrolling.
   lastWheelAt?: number;
 
+  // Timestamp of the most recent completed terminal.write() parse. Used by the
+  // WebGL pool eviction scorer to protect terminals in an active write burst
+  // even when pendingWrites has since drained to 0. Stamped on write-complete,
+  // not write-enqueue, so it tracks rendered output rather than queue depth.
+  lastWriteAt?: number;
+
   // Last activity marker for scroll-to-last-activity
   lastActivityMarker?: IMarker;
 
@@ -174,6 +180,13 @@ export const TIER_DOWNGRADE_HYSTERESIS_MS = 500;
 // that a real BACKGROUND dwell still trims memory before the 30s hibernation
 // window. The 500ms tier-downgrade hysteresis is additive, not a replacement.
 export const SCROLLBACK_REDUCE_COOLDOWN_MS = 2000;
+
+// Recency window for classifying a terminal as "in an active write burst" in
+// the WebGL pool eviction scorer. A terminal whose lastWriteAt is within this
+// window is protected from eviction even after pendingWrites drains to 0, so a
+// streaming agent doesn't lose its slot in the gap between output chunks.
+// Mirrors SCROLLBACK_REDUCE_COOLDOWN_MS — same 2s burst-cadence assumption.
+export const WRITE_BURST_RECENCY_MS = 2000;
 
 export const HIBERNATION_DELAY_MS = 30_000;
 

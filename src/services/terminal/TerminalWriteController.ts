@@ -79,6 +79,7 @@ export class TerminalWriteController {
       if (this.deps.getInstance(id) !== managed) return;
 
       managed.pendingWrites = Math.max(0, (managed.pendingWrites ?? 1) - 1);
+      managed.lastWriteAt = Date.now();
 
       this.deps.acknowledgePortData(id, acknowledgedBytes);
       this.deps.acknowledgeData(id, acknowledgedBytes);
