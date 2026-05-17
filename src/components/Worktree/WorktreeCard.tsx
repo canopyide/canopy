@@ -625,7 +625,7 @@ export function WorktreeCard({
           <button
             type="button"
             className={cn(
-              "absolute inset-0 z-0 outline-hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-daintree-accent",
+              "absolute inset-0 z-0 outline-hidden",
               variant === "grid" && "rounded-lg",
               (isDraggingSort || isWorktreeSortDragging) && "pointer-events-none"
             )}
