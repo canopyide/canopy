@@ -1221,7 +1221,15 @@ describe("WorktreeHeader upstream sync indicator", () => {
       },
     });
     // The badge still renders the count display (transient failure doesn't
-    // replace the indicator — only auth+github gets dimmed).
-    expect(screen.getByTestId("upstream-sync-indicator")).toBeDefined();
+    // replace the indicator like the auth+github path does), but it carries a
+    // partial dim so the failed row is distinguishable from a healthy one at
+    // the row level — without grayscale, which is reserved for the persistent
+    // auth-failure treatment.
+    const indicator = screen.getByTestId("upstream-sync-indicator");
+    expect(indicator).toBeDefined();
+    expect(indicator.className).toContain("opacity-75");
+    expect(indicator.className).not.toContain("grayscale");
+    expect(indicator.className).not.toContain("opacity-50");
+    expect(indicator.getAttribute("data-fetch-network-failed")).toBe("true");
   });
 });

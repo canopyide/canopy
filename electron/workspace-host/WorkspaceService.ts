@@ -732,6 +732,12 @@ export class WorkspaceService {
    *
    * `getGitCommonDir` is synchronous and cached, so the O(n) scan is cheap
    * after the first call per worktree.
+   *
+   * Note: `isFetchInFlight` is intentionally excluded from this fan-out —
+   * propagating per-monitor in-flight state to N sibling rows would produce
+   * simultaneous pulse animations across the sidebar, recreating the visual
+   * fatigue pattern that drove removal of the `panel-state-working` breathe
+   * loop. Only the row that triggered the fetch shows the in-flight pulse.
    */
   private applyFetchResultToSiblings(
     triggering: WorktreeMonitor,
