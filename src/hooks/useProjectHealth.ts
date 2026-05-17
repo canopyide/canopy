@@ -35,21 +35,21 @@ export function useProjectHealth(): UseProjectHealthReturn {
 
   const polling = usePollingLifecycle({
     fetchFn: async ({ force, isInvalidated }) => {
-      const project = await projectClient.getCurrent();
-      if (!project) {
-        if (mountedRef.current) {
-          setHealth(null);
-          setError(null);
-          setLastUpdated(null);
-          lastErrorRef.current = null;
-          projectPathRef.current = null;
-        }
-        return;
-      }
-
-      if (mountedRef.current) setLoading(true);
-
       try {
+        const project = await projectClient.getCurrent();
+        if (!project) {
+          if (mountedRef.current) {
+            setHealth(null);
+            setError(null);
+            setLastUpdated(null);
+            lastErrorRef.current = null;
+            projectPathRef.current = null;
+          }
+          return;
+        }
+
+        if (mountedRef.current) setLoading(true);
+
         const result = await githubClient.getProjectHealth(project.path, force);
 
         if (!mountedRef.current) return;
@@ -69,6 +69,10 @@ export function useProjectHealth(): UseProjectHealthReturn {
           lastErrorRef.current = null;
         }
       } catch (err) {
+        // Bail when the fetch was superseded — applying the old project's
+        // error to the new project's state would surface a stale error and
+        // push `calculateNextInterval` into ERROR_BACKOFF_INTERVAL.
+        if (isInvalidated()) return;
         if (mountedRef.current) {
           const errorMessage = formatErrorMessage(err, "Failed to fetch project health");
           setError(errorMessage);
@@ -85,8 +89,14 @@ export function useProjectHealth(): UseProjectHealthReturn {
     onProjectSwitch: () => {
       if (!mountedRef.current) return;
       projectPathRef.current = null;
+      // Clear error state too — without this the previous project's failure
+      // would carry through and `calculateNextInterval` would back off the
+      // first poll of the new project by ERROR_BACKOFF_INTERVAL.
+      lastErrorRef.current = null;
       setHealth(null);
       setLastUpdated(null);
+      setError(null);
+      setLoading(false);
     },
   });
 

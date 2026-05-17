@@ -68,6 +68,20 @@ function fanOut(method: keyof Subscriber) {
 
 function ensureGlobalListenersInstalled() {
   if (visibilityHandler !== null) return;
+
+  // Subscribe to the IPC channel first so a failure there doesn't leave the
+  // DOM listeners installed while `projectSwitchCleanup` stays null —
+  // subsequent `ensureGlobalListenersInstalled` calls would short-circuit on
+  // the non-null DOM handlers and the project-switch fan-out would be
+  // silently missing for the rest of the process lifetime.
+  let nextSwitchCleanup: (() => void) | null = null;
+  try {
+    nextSwitchCleanup = projectClient.onSwitch(() => fanOut("onProjectSwitch"));
+  } catch (err) {
+    console.error("usePollingLifecycle: failed to subscribe project switch", err);
+    return;
+  }
+
   visibilityHandler = () => {
     if (document.hidden) {
       fanOut("onVisibilityHidden");
@@ -80,7 +94,7 @@ function ensureGlobalListenersInstalled() {
   sidebarHandler = () => fanOut("onSidebarRefresh");
   window.addEventListener("daintree:refresh-sidebar", sidebarHandler);
 
-  projectSwitchCleanup = projectClient.onSwitch(() => fanOut("onProjectSwitch"));
+  projectSwitchCleanup = nextSwitchCleanup;
 }
 
 function teardownGlobalListenersIfEmpty() {
@@ -166,7 +180,18 @@ export function usePollingLifecycle(config: PollingLifecycleConfig): PollingLife
       activeFetchIdRef.current += 1;
       const fetchId = activeFetchIdRef.current;
       const isInvalidated = () => invalidatedFetchIdRef.current === fetchId;
-      await config.fetchFn({ force, fetchId, isInvalidated });
+      try {
+        await config.fetchFn({ force, fetchId, isInvalidated });
+      } catch (err) {
+        // The consumer's fetchFn is responsible for surfacing its own errors
+        // (setError, lastErrorRef). The primitive catches here so a throw —
+        // e.g. an IPC failure on `projectClient.getCurrent()` outside the
+        // consumer's inner try/catch — does not silently kill polling. Every
+        // fire-and-forget call site below chains `.then(scheduleNextPoll)`
+        // without a `.catch`; an uncaught rejection here would skip that
+        // chain and freeze the lifecycle until the next external trigger.
+        console.error("usePollingLifecycle: fetchFn threw", err);
+      }
     } finally {
       inFlightRef.current = false;
       if (aliveRef.current && queuedFetchRef.current.pending) {

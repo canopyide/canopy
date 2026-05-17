@@ -193,22 +193,22 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
 
   const polling = usePollingLifecycle({
     fetchFn: async ({ force, isInvalidated }) => {
-      const project = await projectClient.getCurrent();
-      if (!project) {
-        if (mountedRef.current) {
-          setStats(null);
-          setError(null);
-          setIsStale(false);
-          lastUpdatedRef.current = null;
-          setLastUpdated(null);
-          lastErrorRef.current = null;
-        }
-        return;
-      }
-
-      if (mountedRef.current) setLoading(true);
-
       try {
+        const project = await projectClient.getCurrent();
+        if (!project) {
+          if (mountedRef.current) {
+            setStats(null);
+            setError(null);
+            setIsStale(false);
+            lastUpdatedRef.current = null;
+            setLastUpdated(null);
+            lastErrorRef.current = null;
+          }
+          return;
+        }
+
+        if (mountedRef.current) setLoading(true);
+
         const repoStats = await githubClient.getRepoStats(project.path, force);
 
         if (!mountedRef.current) return;
@@ -224,6 +224,10 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
 
         applyStatsResult(repoStats, { projectPath: project.path });
       } catch (err) {
+        // Bail when the fetch was superseded — applying the old project's
+        // error to the new project's state would surface a stale error and
+        // push `calculateNextInterval` into ERROR_BACKOFF_INTERVAL.
+        if (isInvalidated()) return;
         if (mountedRef.current) {
           const errorMessage = formatErrorMessage(err, "Failed to fetch repository stats");
           setError(errorMessage);

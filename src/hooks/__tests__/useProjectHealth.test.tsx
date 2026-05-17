@@ -137,6 +137,84 @@ describe("useProjectHealth", () => {
     });
   });
 
+  it("clears error and lastErrorRef on project switch so the new project polls at the active cadence", async () => {
+    let currentProject = { id: "a", path: "/repo/a" };
+    getCurrentMock.mockImplementation(async () => currentProject);
+
+    // Project A's fetch rejects, leaving an error in state.
+    getProjectHealthMock
+      .mockRejectedValueOnce(new Error("project A failure"))
+      .mockImplementation(async () => makeHealth());
+
+    let captured: (() => void) | undefined;
+    onSwitchMock.mockImplementation((cb) => {
+      captured = cb;
+      return () => {};
+    });
+
+    const { result } = renderHook(() => useProjectHealth());
+
+    await waitFor(() => {
+      expect(result.current.error).toBe("project A failure");
+    });
+
+    currentProject = { id: "b", path: "/repo/b" };
+    await act(async () => {
+      captured?.();
+      await Promise.resolve();
+    });
+
+    // Error must be cleared synchronously on switch — without this, the new
+    // project's first poll would be delayed by ERROR_BACKOFF_INTERVAL.
+    expect(result.current.error).toBeNull();
+  });
+
+  it("does not apply an invalidated fetch's error to the new project's state", async () => {
+    let currentProject = { id: "a", path: "/repo/a" };
+    getCurrentMock.mockImplementation(async () => currentProject);
+
+    // First fetch hangs, then rejects; second resolves with healthy data.
+    let rejectA: ((err: Error) => void) | undefined;
+    getProjectHealthMock
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectA = reject;
+          })
+      )
+      .mockResolvedValue(makeHealth());
+
+    let captured: (() => void) | undefined;
+    onSwitchMock.mockImplementation((cb) => {
+      captured = cb;
+      return () => {};
+    });
+
+    const { result } = renderHook(() => useProjectHealth());
+
+    await waitFor(() => {
+      expect(getProjectHealthMock).toHaveBeenCalledTimes(1);
+    });
+
+    // Switch projects while A's fetch is still pending — this invalidates
+    // the in-flight fetch.
+    currentProject = { id: "b", path: "/repo/b" };
+    await act(async () => {
+      captured?.();
+      await Promise.resolve();
+    });
+
+    // Now reject A — the catch block must detect invalidation and skip the
+    // setError call. Otherwise B's state would surface A's error.
+    await act(async () => {
+      rejectA?.(new Error("project A late failure"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.error).toBeNull();
+  });
+
   it("refresh({ force: true }) propagates the force flag to getProjectHealth", async () => {
     getCurrentMock.mockResolvedValue({ id: "p", path: "/repo/a" });
     getProjectHealthMock.mockResolvedValue(makeHealth());

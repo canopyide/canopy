@@ -351,6 +351,51 @@ describe("usePollingLifecycle", () => {
     });
   });
 
+  describe("resilience", () => {
+    it("survives a fetchFn rejection and still schedules the next poll", async () => {
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const fetchFn = vi.fn().mockRejectedValue(new Error("transient failure"));
+      const calculateNextInterval = vi.fn().mockReturnValue(30_000);
+
+      setupHook({ fetchFn, calculateNextInterval });
+
+      // calculateNextInterval is only called from inside scheduleNextPoll —
+      // if the rejection had killed the lifecycle, this would never fire.
+      await waitFor(() => {
+        expect(fetchFn).toHaveBeenCalledTimes(1);
+        expect(calculateNextInterval).toHaveBeenCalled();
+      });
+
+      consoleErrorSpy.mockRestore();
+    });
+
+    it("keeps refresh() functional after a previous fetchFn rejection", async () => {
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      let shouldReject = true;
+      const fetchFn = vi.fn().mockImplementation(async () => {
+        if (shouldReject) throw new Error("transient");
+      });
+
+      const { hook } = setupHook({ fetchFn });
+
+      await waitFor(() => {
+        expect(fetchFn).toHaveBeenCalledTimes(1);
+      });
+
+      shouldReject = false;
+      await act(async () => {
+        await hook.result.current.refresh({ force: true });
+      });
+
+      // The rejection cleared inFlightRef via the finally block, so a
+      // subsequent refresh proceeds normally.
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+      expect(fetchFn.mock.calls[1]?.[0]?.force).toBe(true);
+
+      consoleErrorSpy.mockRestore();
+    });
+  });
+
   describe("cleanup safety", () => {
     it("does not call onProjectSwitch after unmount", async () => {
       let captured: (() => void) | undefined;
