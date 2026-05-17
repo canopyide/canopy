@@ -57,9 +57,10 @@ function AgentShortcutRow({ agentId, agentName }: { agentId: BuiltInAgentId; age
         });
         // Stay in capture mode so the user can retry — closing silently after
         // a failed IPC would discard the captured combo with no recovery path.
+        // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
         notify({
           type: "error",
-          message: "Couldn't save shortcut. Try again.",
+          message: "Couldn't save shortcut",
           duration: 3000,
           priority: "high",
         });
@@ -80,9 +81,10 @@ function AgentShortcutRow({ agentId, agentName }: { agentId: BuiltInAgentId; age
       logError("[AgentSettings] Failed to reset agent shortcut", undefined, {
         error: result.error,
       });
+      // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
       notify({
         type: "error",
-        message: "Couldn't reset shortcut. Try again.",
+        message: "Couldn't reset shortcut",
         duration: 3000,
         priority: "high",
       });

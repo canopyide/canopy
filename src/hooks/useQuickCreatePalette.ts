@@ -189,6 +189,7 @@ export function useQuickCreatePalette(): UseQuickCreatePaletteReturn {
               },
             });
           } else {
+            // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
             notify({
               type: "error",
               title: "Couldn't create worktree",
@@ -196,6 +197,7 @@ export function useQuickCreatePalette(): UseQuickCreatePaletteReturn {
             });
           }
         } catch (error) {
+          // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
           notify({
             type: "error",
             title: "Couldn't create worktree",

@@ -38,6 +38,7 @@ export function useDiskSpaceWarnings(): void {
       // correlationId routes repeats through the store's collapse path so a
       // critical→low transition updates the same toast in place.
       if (payload.status === "critical") {
+        // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
         notify({
           type: "error",
           priority: "high",

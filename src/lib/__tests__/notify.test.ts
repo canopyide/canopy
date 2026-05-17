@@ -454,48 +454,6 @@ describe("notify()", () => {
     });
   });
 
-  describe("dev guard — error notifications without actions", () => {
-    it("warns when type is error and no actions are provided", () => {
-      vi.spyOn(document, "hasFocus").mockReturnValue(true);
-      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      notify({ type: "error", title: "Build failed", message: "Compile error." });
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("[notify] error notification has no actions"),
-        expect.objectContaining({ type: "error", title: "Build failed" })
-      );
-      consoleSpy.mockRestore();
-    });
-
-    it("does not warn when type is error and an action is provided", () => {
-      vi.spyOn(document, "hasFocus").mockReturnValue(true);
-      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      notify({
-        type: "error",
-        title: "Build failed",
-        message: "Compile error.",
-        action: { label: "Retry", onClick: () => {} },
-      });
-      expect(consoleSpy).not.toHaveBeenCalledWith(
-        expect.stringContaining("[notify] error notification has no actions"),
-        expect.any(Object)
-      );
-      consoleSpy.mockRestore();
-    });
-
-    it("does not warn for non-error types without actions", () => {
-      vi.spyOn(document, "hasFocus").mockReturnValue(true);
-      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      notify({ type: "info", message: "Informational" });
-      notify({ type: "success", message: "Done" });
-      notify({ type: "warning", message: "Heads up" });
-      expect(consoleSpy).not.toHaveBeenCalledWith(
-        expect.stringContaining("[notify] error notification has no actions"),
-        expect.any(Object)
-      );
-      consoleSpy.mockRestore();
-    });
-  });
-
   describe("routing — focused + high → toast only", () => {
     it("adds toast notification when focused + high", () => {
       vi.spyOn(document, "hasFocus").mockReturnValue(true);
@@ -517,6 +475,7 @@ describe("notify()", () => {
   describe("routing — blurred + high → history only", () => {
     it("does NOT toast or show OS native when blurred + high", () => {
       vi.spyOn(document, "hasFocus").mockReturnValue(false);
+      // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
       notify({ type: "error", message: "Build failed", priority: "high" });
       expect(useNotificationStore.getState().notifications).toHaveLength(0);
       expect(mockShowNative).not.toHaveBeenCalled();
@@ -524,6 +483,7 @@ describe("notify()", () => {
 
     it("still adds to history when blurred + high", () => {
       vi.spyOn(document, "hasFocus").mockReturnValue(false);
+      // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
       notify({ type: "error", title: "Build Error", message: "Compile failed", priority: "high" });
       expect(useNotificationHistoryStore.getState().entries).toHaveLength(1);
       expect(mockShowNative).not.toHaveBeenCalled();
@@ -724,6 +684,7 @@ describe("notify()", () => {
   describe("default duration — severity-based defaults", () => {
     it("applies a 12s default for error notifications", () => {
       vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
       notify({ type: "error", message: "Something failed" });
       const notification = useNotificationStore.getState().notifications[0];
       expect(notification!.duration).toBe(12000);
@@ -756,6 +717,7 @@ describe("notify()", () => {
 
     it("preserves an explicit caller duration over the severity default", () => {
       vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
       notify({ type: "error", message: "Custom timing", duration: 7500 });
       const notification = useNotificationStore.getState().notifications[0];
       expect(notification!.duration).toBe(7500);
@@ -797,6 +759,7 @@ describe("notify()", () => {
 
     it("seenAsToast is false when blurred + high (toast not shown)", () => {
       vi.spyOn(document, "hasFocus").mockReturnValue(false);
+      // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
       notify({ type: "error", message: "Failed", priority: "high" });
       expect(useNotificationHistoryStore.getState().entries[0]!.seenAsToast).toBe(false);
     });
@@ -829,6 +792,7 @@ describe("notify()", () => {
 
     it("increments unreadCount when blurred + high (notification missed)", () => {
       vi.spyOn(document, "hasFocus").mockReturnValue(false);
+      // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
       notify({ type: "error", message: "Failed", priority: "high" });
       expect(useNotificationHistoryStore.getState().unreadCount).toBe(1);
     });
@@ -864,7 +828,9 @@ describe("notify()", () => {
       notify({ type: "info", message: "Low 1", priority: "low" });
 
       vi.spyOn(document, "hasFocus").mockReturnValue(false);
+      // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
       notify({ type: "error", message: "Missed 1", priority: "high" });
+      // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
       notify({ type: "error", message: "Missed 2", priority: "high" });
 
       expect(useNotificationHistoryStore.getState().unreadCount).toBe(3);
@@ -1238,6 +1204,7 @@ describe("notify()", () => {
       Date.now = () => 1000;
       _setQuietUntil(6000);
 
+      // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
       notify({ type: "error", message: "PTY failed", priority: "high", urgent: true });
 
       expect(useNotificationStore.getState().notifications).toHaveLength(1);
@@ -1292,6 +1259,7 @@ describe("notify()", () => {
       Date.now = () => 1000;
       _setQuietUntil(6000);
 
+      // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
       notify({ type: "error", message: "Urgent bar", placement: "grid-bar", urgent: true });
 
       expect(useNotificationStore.getState().notifications).toHaveLength(1);
@@ -1873,6 +1841,7 @@ describe("notify()", () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date(2024, 0, 1, 23, 0));
 
+      // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
       notify({ type: "error", message: "Critical", priority: "high", urgent: true });
 
       expect(useNotificationStore.getState().notifications).toHaveLength(1);

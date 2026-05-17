@@ -101,6 +101,7 @@ export function useAgentScope({
         onSettingsChange?.();
       } catch (error) {
         logError("Failed to update preset", error);
+        // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
         notify({
           type: "error",
           title: "Preset update failed",

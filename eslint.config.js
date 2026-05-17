@@ -376,6 +376,21 @@ export default tseslint.config(
             'Don\'t emit low-priority error notifications. Use console.warn for diagnostic-only failures (user can still finish their task), or remove priority:"low" so the error toasts. See #6885.',
         },
         {
+          // why: type:"error" notifications without an action leave users with
+          // no recovery path — they're shouting "something broke" with no
+          // next step. Title-Message-Action is the CLAUDE.md contract. If the
+          // surrounding UI is itself the recovery surface (form stays open,
+          // user can retry from within the page) annotate with
+          // `// eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok`
+          // so the deliberate choice is documented. Direct-child combinator
+          // inside :has() matches the priority:"low" rule pattern above and
+          // prevents false positives from nested sub-objects. See #8097.
+          selector:
+            "CallExpression:matches([callee.name=/^(notify|addNotification)$/], [callee.property.name=/^(notify|addNotification)$/]) > ObjectExpression:has(> Property[key.name='type'][value.value='error']):not(:has(> Property[key.name='action'])):not(:has(> Property[key.name='actions']))",
+          message:
+            "Action-free error notification. Either wire an action: { label, onClick } (Title-Message-Action contract), or annotate with `// eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok` when the surrounding UI is itself the recovery surface. See #8097.",
+        },
+        {
           selector:
             "JSXAttribute[name.name='dangerouslySetInnerHTML'] > JSXExpressionContainer > ObjectExpression > Property[key.name='__html']:not(:has(CallExpression))",
           message:

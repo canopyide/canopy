@@ -777,9 +777,10 @@ function LaunchRow({
       if (!result.ok) {
         // Stay open on failure so the user can retry; surface the failure
         // explicitly since the user otherwise has no visible signal.
+        // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
         notify({
           type: "error",
-          message: "Couldn't save shortcut. Try again.",
+          message: "Couldn't save shortcut",
           duration: 3000,
           priority: "high",
         });

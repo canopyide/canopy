@@ -463,18 +463,6 @@ export function notify(payload: NotifyPayload): string {
 
   const allActions = [...(payload.actions ?? []), ...(payload.action ? [payload.action] : [])];
 
-  if (import.meta.env.DEV && type === "error" && allActions.length === 0) {
-    // CLAUDE.md microcopy contract: error toasts use Title-Message-Action and
-    // need at least one action when there's a real recovery path. Surfaced
-    // here so callers find the gap during development. Not a runtime crash —
-    // some errors are genuinely action-free, but the prompt nudges authors to
-    // confirm before shipping.
-    console.warn(
-      "[notify] error notification has no actions — provide at least one action for the Title-Message-Action contract, or confirm there is no recovery path.",
-      payload
-    );
-  }
-
   // Action-bearing toasts persist by default so users can act; toaster's 3s fallback would otherwise dismiss them.
   if (payload.duration === undefined && allActions.length > 0) {
     payload = { ...payload, duration: 0 };

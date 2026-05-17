@@ -120,6 +120,7 @@ export function CrashRecoveryDialog({
   const handleOpenLogFile = useCallback(() => {
     window.electron.system.openPath(crash.logPath).catch((err) => {
       logError("Failed to open crash log path", err);
+      // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
       notify({
         type: "error",
         title: "Couldn't open log file",
