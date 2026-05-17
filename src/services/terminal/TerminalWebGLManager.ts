@@ -489,7 +489,7 @@ export class TerminalWebGLManager {
   private pickEvictTarget(): string | undefined {
     const lruIndex = new Map<string, number>();
     for (let i = 0; i < this.lruOrder.length; i++) {
-      lruIndex.set(this.lruOrder[i], i);
+      lruIndex.set(this.lruOrder[i]!, i);
     }
 
     const now = Date.now();
@@ -539,7 +539,7 @@ export class TerminalWebGLManager {
     }
 
     // Fall back to the LRU front if the pool/LRU ever desynchronise.
-    return bestId ?? this.lruOrder[0];
+    return bestId ?? this.lruOrder[0]!;
   }
 
   private recordEvictionForDiagnostics(): void {
