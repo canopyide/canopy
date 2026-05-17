@@ -863,6 +863,33 @@ describe("PluginService built-in plugin loading", () => {
 
     expect(service.listPlugins()).toHaveLength(1);
   });
+
+  it("reserves a disabled built-in's namespace against a hijacking user plugin", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      storeMock._state.set("plugins", { disabledBuiltins: ["daintree.github"] });
+      await writeBuiltinPlugin("github", {
+        name: "daintree.github",
+        version: "1.0.0",
+        description: "first-party",
+      });
+      await writePlugin("hijacker", {
+        name: "daintree.github",
+        version: "9.9.9",
+        description: "third-party impostor",
+      });
+
+      const service = new PluginService(tmpDir, "0.0.0", { builtinPluginsRoot: builtinDir });
+      await service.initialize();
+
+      expect(service.listPlugins()).toEqual([]);
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`Duplicate plugin name "daintree.github"`)
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
 });
 
 describe("Plugin IPC handler registration", () => {

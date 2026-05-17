@@ -835,4 +835,59 @@ describe("PluginService integration — built-in plugin loading", () => {
     expect(readMarker(markerKey)).toBe(1);
     expect(service.listPlugins()[0].isBuiltin).toBe(true);
   });
+
+  it("does not execute the main entry of a disabled built-in", async () => {
+    const markerKey = makeMarkerKey();
+    const pluginDir = await writeBuiltinPlugin("daintree.disabled-main", {
+      name: "daintree.disabled-main",
+      version: "1.0.0",
+    });
+    const mainFile = await writeMainFixture(pluginDir, markerKey);
+    await fs.writeFile(
+      path.join(pluginDir, "plugin.json"),
+      JSON.stringify({
+        name: "daintree.disabled-main",
+        version: "1.0.0",
+        main: mainFile,
+      })
+    );
+    storeState.set("plugins", { disabledBuiltins: ["daintree.disabled-main"] });
+
+    const service = new PluginService(tmpDir, "0.0.0", { builtinPluginsRoot: builtinDir });
+    await service.initialize();
+
+    expect(readMarker(markerKey)).toBeUndefined();
+    expect(service.listPlugins()).toEqual([]);
+  });
+
+  it("loads remaining built-ins and user plugins when one built-in has a malformed manifest", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const badDir = path.join(builtinDir, "broken");
+      await fs.mkdir(badDir, { recursive: true });
+      await fs.writeFile(path.join(badDir, "plugin.json"), "{not json");
+
+      await writeBuiltinPlugin("daintree.good-builtin", {
+        name: "daintree.good-builtin",
+        version: "1.0.0",
+        contributes: {
+          panels: [{ id: "ok", name: "Ok", iconId: "i", color: "#abc" }],
+        },
+      });
+      await writePlugin("acme.good-user", {
+        name: "acme.good-user",
+        version: "1.0.0",
+      });
+
+      const service = new PluginService(tmpDir, "0.0.0", { builtinPluginsRoot: builtinDir });
+      await service.initialize();
+
+      const names = service.listPlugins().map((p) => p.manifest.name);
+      expect(names).toEqual(expect.arrayContaining(["daintree.good-builtin", "acme.good-user"]));
+      expect(names).toHaveLength(2);
+      expect(getPanelKindConfig("daintree.good-builtin.ok")).toBeDefined();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
 });

@@ -74,6 +74,14 @@ export class PluginService {
     activate: (client: WorkspaceClient) => void;
   }> = [];
   private initialized = false;
+  /**
+   * Plugin ids that are owned by a built-in plugin but currently disabled in
+   * Preferences. Held alongside `this.plugins` so the user-dir scan cannot
+   * register a third-party plugin under a trusted first-party namespace just
+   * because the matching built-in is turned off — the namespace stays claimed
+   * even when the activation is skipped.
+   */
+  private reservedBuiltinNames = new Set<string>();
   private pluginsRoot: string;
   /**
    * Optional override for the built-in plugins directory. When unset, the
@@ -146,13 +154,21 @@ export class PluginService {
     // Built-ins load first so user plugins with a colliding manifest.name are
     // rejected by the duplicate guard in loadPlugin() — built-in wins.
     const builtinDir = this.builtinPluginsRoot ?? this.getBuiltinDir();
-    const builtinLoaded = builtinDir ? await this.loadFromDir(builtinDir, { isBuiltin: true }) : 0;
-    const userLoaded = await this.loadFromDir(this.pluginsRoot, { isBuiltin: false });
-
-    this.initialized = true;
-    console.log(
-      `[PluginService] Loaded ${builtinLoaded} built-in plugin(s) from ${builtinDir ?? "<unresolved>"} and ${userLoaded} user plugin(s) from ${this.pluginsRoot}`
-    );
+    try {
+      const builtinLoaded = builtinDir
+        ? await this.loadFromDir(builtinDir, { isBuiltin: true })
+        : 0;
+      const userLoaded = await this.loadFromDir(this.pluginsRoot, { isBuiltin: false });
+      console.log(
+        `[PluginService] Loaded ${builtinLoaded} built-in plugin(s) from ${builtinDir ?? "<unresolved>"} and ${userLoaded} user plugin(s) from ${this.pluginsRoot}`
+      );
+    } finally {
+      // Idempotency must hold even when a scan throws (e.g. EACCES on the
+      // user dir): a retry would re-run the built-in scan and trigger
+      // "already registered, overwriting" warnings from the contribution
+      // registries.
+      this.initialized = true;
+    }
   }
 
   /**
@@ -262,13 +278,16 @@ export class PluginService {
 
     // Built-ins disabled in Preferences are skipped entirely — neither
     // registered in the plugins map nor activated. The disable persists in
-    // electron-store and takes effect on next launch.
+    // electron-store and takes effect on next launch. The name is reserved
+    // so a user plugin in the next scan cannot hijack a trusted first-party
+    // namespace just because its built-in is off.
     if (opts.isBuiltin && opts.disabled?.has(manifest.name)) {
       console.log(`[PluginService] Built-in plugin "${manifest.name}" is disabled, skipping`);
+      this.reservedBuiltinNames.add(manifest.name);
       return null;
     }
 
-    if (this.plugins.has(manifest.name)) {
+    if (this.plugins.has(manifest.name) || this.reservedBuiltinNames.has(manifest.name)) {
       console.error(
         `[PluginService] Duplicate plugin name "${manifest.name}" in ${dirName} — rejecting`
       );
