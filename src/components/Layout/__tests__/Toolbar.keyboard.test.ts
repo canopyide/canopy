@@ -238,7 +238,7 @@ describe("Toolbar keyboard navigation — issue #8163", () => {
       // is dropped even if the user has moved focus into a Radix portal
       // — otherwise an unrelated later re-render with activeElement === body
       // would trigger a phantom redirect into the toolbar.
-      const effectMatch = source.match(/useLayoutEffect\(\(\) => \{[\s\S]*?\n  \}\);/);
+      const effectMatch = source.match(/useLayoutEffect\(\(\) => \{[\s\S]*?\n {2}\}\);/);
       expect(effectMatch).not.toBeNull();
       const effectBody = effectMatch![0];
       const clearIdx = effectBody.search(/prevFocusedToolbarItemRef\.current\s*=\s*null/);
