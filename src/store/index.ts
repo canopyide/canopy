@@ -100,3 +100,11 @@ export { useScreenReaderStore } from "./screenReaderStore";
 export type { ScreenReaderMode } from "./screenReaderStore";
 
 export { useLayoutUndoStore } from "./layoutUndoStore";
+
+export {
+  useSystemWakeStore,
+  setupSystemWakeListeners,
+  cleanupSystemWakeListeners,
+  WAKE_NOOP_THRESHOLD_MS,
+  WAKE_LONG_SLEEP_THRESHOLD_MS,
+} from "./systemWakeStore";

@@ -56,7 +56,6 @@ import {
   useShortcutHints,
   usePanelStoreBootstrap,
   useSemanticWorkerLifecycle,
-  useSystemWakeHandler,
   useCloudSyncWarning,
   useAccessibilityAnnouncements,
   useGettingStartedChecklist,
@@ -595,7 +594,6 @@ function App() {
   // App lifecycle hooks
   usePanelStoreBootstrap();
   useSemanticWorkerLifecycle();
-  useSystemWakeHandler();
   useCloudSyncWarning(homeDir);
   useAccessibilityAnnouncements();
 
