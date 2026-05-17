@@ -62,10 +62,7 @@ describe("useGitHubBadgeFreshness", () => {
   });
 
   it("returns fresh when row timestamp is null (cast)", () => {
-    const { result } = renderFreshness(
-      "pr",
-      null as unknown as number | undefined
-    );
+    const { result } = renderFreshness("pr", null as unknown as number | undefined);
     expect(result.current.freshnessLevel).toBe("fresh");
   });
 
@@ -203,13 +200,10 @@ describe("useGitHubBadgeFreshness", () => {
 
   it("re-evaluates aging as wall-clock time advances past threshold", () => {
     const rowTime = FIXED_NOW - (STALE_THRESHOLD_MS - 1);
-    const { result, rerender } = renderHook(
-      ({ row }) => useGitHubBadgeFreshness("pr", row),
-      {
-        initialProps: { row: rowTime },
-        wrapper,
-      }
-    );
+    const { result, rerender } = renderHook(({ row }) => useGitHubBadgeFreshness("pr", row), {
+      initialProps: { row: rowTime },
+      wrapper,
+    });
     expect(result.current.freshnessLevel).toBe("fresh");
 
     vi.setSystemTime(FIXED_NOW + 2);
