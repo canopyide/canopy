@@ -37,6 +37,7 @@ vi.mock("../../../shared/config/panelKindRegistry.js", () => ({
 vi.mock("../../../shared/config/toolbarButtonRegistry.js", () => ({
   registerToolbarButton: vi.fn(),
   unregisterPluginToolbarButtons: vi.fn(),
+  getAllPluginToolbarButtonConfigs: vi.fn(() => []),
 }));
 vi.mock("../pluginMenuRegistry.js", () => ({
   registerPluginMenuItem: vi.fn(),
