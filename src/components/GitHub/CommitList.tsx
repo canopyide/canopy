@@ -35,8 +35,21 @@ export function CommitList({ projectPath, branch, onClose, initialCount }: Commi
   const [error, setError] = useState<string | null>(null);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [cursorIndex, setCursorIndex] = useState(-1);
+  const [expandedHashes, setExpandedHashes] = useState<Set<string>>(() => new Set());
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+
+  const toggleCommitExpanded = useCallback((hash: string) => {
+    setExpandedHashes((prev) => {
+      const next = new Set(prev);
+      if (next.has(hash)) {
+        next.delete(hash);
+      } else {
+        next.add(hash);
+      }
+      return next;
+    });
+  }, []);
 
   const debouncedSearch = useDebounce(searchQuery, 300);
 
@@ -48,6 +61,7 @@ export function CommitList({ projectPath, branch, onClose, initialCount }: Commi
 
   useEffect(() => {
     setCursorIndex(-1);
+    setExpandedHashes(new Set());
   }, [data]);
 
   useEffect(() => {
@@ -163,7 +177,11 @@ export function CommitList({ projectPath, branch, onClose, initialCount }: Commi
           if (isLoadMoreActive) {
             handleLoadMore();
           } else if (activeCommit) {
-            void navigator.clipboard.writeText(activeCommit.hash);
+            if (activeCommit.body?.trim()) {
+              toggleCommitExpanded(activeCommit.hash);
+            } else {
+              void navigator.clipboard.writeText(activeCommit.hash);
+            }
           }
           break;
         }
@@ -174,7 +192,7 @@ export function CommitList({ projectPath, branch, onClose, initialCount }: Commi
           break;
       }
     },
-    [maxCursor, isLoadMoreActive, activeCommit, handleLoadMore, onClose]
+    [maxCursor, isLoadMoreActive, activeCommit, handleLoadMore, onClose, toggleCommitExpanded]
   );
 
   const renderError = () => (
@@ -272,6 +290,8 @@ export function CommitList({ projectPath, branch, onClose, initialCount }: Commi
                     commit={commit}
                     optionId={`commit-option-${commit.hash}`}
                     isActive={cursorIndex === index}
+                    isExpanded={expandedHashes.has(commit.hash)}
+                    onToggle={toggleCommitExpanded}
                   />
                 ))}
               </div>
