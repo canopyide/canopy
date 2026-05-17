@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAnnouncerStore } from "@/store/accessibilityAnnouncerStore";
 import { UI_ACTION_SUCCESS_DWELL_MS } from "@/lib/animationUtils";
-import { sanitizeForClipboard } from "@/lib/clipboardSanitize";
 
 export interface UseCopyWithFeedbackOptions {
   /** How long the `copied` flag stays true. Defaults to UI_ACTION_SUCCESS_DWELL_MS. */
@@ -43,7 +42,7 @@ export function useCopyWithFeedback(
   const copy = useCallback(
     async (text: string): Promise<boolean> => {
       try {
-        await navigator.clipboard.writeText(sanitizeForClipboard(text));
+        await navigator.clipboard.writeText(text);
       } catch {
         return false;
       }

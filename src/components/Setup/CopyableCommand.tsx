@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { useCopyWithFeedback } from "@/hooks/useCopyWithFeedback";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { systemClient } from "@/clients/systemClient";
+import { sanitizeForClipboard } from "@/lib/clipboardSanitize";
 
 export function CopyableCommand({ command, inspectUrl }: { command: string; inspectUrl?: string }) {
   const { copied, copy } = useCopyWithFeedback();
@@ -29,7 +30,7 @@ export function CopyableCommand({ command, inspectUrl }: { command: string; insp
         <TooltipTrigger asChild>
           <button
             type="button"
-            onClick={() => void copy(command)}
+            onClick={() => void copy(sanitizeForClipboard(command))}
             className="shrink-0 p-0.5 rounded hover:bg-overlay transition-colors duration-150 text-daintree-text/60 hover:text-daintree-text/80"
             aria-label="Copy command to clipboard"
           >
