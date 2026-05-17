@@ -426,6 +426,43 @@ describe("useShortcutHintHover", () => {
     expect(shortcutHintStore.getState().activeHint).toBeNull();
   });
 
+  it("blur does not hide a hint owned by a different element", () => {
+    getDisplayComboMock.mockReturnValue("⌘B");
+    shortcutHintStore.getState().hydrateCounts({
+      "nav.toggleSidebar": 0,
+      "panel.togglePortal": 0,
+    });
+
+    const { result: a } = renderHook(() => useShortcutHintHover("nav.toggleSidebar"));
+    const { result: b } = renderHook(() => useShortcutHintHover("panel.togglePortal"));
+
+    act(() => {
+      vi.advanceTimersByTime(10);
+    });
+
+    // A is focused and showed its hint.
+    act(() => {
+      a.current.onFocus(createFocusEvent(createFocusTarget({ left: 1, top: 1 })));
+    });
+    // B's hint then takes over (simulating a pointer dwell on B).
+    act(() => {
+      shortcutHintStore.getState().show("panel.togglePortal", "⌘P", { x: 9, y: 9 });
+    });
+    expect(shortcutHintStore.getState().activeHint!.actionId).toBe("panel.togglePortal");
+
+    // A blurs — must NOT clear B's hint.
+    act(() => {
+      a.current.onBlur();
+    });
+    expect(shortcutHintStore.getState().activeHint!.actionId).toBe("panel.togglePortal");
+
+    // B blurring its own hint does clear it.
+    act(() => {
+      b.current.onBlur();
+    });
+    expect(shortcutHintStore.getState().activeHint).toBeNull();
+  });
+
   it("focus cancels a pending pointer dwell timer (no double-show)", () => {
     getDisplayComboMock.mockReturnValue("⌘B");
     shortcutHintStore.getState().hydrateCounts({ "nav.toggleSidebar": 0 });

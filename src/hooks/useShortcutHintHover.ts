@@ -125,7 +125,12 @@ export function useShortcutHintHover(actionId: string) {
 
   const onBlur = () => {
     clearTimer();
-    shortcutHintStore.getState().hide();
+    // Only clear the hint this element owns — a blur here must not dismiss a
+    // hint another trigger raised (e.g. a pointer dwell on a different button).
+    const store = shortcutHintStore;
+    if (store.getState().activeHint?.actionId === actionId) {
+      store.getState().hide();
+    }
   };
 
   return { onPointerEnter, onPointerLeave, onPointerDown, onFocus, onBlur };

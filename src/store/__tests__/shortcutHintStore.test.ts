@@ -67,6 +67,25 @@ describe("shortcutHintStore", () => {
     expect(shortcutHintStore.getState().activeHint).toBeNull();
   });
 
+  it("encodes exactly the 6-entry geometric milestone curve", () => {
+    expect(Array.from(HINT_MILESTONES)).toEqual([1, 2, 4, 8, 16, 32]);
+    expect(HINT_MILESTONES.size).toBe(6);
+  });
+
+  it("does not show hint for powers of two beyond the cap", () => {
+    for (const count of [64, 128, 256, 1024]) {
+      shortcutHintStore.setState({
+        counts: { "nav.quickSwitcher": count },
+        hydrated: true,
+        pointer: null,
+        activeHint: null,
+      });
+      const s = shortcutHintStore.getState();
+      s.recordPointer(100, 200);
+      expect(s.show("nav.quickSwitcher", "⌘K")).toBe(false);
+    }
+  });
+
   it("shows hint at each milestone value", () => {
     for (const milestone of HINT_MILESTONES) {
       shortcutHintStore.setState({
