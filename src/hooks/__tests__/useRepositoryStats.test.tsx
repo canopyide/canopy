@@ -35,6 +35,7 @@ vi.mock("@/clients", () => ({
 }));
 
 import { useRepositoryStats } from "../useRepositoryStats";
+import { _resetPollingLifecycleForTests } from "../usePollingLifecycle";
 import {
   _resetForTests as resetGithubResourceCache,
   buildCacheKey,
@@ -56,6 +57,7 @@ function createDeferred<T>() {
 describe("useRepositoryStats", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetPollingLifecycleForTests();
   });
 
   it("force-fetches when daintree:refresh-sidebar event is dispatched", async () => {
