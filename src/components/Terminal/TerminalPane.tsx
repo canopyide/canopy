@@ -718,7 +718,6 @@ function TerminalPaneComponent({
     }
 
     setFocused(id);
-    terminalInstanceService.boostRefreshRate(id);
   };
 
   const handleXtermPointerDownCapture = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -749,7 +748,6 @@ function TerminalPaneComponent({
     e.stopPropagation();
 
     setFocused(id);
-    terminalInstanceService.boostRefreshRate(id);
     requestAnimationFrame(() => terminalInstanceService.focus(id));
   };
 

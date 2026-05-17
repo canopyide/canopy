@@ -9,6 +9,7 @@ import {
   AgentStateCallback,
   PostCompleteHook,
   isWebGLEligibleTier,
+  WRITE_BURST_DECAY_MS,
 } from "./types";
 import {
   setupTerminalAddons,
@@ -116,6 +117,7 @@ class TerminalInstanceService {
       notifyWriteComplete: (id, bytes) => this.dataBuffer.notifyWriteComplete(id, bytes),
       incrementUnseen: (id, isScrolledBack) =>
         this.unseenTracker.incrementUnseen(id, isScrolledBack),
+      onWrite: (id) => this.onPtyWrite(id),
     });
 
     this.hibernationManager = new TerminalHibernationManager({
@@ -437,6 +439,51 @@ class TerminalInstanceService {
     }, 1000);
 
     this.agentStateController.onUserInput(id, data);
+  }
+
+  /**
+   * Write-driven BURST tier: each PTY write extends the burst window in O(1)
+   * by bumping `writeBurstDeadline`. A single self-rearming timer handles
+   * decay — it re-checks the deadline on fire and either reschedules for the
+   * remaining time (if a write extended the window while it was pending) or
+   * reverts the tier via the panel's current `getRefreshTier()`.
+   *
+   * Avoiding per-write clearTimeout/setTimeout matters: at 60fps+ output the
+   * naive pattern thrashes Chromium's timer queue and produces GC pressure.
+   */
+  private onPtyWrite(id: string): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+
+    const now = Date.now();
+    const previousDeadline = managed.writeBurstDeadline;
+    managed.writeBurstDeadline = now + WRITE_BURST_DECAY_MS;
+
+    if (previousDeadline === undefined || now >= previousDeadline) {
+      this.rendererPolicy.applyRendererPolicy(id, TerminalRefreshTier.BURST);
+    }
+
+    if (managed.writeBurstTimer === undefined) {
+      this.scheduleWriteBurstDecay(id, WRITE_BURST_DECAY_MS);
+    }
+  }
+
+  private scheduleWriteBurstDecay(id: string, delayMs: number): void {
+    const managed = this.instances.get(id);
+    if (!managed) return;
+    managed.writeBurstTimer = window.setTimeout(() => {
+      const current = this.instances.get(id);
+      if (!current) return;
+      current.writeBurstTimer = undefined;
+      const deadline = current.writeBurstDeadline;
+      const nowFire = Date.now();
+      if (deadline !== undefined && nowFire < deadline) {
+        this.scheduleWriteBurstDecay(id, deadline - nowFire);
+        return;
+      }
+      current.writeBurstDeadline = undefined;
+      this.rendererPolicy.applyRendererPolicy(id, current.getRefreshTier());
+    }, delayMs);
   }
 
   private onEnterPressed(id: string): void {
@@ -1860,6 +1907,11 @@ class TerminalInstanceService {
       clearTimeout(managed.inputBurstTimer);
       managed.inputBurstTimer = undefined;
     }
+    if (managed.writeBurstTimer !== undefined) {
+      clearTimeout(managed.writeBurstTimer);
+      managed.writeBurstTimer = undefined;
+    }
+    managed.writeBurstDeadline = undefined;
     if (managed.titleReportTimer !== undefined) {
       clearTimeout(managed.titleReportTimer);
       managed.titleReportTimer = undefined;

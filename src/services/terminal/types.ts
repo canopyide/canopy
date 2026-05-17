@@ -101,6 +101,16 @@ export interface ManagedTerminal {
   // Typing burst timer
   inputBurstTimer?: number;
 
+  // PTY write-burst decay state. `writeBurstDeadline` is a timestamp
+  // (Date.now() + WRITE_BURST_DECAY_MS) refreshed on every write — used as an
+  // O(1) extension instead of churning clearTimeout/setTimeout per write,
+  // which would jank Chromium's timer queue under 60fps output floods. The
+  // single `writeBurstTimer` self-rearms if the deadline was extended while
+  // it was pending; on fire with the deadline elapsed it reverts the tier via
+  // managed.getRefreshTier().
+  writeBurstTimer?: number;
+  writeBurstDeadline?: number;
+
   // Directing state: renderer-only ephemeral state for user typing into waiting agent
   canonicalAgentState?: AgentState;
 
@@ -171,6 +181,14 @@ export interface ManagedTerminal {
 }
 
 export const TIER_DOWNGRADE_HYSTERESIS_MS = 500;
+
+// Idle window after the last PTY write before the BURST tier decays back to
+// the panel's natural tier (FOCUSED/VISIBLE/...). Independent of
+// TIER_DOWNGRADE_HYSTERESIS_MS — that is the policy's downgrade debounce
+// inside TerminalRendererPolicy; this is the activity-window inside
+// TerminalInstanceService. They are separately tunable even though they
+// happen to share the same default value.
+export const WRITE_BURST_DECAY_MS = 500;
 
 // Cooldown between consecutive reduceScrollback() calls for the same terminal.
 // Each call mutates `terminal.options.scrollback`, which xterm 6.0 turns into

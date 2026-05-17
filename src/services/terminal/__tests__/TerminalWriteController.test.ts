@@ -237,4 +237,62 @@ describe("TerminalWriteController.write", () => {
     controller.write("t1", "abc");
     expect(managed.pendingWrites ?? 0).toBe(0);
   });
+
+  describe("onWrite hook (write-driven BURST signal)", () => {
+    it("fires synchronously on the normal write path, before terminal.write resolves", () => {
+      const onWrite = vi.fn();
+      const localDeps = makeDeps(store, { onWrite });
+      const localController = new TerminalWriteController(localDeps);
+
+      // Defer the terminal callback so the assertion captures the
+      // pre-resolve moment.
+      const term = managed.terminal as unknown as MockTerminal;
+      let captured: (() => void) | undefined;
+      term.write = vi.fn((_data: string | Uint8Array, cb?: () => void) => {
+        captured = cb;
+      });
+
+      localController.write("t1", "abc");
+
+      expect(onWrite).toHaveBeenCalledTimes(1);
+      expect(onWrite).toHaveBeenCalledWith("t1");
+      // Sanity: the actual write hasn't resolved yet — the hook fires
+      // synchronously, not from the async write callback.
+      expect(localDeps.acknowledgeData).not.toHaveBeenCalled();
+
+      captured?.();
+    });
+
+    it("does NOT fire on the hibernated path (ack-only)", () => {
+      managed.isHibernated = true;
+      const onWrite = vi.fn();
+      const localDeps = makeDeps(store, { onWrite });
+      const localController = new TerminalWriteController(localDeps);
+
+      localController.write("t1", "hello");
+
+      expect(onWrite).not.toHaveBeenCalled();
+    });
+
+    it("does NOT fire on the deferred-restore path", () => {
+      managed.isSerializedRestoreInProgress = true;
+      const onWrite = vi.fn();
+      const localDeps = makeDeps(store, { onWrite });
+      const localController = new TerminalWriteController(localDeps);
+
+      localController.write("t1", "abc");
+
+      expect(onWrite).not.toHaveBeenCalled();
+    });
+
+    it("does NOT fire when the terminal id is unknown", () => {
+      const onWrite = vi.fn();
+      const localDeps = makeDeps(store, { onWrite });
+      const localController = new TerminalWriteController(localDeps);
+
+      localController.write("nope", "abc");
+
+      expect(onWrite).not.toHaveBeenCalled();
+    });
+  });
 });
