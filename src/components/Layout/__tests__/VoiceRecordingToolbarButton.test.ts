@@ -30,6 +30,20 @@ describe("VoiceRecordingToolbarButton polish — issue #8176", () => {
       expect(source).toContain('aria-hidden="true"');
     });
 
+    it("placeholder is excluded from the roving tabindex — opacity-0 does NOT null offsetParent", () => {
+      // Toolbar.getToolbarItems filters [data-toolbar-item] by offsetParent;
+      // opacity-0 leaves offsetParent intact, so a placeholder carrying
+      // data-toolbar-item would absorb arrow-key focus while being
+      // aria-hidden + non-interactive. DevServerPlaceholder follows the
+      // same rule — it has no data-toolbar-item either.
+      const placeholderBlock = source.match(/function VoiceRecordingPlaceholder[\s\S]*?\n\}/)?.[0];
+      expect(placeholderBlock).toBeDefined();
+      // Look only at the rendered JSX, not the explanatory comments above it.
+      const placeholderJsx = placeholderBlock!.match(/return\s*\(([\s\S]*?)\);/)?.[1];
+      expect(placeholderJsx).toBeDefined();
+      expect(placeholderJsx!).not.toContain("data-toolbar-item");
+    });
+
     it("placeholder is returned via early-return so an inactive slot never paints orbit chrome", () => {
       // The early return must come AFTER hooks (RAF, refs) but BEFORE the
       // active button JSX, mirroring VoiceInputButton's gating.
@@ -78,6 +92,15 @@ describe("VoiceRecordingToolbarButton polish — issue #8176", () => {
       // — keeping the dep array primitive-only avoids the off-React perf win
       // collapsing into per-render RAF teardown/setup.
       expect(source).toMatch(/},\s*\[showOrbit,\s*isFinishing\]\);/);
+    });
+
+    it("gates showOrbit on isActive so a status race with a cleared activeTarget cannot spin a ghost loop", () => {
+      // Without this gate, a transient (status=recording, activeTarget=null)
+      // state would let the RAF loop run while the placeholder is rendered,
+      // leaving the tick to no-op against null refs every frame.
+      expect(source).toMatch(
+        /const\s+showOrbit\s*=\s*isActive\s*&&\s*\(isRecording\s*\|\|\s*isFinishing\s*\|\|\s*showConnecting\)/
+      );
     });
 
     it("forces level=0 during finishing so the ring decelerates instead of snapping off", () => {

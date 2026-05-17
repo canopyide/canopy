@@ -25,16 +25,14 @@ function formatDuration(seconds: number): string {
   return `${minutes}:${remainder.toString().padStart(2, "0")}`;
 }
 
-function VoiceRecordingPlaceholder({
-  "data-toolbar-item": dataToolbarItem,
-}: {
-  "data-toolbar-item"?: string;
-}) {
+function VoiceRecordingPlaceholder() {
   // Reserves the slot footprint so right-aligned toolbar items don't shift
   // when a session starts/stops. Matches DevServerPlaceholder's pattern.
+  // No data-toolbar-item — the placeholder is non-interactive and must not
+  // appear in the toolbar's roving tabindex (Toolbar.getToolbarItems filters
+  // by offsetParent, which opacity-0 does NOT null out).
   return (
     <div
-      data-toolbar-item={dataToolbarItem}
       className="toolbar-icon-button relative mr-0.5 h-9 w-9 opacity-0 pointer-events-none"
       aria-hidden="true"
     />
@@ -61,7 +59,11 @@ export function VoiceRecordingToolbarButton({
   // Doherty gate — under 400ms of "connecting" should never paint the orbit;
   // it would flash before the recording state arrives.
   const showConnecting = useDeferredLoading(isConnecting, UI_DOHERTY_THRESHOLD);
-  const showOrbit = isRecording || isFinishing || showConnecting;
+  // Gate the orbit on isActive too — protects against a transient teardown
+  // race where status briefly stays "recording"/"finishing" while
+  // activeTarget has already been cleared, which would otherwise leave the
+  // RAF loop spinning on null refs.
+  const showOrbit = isActive && (isRecording || isFinishing || showConnecting);
 
   // Mutable bridge: audioLevel updates ~60Hz; we read it inside the RAF tick
   // rather than re-rendering on every change. Pattern lifted from
@@ -152,7 +154,7 @@ export function VoiceRecordingToolbarButton({
   }, [showOrbit, isFinishing]);
 
   if (!isActive || !showOrbit) {
-    return <VoiceRecordingPlaceholder data-toolbar-item={dataToolbarItem} />;
+    return <VoiceRecordingPlaceholder />;
   }
 
   const contextLabel = [activeTarget?.projectName, activeTarget?.worktreeLabel]
