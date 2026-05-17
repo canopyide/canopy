@@ -68,4 +68,13 @@ describe("KbdChord", () => {
       expect(kbd.className).toContain("tabular-nums");
     });
   });
+
+  it("applies tabular-nums on digit-token pills — the issue's stated scenario (#8100)", () => {
+    const { container } = render(<KbdChord shortcut="Cmd+1" isMac={false} />);
+    const innerKbds = container.querySelectorAll("span kbd");
+    expect(innerKbds.length).toBeGreaterThan(0);
+    innerKbds.forEach((kbd) => {
+      expect(kbd.className).toContain("tabular-nums");
+    });
+  });
 });
