@@ -248,6 +248,7 @@ export interface StoreSchema {
     newsletterPromptSeen: boolean;
     waitingNudgeSeen: boolean;
     seenAgentIds: string[];
+    availabilityFirstSeen?: Record<string, number>;
     welcomeCardDismissed: boolean;
     setupBannerDismissed: boolean;
     checklist: {

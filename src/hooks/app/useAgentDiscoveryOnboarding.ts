@@ -3,9 +3,17 @@ import { create } from "zustand";
 import type { OnboardingState } from "@shared/types";
 import { isElectronAvailable } from "@/hooks/useElectron";
 
+/**
+ * Discovery-badge TTL backstop window. An agent the user never launches still
+ * stops reading as "new" once this elapses since it first became launchable —
+ * otherwise the dot would linger forever for ignored agents.
+ */
+export const AGENT_DISCOVERY_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+
 interface AgentDiscoveryState {
   loaded: boolean;
   seenAgentIds: string[];
+  availabilityFirstSeen: Record<string, number>;
   welcomeCardDismissed: boolean;
   setupBannerDismissed: boolean;
 }
@@ -13,6 +21,7 @@ interface AgentDiscoveryState {
 const useAgentDiscoveryStore = create<AgentDiscoveryState>(() => ({
   loaded: false,
   seenAgentIds: [],
+  availabilityFirstSeen: {},
   welcomeCardDismissed: false,
   setupBannerDismissed: false,
 }));
@@ -38,6 +47,10 @@ async function hydrate(): Promise<void> {
       useAgentDiscoveryStore.setState({
         loaded: true,
         seenAgentIds: Array.isArray(state.seenAgentIds) ? state.seenAgentIds : [],
+        availabilityFirstSeen:
+          state.availabilityFirstSeen && typeof state.availabilityFirstSeen === "object"
+            ? state.availabilityFirstSeen
+            : {},
         welcomeCardDismissed: state.welcomeCardDismissed === true,
         setupBannerDismissed: state.setupBannerDismissed === true,
       });
@@ -75,6 +88,37 @@ export async function markAgentsSeen(agentIds: string[]): Promise<void> {
   }
 }
 
+/**
+ * Records the first time each agent became launchable so the discovery-badge
+ * TTL has a start point even for agents the user never launches. Idempotent —
+ * never overwrites an existing timestamp, locally or in the store.
+ */
+export async function recordAgentAvailabilityFirstSeen(agentIds: string[]): Promise<void> {
+  if (agentIds.length === 0) return;
+  const current = useAgentDiscoveryStore.getState().availabilityFirstSeen;
+  const missing = agentIds.filter((id) => current[id] === undefined);
+  if (missing.length === 0) return;
+  const now = Date.now();
+  useAgentDiscoveryStore.setState((s) => {
+    const next = { ...s.availabilityFirstSeen };
+    let changed = false;
+    for (const id of missing) {
+      if (next[id] === undefined) {
+        next[id] = now;
+        changed = true;
+      }
+    }
+    return changed ? { ...s, availabilityFirstSeen: next } : s;
+  });
+  const api = window.electron?.onboarding;
+  if (!api?.recordAvailabilityFirstSeen) return;
+  try {
+    await api.recordAvailabilityFirstSeen(missing);
+  } catch {
+    // Best-effort; optimistic local state stands.
+  }
+}
+
 export async function dismissWelcomeCard(): Promise<void> {
   if (useAgentDiscoveryStore.getState().welcomeCardDismissed) return;
   useAgentDiscoveryStore.setState({ welcomeCardDismissed: true });
@@ -101,6 +145,7 @@ export async function dismissSetupBanner(): Promise<void> {
 
 interface AgentDiscoveryOnboarding extends AgentDiscoveryState {
   markAgentsSeen: (agentIds: string[]) => Promise<void>;
+  recordAgentAvailabilityFirstSeen: (agentIds: string[]) => Promise<void>;
   dismissWelcomeCard: () => Promise<void>;
   dismissSetupBanner: () => Promise<void>;
 }
@@ -115,6 +160,7 @@ interface AgentDiscoveryOnboarding extends AgentDiscoveryState {
 export function useAgentDiscoveryOnboarding(): AgentDiscoveryOnboarding {
   const loaded = useAgentDiscoveryStore((s) => s.loaded);
   const seenAgentIds = useAgentDiscoveryStore((s) => s.seenAgentIds);
+  const availabilityFirstSeen = useAgentDiscoveryStore((s) => s.availabilityFirstSeen);
   const welcomeCardDismissed = useAgentDiscoveryStore((s) => s.welcomeCardDismissed);
   const setupBannerDismissed = useAgentDiscoveryStore((s) => s.setupBannerDismissed);
 
@@ -125,9 +171,11 @@ export function useAgentDiscoveryOnboarding(): AgentDiscoveryOnboarding {
   return {
     loaded,
     seenAgentIds,
+    availabilityFirstSeen,
     welcomeCardDismissed,
     setupBannerDismissed,
     markAgentsSeen,
+    recordAgentAvailabilityFirstSeen,
     dismissWelcomeCard,
     dismissSetupBanner,
   };
@@ -138,6 +186,7 @@ export function resetAgentDiscoveryStoreForTests(): void {
   useAgentDiscoveryStore.setState({
     loaded: false,
     seenAgentIds: [],
+    availabilityFirstSeen: {},
     welcomeCardDismissed: false,
     setupBannerDismissed: false,
   });

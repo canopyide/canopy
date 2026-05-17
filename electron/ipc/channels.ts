@@ -594,6 +594,7 @@ export const CHANNELS = {
   ONBOARDING_MARK_NEWSLETTER_SEEN: "onboarding:mark-newsletter-seen",
   ONBOARDING_MARK_WAITING_NUDGE_SEEN: "onboarding:mark-waiting-nudge-seen",
   ONBOARDING_MARK_AGENTS_SEEN: "onboarding:mark-agents-seen",
+  ONBOARDING_RECORD_AVAILABILITY_FIRST_SEEN: "onboarding:record-availability-first-seen",
   ONBOARDING_DISMISS_WELCOME_CARD: "onboarding:dismiss-welcome-card",
   ONBOARDING_DISMISS_SETUP_BANNER: "onboarding:dismiss-setup-banner",
   ONBOARDING_CHECKLIST_GET: "onboarding:checklist-get",

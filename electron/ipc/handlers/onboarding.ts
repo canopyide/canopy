@@ -23,7 +23,7 @@ const SKIP_E2E = process.env.DAINTREE_E2E_SKIP_FIRST_RUN_DIALOGS === "1";
 function getOnboardingState(): OnboardingState {
   if (SKIP_E2E) {
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       completed: true,
       currentStep: null,
       agentSetupIds: [],
@@ -31,6 +31,7 @@ function getOnboardingState(): OnboardingState {
       newsletterPromptSeen: true,
       waitingNudgeSeen: true,
       seenAgentIds: [],
+      availabilityFirstSeen: {},
       welcomeCardDismissed: true,
       setupBannerDismissed: true,
       checklist: {
@@ -48,7 +49,7 @@ function getOnboardingState(): OnboardingState {
   const raw = store.get("onboarding");
   if (!raw) {
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       completed: false,
       currentStep: null,
       agentSetupIds: [],
@@ -56,6 +57,7 @@ function getOnboardingState(): OnboardingState {
       newsletterPromptSeen: false,
       waitingNudgeSeen: false,
       seenAgentIds: [],
+      availabilityFirstSeen: {},
       welcomeCardDismissed: false,
       setupBannerDismissed: false,
       checklist: DEFAULT_CHECKLIST,
@@ -65,10 +67,15 @@ function getOnboardingState(): OnboardingState {
   const mergedItems = { ...DEFAULT_CHECKLIST.items, ...checklist.items };
   return {
     ...raw,
+    schemaVersion: 2,
     agentSetupIds: Array.isArray(raw.agentSetupIds) ? raw.agentSetupIds : [],
     seenAgentIds: Array.isArray(raw.seenAgentIds)
       ? (raw.seenAgentIds as string[]).filter((id) => typeof id === "string")
       : [],
+    availabilityFirstSeen:
+      raw.availabilityFirstSeen && typeof raw.availabilityFirstSeen === "object"
+        ? raw.availabilityFirstSeen
+        : {},
     welcomeCardDismissed: raw.welcomeCardDismissed === true,
     // Treat any already-completed onboarding as implicit banner dismissal —
     // without this, upgraded users who finished onboarding before #5131 see
@@ -158,6 +165,30 @@ export function registerOnboardingHandlers(): () => void {
       const seenAgentIds = Array.from(existing);
       store.set("onboarding.seenAgentIds", seenAgentIds);
       return { ...state, seenAgentIds };
+    })
+  );
+
+  cleanups.push(
+    typedHandle(CHANNELS.ONBOARDING_RECORD_AVAILABILITY_FIRST_SEEN, (payload: unknown) => {
+      const incoming = Array.isArray(payload)
+        ? (payload as unknown[]).filter((id): id is string => typeof id === "string")
+        : [];
+      const state = getOnboardingState();
+      if (incoming.length === 0) return state;
+      const existing = { ...(state.availabilityFirstSeen ?? {}) };
+      const now = Date.now();
+      let changed = false;
+      for (const id of incoming) {
+        // Idempotent: never overwrite an existing first-seen timestamp, so
+        // the TTL clock keeps counting from the genuine first sighting.
+        if (existing[id] === undefined) {
+          existing[id] = now;
+          changed = true;
+        }
+      }
+      if (!changed) return state;
+      store.set("onboarding.availabilityFirstSeen", existing);
+      return { ...state, availabilityFirstSeen: existing };
     })
   );
 

@@ -203,6 +203,13 @@ export interface OnboardingState {
   newsletterPromptSeen: boolean;
   waitingNudgeSeen: boolean;
   seenAgentIds: string[];
+  /**
+   * Agent ID → unix-ms timestamp of when the agent first became launchable.
+   * Drives the discovery-badge TTL backstop: a "new" agent the user never
+   * launches still auto-clears after the window elapses. Optional/additive —
+   * absent for stores written before this field existed.
+   */
+  availabilityFirstSeen?: Record<string, number>;
   welcomeCardDismissed: boolean;
   setupBannerDismissed: boolean;
   checklist: ChecklistState;

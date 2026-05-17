@@ -45,7 +45,10 @@ import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 
 import { useKeybindingDisplay } from "@/hooks";
-import { useAgentDiscoveryOnboarding } from "@/hooks/app/useAgentDiscoveryOnboarding";
+import {
+  useAgentDiscoveryOnboarding,
+  AGENT_DISCOVERY_TTL_MS,
+} from "@/hooks/app/useAgentDiscoveryOnboarding";
 import { AgentShortcutCapture } from "@/components/KeyboardShortcuts";
 import { notify } from "@/lib/notify";
 import { BUILT_IN_AGENT_IDS, type BuiltInAgentId } from "@shared/config/agentIds";
@@ -195,7 +198,9 @@ function SplitLaunchItem({ row, onLaunch }: SplitLaunchItemProps) {
         className="p-0 [&>svg:last-child]:hidden overflow-hidden"
         data-testid="submenu-trigger"
         onKeyDown={handleKeyDown}
-        aria-label={`${row.name} (press Enter to launch, Right Arrow for presets)`}
+        aria-label={`${row.name}${
+          row.isNew ? ", new" : ""
+        } (press Enter to launch, Right Arrow for presets)`}
       >
         <span ref={leftAreaRef} className="flex flex-1 items-center gap-2 px-2.5 py-1.5">
           <span className="inline-flex h-4 w-4 items-center justify-center shrink-0">
@@ -306,8 +311,10 @@ export function AgentTrayButton({
   const {
     loaded: onboardingLoaded,
     seenAgentIds,
+    availabilityFirstSeen,
     welcomeCardDismissed,
     markAgentsSeen,
+    recordAgentAvailabilityFirstSeen,
   } = useAgentDiscoveryOnboarding();
 
   const [open, setOpen] = useState(false);
@@ -407,6 +414,14 @@ export function AgentTrayButton({
     return BUILT_IN_AGENT_IDS.filter((id) => isAgentLaunchable(agentAvailability?.[id]));
   }, [agentAvailability]);
 
+  // Start the discovery-badge TTL clock as soon as an agent is launchable —
+  // not on launch. A never-launched agent must still age out of "new", so the
+  // first-seen timestamp can't depend on the user opening or using the tray.
+  useEffect(() => {
+    if (!onboardingLoaded || readyAgentIds.length === 0) return;
+    void recordAgentAvailabilityFirstSeen(readyAgentIds);
+  }, [onboardingLoaded, readyAgentIds, recordAgentAvailabilityFirstSeen]);
+
   const hasNoPinnedAgents = useMemo(() => {
     if (!agentSettings?.agents) return true;
     return !BUILT_IN_AGENT_IDS.some((id) => isAgentPinned(agentSettings.agents?.[id]));
@@ -427,12 +442,19 @@ export function AgentTrayButton({
 
   const newAgentIds = useMemo<ReadonlySet<string>>(() => {
     if (!onboardingLoaded || welcomeCardRenderable) return new Set<string>();
+    const now = Date.now();
     const set = new Set<string>();
     for (const id of readyAgentIds) {
-      if (!seenAgentIds.includes(id)) set.add(id);
+      if (seenAgentIds.includes(id)) continue;
+      // TTL backstop: an agent the user never explicitly dismissed still stops
+      // reading as "new" once the window since it first became launchable
+      // elapses — otherwise the dot lingers forever for ignored agents.
+      const firstSeen = availabilityFirstSeen[id];
+      if (firstSeen !== undefined && now - firstSeen > AGENT_DISCOVERY_TTL_MS) continue;
+      set.add(id);
     }
     return set;
-  }, [onboardingLoaded, welcomeCardRenderable, readyAgentIds, seenAgentIds]);
+  }, [onboardingLoaded, welcomeCardRenderable, readyAgentIds, seenAgentIds, availabilityFirstSeen]);
 
   const showDiscoveryBadge = newAgentIds.size > 0;
 
@@ -478,10 +500,10 @@ export function AgentTrayButton({
       fallbackSetup.push(row);
     }
 
-    // Sort Launch by palette frecency (higher score = more recent). Untracked
-    // agents keep their natural BUILT_IN_AGENT_IDS order after any tracked
-    // ones. Only palette dispatches populate frecency; tray launches
-    // don't record, but palette-sourced frecency is the signal we have.
+    // Sort Launch by frecency (higher score = more recent). Untracked agents
+    // keep their natural BUILT_IN_AGENT_IDS order after any tracked ones. Both
+    // palette dispatches and tray launches feed this frecency, so the order
+    // tracks however the user actually launches agents.
     const frecencyEntries = getSortedActionMruList();
     const frecencyScoreMap = new Map<string, number>();
     frecencyEntries.forEach(({ id, score }) => frecencyScoreMap.set(id, score));
@@ -529,8 +551,15 @@ export function AgentTrayButton({
         { agentId, ...(presetId !== undefined ? { presetId } : {}) },
         { source: "user" }
       );
+      // Clear the discovery signal only for the agent the user actually
+      // launched — opening the tray no longer bulk-clears every ready agent,
+      // so an unused agent keeps its dot until launched or TTL-aged.
+      void markAgentsSeen([agentId]);
+      // Feed tray launches into palette frecency so the tray's own MRU sort
+      // reflects how the user actually launches agents, not just palette use.
+      useActionMruStore.getState().recordActionMru(`agent.${agentId}`);
     },
-    [activeWorktreeId, updateWorktreePreset]
+    [activeWorktreeId, updateWorktreePreset, markAgentsSeen]
   );
 
   const handleSetup = (agentId: BuiltInAgentId) => {
@@ -558,9 +587,6 @@ export function AgentTrayButton({
     if (!open) return;
     // Fire-and-forget: the store throttle absorbs rapid reopens.
     void refreshAvailability().catch(() => {});
-    if (readyAgentIds.length > 0) {
-      void markAgentsSeen(readyAgentIds);
-    }
   };
 
   const togglePin = (row: AgentRow) => {
@@ -824,6 +850,7 @@ function LaunchRow({
       onKeyDown={(e) => onKeyDown(e, row)}
       className="group h-7"
       data-testid={`agent-tray-row-${row.id}`}
+      aria-label={row.isNew ? `${row.name}, new` : undefined}
     >
       <span className="relative mr-2 inline-flex h-4 w-4 items-center justify-center">
         <BrandMark brandColor={getBrandColorHex(row.id)}>
@@ -836,11 +863,10 @@ function LaunchRow({
 
       {row.isNew && (
         <span
-          data-testid={`agent-tray-new-pill-${row.id}`}
-          className="ml-2 shrink-0 rounded border border-status-info/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-status-info"
-        >
-          New
-        </span>
+          data-testid={`agent-tray-new-dot-${row.id}`}
+          className="ml-2 h-1.5 w-1.5 shrink-0 rounded-full bg-status-info ring-1 ring-daintree-sidebar"
+          aria-hidden="true"
+        />
       )}
 
       {displayCombo && <DropdownMenuShortcut>{displayCombo}</DropdownMenuShortcut>}
@@ -877,7 +903,7 @@ function LaunchRow({
         }}
         className={cn(
           "ml-1 inline-flex h-5 w-5 items-center justify-center rounded-sm text-daintree-text/50 transition-opacity hover:bg-overlay-emphasis hover:text-daintree-text",
-          row.pinned ? "opacity-100" : "opacity-0 group-data-[highlighted]:opacity-100"
+          row.pinned ? "opacity-50" : "opacity-0 group-data-[highlighted]:opacity-100"
         )}
       >
         <Pin

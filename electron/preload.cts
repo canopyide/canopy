@@ -2307,6 +2307,8 @@ const api: ElectronAPI = {
     markWaitingNudgeSeen: () => _unwrappingInvoke(CHANNELS.ONBOARDING_MARK_WAITING_NUDGE_SEEN),
     markAgentsSeen: (agentIds: string[]) =>
       _unwrappingInvoke(CHANNELS.ONBOARDING_MARK_AGENTS_SEEN, agentIds),
+    recordAvailabilityFirstSeen: (agentIds: string[]) =>
+      _unwrappingInvoke(CHANNELS.ONBOARDING_RECORD_AVAILABILITY_FIRST_SEEN, agentIds),
     dismissWelcomeCard: () => _unwrappingInvoke(CHANNELS.ONBOARDING_DISMISS_WELCOME_CARD),
     dismissSetupBanner: () => _unwrappingInvoke(CHANNELS.ONBOARDING_DISMISS_SETUP_BANNER),
     getChecklist: () => _unwrappingInvoke(CHANNELS.ONBOARDING_CHECKLIST_GET),
