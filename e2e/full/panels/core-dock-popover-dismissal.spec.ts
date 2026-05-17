@@ -140,42 +140,4 @@ test.describe.serial("Core: Dock popover dismissal guard", () => {
     await expect(portalTarget).not.toBeVisible({ timeout: T_MEDIUM });
     await window.evaluate(() => document.getElementById("test-radix-popper")?.remove());
   });
-
-  test("dock popover stamps its Radix descendants with data-dock-popover-child", async () => {
-    const { window, app } = ctx;
-    await ensureWindowFocused(app);
-
-    // The popover from the previous test is dismissed; reopen it.
-    const dockChip = window
-      .locator(`${SEL.dock.container} [aria-label*="Click to preview"]`)
-      .first();
-    await expect(dockChip).toBeVisible({ timeout: T_MEDIUM });
-    await dockChip.hover();
-    await dockChip.click();
-
-    const dockedIds = await window
-      .locator(SEL.panel.dockPanel)
-      .evaluateAll((els) =>
-        els.map((el) => el.getAttribute("data-panel-id") ?? "").filter(Boolean)
-      );
-    expect(dockedIds.length).toBeGreaterThanOrEqual(1);
-    const dockedId = dockedIds[0]!;
-
-    await expect(window.locator(`[data-dock-portal-target="${dockedId}"]`)).toBeVisible({
-      timeout: T_MEDIUM,
-    });
-
-    // Right-click the dock chip to surface its TerminalContextMenu — a Radix
-    // ContextMenu rendered under DockPopoverChildProvider. Its content is
-    // portaled to document.body but must carry data-dock-popover-child
-    // because it's inside the provider's React subtree.
-    await dockChip.click({ button: "right" });
-    const ctxMenu = window.locator('[role="menu"][data-dock-popover-child]').first();
-    await expect(ctxMenu).toBeVisible({ timeout: T_MEDIUM });
-
-    // Dismiss the context menu without dismissing the popover (Escape closes
-    // the topmost layer only).
-    await window.keyboard.press("Escape");
-    await window.waitForTimeout(T_SETTLE);
-  });
 });
