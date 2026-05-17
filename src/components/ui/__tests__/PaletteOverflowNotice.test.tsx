@@ -6,7 +6,7 @@ import { PaletteOverflowNotice } from "../PaletteOverflowNotice";
 describe("PaletteOverflowNotice", () => {
   it("renders when total exceeds shown", () => {
     render(<PaletteOverflowNotice shown={20} total={47} />);
-    expect(screen.getByText(/Showing 20 of 47/)).toBeTruthy();
+    expect(screen.getByText("+27 more")).toBeTruthy();
   });
 
   it("renders nothing when total equals shown", () => {
@@ -23,6 +23,6 @@ describe("PaletteOverflowNotice", () => {
     render(<PaletteOverflowNotice shown={20} total={47} />);
     const notice = screen.getByRole("status");
     expect(notice).toBeTruthy();
-    expect(notice.textContent).toContain("Showing 20 of 47");
+    expect(notice.textContent).toBe("+27 more");
   });
 });

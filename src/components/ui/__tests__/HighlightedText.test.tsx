@@ -24,7 +24,9 @@ describe("HighlightedText", () => {
     const marks = container.querySelectorAll(".text-search-highlight-text");
     expect(marks).toHaveLength(1);
     expect(marks[0]?.textContent).toBe("Terminal");
-    expect(marks[0]?.classList.contains("font-semibold")).toBe(true);
+    // Color alone differentiates — bold weight caused character-width jitter
+    // as the user typed, so the highlight span must not change the weight.
+    expect(marks[0]?.classList.contains("font-semibold")).toBe(false);
   });
 
   it("highlights a single character", () => {
@@ -52,9 +54,10 @@ describe("HighlightedText", () => {
     expect(marks[1]?.textContent).toBe("font");
   });
 
-  it("clamps overlapping indices without duplicating text", () => {
+  it("merges overlapping indices into a single span without duplicating text", () => {
     // Fuse.js can emit overlapping/unsorted ranges when patterns split across
-    // BitapSearch chunks. The component must not render duplicate characters.
+    // BitapSearch chunks. Merging into one span avoids both duplicate characters
+    // and sub-pixel rendering gaps between adjacent spans.
     const { container } = render(
       <HighlightedText
         text="abcdefghij"
@@ -65,6 +68,27 @@ describe("HighlightedText", () => {
       />
     );
     expect(container.textContent).toBe("abcdefghij");
+    const marks = container.querySelectorAll(".text-search-highlight-text");
+    expect(marks).toHaveLength(1);
+    expect(marks[0]?.textContent).toBe("abcdefg");
+  });
+
+  it("merges adjacent (touching) indices into a single span", () => {
+    // Two ranges that touch (end+1 === nextStart) should render as one span
+    // to avoid sub-pixel gaps between visually contiguous highlights.
+    const { container } = render(
+      <HighlightedText
+        text="abcdefghi"
+        indices={[
+          [0, 2],
+          [3, 5],
+        ]}
+      />
+    );
+    expect(container.textContent).toBe("abcdefghi");
+    const marks = container.querySelectorAll(".text-search-highlight-text");
+    expect(marks).toHaveLength(1);
+    expect(marks[0]?.textContent).toBe("abcdef");
   });
 });
 

@@ -11,7 +11,7 @@ export function PaletteOverflowNotice({ shown, total }: PaletteOverflowNoticePro
       role="status"
       className="px-3 py-2 text-xs tabular-nums text-daintree-text/40 text-center border-t border-daintree-border/30"
     >
-      Showing {shown} of {total} — refine your search to see more
+      +{total - shown} more
     </div>
   );
 }
