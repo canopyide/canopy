@@ -41,13 +41,23 @@ export function computeOverflow(
 
   const hasPinned = pinnedIds !== undefined && pinnedIds.size > 0;
   const removableIds = hasPinned ? orderedIds.filter((id) => !pinnedIds.has(id)) : orderedIds;
+  // Pinned items still take real DOM space, so they reduce the room available
+  // for removable items. Only count widths for IDs actually present in this
+  // side's order — pinned IDs that don't apply here contribute nothing.
+  const pinnedWidth = hasPinned
+    ? orderedIds.reduce(
+        (sum, id) => (pinnedIds.has(id) ? sum + (itemWidths.get(id) ?? DEFAULT_ITEM_WIDTH) : sum),
+        0
+      )
+    : 0;
+  const availableWidth = containerWidth - pinnedWidth;
 
   const removableWidth = removableIds.reduce(
     (sum, id) => sum + (itemWidths.get(id) ?? DEFAULT_ITEM_WIDTH),
     0
   );
 
-  if (removableWidth <= containerWidth) {
+  if (removableWidth <= availableWidth) {
     return { visibleIds: [...orderedIds], overflowIds: [] };
   }
 
@@ -63,7 +73,7 @@ export function computeOverflow(
 
   const overflowSet = new Set<AnyToolbarButtonId>();
   let currentWidth = removableWidth;
-  const targetWidth = containerWidth - OVERFLOW_TRIGGER_WIDTH;
+  const targetWidth = availableWidth - OVERFLOW_TRIGGER_WIDTH;
 
   for (const item of sortedForRemoval) {
     if (currentWidth <= targetWidth) break;
@@ -147,7 +157,7 @@ export function useToolbarOverflow(
   rightContainerRef: React.RefObject<HTMLDivElement | null>,
   leftIds: AnyToolbarButtonId[],
   rightIds: AnyToolbarButtonId[],
-  rightPinnedIds?: ReadonlySet<AnyToolbarButtonId>
+  pinnedIds?: ReadonlySet<AnyToolbarButtonId>
 ): {
   leftVisible: AnyToolbarButtonId[];
   leftOverflow: AnyToolbarButtonId[];
@@ -209,7 +219,8 @@ export function useToolbarOverflow(
         leftIds,
         TOOLBAR_BUTTON_PRIORITIES,
         leftPrevWidthRef.current,
-        leftPrevResultRef.current
+        leftPrevResultRef.current,
+        pinnedIds
       );
       // Ref writes inside the updater are safe under concurrent rendering:
       // `containerWidth` and `result` are captured in the enclosing closure,
@@ -239,7 +250,7 @@ export function useToolbarOverflow(
         TOOLBAR_BUTTON_PRIORITIES,
         rightPrevWidthRef.current,
         rightPrevResultRef.current,
-        rightPinnedIds
+        pinnedIds
       );
       setRightResult((prev) => {
         if (
@@ -253,7 +264,7 @@ export function useToolbarOverflow(
         return result;
       });
     }
-  }, [leftContainerRef, rightContainerRef, leftIds, rightIds, rightPinnedIds, measureItems]);
+  }, [leftContainerRef, rightContainerRef, leftIds, rightIds, pinnedIds, measureItems]);
 
   useLayoutEffect(() => {
     const leftContainer = leftContainerRef.current;

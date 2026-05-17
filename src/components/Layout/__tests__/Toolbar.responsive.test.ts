@@ -139,7 +139,9 @@ describe("Toolbar responsive design — issue #4133", () => {
       // active. The previous workaround (a hardcoded fallback label in the
       // overflow tooltip) is gone; reintroducing it would re-mask the bug.
       expect(source).toContain("VOICE_RECORDING_PINNED");
-      expect(source).toContain("pinnedRightIds");
+      // Pin applies to whichever side the button lives on — passed as a
+      // single pinnedIds set into useToolbarOverflow, not a right-only param.
+      expect(source).toMatch(/useToolbarOverflow\(\s*[\s\S]*?pinnedIds\s*\)/);
       expect(source).not.toContain('id === "voice-recording"');
       expect(source).not.toContain("OVERFLOW_DROPDOWN_SKIP");
     });

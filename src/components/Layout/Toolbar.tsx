@@ -748,17 +748,19 @@ export function Toolbar({
   );
 
   // Pin the voice-recording indicator out of overflow while a recording is
-  // active so the user never loses sight of the live mic signal. The set
-  // reference is stabilized so the overflow hook's recalculate callback
-  // doesn't re-fire on every render.
-  const pinnedRightIds = hasActiveVoiceRecording ? VOICE_RECORDING_PINNED : NO_PINNED_IDS;
+  // active so the user never loses sight of the live mic signal. Applies to
+  // whichever side the user has placed the button — overflow honors the
+  // pin regardless of left/right placement. The set reference is stabilized
+  // so the overflow hook's recalculate callback doesn't re-fire on every
+  // render.
+  const pinnedIds = hasActiveVoiceRecording ? VOICE_RECORDING_PINNED : NO_PINNED_IDS;
 
   const { leftVisible, leftOverflow, rightVisible, rightOverflow } = useToolbarOverflow(
     leftGroupRef,
     rightGroupRef,
     availableLeftIds,
     availableRightIds,
-    pinnedRightIds
+    pinnedIds
   );
 
   // Voice recording reserves layout via an always-available slot but should
