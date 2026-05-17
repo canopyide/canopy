@@ -235,6 +235,10 @@ export const BUILT_IN_ACTION_IDS = [
   // -- errorActions --
   "errors.clearAll",
   "errors.openLogs",
+  "errors.recent",
+
+  // -- notificationActions --
+  "notifications.recent",
 
   // -- eventInspectorActions --
   "eventInspector.getEvents",

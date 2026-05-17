@@ -2,6 +2,7 @@ import type { ActionCallbacks, ActionRegistry } from "../actionTypes";
 import { z } from "zod";
 import { errorsClient, eventInspectorClient, logsClient, telemetryPreviewClient } from "@/clients";
 import { useErrorStore } from "@/store/errorStore";
+import { useNotificationHistoryStore } from "@/store/slices/notificationHistorySlice";
 import { useEventStore } from "@/store/eventStore";
 import { useLogsStore } from "@/store/logsStore";
 import { useDiagnosticsStore } from "@/store/diagnosticsStore";
@@ -184,6 +185,117 @@ export function registerLogActions(actions: ActionRegistry, _callbacks: ActionCa
     scope: "renderer",
     run: async () => {
       useErrorStore.getState().reset();
+    },
+  }));
+
+  actions.set("errors.recent", () => ({
+    id: "errors.recent",
+    title: "Recent Errors",
+    description:
+      "Active diagnostics-dock errors. Excludes pane-restart/spawn/reconnect failures unless normalized into the store.",
+    category: "errors",
+    kind: "query",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z
+      .object({
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .default(20)
+          .optional()
+          .describe("Max errors to return (default: 20, max: 50)"),
+        includesDismissed: z
+          .boolean()
+          .default(false)
+          .optional()
+          .describe("Include dismissed errors (default: false — active errors only)"),
+      })
+      .optional(),
+    run: async (args: unknown) => {
+      const { limit = 20, includesDismissed = false } =
+        (args as { limit?: number; includesDismissed?: boolean } | undefined) ?? {};
+      const errors = useErrorStore.getState().errors;
+      const filtered = includesDismissed ? errors : errors.filter((e) => !e.dismissed);
+      // errorStore dedup updates in place (keeps array slot, refreshes timestamp),
+      // so array order is not strictly newest-first — sort before slicing.
+      const sorted = [...filtered].sort((a, b) => b.timestamp - a.timestamp);
+      return sorted.slice(0, limit).map((e) => ({
+        id: e.id,
+        type: e.type,
+        message: e.message,
+        details: e.details,
+        source: e.source,
+        timestamp: e.timestamp,
+        retryability: e.retryability,
+        dismissed: e.dismissed,
+        worktreeId: e.context?.worktreeId,
+        terminalId: e.context?.terminalId,
+        recoveryHint: e.recoveryHint,
+        retryExhausted: e.retryExhausted,
+        occurrenceCount: e.occurrenceCount,
+      }));
+    },
+  }));
+
+  actions.set("notifications.recent", () => ({
+    id: "notifications.recent",
+    title: "Recent Notifications",
+    description:
+      "Recent notifications from the durable inbox (capped history, newest first). Filter by type or unread state.",
+    category: "diagnostics",
+    kind: "query",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: z
+      .object({
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .default(20)
+          .optional()
+          .describe("Max notifications to return (default: 20, max: 50)"),
+        type: z
+          .enum(["success", "error", "info", "warning"])
+          .optional()
+          .describe("Filter by notification type"),
+        unreadOnly: z
+          .boolean()
+          .default(false)
+          .optional()
+          .describe("Only return notifications not yet seen as a toast (default: false)"),
+      })
+      .optional(),
+    run: async (args: unknown) => {
+      const {
+        limit = 20,
+        type,
+        unreadOnly = false,
+      } = (args as { limit?: number; type?: string; unreadOnly?: boolean } | undefined) ?? {};
+      const entries = useNotificationHistoryStore.getState().entries;
+      const filtered = entries.filter(
+        (e) =>
+          (!type || e.type === type) &&
+          // Mirror the bell-badge unread definition (notificationHistorySlice
+          // counts !seenAsToast && countable !== false) so `unreadOnly` doesn't
+          // surface silent non-countable entries the UI never badges.
+          (!unreadOnly || (!e.seenAsToast && e.countable !== false))
+      );
+      return filtered.slice(0, limit).map((e) => ({
+        id: e.id,
+        type: e.type,
+        title: e.title,
+        message: typeof e.message === "string" ? e.message : "[rich content]",
+        timestamp: e.timestamp,
+        seenAsToast: e.seenAsToast,
+        worktreeId: e.context?.worktreeId,
+        panelId: e.context?.panelId,
+        eventKind: e.context?.eventKind,
+      }));
     },
   }));
 

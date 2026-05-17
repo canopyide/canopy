@@ -53,6 +53,9 @@ export const WORKBENCH_TIER_TOOLS: readonly string[] = [
 
   "system.checkCommand",
   "system.checkDirectory",
+
+  "notifications.recent",
+  "errors.recent",
 ];
 
 export const ACTION_TIER_ADDONS: readonly string[] = [
