@@ -302,7 +302,7 @@ describe("DockedTabGroup dock-popover polish (#8164)", () => {
   });
 
   describe("overflow chevron hidden-active cue (item 2)", () => {
-    it("renders no dot and reads only the count when the active tab is visible", () => {
+    it("folds the count into aria-label and renders no dot when the active tab is visible", () => {
       mockHiddenTabIds = new Set<string>(["t-3"]);
       const panels = [
         makePanel({ id: "t-1" }),
@@ -318,8 +318,10 @@ describe("DockedTabGroup dock-popover polish (#8164)", () => {
         '[data-testid="dock-tabs-overflow"]'
       ) as HTMLElement | null;
       expect(overflowButton).not.toBeNull();
-      expect(overflowButton!.getAttribute("aria-label")).toBe("Show hidden tabs");
-      expect(overflowButton!.textContent ?? "").toContain("(1 hidden)");
+      // aria-label carries the count directly — the inner sr-only span would be
+      // shadowed by aria-label per the accessible-name algorithm, so the count
+      // lives in the label itself.
+      expect(overflowButton!.getAttribute("aria-label")).toBe("Show 1 hidden tabs");
       expect(overflowButton!.querySelector("span.bg-daintree-text\\/70")).toBeNull();
     });
 
@@ -342,9 +344,8 @@ describe("DockedTabGroup dock-popover polish (#8164)", () => {
       ) as HTMLElement | null;
       expect(overflowButton).not.toBeNull();
       expect(overflowButton!.getAttribute("aria-label")).toBe(
-        "Show hidden tabs, including active"
+        "Show 2 hidden tabs, including active"
       );
-      expect(overflowButton!.textContent ?? "").toContain("(2 hidden, including active)");
 
       const dot = overflowButton!.querySelector("span.bg-daintree-text\\/70");
       expect(dot).not.toBeNull();

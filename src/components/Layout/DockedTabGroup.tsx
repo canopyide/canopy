@@ -276,6 +276,10 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
   const tabIds = useMemo(() => panels.map((p) => p.id), [panels]);
 
   const hiddenTabIds = useTabOverflow(tabListEl, tabIds);
+  const hiddenPanels = useMemo(
+    () => panels.filter((p) => hiddenTabIds.has(p.id)),
+    [panels, hiddenTabIds]
+  );
   const activeTabIsHidden = activeTabId !== "" && hiddenTabIds.has(activeTabId);
 
   // Handle tab reorder drag end
@@ -645,7 +649,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
                     <TooltipContent side="bottom">Duplicate panel as new tab</TooltipContent>
                   </Tooltip>
                 </div>
-                {hiddenTabIds.size > 0 && (
+                {hiddenPanels.length > 0 && (
                   <DropdownMenu>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -656,8 +660,8 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
                             className="relative shrink-0 p-1.5 hover:bg-daintree-text/10 text-daintree-text/40 hover:text-daintree-text transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
                             aria-label={
                               activeTabIsHidden
-                                ? "Show hidden tabs, including active"
-                                : "Show hidden tabs"
+                                ? `Show ${hiddenPanels.length} hidden tabs, including active`
+                                : `Show ${hiddenPanels.length} hidden tabs`
                             }
                             aria-haspopup="menu"
                             data-testid="dock-tabs-overflow"
@@ -665,15 +669,10 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
                             <ChevronDown className="w-3 h-3" aria-hidden="true" />
                             {activeTabIsHidden && (
                               <span
-                                className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-daintree-text/70"
+                                className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-daintree-text/70"
                                 aria-hidden="true"
                               />
                             )}
-                            <span className="sr-only">
-                              {" "}
-                              ({hiddenTabIds.size} hidden
-                              {activeTabIsHidden ? ", including active" : ""})
-                            </span>
                           </button>
                         </DropdownMenuTrigger>
                       </TooltipTrigger>
@@ -683,9 +682,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
                       align="end"
                       className="min-w-[200px] max-w-[320px] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto"
                     >
-                      {panels
-                        .filter((p) => hiddenTabIds.has(p.id))
-                        .map((panel) => {
+                      {hiddenPanels.map((panel) => {
                           const tabChrome = deriveTerminalChrome({
                             kind: panel.kind,
                             launchAgentId: panel.launchAgentId,
