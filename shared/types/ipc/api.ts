@@ -1420,6 +1420,7 @@ export interface ElectronAPI {
     onToolbarButtonsChanged(
       callback: (payload: {
         buttons: import("../../config/toolbarButtonRegistry.js").ToolbarButtonConfig[];
+        complete: boolean;
       }) => void
     ): () => void;
   };

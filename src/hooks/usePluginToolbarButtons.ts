@@ -17,10 +17,13 @@ export interface PluginToolbarButtonState {
  * once a push arrives, a later-resolving mount-time pull is dropped to avoid
  * rolling back state (mirrors `usePluginPanelKinds`).
  *
- * Each accepted snapshot also sweeps stale `plugin.` entries from the
- * `toolbarPreferencesStore` `pinnedButtons` map. That map is renderer-local
- * persisted state with no main-process access, so an uninstalled plugin's
- * leftover hide entry can only be pruned here off the lifecycle snapshot.
+ * Stale `plugin.` entries in the `toolbarPreferencesStore` `pinnedButtons`
+ * map (renderer-local persisted state, no main-process access) are pruned
+ * here off the lifecycle snapshot — but ONLY off an authoritative one. The
+ * pull and load-time pushes are partial/growing (plugins load concurrently
+ * and `initialize()` is deferred), so sweeping against them would wipe a
+ * not-yet-loaded plugin's hide preference. Only a `complete` push (a plugin
+ * unload — i.e. uninstall, the exact case the sweep exists for) is swept.
  */
 export function usePluginToolbarButtons(): PluginToolbarButtonState {
   const [configs, setConfigs] = useState<Map<string, ToolbarButtonConfig>>(new Map());
@@ -29,14 +32,16 @@ export function usePluginToolbarButtons(): PluginToolbarButtonState {
     let disposed = false;
     let pushReceived = false;
 
-    const sync = (buttons: ToolbarButtonConfig[]): void => {
+    const sync = (buttons: ToolbarButtonConfig[], complete: boolean): void => {
       if (disposed) return;
       const map = new Map<string, ToolbarButtonConfig>();
       for (const btn of buttons) {
         map.set(btn.id, btn);
       }
       setConfigs(map);
-      useToolbarPreferencesStore.getState().sweepStalePluginPinnedButtons(Array.from(map.keys()));
+      if (complete) {
+        useToolbarPreferencesStore.getState().sweepStalePluginPinnedButtons(Array.from(map.keys()));
+      }
     };
 
     const electron = typeof window !== "undefined" ? window.electron : undefined;
@@ -47,7 +52,9 @@ export function usePluginToolbarButtons(): PluginToolbarButtonState {
       .then((buttons) => {
         if (disposed) return;
         if (pushReceived) return;
-        sync(buttons);
+        // Pull is a display-only safety net: deferred `initialize()` means it
+        // can resolve before all plugins have registered, so never sweep here.
+        sync(buttons, false);
       })
       .catch((err: unknown) => {
         logWarn("[PluginToolbarButtons] Failed to fetch initial plugin toolbar buttons", {
@@ -57,7 +64,7 @@ export function usePluginToolbarButtons(): PluginToolbarButtonState {
 
     const cleanup = electron.plugin.onToolbarButtonsChanged((payload) => {
       pushReceived = true;
-      sync(payload.buttons);
+      sync(payload.buttons, payload.complete);
     });
 
     return () => {

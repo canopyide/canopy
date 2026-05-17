@@ -2477,8 +2477,9 @@ const api: ElectronAPI = {
       _eventBusOn("plugin:actions-changed", callback),
     onPanelKindsChanged: (callback: (payload: { kinds: PanelKindConfig[] }) => void) =>
       _eventBusOn("plugin:panel-kinds-changed", callback),
-    onToolbarButtonsChanged: (callback: (payload: { buttons: ToolbarButtonConfig[] }) => void) =>
-      _eventBusOn("plugin:toolbar-buttons-changed", callback),
+    onToolbarButtonsChanged: (
+      callback: (payload: { buttons: ToolbarButtonConfig[]; complete: boolean }) => void
+    ) => _eventBusOn("plugin:toolbar-buttons-changed", callback),
   },
 
   crashRecovery: {

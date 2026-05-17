@@ -107,6 +107,14 @@ export class PluginService {
    * call on unload — batch into a single snapshot broadcast per tick.
    */
   private toolbarButtonsBroadcastPending = false;
+  /**
+   * OR-accumulated across triggers coalesced into one tick: true if any was an
+   * unload (uninstall). The registry at microtask-drain time always reflects
+   * the current set, so a tick that included an unload is an authoritative
+   * snapshot the renderer may safely sweep against; a tick of only loads is a
+   * partial/growing snapshot (concurrent load + deferred init) and must not.
+   */
+  private toolbarButtonsBroadcastComplete = false;
   private disposed = false;
   private readonly disposeRegistrySubscriptions: () => void;
 
@@ -373,7 +381,7 @@ export class PluginService {
       });
     }
     if (manifest.contributes.toolbarButtons.length > 0) {
-      this.scheduleToolbarButtonsBroadcast();
+      this.scheduleToolbarButtonsBroadcast(false);
     }
 
     for (const menuItem of manifest.contributes.menuItems) {
@@ -692,7 +700,7 @@ export class PluginService {
     this.unregisterPluginActions(pluginId);
     unregisterPluginMenuItems(pluginId);
     unregisterPluginToolbarButtons(pluginId);
-    this.scheduleToolbarButtonsBroadcast();
+    this.scheduleToolbarButtonsBroadcast(true);
     unregisterPluginPanelKinds(pluginId);
     unregisterForgeProviders(pluginId);
     this.plugins.delete(pluginId);
@@ -869,21 +877,24 @@ export class PluginService {
    * ever mutated from `loadPlugin()` / `unloadPlugin()`, so the two call sites
    * invoke this directly rather than via registry event listeners.
    */
-  private scheduleToolbarButtonsBroadcast(): void {
+  private scheduleToolbarButtonsBroadcast(complete: boolean): void {
     if (this.disposed) return;
+    if (complete) this.toolbarButtonsBroadcastComplete = true;
     if (this.toolbarButtonsBroadcastPending) return;
     this.toolbarButtonsBroadcastPending = true;
     queueMicrotask(() => {
       this.toolbarButtonsBroadcastPending = false;
+      const complete = this.toolbarButtonsBroadcastComplete;
+      this.toolbarButtonsBroadcastComplete = false;
       if (this.disposed) return;
-      this.broadcastPluginToolbarButtons();
+      this.broadcastPluginToolbarButtons(complete);
     });
   }
 
-  private broadcastPluginToolbarButtons(): void {
+  private broadcastPluginToolbarButtons(complete: boolean): void {
     broadcastToRenderer(CHANNELS.EVENTS_PUSH, {
       name: "plugin:toolbar-buttons-changed",
-      payload: { buttons: getAllPluginToolbarButtonConfigs() },
+      payload: { buttons: getAllPluginToolbarButtonConfigs(), complete },
     });
   }
 }
