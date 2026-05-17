@@ -23,6 +23,7 @@ vi.mock("@/hooks/useGlobalMinuteTicker", () => ({
 }));
 
 const PR_KEY = "/test/repo:pr:open:created";
+const ISSUE_KEY = "/test/repo:issue:open:created";
 const STALE_THRESHOLD_MS = 3 * 60 * 1000;
 const FIXED_NOW = 10_000_000;
 
@@ -163,5 +164,28 @@ describe("useGitHubBadgeFreshness", () => {
     });
     rerender();
     expect(result.current.freshnessLevel).toBe("fresh");
+  });
+
+  it("uses the issue cache key when type is 'issue'", () => {
+    const cacheTime = FIXED_NOW - 5_000;
+    cache.setCache(ISSUE_KEY, makeCacheEntry(cacheTime));
+    cache.setCache(PR_KEY, makeCacheEntry(FIXED_NOW - 50_000));
+
+    const { result } = renderHook(() => useGitHubBadgeFreshness("issue", FIXED_NOW));
+    expect(result.current.cacheLastUpdatedAt).toBe(cacheTime);
+  });
+
+  it("re-evaluates aging as wall-clock time advances past threshold", () => {
+    const rowTime = FIXED_NOW - (STALE_THRESHOLD_MS - 1);
+    const { result, rerender } = renderHook(({ row }) => useGitHubBadgeFreshness("pr", row), {
+      initialProps: { row: rowTime },
+    });
+    expect(result.current.freshnessLevel).toBe("fresh");
+
+    vi.setSystemTime(FIXED_NOW + 2);
+    mockTick = 2;
+    rerender({ row: rowTime });
+
+    expect(result.current.freshnessLevel).toBe("aging");
   });
 });

@@ -69,8 +69,8 @@ export function PRBadge({
       : `Open ${prStateLabel} pull request #${prNumber} on GitHub`;
 
   const freshnessSuffixStr = useMemo(
-    () => freshnessSuffix(freshnessLevel, cacheLastUpdatedAt, now),
-    [freshnessLevel, cacheLastUpdatedAt, now]
+    () => freshnessSuffix(freshnessLevel, rowLastUpdatedAt ?? cacheLastUpdatedAt, now),
+    [freshnessLevel, rowLastUpdatedAt, cacheLastUpdatedAt, now]
   );
 
   return (
