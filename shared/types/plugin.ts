@@ -1,3 +1,5 @@
+import type { ForgeProviderContribution } from "./forge.js";
+
 export interface PanelContribution {
   id: string;
   name: string;
@@ -91,6 +93,7 @@ export interface PluginManifest {
     menuItems: MenuItemContribution[];
     views: ViewContribution[];
     mcpServers: McpServerContribution[];
+    forgeProviders: ForgeProviderContribution[];
   };
 }
 
