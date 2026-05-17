@@ -49,6 +49,16 @@ describe("GitHubStatsToolbarButton freshness wiring", () => {
     // zero-count de-emphasis (opacity-50) — both distinct from freshness.
     expect(source).not.toMatch(/freshnessOpacityClass\(commitFreshnessLevel\)/);
     expect(source).not.toMatch(/freshnessOpacityClass\(freshnessLevel\)/);
+    // Guard the inline equivalents too — the freshness opacity tiers were
+    // opacity-75 (aging) and opacity-60 (stale-disk); neither should reappear.
+    expect(source).not.toContain("opacity-75");
+    expect(source).not.toContain("opacity-60");
+  });
+
+  it("wires the commits pill glyph to commitFreshnessLevel, not freshnessLevel", () => {
+    // Commits are git-local — a GitHub connectivity error must not dim or
+    // glyph the commits pill. commitFreshnessLevel maps errored→fresh.
+    expect(source).toContain("<FreshnessGlyph level={commitFreshnessLevel} />");
   });
 
   it("uses freshnessSuffix in ariaLabel and tooltipContent for freshness-aware copy", () => {

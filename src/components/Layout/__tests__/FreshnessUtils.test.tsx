@@ -42,7 +42,10 @@ describe("FreshnessGlyph", () => {
 
   it("renders a clock glyph for stale-disk level", () => {
     const { container } = render(<FreshnessGlyph level="stale-disk" />);
-    expect(container.querySelector("svg")).not.toBeNull();
+    const svg = container.querySelector("svg");
+    expect(svg).not.toBeNull();
+    expect(svg?.getAttribute("aria-hidden")).toBe("true");
+    expect(svg?.getAttribute("class")).toContain("text-muted-foreground");
   });
 
   it("renders nothing for errored level (covered by GitHubStatusIndicator)", () => {
