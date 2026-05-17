@@ -13,6 +13,13 @@ const sidebarCss = readFileSync(
   resolve(__dirname, "../../../../styles/components/sidebar.css"),
   "utf-8"
 );
+const toolbarSource = readFileSync(resolve(__dirname, "../WorktreeActionsToolbar.tsx"), "utf-8");
+const detailsSource = readFileSync(resolve(__dirname, "../WorktreeDetailsSection.tsx"), "utf-8");
+const terminalSectionSource = readFileSync(
+  resolve(__dirname, "../WorktreeTerminalSection.tsx"),
+  "utf-8"
+);
+const envPopoverSource = readFileSync(resolve(__dirname, "../EnvironmentPopover.tsx"), "utf-8");
 
 describe("WorktreeCard interaction-state axes (issue #6963)", () => {
   it("uses ring-inset (no background) for the isOver drop-target", () => {
@@ -72,5 +79,49 @@ describe("WorktreeCard focused sub-line (issue #7699)", () => {
 
   it("passes worktree.lastActivityTimestamp (not latestFileMtime) to the sub-line", () => {
     expect(cardSource).toMatch(/lastActivityTimestamp=\{\s*worktree\.lastActivityTimestamp\s*\}/);
+  });
+});
+
+// Issue #8099 — polish four interaction-fidelity gaps in the worktree row:
+// (1) toolbar reveal switches from :focus-within to :focus-visible so mousedown
+// no longer triggers a pre-click flash; (2) terminal sub-row drag handle stays
+// visible-but-dimmed instead of opacity-0 at rest; (3) ring-2 focus rings on
+// resource buttons and Review & Commit migrate to outline-based vocabulary for
+// forced-colors survival; (4) toolbar hover-reveal adds a 75ms delay (keyboard
+// focus bypasses) to filter fast cursor sweeps across many rows.
+describe("WorktreeCard row affordances polish (issue #8099)", () => {
+  it("toolbar reveal uses focus-visible (not focus-within) so mousedown does not flash", () => {
+    expect(toolbarSource).toContain("group-has-[:focus-visible]/card:opacity-100");
+    expect(toolbarSource).not.toContain("group-focus-within/card:opacity-100");
+  });
+
+  it("toolbar hover reveal is delayed 75ms but keyboard focus bypasses the delay", () => {
+    expect(toolbarSource).toContain("group-hover/card:delay-[75ms]");
+    expect(toolbarSource).toContain("group-has-[:focus-visible]/card:delay-0");
+    expect(toolbarSource).toContain("group-has-[[data-state=open]]/card:delay-0");
+  });
+
+  it("terminal sub-row drag handle stays visible-but-dimmed (no opacity-0 at rest)", () => {
+    expect(terminalSectionSource).toContain("text-text-primary/25");
+    expect(terminalSectionSource).toContain("group-hover/termrow:text-text-primary/40");
+    expect(terminalSectionSource).not.toMatch(/data-drag-handle[\s\S]{0,400}opacity-0/);
+  });
+
+  it("resource action buttons use outline (not ring-2) for forced-colors survival", () => {
+    expect(detailsSource).not.toMatch(/focus-visible:ring-2\s+focus-visible:ring-daintree-accent/);
+    expect(detailsSource).not.toMatch(
+      /focus-visible:outline-hidden\s+focus-visible:ring-2\s+focus-visible:ring-daintree-accent/
+    );
+  });
+
+  it("Review & Commit button uses inset outline (-2px offset) for its flush rounded-r edge", () => {
+    expect(detailsSource).toContain("focus-visible:outline-offset-[-2px]");
+  });
+
+  it("environment popover trigger uses outline (not ring-1) for forced-colors survival", () => {
+    expect(envPopoverSource).not.toMatch(
+      /focus-visible:ring-1\s+focus-visible:ring-daintree-accent/
+    );
+    expect(envPopoverSource).toContain("focus-visible:outline-2");
   });
 });
