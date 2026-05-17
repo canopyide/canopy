@@ -336,6 +336,11 @@ describe("NotificationCenterToolbarButton — DND state surface", () => {
         configurable: true,
         writable: true,
       });
+      Object.defineProperty(document, "visibilityState", {
+        value: "visible",
+        configurable: true,
+        writable: true,
+      });
     });
 
     function fireVisibilityChange(state: DocumentVisibilityState) {

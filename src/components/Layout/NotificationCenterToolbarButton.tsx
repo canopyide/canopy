@@ -178,13 +178,21 @@ export function NotificationCenterToolbarButton({
   useEffect(() => {
     const prev = prevDndActiveRef.current;
     prevDndActiveRef.current = isDndActive;
+    if (!notificationsEnabled) {
+      // Bell is hidden; clear any prior announcement so it doesn't surface as
+      // stale text the next time notifications are re-enabled.
+      setDndAnnouncement("");
+      return;
+    }
     if (prev === isDndActive) return;
     if (isDndActive) {
-      setDndAnnouncement(isScheduledMuted ? "Quiet hours active" : "Notifications paused");
+      // Mirror the aria-label priority: isSessionMuted wins when both sources
+      // overlap, so the live region and the button label agree on the reason.
+      setDndAnnouncement(isSessionMuted ? "Notifications paused" : "Quiet hours active");
     } else {
       setDndAnnouncement("Notifications resumed");
     }
-  }, [isDndActive, isScheduledMuted]);
+  }, [isDndActive, isSessionMuted, notificationsEnabled]);
 
   if (!notificationsEnabled) return null;
 
