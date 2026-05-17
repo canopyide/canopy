@@ -81,6 +81,9 @@ type PluginManifestShape = {
     panels?: unknown[];
     toolbarButtons?: unknown[];
     menuItems?: unknown[];
+    views?: unknown[];
+    mcpServers?: unknown[];
+    forgeProviders?: unknown[];
   };
 };
 
