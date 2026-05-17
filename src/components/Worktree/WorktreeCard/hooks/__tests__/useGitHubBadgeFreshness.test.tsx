@@ -7,6 +7,7 @@ import { useGitHubBadgeFreshness } from "../useGitHubBadgeFreshness";
 import * as cache from "@/lib/githubResourceCache";
 import type { GitHubResourceCacheEntry } from "@/lib/githubResourceCache";
 import { useGitHubRateLimitStore } from "@/store/githubRateLimitStore";
+import { usePRCircuitBreakerStore } from "@/store/prCircuitBreakerStore";
 
 function makeCacheEntry(timestamp: number): GitHubResourceCacheEntry {
   return { items: [], endCursor: null, hasNextPage: false, timestamp };
@@ -31,6 +32,7 @@ describe("useGitHubBadgeFreshness", () => {
   beforeEach(() => {
     cache._resetForTests();
     useGitHubRateLimitStore.setState({ blocked: false, kind: null, resetAt: null });
+    usePRCircuitBreakerStore.setState({ tripped: false });
     mockTick = 1;
     vi.useFakeTimers();
     vi.setSystemTime(FIXED_NOW);
@@ -39,6 +41,7 @@ describe("useGitHubBadgeFreshness", () => {
   afterEach(() => {
     cache._resetForTests();
     useGitHubRateLimitStore.setState({ blocked: false, kind: null, resetAt: null });
+    usePRCircuitBreakerStore.setState({ tripped: false });
     vi.useRealTimers();
   });
 
@@ -161,6 +164,44 @@ describe("useGitHubBadgeFreshness", () => {
 
     act(() => {
       useGitHubRateLimitStore.setState({ blocked: false, kind: null, resetAt: null });
+    });
+    rerender();
+    expect(result.current.freshnessLevel).toBe("fresh");
+  });
+
+  it("treats PR badges as aging while the circuit breaker is tripped, even with fresh data", () => {
+    const time = Date.now();
+    cache.setCache(PR_KEY, makeCacheEntry(time));
+    usePRCircuitBreakerStore.setState({ tripped: true });
+
+    const { result } = renderHook(() => useGitHubBadgeFreshness("pr", time));
+    expect(result.current.freshnessLevel).toBe("aging");
+  });
+
+  it("does not downgrade issue badges when the PR circuit breaker is tripped", () => {
+    const time = Date.now();
+    usePRCircuitBreakerStore.setState({ tripped: true });
+
+    const { result } = renderHook(() => useGitHubBadgeFreshness("issue", time));
+    expect(result.current.freshnessLevel).toBe("fresh");
+  });
+
+  it("transitions PR freshness as the circuit-breaker store flips", async () => {
+    const { act } = await import("@testing-library/react");
+    const time = Date.now();
+    cache.setCache(PR_KEY, makeCacheEntry(time));
+
+    const { result, rerender } = renderHook(() => useGitHubBadgeFreshness("pr", time));
+    expect(result.current.freshnessLevel).toBe("fresh");
+
+    act(() => {
+      usePRCircuitBreakerStore.setState({ tripped: true });
+    });
+    rerender();
+    expect(result.current.freshnessLevel).toBe("aging");
+
+    act(() => {
+      usePRCircuitBreakerStore.setState({ tripped: false });
     });
     rerender();
     expect(result.current.freshnessLevel).toBe("fresh");

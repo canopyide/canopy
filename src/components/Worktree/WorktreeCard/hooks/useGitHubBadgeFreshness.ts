@@ -4,6 +4,7 @@ import { getCache, buildCacheKey } from "@/lib/githubResourceCache";
 import { useGlobalMinuteTicker } from "@/hooks/useGlobalMinuteTicker";
 import { useProjectStore } from "@/store/projectStore";
 import { useGitHubRateLimitStore } from "@/store/githubRateLimitStore";
+import { usePRCircuitBreakerStore } from "@/store/prCircuitBreakerStore";
 
 const DEFAULT_FILTER_STATE = "open";
 const DEFAULT_SORT_ORDER = "created";
@@ -25,6 +26,7 @@ export function useGitHubBadgeFreshness(
   const projectPath = useProjectStore((s) => s.currentProject?.path);
   const tick = useGlobalMinuteTicker();
   const rateLimitBlocked = useGitHubRateLimitStore((s) => s.blocked);
+  const prCircuitBreakerTripped = usePRCircuitBreakerStore((s) => s.tripped);
 
   const cacheKey = projectPath
     ? buildCacheKey(projectPath, type, DEFAULT_FILTER_STATE, DEFAULT_SORT_ORDER)
@@ -37,14 +39,18 @@ export function useGitHubBadgeFreshness(
   const cacheLastUpdatedAt = cacheEntry?.timestamp ?? null;
   const now = tick > 0 ? Date.now() : Date.now();
 
-  // While GitHub-wide rate-limit pause is active, badge data may be older
-  // than its timestamp suggests — polling is suspended, so a `fresh` badge
-  // would be misleading. Treat as `aging` until the block clears.
-  const freshnessLevel: FreshnessLevel = rateLimitBlocked
-    ? "aging"
-    : rowLastUpdatedAt != null && now - rowLastUpdatedAt > STALE_THRESHOLD_MS
+  // While GitHub-wide rate-limit pause OR the PR detection circuit breaker is
+  // active, badge data may be older than its timestamp suggests — polling is
+  // suspended, so a `fresh` badge would be misleading. Treat as `aging` until
+  // the block clears. (The circuit-breaker downgrade only meaningfully affects
+  // PR badges; issue badges aren't gated by `PullRequestService`, but the
+  // store is `false` whenever PR detection is healthy so this is a no-op there.)
+  const freshnessLevel: FreshnessLevel =
+    rateLimitBlocked || (type === "pr" && prCircuitBreakerTripped)
       ? "aging"
-      : "fresh";
+      : rowLastUpdatedAt != null && now - rowLastUpdatedAt > STALE_THRESHOLD_MS
+        ? "aging"
+        : "fresh";
 
   return { freshnessLevel, cacheLastUpdatedAt, now };
 }

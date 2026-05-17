@@ -146,6 +146,34 @@ describe("PRIntegrationService", () => {
     });
   });
 
+  describe("onDetectionStateChanged", () => {
+    it("invokes the callback with the tripped flag from sys:pr:detection-state", async () => {
+      const onDetectionStateChanged = vi.fn();
+      const service = new PRIntegrationService(prServiceMock, eventBus, {
+        ...callbacks,
+        onDetectionStateChanged,
+      });
+
+      await service.initialize("/repo", () => []);
+
+      eventBus.emit("sys:pr:detection-state", { tripped: true, timestamp: Date.now() });
+      expect(onDetectionStateChanged).toHaveBeenCalledWith(true);
+
+      eventBus.emit("sys:pr:detection-state", { tripped: false, timestamp: Date.now() });
+      expect(onDetectionStateChanged).toHaveBeenCalledWith(false);
+      expect(onDetectionStateChanged).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not throw when the optional callback is omitted", async () => {
+      const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
+      await service.initialize("/repo", () => []);
+
+      expect(() =>
+        eventBus.emit("sys:pr:detection-state", { tripped: true, timestamp: Date.now() })
+      ).not.toThrow();
+    });
+  });
+
   describe("resetPRState", () => {
     it("calls reset, then initialize, then start when projectRootPath is provided", () => {
       const callOrder: string[] = [];

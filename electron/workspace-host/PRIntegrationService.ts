@@ -46,6 +46,8 @@ export interface PRIntegrationCallbacks {
     }
   ): void;
   onIssueNotFound(worktreeId: string, issueNumber: number): void;
+  /** Circuit breaker tripped (detection paused) or recovered. Service-wide, not per-worktree. */
+  onDetectionStateChanged?(tripped: boolean): void;
 }
 
 export class PRIntegrationService {
@@ -117,6 +119,12 @@ export class PRIntegrationService {
     this.prEventUnsubscribers.push(
       this.eventBus.on("sys:pr:cleared", (data) => {
         this.callbacks.onPRCleared(data.worktreeId, { branchName: data.branchName });
+      })
+    );
+
+    this.prEventUnsubscribers.push(
+      this.eventBus.on("sys:pr:detection-state", (data) => {
+        this.callbacks.onDetectionStateChanged?.(data.tripped);
       })
     );
 
