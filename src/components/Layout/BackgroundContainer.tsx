@@ -286,16 +286,16 @@ export function BackgroundContainer({ compact = false }: BackgroundContainerProp
         onOpenAutoFocus={(e) => e.preventDefault()}
         onCloseAutoFocus={(e) => e.preventDefault()}
         onPointerDownOutside={(e) => {
-          const target = e.target as Element | null;
-          if (target?.closest("[data-radix-portal]")) {
-            e.preventDefault();
-          }
+          // Keep the popover anchored while the kill confirm dialog is open;
+          // AppDialog is a react-dom portal with no Radix marker on its root,
+          // so we gate on local state rather than a DOM selector.
+          if (killConfirmId !== null) e.preventDefault();
         }}
         onInteractOutside={(e) => {
-          const target = e.target as Element | null;
-          if (target?.closest("[data-radix-portal]")) {
-            e.preventDefault();
-          }
+          if (killConfirmId !== null) e.preventDefault();
+        }}
+        onEscapeKeyDown={(e) => {
+          if (killConfirmId !== null) e.preventDefault();
         }}
       >
         <div className="flex flex-col">
@@ -454,7 +454,7 @@ function BackgroundSingleItem({
                 e.stopPropagation();
                 onWatchToggle(terminal);
               }}
-              aria-label="Watch for completion"
+              aria-label={isWatched ? "Stop watching" : "Watch for completion"}
               aria-pressed={isWatched}
               data-testid="bg-watch-button"
               className={cn(isWatched && "text-status-info")}
@@ -467,23 +467,25 @@ function BackgroundSingleItem({
           </TooltipContent>
         </Tooltip>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost-success"
-              size="icon-sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRestore(terminal);
-              }}
-              aria-label={`Restore ${title}`}
-              data-testid="bg-restore-button"
-            >
-              <RotateCcw aria-hidden="true" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{`Restore ${title}`}</TooltipContent>
-        </Tooltip>
+        {!compact && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost-success"
+                size="icon-sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRestore(terminal);
+                }}
+                aria-label={`Restore ${title}`}
+                data-testid="bg-restore-button"
+              >
+                <RotateCcw aria-hidden="true" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{`Restore ${title}`}</TooltipContent>
+          </Tooltip>
+        )}
 
         <Tooltip>
           <TooltipTrigger asChild>

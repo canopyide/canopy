@@ -11,6 +11,8 @@ const restoreBackgroundTerminalMock = vi.fn();
 const activateTerminalMock = vi.fn();
 const pingTerminalMock = vi.fn();
 const fireWatchNotificationMock = vi.fn();
+const selectWorktreeMock = vi.fn();
+const trackTerminalFocusMock = vi.fn();
 
 let mockTerminals: TerminalInstance[] = [];
 let mockBackgroundedTerminals = new Map<string, { groupRestoreId?: string }>();
@@ -50,8 +52,8 @@ vi.mock("@/store/worktreeStore", () => ({
   useWorktreeSelectionStore: (selector: (s: unknown) => unknown) =>
     selector({
       activeWorktreeId: "wt-1",
-      selectWorktree: vi.fn(),
-      trackTerminalFocus: vi.fn(),
+      selectWorktree: selectWorktreeMock,
+      trackTerminalFocus: trackTerminalFocusMock,
     }),
 }));
 
@@ -99,6 +101,18 @@ vi.mock("@/components/ui/tooltip", () => {
   };
 });
 
+type DismissHandler = (e: { preventDefault: () => void; target?: Element | null }) => void;
+
+const popoverHandlers: {
+  onPointerDownOutside: DismissHandler | undefined;
+  onInteractOutside: DismissHandler | undefined;
+  onEscapeKeyDown: DismissHandler | undefined;
+} = {
+  onPointerDownOutside: undefined,
+  onInteractOutside: undefined,
+  onEscapeKeyDown: undefined,
+};
+
 vi.mock("@/components/ui/popover", () => ({
   Popover: ({ children, open }: { children: React.ReactNode; open?: boolean }) => (
     <div data-testid="popover" data-open={open ? "true" : "false"}>
@@ -108,9 +122,22 @@ vi.mock("@/components/ui/popover", () => ({
   PopoverTrigger: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="popover-trigger">{children}</div>
   ),
-  PopoverContent: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="popover-content">{children}</div>
-  ),
+  PopoverContent: ({
+    children,
+    onPointerDownOutside,
+    onInteractOutside,
+    onEscapeKeyDown,
+  }: {
+    children: React.ReactNode;
+    onPointerDownOutside?: DismissHandler;
+    onInteractOutside?: DismissHandler;
+    onEscapeKeyDown?: DismissHandler;
+  }) => {
+    popoverHandlers.onPointerDownOutside = onPointerDownOutside;
+    popoverHandlers.onInteractOutside = onInteractOutside;
+    popoverHandlers.onEscapeKeyDown = onEscapeKeyDown;
+    return <div data-testid="popover-content">{children}</div>;
+  },
 }));
 
 vi.mock("@/components/ui/ConfirmDialog", () => ({
@@ -165,6 +192,11 @@ beforeEach(() => {
   activateTerminalMock.mockReset();
   pingTerminalMock.mockReset();
   fireWatchNotificationMock.mockReset();
+  selectWorktreeMock.mockReset();
+  trackTerminalFocusMock.mockReset();
+  popoverHandlers.onPointerDownOutside = undefined;
+  popoverHandlers.onInteractOutside = undefined;
+  popoverHandlers.onEscapeKeyDown = undefined;
   mockTerminals = [];
   mockBackgroundedTerminals = new Map();
   mockWatchedPanels = new Set();
@@ -290,6 +322,30 @@ describe("BackgroundContainer", () => {
       expect(unwatchPanelMock).toHaveBeenCalledWith("t1");
       expect(watchPanelMock).not.toHaveBeenCalled();
     });
+
+    it("fires immediate notification for exited terminals instead of subscribing", () => {
+      mockTerminals = [makeTerminal({ id: "t1", agentState: "exited", title: "claude task" })];
+      mockWatchedPanels = new Set();
+      render(<BackgroundContainer />);
+      fireEvent.click(screen.getByTestId("bg-watch-button"));
+      expect(fireWatchNotificationMock).toHaveBeenCalledWith("t1", "claude task", "exited");
+      expect(watchPanelMock).not.toHaveBeenCalled();
+    });
+
+    it("uses a state-matched aria-label so screen readers announce the toggle target", () => {
+      mockTerminals = [makeTerminal({ id: "t1", agentState: "working" })];
+      mockWatchedPanels = new Set();
+      const { unmount } = render(<BackgroundContainer />);
+      expect(screen.getByTestId("bg-watch-button").getAttribute("aria-label")).toBe(
+        "Watch for completion"
+      );
+      unmount();
+      mockWatchedPanels = new Set(["t1"]);
+      render(<BackgroundContainer />);
+      expect(screen.getByTestId("bg-watch-button").getAttribute("aria-label")).toBe(
+        "Stop watching"
+      );
+    });
   });
 
   describe("kill confirm flow", () => {
@@ -329,6 +385,52 @@ describe("BackgroundContainer", () => {
       expect(restoreBackgroundTerminalMock).toHaveBeenCalledWith("t1");
       expect(activateTerminalMock).toHaveBeenCalledWith("t1");
       expect(pingTerminalMock).toHaveBeenCalledWith("t1");
+    });
+
+    it("switches worktrees when restoring a terminal from a different worktree", () => {
+      mockTerminals = [makeTerminal({ id: "t1", worktreeId: "wt-2" })];
+      render(<BackgroundContainer />);
+      fireEvent.click(screen.getByTestId("bg-restore-button"));
+      expect(trackTerminalFocusMock).toHaveBeenCalledWith("wt-2", "t1");
+      expect(selectWorktreeMock).toHaveBeenCalledWith("wt-2");
+    });
+
+    it("does not switch worktrees when the terminal already belongs to the active worktree", () => {
+      mockTerminals = [makeTerminal({ id: "t1", worktreeId: "wt-1" })];
+      render(<BackgroundContainer />);
+      fireEvent.click(screen.getByTestId("bg-restore-button"));
+      expect(selectWorktreeMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("popover dismiss guard during kill confirm", () => {
+    it("does not prevent dismiss when no kill confirm is open", () => {
+      mockTerminals = [makeTerminal({ id: "t1" })];
+      render(<BackgroundContainer />);
+      const preventDefault = vi.fn();
+      popoverHandlers.onPointerDownOutside?.({ preventDefault });
+      popoverHandlers.onInteractOutside?.({ preventDefault });
+      popoverHandlers.onEscapeKeyDown?.({ preventDefault });
+      expect(preventDefault).not.toHaveBeenCalled();
+    });
+
+    it("prevents dismiss when the kill confirm dialog is open", () => {
+      mockTerminals = [makeTerminal({ id: "t1" })];
+      render(<BackgroundContainer />);
+      // Open kill confirm to enter the guarded state.
+      fireEvent.click(screen.getByTestId("bg-kill-button"));
+      expect(screen.getByTestId("kill-confirm-dialog")).toBeTruthy();
+
+      const pointer = { preventDefault: vi.fn() };
+      const interact = { preventDefault: vi.fn() };
+      const escape = { preventDefault: vi.fn() };
+      popoverHandlers.onPointerDownOutside?.(pointer);
+      popoverHandlers.onInteractOutside?.(interact);
+      popoverHandlers.onEscapeKeyDown?.(escape);
+
+      expect(pointer.preventDefault).toHaveBeenCalledTimes(1);
+      expect(interact.preventDefault).toHaveBeenCalledTimes(1);
+      expect(escape.preventDefault).toHaveBeenCalledTimes(1);
     });
   });
 });
