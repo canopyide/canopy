@@ -309,7 +309,7 @@ export function Toolbar({
   );
 
   const handleCopyProjectPath = useCallback((path: string) => {
-    void navigator.clipboard.writeText(path).catch(console.error);
+    void navigator.clipboard.writeText(path).catch(console.warn);
   }, []);
 
   useEffect(() => {
