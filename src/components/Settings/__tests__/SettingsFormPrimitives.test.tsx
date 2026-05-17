@@ -8,6 +8,7 @@ import { SettingsTextarea } from "../SettingsTextarea";
 import { SettingsChoicebox, type ChoiceboxOption } from "../SettingsChoicebox";
 import { SettingsCheckbox } from "../SettingsCheckbox";
 import { SettingsSwitch } from "../SettingsSwitch";
+import { PresetColorPicker } from "../PresetColorPicker";
 
 describe("SettingsInput", () => {
   it("renders label associated to input", () => {
@@ -1032,5 +1033,233 @@ describe("layout contract — subgrid participation", () => {
       <SettingsCheckbox label="Test" description="desc" checked={false} onChange={vi.fn()} />
     );
     expect(getRoot(container).classList.contains("grid-cols-subgrid")).toBe(true);
+  });
+});
+
+describe("touched prop — error gating", () => {
+  const ERR = "This field is required";
+
+  const hasInvalid = (container: HTMLElement) =>
+    container.querySelector('[aria-invalid="true"]') !== null;
+
+  const hasErrorBorder = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll("*")).some((el) =>
+      el.className.toString().includes("border-status-error")
+    );
+
+  it("SettingsInput hides error styling when touched={false}", () => {
+    const { container } = render(<SettingsInput label="Name" error={ERR} touched={false} />);
+    expect(hasInvalid(container)).toBe(false);
+    expect(hasErrorBorder(container)).toBe(false);
+    expect(screen.queryByText(ERR)).toBeNull();
+  });
+
+  it("SettingsInput shows error styling when touched omitted (backward compat)", () => {
+    const { container } = render(<SettingsInput label="Name" error={ERR} />);
+    expect(hasInvalid(container)).toBe(true);
+    expect(hasErrorBorder(container)).toBe(true);
+    expect(screen.getByText(ERR)).toBeTruthy();
+  });
+
+  it("SettingsInput shows error styling when touched={true}", () => {
+    const { container } = render(<SettingsInput label="Name" error={ERR} touched={true} />);
+    expect(hasInvalid(container)).toBe(true);
+    expect(screen.getByText(ERR)).toBeTruthy();
+  });
+
+  it("SettingsNumberInput hides error styling when touched={false}", () => {
+    const { container } = render(<SettingsNumberInput label="Count" error={ERR} touched={false} />);
+    expect(hasInvalid(container)).toBe(false);
+    expect(hasErrorBorder(container)).toBe(false);
+    expect(screen.queryByText(ERR)).toBeNull();
+  });
+
+  it("SettingsNumberInput shows error styling when touched omitted (backward compat)", () => {
+    const { container } = render(<SettingsNumberInput label="Count" error={ERR} />);
+    expect(hasInvalid(container)).toBe(true);
+    expect(screen.getByText(ERR)).toBeTruthy();
+  });
+
+  it("SettingsTextarea hides error styling when touched={false}", () => {
+    const { container } = render(<SettingsTextarea label="Bio" error={ERR} touched={false} />);
+    expect(hasInvalid(container)).toBe(false);
+    expect(hasErrorBorder(container)).toBe(false);
+    expect(screen.queryByText(ERR)).toBeNull();
+  });
+
+  it("SettingsTextarea shows error styling when touched omitted (backward compat)", () => {
+    const { container } = render(<SettingsTextarea label="Bio" error={ERR} />);
+    expect(hasInvalid(container)).toBe(true);
+    expect(hasErrorBorder(container)).toBe(true);
+    expect(screen.getByText(ERR)).toBeTruthy();
+  });
+
+  it("SettingsSelect hides error styling when touched={false}", () => {
+    const { container } = render(
+      <SettingsSelect
+        label="Lang"
+        value="en"
+        onValueChange={vi.fn()}
+        options={[{ value: "en", label: "English" }]}
+        error={ERR}
+        touched={false}
+      />
+    );
+    expect(hasInvalid(container)).toBe(false);
+    expect(hasErrorBorder(container)).toBe(false);
+    expect(screen.queryByText(ERR)).toBeNull();
+  });
+
+  it("SettingsSelect shows error styling when touched omitted (backward compat)", () => {
+    const { container } = render(
+      <SettingsSelect
+        label="Lang"
+        value="en"
+        onValueChange={vi.fn()}
+        options={[{ value: "en", label: "English" }]}
+        error={ERR}
+      />
+    );
+    expect(hasInvalid(container)).toBe(true);
+    expect(hasErrorBorder(container)).toBe(true);
+    expect(screen.getByText(ERR)).toBeTruthy();
+  });
+
+  it("SettingsChoicebox hides error styling when touched={false}", () => {
+    const { container } = render(
+      <SettingsChoicebox
+        label="Density"
+        value="normal"
+        onChange={vi.fn()}
+        options={MOCK_OPTIONS}
+        error={ERR}
+        touched={false}
+      />
+    );
+    expect(hasInvalid(container)).toBe(false);
+    expect(screen.queryByText(ERR)).toBeNull();
+  });
+
+  it("SettingsChoicebox shows error styling when touched omitted (backward compat)", () => {
+    const { container } = render(
+      <SettingsChoicebox
+        label="Density"
+        value="normal"
+        onChange={vi.fn()}
+        options={MOCK_OPTIONS}
+        error={ERR}
+      />
+    );
+    expect(hasInvalid(container)).toBe(true);
+    expect(screen.getByText(ERR)).toBeTruthy();
+  });
+
+  it("SettingsCheckbox hides error styling when touched={false}", () => {
+    const { container } = render(
+      <SettingsCheckbox
+        label="Agree"
+        description="desc"
+        checked={false}
+        onChange={vi.fn()}
+        error={ERR}
+        touched={false}
+      />
+    );
+    expect(hasInvalid(container)).toBe(false);
+    expect(hasErrorBorder(container)).toBe(false);
+    expect(screen.queryByText(ERR)).toBeNull();
+  });
+
+  it("SettingsCheckbox shows error styling when touched omitted (backward compat)", () => {
+    const { container } = render(
+      <SettingsCheckbox
+        label="Agree"
+        description="desc"
+        checked={false}
+        onChange={vi.fn()}
+        error={ERR}
+      />
+    );
+    expect(hasInvalid(container)).toBe(true);
+    expect(hasErrorBorder(container)).toBe(true);
+    expect(screen.getByText(ERR)).toBeTruthy();
+  });
+
+  it("SettingsInput drops dangling aria-describedby errorId when touched={false}", () => {
+    const { container } = render(<SettingsInput label="Name" error={ERR} touched={false} />);
+    const input = container.querySelector("input");
+    expect(input?.getAttribute("aria-describedby")).toBeNull();
+  });
+});
+
+describe("transition-all regression — field primitives", () => {
+  const expectNoTransitionAll = (container: HTMLElement) => {
+    container.querySelectorAll("*").forEach((el) => {
+      expect(el.className.toString()).not.toContain("transition-all");
+    });
+  };
+
+  it("SettingsInput uses no transition-all", () => {
+    const { container } = render(<SettingsInput label="Test" error="err" />);
+    expectNoTransitionAll(container);
+  });
+
+  it("SettingsNumberInput uses no transition-all", () => {
+    const { container } = render(<SettingsNumberInput label="Test" error="err" />);
+    expectNoTransitionAll(container);
+  });
+
+  it("SettingsTextarea uses no transition-all", () => {
+    const { container } = render(<SettingsTextarea label="Test" error="err" />);
+    expectNoTransitionAll(container);
+  });
+
+  it("SettingsSelect uses no transition-all", () => {
+    const { container } = render(
+      <SettingsSelect
+        label="Test"
+        value="en"
+        onValueChange={vi.fn()}
+        options={[{ value: "en", label: "English" }]}
+        error="err"
+      />
+    );
+    expectNoTransitionAll(container);
+  });
+
+  it("SettingsChoicebox uses no transition-all", () => {
+    const { container } = render(
+      <SettingsChoicebox
+        label="Test"
+        value="normal"
+        onChange={vi.fn()}
+        options={MOCK_OPTIONS}
+        error="err"
+      />
+    );
+    expectNoTransitionAll(container);
+  });
+
+  it("SettingsCheckbox uses no transition-all", () => {
+    const { container } = render(
+      <SettingsCheckbox
+        label="Test"
+        description="desc"
+        checked={false}
+        onChange={vi.fn()}
+        error="err"
+      />
+    );
+    expectNoTransitionAll(container);
+  });
+
+  it("PresetColorPicker trigger uses transition-shadow, not transition-all", () => {
+    const { container } = render(
+      <PresetColorPicker color="#e06c75" onChange={vi.fn()} agentColor="#e06c75" />
+    );
+    const trigger = container.querySelector('[data-testid="preset-color-picker-trigger"]');
+    expect(trigger?.className).toContain("transition-shadow");
+    expect(trigger?.className).not.toContain("transition-all");
+    expectNoTransitionAll(container);
   });
 });
