@@ -177,6 +177,7 @@ export const theme: BuiltInThemeSource = {
     "worktree-section-hover-bg": "rgba(82,82,118,0.03)",
     "dock-bg": "#E4E8F2",
     "dock-border": "rgba(82,82,118,0.12)",
-    "dock-shadow": "inset 0 1px 0 rgba(255,255,255,0.50), 0 -2px 8px rgba(82,82,118,0.10)",
+    "dock-shadow":
+      "inset 0 1px 0 rgba(255,255,255,0.50), 0 -2px 8px rgb(from var(--theme-shadow-color) r g b / 0.35)",
   },
 };

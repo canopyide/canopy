@@ -93,7 +93,6 @@ export const theme: BuiltInThemeSource = {
     "pulse-ring-offset": "#1d1d1e",
     "pulse-skeleton-gradient": "linear-gradient(90deg, #2b2b2c 25%, #333335 50%, #2b2b2c 75%)",
     "dock-bg": "#131312",
-    "dock-shadow": "0 -1px 4px rgba(0,0,0,0.30)",
     "settings-dialog-bg": "#1d1d1e",
     "settings-card-bg": "#232324",
     "settings-list-item-bg": "#232324",
