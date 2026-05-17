@@ -41,6 +41,7 @@ export interface WorktreeDetailsSectionProps {
   effectiveSummary?: string | null;
   worktreeErrors: ErrorRecord[];
   isFocused: boolean;
+  isStale?: boolean;
   onToggleExpand: (e: React.MouseEvent) => void;
   onPathClick: () => void;
   onDismissError: (id: string) => void;
@@ -70,6 +71,7 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
     effectiveSummary,
     worktreeErrors,
     isFocused,
+    isStale,
     onToggleExpand,
     onPathClick,
     onDismissError,
@@ -168,6 +170,7 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
               worktreeErrors={worktreeErrors}
               hasChanges={hasChanges}
               isFocused={isFocused}
+              isStale={isStale}
               onPathClick={onPathClick}
               onDismissError={onDismissError}
               onRetryError={onRetryError}

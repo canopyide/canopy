@@ -20,6 +20,7 @@ export interface WorktreeDetailsProps {
   worktreeErrors: ErrorRecord[];
   hasChanges: boolean;
   isFocused: boolean;
+  isStale?: boolean;
   showLastCommit?: boolean;
   lastActivityTimestamp?: number | null;
   showTime?: boolean;
@@ -38,6 +39,7 @@ export function WorktreeDetails({
   worktreeErrors,
   hasChanges,
   isFocused,
+  isStale = false,
   onPathClick,
   onDismissError,
   onRetryError,
@@ -160,6 +162,7 @@ export function WorktreeDetails({
                 rootPath={worktree.worktreeChanges.rootPath}
                 maxVisible={worktree.worktreeChanges.changes.length}
                 groupByFolder={worktree.worktreeChanges.changedFileCount > 5}
+                isStale={isStale}
               />
             </div>
           )}
