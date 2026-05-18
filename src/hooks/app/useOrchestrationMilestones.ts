@@ -136,7 +136,6 @@ export function useOrchestrationMilestones(isStateLoaded: boolean): void {
           title: milestone.title,
           message: milestone.message,
           duration: TOAST_DURATION,
-          transient: true,
         });
       }
 
