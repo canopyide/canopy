@@ -1,5 +1,6 @@
 import {
   Suspense,
+  lazy,
   useCallback,
   useEffect,
   useMemo,
@@ -12,7 +13,11 @@ import { cn } from "@/lib/utils";
 import { DaintreeIcon } from "@/components/icons/DaintreeIcon";
 import { XtermAdapter } from "@/components/Terminal/XtermAdapter";
 import { MissingCliGate } from "@/components/Terminal/MissingCliGate";
+import { shouldShowHybridInputBar } from "@/components/Terminal/terminalFocus";
+import type { HybridInputBarHandle } from "@/components/Terminal/HybridInputBar";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { terminalClient } from "@/clients";
+import { isBuiltInAgentId } from "@shared/config/agentIds";
 import { HelpIntroBanner } from "./HelpIntroBanner";
 import { HelpPanelHeader } from "./HelpPanelHeader";
 import { HelpPanelBanners } from "./HelpPanelBanners";
@@ -28,6 +33,7 @@ import {
   useCliAvailabilityStore,
   useProjectStore,
   useWorktreeSelectionStore,
+  useTerminalInputStore,
 } from "@/store";
 import { useMacroFocusStore } from "@/store/macroFocusStore";
 import { getAgentConfig, getAssistantSupportedAgentIds } from "@/config/agents";
@@ -40,6 +46,10 @@ import { CLOSE_CONFIRM_AGENT_STATES } from "@shared/types/agent";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { TABBABLE_SELECTOR } from "@/lib/accessibility";
 import { HelpSessionController } from "@/controllers/HelpSessionController";
+
+const LazyHybridInputBar = lazy(() =>
+  import("@/components/Terminal/HybridInputBar").then((m) => ({ default: m.HybridInputBar }))
+);
 
 const RESIZE_STEP = 10;
 const RESIZE_PAGE_STEP = 50;
@@ -88,6 +98,7 @@ export function HelpPanel({
 }: HelpPanelProps) {
   const panelRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const inputBarRef = useRef<HybridInputBarHandle>(null);
   // Element that owned focus when the panel last opened. We restore focus to
   // it on close so keyboard users return to where they were rather than
   // body. Mirrors the pattern in AppDialog/AppPaletteDialog.
@@ -139,8 +150,16 @@ export function HelpPanel({
   const cliAvailability = useCliAvailabilityStore((s) => s.availability);
   const cliHasRealData = useCliAvailabilityStore((s) => s.hasRealData);
   const currentProject = useProjectStore((s) => s.currentProject);
+  const hybridInputEnabled = useTerminalInputStore((s) => s.hybridInputEnabled);
 
   const agentConfig = agentId ? getAgentConfig(agentId) : undefined;
+  const effectiveAgentId = isBuiltInAgentId(agentId) ? agentId : undefined;
+  const showHybridInputBar = shouldShowHybridInputBar({
+    hasAgentIdentity: effectiveAgentId !== undefined,
+    hybridInputEnabled,
+    isFleetArmed: false,
+    fleetSize: 0,
+  });
 
   // Intersection of "wired for the assistant overlay" and "CLI is installed".
   // Drives the single-supported-agent auto-skip in the controller.
@@ -262,13 +281,29 @@ export function HelpPanel({
         if (!state.isOpen) return;
 
         const current = document.activeElement;
-        if (current?.closest?.(".xterm-helper-textarea") && panelRef.current?.contains(current)) {
+        if (
+          (current?.closest?.(".xterm-helper-textarea") || current?.closest?.(".cm-editor")) &&
+          panelRef.current?.contains(current)
+        ) {
           return;
         }
 
-        // When an agent terminal is running, target its xterm input first.
-        // Falls back to the first-tabbable sweep for pre-launch / missing-CLI.
+        // When an agent terminal is running, target the HybridInputBar editor
+        // first (when available), then the xterm input as fallback. The bar
+        // ref is null during the lazy Suspense window — in that case fall back
+        // to xterm so cold-load opens still focus something.
+        //
+        // `focusWithCursorAtEnd()` schedules `view.focus()` inside its own
+        // requestAnimationFrame (HybridInputBar.tsx:538), so we cannot
+        // synchronously check `document.activeElement` after calling it. We
+        // trust the bar's internal rAF to take focus when its ref is present
+        // — no xterm fallback in that branch, otherwise CodeMirror would
+        // steal focus from xterm one frame later and produce a focus flicker.
         if (terminalId && terminal && terminal.spawnStatus !== "missing-cli") {
+          if (showHybridInputBar && inputBarRef.current) {
+            inputBarRef.current.focusWithCursorAtEnd();
+            return;
+          }
           terminalInstanceService.focus(terminalId);
           const after = document.activeElement;
           if (after?.closest?.(".xterm-helper-textarea") && panelRef.current?.contains(after)) {
@@ -297,7 +332,7 @@ export function HelpPanel({
       el.focus();
     }
     return undefined;
-  }, [isOpen, isVisible, focusRequest, terminalId, terminal]);
+  }, [isOpen, isVisible, focusRequest, terminalId, terminal, showHybridInputBar]);
 
   // Resize via mouse drag
   const handleResizeStart = useCallback(
@@ -409,10 +444,16 @@ export function HelpPanel({
   const alwaysAllowTier = useCallback(() => controller.alwaysAllowTier(), [controller]);
 
   // Esc-to-close. The xterm-helper-textarea check lets Escape reach the
-  // running PTY when the assistant terminal has focus.
+  // running PTY when the assistant terminal has focus; the .cm-editor check
+  // lets the HybridInputBar dismiss its autocomplete / expanded modal first.
+  // Both guards are scoped to the panel so a focused CodeMirror or xterm in a
+  // different panel (e.g. FileViewer, a grid terminal) can't trap Escape here.
   const handleEscape = useCallback(() => {
     const active = document.activeElement as HTMLElement | null;
-    if (active?.closest(".xterm-helper-textarea")) return;
+    if (active && panelRef.current?.contains(active)) {
+      if (active.closest(".xterm-helper-textarea")) return;
+      if (active.closest(".cm-editor")) return;
+    }
     handleClose();
   }, [handleClose]);
   useEscapeStack(isOpen, handleEscape);
@@ -507,9 +548,33 @@ export function HelpPanel({
                     launchAgentId={agentId ?? undefined}
                     getRefreshTier={getRefreshTier}
                     cwd={terminal.cwd}
+                    hasBottomBar={showHybridInputBar}
                   />
                 </Suspense>
               </div>
+              {showHybridInputBar && (
+                <Suspense fallback={null}>
+                  <LazyHybridInputBar
+                    ref={inputBarRef}
+                    terminalId={terminalId}
+                    cwd={terminal?.cwd ?? ""}
+                    agentId={effectiveAgentId}
+                    agentHasLifecycleEvent={terminal?.stateChangeTrigger !== undefined}
+                    agentState={terminal?.agentState}
+                    disabled={terminal?.isInputLocked === true}
+                    onSend={({ text }) => {
+                      if (terminal?.isInputLocked === true) return;
+                      terminalInstanceService.notifyUserInput(terminalId);
+                      void terminalClient.submit(terminalId, text);
+                    }}
+                    onSendKey={(key) => {
+                      if (terminal?.isInputLocked === true) return;
+                      terminalInstanceService.notifyUserInput(terminalId);
+                      terminalClient.sendKey(terminalId, key);
+                    }}
+                  />
+                </Suspense>
+              )}
             </>
           )
         ) : session.assistantVersionTooOld ? (
