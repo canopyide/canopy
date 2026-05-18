@@ -137,6 +137,7 @@ The current GitHub action set is read-only (`openIssues`, `listPullRequests`, et
 | `recipe.editor.open` / `recipe.manager.open` | safe | n/a | reversible | UI | D0 | Leave | — |
 | `recipe.saveToRepo` (with `deleteOriginal: true`) | safe | yes (`RecipeManager.tsx` ConfirmDialog) | local-irreversible (original deleted) | one recipe | D1 | Leave — current pattern is correct | — |
 | `recipe.delete` | **confirm** (added #8247) | yes (`ConfirmDialog` in `RecipeManager.tsx` + `RecipesTab.tsx`; both dispatch through the action) | local-irreversible | one recipe | D1 | Done (#8247) | #8247 |
+| `useRecipeRunner.ts:386` `handleDelete` (RecipeRunner context menu) | (bypass) | none — calls store `deleteRecipe` directly, no `ConfirmDialog` | local-irreversible | one recipe | D1 | Route through `recipe.delete` and wire a `ConfirmDialog` at the RecipeRunner call site | TBD |
 | Plugin install / uninstall (future) | n/a — not yet wired | n/a | shared-state (filesystem + plugin host restart) | one plugin | D1 | When wired, `danger:"confirm"` + show plugin metadata before install/uninstall | open as needed |
 
 ### Portal / browser

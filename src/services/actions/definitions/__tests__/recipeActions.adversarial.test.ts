@@ -215,6 +215,26 @@ describe("recipeActions adversarial", () => {
     expect(saveToRepo).toHaveBeenCalledWith("r1", true);
   });
 
+  it("recipe.delete forwards the recipeId to the store exactly once", async () => {
+    const deleteRecipe = vi.fn().mockResolvedValue(undefined);
+    setRecipeState({ deleteRecipe });
+
+    const run = setupActions();
+    await run("recipe.delete", { recipeId: "r1" });
+
+    expect(deleteRecipe).toHaveBeenCalledTimes(1);
+    expect(deleteRecipe).toHaveBeenCalledWith("r1");
+  });
+
+  it("recipe.delete propagates store rejection to the caller", async () => {
+    const deleteRecipe = vi.fn().mockRejectedValue(new Error("delete failed"));
+    setRecipeState({ deleteRecipe });
+
+    const run = setupActions();
+
+    await expect(run("recipe.delete", { recipeId: "r1" })).rejects.toThrow("delete failed");
+  });
+
   it("recipe.editor.openFromLayout dispatches terminals from the live layout", async () => {
     const terminals = [{ title: "t1" }, { title: "t2" }];
     setRecipeState({
