@@ -55,6 +55,8 @@ export function ToolbarSettingsButton({
               }}
               onPointerLeave={settingsHover.onPointerLeave}
               onPointerDown={settingsHover.onPointerDown}
+              onFocus={settingsHover.onFocus}
+              onBlur={settingsHover.onBlur}
               className={toolbarIconButtonClass}
               aria-label="Open settings"
               aria-keyshortcuts={settingsAriaShortcut}
