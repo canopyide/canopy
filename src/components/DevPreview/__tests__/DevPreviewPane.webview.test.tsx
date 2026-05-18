@@ -647,6 +647,11 @@ describe("DevPreviewPane webview lifecycle regression", () => {
     });
 
     expect(getScrollPosition).toHaveBeenCalledWith(42);
+    // Capture must run exactly once — the setWebviewNode(null) ref-cleanup and
+    // the eviction useEffect are not allowed to both fire and race with each
+    // other (the slower call could clobber the faster with scrollY=0 if the
+    // page has already committed to about:blank).
+    expect(getScrollPosition).toHaveBeenCalledTimes(1);
     expect(terminalStoreState.setDevPreviewScrollPosition).toHaveBeenCalledWith(
       "dev-preview-panel-1",
       { url: "http://localhost:5173/", scrollY: 250 }
@@ -696,6 +701,40 @@ describe("DevPreviewPane webview lifecycle regression", () => {
     );
     // Frozen-page path must NOT be used for ref-cleanup capture.
     expect(webview.executeJavaScript).not.toHaveBeenCalledWith("window.scrollY");
+  });
+
+  it("does not persist scrollY=0 from CDP (avoids clobbering prior position)", async () => {
+    // Defense: handleGetScrollPosition returns 0 on CDP error. If we persisted
+    // {scrollY: 0}, an earlier captured position could be silently overwritten.
+    // The renderer guard `> 0` keeps the prior value intact.
+    const getScrollPosition = vi.fn().mockResolvedValue(0);
+    (window as unknown as { electron: Record<string, unknown> }).electron = {
+      system: { openExternal: vi.fn() },
+      window: { onDestroyHiddenWebviews: vi.fn(() => vi.fn()) },
+      webview: {
+        registerPanel: vi.fn(() => Promise.resolve()),
+        onDialogRequest: vi.fn(() => vi.fn()),
+        onFindShortcut: vi.fn(() => vi.fn()),
+        onNavigationBlocked: vi.fn(() => vi.fn()),
+        setLifecycleState: vi.fn().mockResolvedValue(undefined),
+        getScrollPosition,
+      },
+    };
+
+    const { unmount } = render(<DevPreviewPane {...baseProps} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      unmount();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getScrollPosition).toHaveBeenCalled();
+    expect(terminalStoreState.setDevPreviewScrollPosition).not.toHaveBeenCalled();
   });
 
   it("captures scroll position when status transitions from running", async () => {

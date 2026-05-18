@@ -327,7 +327,10 @@ export function DevPreviewPane({
               .getScrollPosition(wcId)
               .then((scrollY: number) => {
                 if (scrollCaptureGenerationRef.current !== captureGeneration) return;
-                if (typeof scrollY === "number" && Number.isFinite(scrollY)) {
+                // Guard `> 0`: a CDP error returns 0, and the user being at top
+                // of page has nothing worth restoring — both cases should leave
+                // any prior stored position untouched rather than clobber it.
+                if (typeof scrollY === "number" && Number.isFinite(scrollY) && scrollY > 0) {
                   setDevPreviewScrollPosition(id, { url: currentWebviewUrl, scrollY });
                 }
               })
@@ -600,7 +603,9 @@ export function DevPreviewPane({
             .getScrollPosition(wcId)
             .then((scrollY: number) => {
               if (scrollCaptureGenerationRef.current !== captureGeneration) return;
-              if (typeof scrollY === "number" && Number.isFinite(scrollY)) {
+              // See ref-cleanup path above: skip `0` so a CDP error can't
+              // clobber a previously captured position.
+              if (typeof scrollY === "number" && Number.isFinite(scrollY) && scrollY > 0) {
                 setDevPreviewScrollPosition(id, { url: currentWebviewUrl, scrollY });
               }
             })
