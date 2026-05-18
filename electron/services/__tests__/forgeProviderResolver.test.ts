@@ -1,0 +1,225 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import type {
+  ForgeProviderContribution,
+  RegisteredForgeProvider,
+} from "../../../shared/types/forge.js";
+
+const projectStoreMock = vi.hoisted(() => ({
+  getProjectById: vi.fn(),
+  getProjectSettings: vi.fn(),
+}));
+
+vi.mock("../ProjectStore.js", () => ({ projectStore: projectStoreMock }));
+
+const gitServiceMock = vi.hoisted(() => ({
+  getRemoteUrl: vi.fn(),
+}));
+const gitServiceCacheMock = vi.hoisted(() => ({
+  getGitService: vi.fn(() => gitServiceMock),
+}));
+
+vi.mock("../GitServiceCache.js", () => ({ gitServiceCache: gitServiceCacheMock }));
+
+const storeMock = vi.hoisted(() => {
+  const data: Record<string, unknown> = {};
+  return {
+    get: vi.fn((key: string) => data[key]),
+    _data: data,
+  };
+});
+
+vi.mock("../../store.js", () => ({ store: storeMock }));
+
+const registryMock = vi.hoisted(() => ({
+  getRegisteredForgeProviders: vi.fn<() => RegisteredForgeProvider[]>(() => []),
+  listMatchingProviders: vi.fn<(remoteUrl: string) => RegisteredForgeProvider[]>(() => []),
+}));
+
+vi.mock("../forgeProviderRegistry.js", () => registryMock);
+
+import { resolveForgeProvider } from "../forgeProviderResolver.js";
+
+function makeProvider(
+  pluginId: string,
+  id: string,
+  matches: string[] = []
+): RegisteredForgeProvider {
+  const contribution: ForgeProviderContribution = {
+    id,
+    name: id,
+    matches,
+  };
+  return { pluginId, contribution };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  for (const key of Object.keys(storeMock._data)) {
+    delete storeMock._data[key];
+  }
+  projectStoreMock.getProjectById.mockReturnValue({
+    id: "project-1",
+    path: "/repo",
+    name: "repo",
+  });
+  projectStoreMock.getProjectSettings.mockResolvedValue({ runCommands: [] });
+  gitServiceMock.getRemoteUrl.mockResolvedValue("https://github.com/owner/repo.git");
+  registryMock.getRegisteredForgeProviders.mockReturnValue([]);
+  registryMock.listMatchingProviders.mockReturnValue([]);
+});
+
+describe("resolveForgeProvider", () => {
+  it("returns null when the project does not exist", async () => {
+    projectStoreMock.getProjectById.mockReturnValue(null);
+    expect(await resolveForgeProvider("missing")).toBeNull();
+  });
+
+  it("returns null for empty or non-string projectId", async () => {
+    expect(await resolveForgeProvider("")).toBeNull();
+    expect(await resolveForgeProvider(undefined as unknown as string)).toBeNull();
+  });
+
+  it("returns the override match when forgeProviderOverride names a registered provider", async () => {
+    const gitea = makeProvider("acme.gitea", "gitea", ["gitea.example.com"]);
+    const github = makeProvider("builtin", "github", ["github.com"]);
+    registryMock.getRegisteredForgeProviders.mockReturnValue([github, gitea]);
+    projectStoreMock.getProjectSettings.mockResolvedValue({
+      runCommands: [],
+      forgeProviderOverride: "gitea",
+    });
+
+    const result = await resolveForgeProvider("project-1");
+    expect(result).toEqual(gitea);
+    // Override path bypasses hostname matching entirely.
+    expect(registryMock.listMatchingProviders).not.toHaveBeenCalled();
+  });
+
+  it("accepts namespaced ids ({pluginId}.{contributionId}) for the override", async () => {
+    const gitea = makeProvider("acme.gitea", "gitea", ["gitea.example.com"]);
+    registryMock.getRegisteredForgeProviders.mockReturnValue([gitea]);
+    projectStoreMock.getProjectSettings.mockResolvedValue({
+      runCommands: [],
+      forgeProviderOverride: "acme.gitea.gitea",
+    });
+
+    expect(await resolveForgeProvider("project-1")).toEqual(gitea);
+  });
+
+  it("returns null when forgeProviderOverride names an unregistered provider", async () => {
+    const github = makeProvider("builtin", "github", ["github.com"]);
+    registryMock.getRegisteredForgeProviders.mockReturnValue([github]);
+    registryMock.listMatchingProviders.mockReturnValue([github]);
+    projectStoreMock.getProjectSettings.mockResolvedValue({
+      runCommands: [],
+      forgeProviderOverride: "gone.away",
+    });
+
+    // No fallthrough to global default or first hostname match.
+    expect(await resolveForgeProvider("project-1")).toBeNull();
+    expect(registryMock.listMatchingProviders).not.toHaveBeenCalled();
+  });
+
+  it("treats forgeProviderOverride === null as auto-detect (falls through)", async () => {
+    const github = makeProvider("builtin", "github", ["github.com"]);
+    registryMock.listMatchingProviders.mockReturnValue([github]);
+    projectStoreMock.getProjectSettings.mockResolvedValue({
+      runCommands: [],
+      forgeProviderOverride: null,
+    });
+
+    expect(await resolveForgeProvider("project-1")).toEqual(github);
+  });
+
+  it("treats forgeProviderOverride absent as auto-detect (falls through)", async () => {
+    const github = makeProvider("builtin", "github", ["github.com"]);
+    registryMock.listMatchingProviders.mockReturnValue([github]);
+    projectStoreMock.getProjectSettings.mockResolvedValue({ runCommands: [] });
+
+    expect(await resolveForgeProvider("project-1")).toEqual(github);
+  });
+
+  it("returns the global default when it matches one of the remote candidates", async () => {
+    const enterprise = makeProvider("acme.gh-enterprise", "gh-enterprise", ["github.com"]);
+    const github = makeProvider("builtin", "github", ["github.com"]);
+    registryMock.listMatchingProviders.mockReturnValue([github, enterprise]);
+    storeMock._data["forgeDefaultProviderId"] = "gh-enterprise";
+
+    expect(await resolveForgeProvider("project-1")).toEqual(enterprise);
+  });
+
+  it("returns null when the global default is not a hostname match for the remote", async () => {
+    const github = makeProvider("builtin", "github", ["github.com"]);
+    registryMock.listMatchingProviders.mockReturnValue([github]);
+    storeMock._data["forgeDefaultProviderId"] = "gitea";
+
+    // No fallthrough to first match.
+    expect(await resolveForgeProvider("project-1")).toBeNull();
+  });
+
+  it("returns the first hostname match when no override or default is set", async () => {
+    const github = makeProvider("builtin", "github", ["github.com"]);
+    const other = makeProvider("acme.other", "other", ["github.com"]);
+    registryMock.listMatchingProviders.mockReturnValue([github, other]);
+
+    expect(await resolveForgeProvider("project-1")).toEqual(github);
+  });
+
+  it("returns null when there are no hostname matches", async () => {
+    registryMock.listMatchingProviders.mockReturnValue([]);
+    expect(await resolveForgeProvider("project-1")).toBeNull();
+  });
+
+  it("returns null when the remote URL cannot be read", async () => {
+    gitServiceMock.getRemoteUrl.mockResolvedValue(null);
+    const github = makeProvider("builtin", "github", ["github.com"]);
+    registryMock.listMatchingProviders.mockReturnValue([github]);
+
+    expect(await resolveForgeProvider("project-1")).toBeNull();
+    expect(registryMock.listMatchingProviders).not.toHaveBeenCalled();
+  });
+
+  it("still resolves the override when the remote URL cannot be read", async () => {
+    gitServiceMock.getRemoteUrl.mockResolvedValue(null);
+    const gitea = makeProvider("acme.gitea", "gitea", ["gitea.example.com"]);
+    registryMock.getRegisteredForgeProviders.mockReturnValue([gitea]);
+    projectStoreMock.getProjectSettings.mockResolvedValue({
+      runCommands: [],
+      forgeProviderOverride: "gitea",
+    });
+
+    expect(await resolveForgeProvider("project-1")).toEqual(gitea);
+  });
+
+  it("returns null when getRemoteUrl rejects", async () => {
+    gitServiceMock.getRemoteUrl.mockRejectedValue(new Error("not a git repo"));
+    expect(await resolveForgeProvider("project-1")).toBeNull();
+  });
+
+  it("returns null when getProjectSettings rejects", async () => {
+    projectStoreMock.getProjectSettings.mockRejectedValue(new Error("read failed"));
+    const github = makeProvider("builtin", "github", ["github.com"]);
+    registryMock.listMatchingProviders.mockReturnValue([github]);
+
+    // Settings unreadable → no override; falls through to hostname match.
+    expect(await resolveForgeProvider("project-1")).toEqual(github);
+  });
+
+  it("does not throw when a synchronous registry call throws", async () => {
+    registryMock.listMatchingProviders.mockImplementation(() => {
+      throw new Error("boom");
+    });
+
+    expect(await resolveForgeProvider("project-1")).toBeNull();
+  });
+
+  it("does no caching — settings/store are re-read on each call", async () => {
+    const github = makeProvider("builtin", "github", ["github.com"]);
+    registryMock.listMatchingProviders.mockReturnValue([github]);
+
+    await resolveForgeProvider("project-1");
+    await resolveForgeProvider("project-1");
+
+    expect(projectStoreMock.getProjectSettings).toHaveBeenCalledTimes(2);
+    expect(storeMock.get).toHaveBeenCalledWith("forgeDefaultProviderId");
+  });
+});

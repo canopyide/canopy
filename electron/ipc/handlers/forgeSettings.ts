@@ -2,6 +2,7 @@ import { CHANNELS } from "../channels.js";
 import { store } from "../../store.js";
 import { typedHandle } from "../utils.js";
 import { getRegisteredForgeProviders } from "../../services/forgeProviderRegistry.js";
+import { resolveForgeProvider } from "../../services/forgeProviderResolver.js";
 
 function readDefaultProviderId(): string | null {
   const value = store.get("forgeDefaultProviderId");
@@ -32,6 +33,13 @@ export function registerForgeSettingsHandlers(): () => void {
   cleanups.push(
     typedHandle(CHANNELS.FORGE_GET_PROVIDERS, () => {
       return getRegisteredForgeProviders();
+    })
+  );
+
+  cleanups.push(
+    typedHandle(CHANNELS.FORGE_RESOLVE_PROVIDER, async (projectId: unknown) => {
+      if (typeof projectId !== "string" || projectId.length === 0) return null;
+      return resolveForgeProvider(projectId);
     })
   );
 
