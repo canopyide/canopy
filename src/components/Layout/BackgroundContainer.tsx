@@ -532,7 +532,7 @@ function BackgroundGroupItem({
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const tabCount = terminals.length;
-  const groupName = `Tab Group (${tabCount} ${tabCount === 1 ? "tab" : "tabs"})`;
+  const groupName = `Tab group (${tabCount} ${tabCount === 1 ? "tab" : "tabs"})`;
   const groupWaiting = terminals.filter((t) => t.agentState === "waiting").length;
 
   return (
