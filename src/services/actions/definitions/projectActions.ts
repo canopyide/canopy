@@ -131,7 +131,7 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
     description: "Remove a project from the list",
     category: "project",
     kind: "command",
-    danger: "safe",
+    danger: "confirm",
     scope: "renderer",
     argsSchema: z.object({ projectId: z.string() }),
     run: async (args: unknown) => {

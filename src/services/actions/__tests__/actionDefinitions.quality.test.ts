@@ -245,6 +245,9 @@ const EXPECTED_CONFIRM_DANGER: ReadonlyArray<ActionId> = [
   "fleet.deleteNamedFleet",
   "worktree.resource.teardown",
   "portal.links.remove",
+  "keybinding.resetAll",
+  "project.remove",
+  "recipe.delete",
 ];
 
 describe("destructive-action danger metadata", () => {
@@ -285,7 +288,12 @@ describe("destructive-action danger metadata", () => {
     // validation runs before the confirm gate, so undefined args would
     // short-circuit with VALIDATION_ERROR. Provide both placeholder keys —
     // zod object schemas strip unknown keys, so the irrelevant one is a no-op.
-    const placeholderArgs = { worktreeId: "wt-placeholder", id: "id-placeholder" };
+    const placeholderArgs = {
+      worktreeId: "wt-placeholder",
+      id: "id-placeholder",
+      projectId: "project-placeholder",
+      recipeId: "recipe-placeholder",
+    };
 
     // Some listed actions (e.g. worktree.resource.teardown) gate availability
     // via `isEnabled`, which runs *before* the confirm gate. Without a view

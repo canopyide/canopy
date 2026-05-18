@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton, SkeletonBone } from "@/components/ui/Skeleton";
 import { useRecipeStore } from "@/store/recipeStore";
+import { actionService } from "@/services/ActionService";
 import { LiveTimeAgo } from "@/components/Worktree/LiveTimeAgo";
 import { RecipeEditor } from "@/components/TerminalRecipe/RecipeEditor";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -43,7 +44,6 @@ export function RecipesTab({
   const {
     recipes,
     loadRecipes,
-    deleteRecipe,
     exportRecipe,
     importRecipe,
     isLoading: recipesLoading,
@@ -120,15 +120,19 @@ export function RecipesTab({
 
   const handleDeleteRecipe = async (recipeId: string) => {
     setDeleteError(null);
-    try {
-      await deleteRecipe(recipeId);
+    const result = await actionService.dispatch(
+      "recipe.delete",
+      { recipeId },
+      { source: "user", confirmed: true }
+    );
+    if (result.ok) {
       if (recipeId === defaultWorktreeRecipeId) {
         onDefaultWorktreeRecipeIdChange(undefined);
       }
       setRecipeToDelete(null);
-    } catch (err) {
-      logError("Failed to delete recipe", err);
-      setDeleteError(formatErrorMessage(err, "Failed to delete recipe"));
+    } else {
+      logError("Failed to delete recipe", result.error);
+      setDeleteError(formatErrorMessage(result.error, "Failed to delete recipe"));
     }
   };
 
