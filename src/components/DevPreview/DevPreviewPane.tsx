@@ -7,8 +7,9 @@ import {
   ExternalLink,
   Settings,
   Square,
-  WandSparkles,
   OctagonAlert,
+  ChevronDown,
+  Play,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { Button } from "@/components/ui/button";
@@ -41,9 +42,10 @@ import { useIsDragging } from "@/components/DragDrop";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { computeDevServerUrl } from "./urlSync";
-import { findDevServerCandidate } from "@/utils/devServerDetection";
+import { findDevServerCandidate, findAllDevServerCandidates } from "@/utils/devServerDetection";
 import { useProjectSettings } from "@/hooks/useProjectSettings";
 import { projectClient } from "@/clients";
+import { getInvalidCommandMessage } from "@shared/utils/devCommandValidation";
 import { actionService } from "@/services/ActionService";
 import { useWebviewThrottle } from "@/hooks/useWebviewThrottle";
 import { useHasBeenVisible } from "@/hooks/useHasBeenVisible";
@@ -61,6 +63,7 @@ import {
   computeFitScale,
 } from "@/panels/dev-preview/viewportPresets";
 import type { ViewportPresetId } from "@shared/types/panel";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { logError } from "@/utils/logger";
 import { loadWebviewUrl } from "./loadWebviewUrl";
 import {
@@ -395,6 +398,17 @@ export function DevPreviewPane({
   const { saveSettings } = useProjectSettings();
   const allDetectedRunners = useProjectSettingsStore((state) => state.allDetectedRunners);
   const isSettingsLoading = useProjectSettingsStore((state) => state.isLoading);
+
+  const candidates = useMemo(
+    () => findAllDevServerCandidates(allDetectedRunners, projectSettings?.turbopackEnabled ?? true),
+    [allDetectedRunners, projectSettings?.turbopackEnabled]
+  );
+  const primaryCandidate = candidates[0];
+
+  const [commandInput, setCommandInput] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const savingRef = useRef(false);
+
   const isMountedRef = useRef(true);
   const prevStatusRef = useRef(status);
   const loadTimeoutMs =
@@ -487,6 +501,7 @@ export function DevPreviewPane({
     lastSetUrlRef.current = "";
     setWebviewLoadError(null);
     clearRetryState();
+    setCommandInput("");
   }, [isUnconfigured, id, setBrowserUrl, setWebviewLoadError, clearRetryState]);
 
   const setWebviewNode = useCallback(
@@ -809,40 +824,73 @@ export function DevPreviewPane({
     }
   }, []);
 
-  const handleAutoDetect = useCallback(async () => {
-    if (!currentProjectId || isAutoDetecting) return;
+  const handleAutoDetect = useCallback(
+    async (candidateCommand?: string) => {
+      if (!currentProjectId || isAutoDetecting) return;
 
-    setIsAutoDetecting(true);
+      setIsAutoDetecting(true);
+      try {
+        const [freshRunners, latestSettings] = await Promise.all([
+          projectClient.detectRunners(currentProjectId),
+          projectClient.getSettings(currentProjectId),
+        ]);
+
+        if (!latestSettings) return;
+
+        const command =
+          candidateCommand ??
+          findDevServerCandidate(freshRunners, latestSettings.turbopackEnabled ?? true)?.command;
+
+        if (!command) return;
+
+        await saveSettings({
+          ...latestSettings,
+          devServerCommand: command,
+          devServerAutoDetected: true,
+          devServerDismissed: false,
+        });
+      } catch (err) {
+        logError("Failed to auto-detect dev server", err);
+      } finally {
+        if (isMountedRef.current) {
+          setIsAutoDetecting(false);
+        }
+      }
+    },
+    [currentProjectId, isAutoDetecting, saveSettings]
+  );
+
+  const handlePickCandidate = useCallback(
+    (candidate: { command: string }) => {
+      void handleAutoDetect(candidate.command);
+    },
+    [handleAutoDetect]
+  );
+
+  const handleSaveCommand = useCallback(async () => {
+    if (!currentProjectId || savingRef.current) return;
+    const trimmed = commandInput.trim();
+    if (!trimmed || getInvalidCommandMessage(trimmed)) return;
+
+    savingRef.current = true;
     try {
-      const freshRunners = await projectClient.detectRunners(currentProjectId);
-      const candidate = findDevServerCandidate(
-        freshRunners,
-        projectSettings?.turbopackEnabled ?? true
-      );
-
-      if (!candidate) {
-        return;
-      }
-
       const latestSettings = await projectClient.getSettings(currentProjectId);
-      if (!latestSettings) {
-        return;
-      }
+      if (!latestSettings) return;
 
       await saveSettings({
         ...latestSettings,
-        devServerCommand: candidate.command,
-        devServerAutoDetected: true,
+        devServerCommand: trimmed,
+        devServerAutoDetected: false,
         devServerDismissed: false,
       });
     } catch (err) {
-      logError("Failed to auto-detect dev server", err);
+      logError("Failed to save dev command", err);
     } finally {
-      if (isMountedRef.current) {
-        setIsAutoDetecting(false);
-      }
+      savingRef.current = false;
     }
-  }, [currentProjectId, isAutoDetecting, saveSettings, projectSettings?.turbopackEnabled]);
+  }, [currentProjectId, commandInput, saveSettings]);
+
+  const commandInputError = useMemo(() => getInvalidCommandMessage(commandInput), [commandInput]);
 
   const handleOpenSettings = useCallback(() => {
     void actionService.dispatch("project.settings.open", undefined, { source: "user" });
@@ -1202,50 +1250,125 @@ export function DevPreviewPane({
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-daintree-bg text-daintree-text p-6">
               {isUnconfigured ? (
                 <div className="flex flex-col items-center text-center max-w-md">
-                  <h3 className="text-sm font-medium text-daintree-text/70 mb-1">
-                    Configure dev server
-                  </h3>
-                  <p className="text-xs text-daintree-text/50 mb-4 leading-relaxed">
-                    No dev server command is configured for this project.
-                    {allDetectedRunners &&
-                    findDevServerCandidate(
-                      allDetectedRunners,
-                      projectSettings?.turbopackEnabled ?? true
-                    )
-                      ? " We found a script in your package.json that looks like a dev server."
-                      : " Configure one to preview your application."}
-                  </p>
-                  <div className="flex flex-col items-center gap-2">
-                    {allDetectedRunners &&
-                      findDevServerCandidate(
-                        allDetectedRunners,
-                        projectSettings?.turbopackEnabled ?? true
-                      ) && (
+                  {primaryCandidate ? (
+                    <>
+                      <h3 className="text-sm font-medium text-daintree-text/70 mb-1">
+                        Start the dev server
+                      </h3>
+                      <p className="text-xs text-daintree-text/50 mb-4 leading-relaxed">
+                        We found a script in your package.json that looks like a dev server.
+                      </p>
+                      <div className="mb-3 px-3 py-1.5 rounded bg-overlay-subtle border border-overlay/30 inline-flex items-center gap-2">
+                        <span className="text-[11px] text-daintree-text/40">Auto-detected</span>
+                        <code className="text-xs text-daintree-text/70 font-mono">
+                          {primaryCandidate.command}
+                        </code>
+                      </div>
+                      <div className="flex flex-col items-center gap-2">
                         <Button
-                          onClick={handleAutoDetect}
+                          onClick={() => void handleAutoDetect()}
                           disabled={isAutoDetecting || isSettingsLoading}
                           variant="ghost"
                           size="sm"
-                          className="gap-1.5 px-2.5 py-1.5 group"
+                          className="gap-1.5 px-2.5 py-1.5 group text-accent-primary"
                         >
-                          <WandSparkles className="h-3.5 w-3.5" />
+                          <Play className="h-3.5 w-3.5" />
                           <span className="text-xs">
                             {isAutoDetecting
                               ? "Detecting..."
-                              : `Use \`${findDevServerCandidate(allDetectedRunners, projectSettings?.turbopackEnabled ?? true)?.command}\``}
+                              : `Run \`${primaryCandidate.command}\``}
                           </span>
                         </Button>
-                      )}
-                    <Button
-                      onClick={handleOpenSettings}
-                      variant="ghost"
-                      size="sm"
-                      className="gap-1.5 px-2.5 py-1.5 group text-daintree-text/50 hover:text-daintree-text/70"
-                    >
-                      <Settings className="h-3.5 w-3.5" />
-                      <span className="text-xs">Open Project Settings</span>
-                    </Button>
-                  </div>
+                        {candidates.length > 1 && (
+                          <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+                            <PopoverTrigger asChild>
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 text-xs text-daintree-text/50 hover:text-daintree-text/70 transition-colors"
+                              >
+                                Use a different script...
+                                <ChevronDown className="h-3 w-3" />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent align="center" sideOffset={4} className="w-72 p-1">
+                              <div className="flex flex-col max-h-64 overflow-y-auto">
+                                {candidates.map((c) => (
+                                  <button
+                                    key={c.id}
+                                    type="button"
+                                    onClick={() => {
+                                      handlePickCandidate(c);
+                                      setPickerOpen(false);
+                                    }}
+                                    className="flex items-center gap-2 px-2 py-1.5 rounded text-xs hover:bg-overlay-subtle transition-colors text-left"
+                                  >
+                                    <code className="text-daintree-text/70 font-mono text-[11px] flex-1 truncate">
+                                      {c.command}
+                                    </code>
+                                    <span className="text-daintree-text/40 shrink-0">{c.name}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        )}
+                        <Button
+                          onClick={handleOpenSettings}
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1.5 px-2.5 py-1.5 group text-daintree-text/50 hover:text-daintree-text/70"
+                        >
+                          <Settings className="h-3.5 w-3.5" />
+                          <span className="text-xs">Open project settings</span>
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="text-sm font-medium text-daintree-text/70 mb-1">
+                        Set a dev command
+                      </h3>
+                      <p className="text-xs text-daintree-text/50 mb-4 leading-relaxed">
+                        Configure a command to start a local development server.
+                      </p>
+                      <div className="flex flex-col items-center gap-2 w-full max-w-xs">
+                        <input
+                          type="text"
+                          value={commandInput}
+                          onChange={(e) => setCommandInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              void handleSaveCommand();
+                            }
+                          }}
+                          placeholder="npm run dev"
+                          className="w-full px-2.5 py-1.5 text-xs font-mono bg-overlay-subtle border border-overlay/30 rounded text-daintree-text/70 placeholder:text-daintree-text/30 focus:outline-none focus:border-overlay/50 transition-[border-color,box-shadow]"
+                        />
+                        <Button
+                          onClick={() => void handleSaveCommand()}
+                          disabled={!commandInput.trim() || commandInputError !== null}
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1.5 px-2.5 py-1.5 group text-accent-primary"
+                        >
+                          <Play className="h-3.5 w-3.5" />
+                          <span className="text-xs">Run</span>
+                        </Button>
+                        {commandInputError && (
+                          <p className="text-[11px] text-status-warning">{commandInputError}</p>
+                        )}
+                      </div>
+                      <Button
+                        onClick={handleOpenSettings}
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1.5 px-2.5 py-1.5 group text-daintree-text/50 hover:text-daintree-text/70 mt-3"
+                      >
+                        <Settings className="h-3.5 w-3.5" />
+                        <span className="text-xs">Open project settings</span>
+                      </Button>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="flex flex-col items-center text-center max-w-md">

@@ -1,15 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveNextMajorVersion } from "../utils/resolveNextVersion.js";
-
-export function getInvalidCommandMessage(command: string): string | null {
-  const trimmed = command.trim();
-  if (!trimmed) return "No dev command configured";
-  if (trimmed.includes("\n") || trimmed.includes("\r")) {
-    return "Multi-line commands are not allowed";
-  }
-  return null;
-}
+export { getInvalidCommandMessage } from "@shared/utils/devCommandValidation";
 
 export const NEXT_DEV_DIRECT_RE = /\bnext\s+dev\b/;
 export const TURBOPACK_FLAG_RE = /--turbo(?:pack)?\b/;
