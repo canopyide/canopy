@@ -814,6 +814,7 @@ function SettingsDialogInner({
                                   projectId={projectId}
                                   isOpen={isOpen}
                                   globalEnvVars={globalEnvVars}
+                                  globalScrollbackLines={scrollbackLines}
                                   projectLabel={projectLabel}
                                   isActive={isActive && !isSearching}
                                   scrollToSectionId={scrollToSection}
@@ -887,6 +888,7 @@ function ProjectFormTabContent({
   projectId,
   isOpen,
   globalEnvVars,
+  globalScrollbackLines,
   projectLabel,
   isActive,
   scrollToSectionId,
@@ -897,6 +899,7 @@ function ProjectFormTabContent({
   projectId: string;
   isOpen: boolean;
   globalEnvVars: Record<string, string>;
+  globalScrollbackLines: number;
   projectLabel: string;
   isActive: boolean;
   scrollToSectionId: string | null;
@@ -973,12 +976,17 @@ function ProjectFormTabContent({
           onWorktreePathPatternChange={projectForm.setWorktreePathPattern}
           terminalShell={projectForm.terminalShell}
           onTerminalShellChange={projectForm.setTerminalShell}
+          onTerminalShellReset={() => projectForm.setTerminalShell(undefined)}
           terminalShellArgs={projectForm.terminalShellArgs}
           onTerminalShellArgsChange={projectForm.setTerminalShellArgs}
+          onTerminalShellArgsReset={() => projectForm.setTerminalShellArgs(undefined)}
           terminalDefaultCwd={projectForm.terminalDefaultCwd}
           onTerminalDefaultCwdChange={projectForm.setTerminalDefaultCwd}
+          onTerminalDefaultCwdReset={() => projectForm.setTerminalDefaultCwd(undefined)}
           terminalScrollback={projectForm.terminalScrollback}
           onTerminalScrollbackChange={projectForm.setTerminalScrollback}
+          onTerminalScrollbackReset={() => projectForm.setTerminalScrollback(undefined)}
+          effectiveScrollbackLines={globalScrollbackLines}
           resourceEnvironments={projectForm.resourceEnvironments}
           onResourceEnvironmentsChange={projectForm.setResourceEnvironments}
           activeResourceEnvironment={projectForm.activeResourceEnvironment}
