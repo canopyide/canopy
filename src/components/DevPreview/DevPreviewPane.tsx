@@ -395,6 +395,7 @@ export function DevPreviewPane({
   // Store the original guest UA so we can restore it when clearing a preset
   const originalUaRef = useRef<string | null>(null);
   const [isAutoDetecting, setIsAutoDetecting] = useState(false);
+  const autoDetectRef = useRef(false);
   const { saveSettings } = useProjectSettings();
   const allDetectedRunners = useProjectSettingsStore((state) => state.allDetectedRunners);
   const isSettingsLoading = useProjectSettingsStore((state) => state.isLoading);
@@ -826,20 +827,22 @@ export function DevPreviewPane({
 
   const handleAutoDetect = useCallback(
     async (candidateCommand?: string) => {
-      if (!currentProjectId || isAutoDetecting) return;
+      if (!currentProjectId || autoDetectRef.current) return;
 
+      autoDetectRef.current = true;
       setIsAutoDetecting(true);
       try {
-        const [freshRunners, latestSettings] = await Promise.all([
-          projectClient.detectRunners(currentProjectId),
-          projectClient.getSettings(currentProjectId),
-        ]);
-
+        const latestSettings = await projectClient.getSettings(currentProjectId);
         if (!latestSettings) return;
 
-        const command =
-          candidateCommand ??
-          findDevServerCandidate(freshRunners, latestSettings.turbopackEnabled ?? true)?.command;
+        let command = candidateCommand;
+        if (!command) {
+          const freshRunners = await projectClient.detectRunners(currentProjectId);
+          command = findDevServerCandidate(
+            freshRunners,
+            latestSettings.turbopackEnabled ?? true
+          )?.command;
+        }
 
         if (!command) return;
 
@@ -852,12 +855,13 @@ export function DevPreviewPane({
       } catch (err) {
         logError("Failed to auto-detect dev server", err);
       } finally {
+        autoDetectRef.current = false;
         if (isMountedRef.current) {
           setIsAutoDetecting(false);
         }
       }
     },
-    [currentProjectId, isAutoDetecting, saveSettings]
+    [currentProjectId, saveSettings]
   );
 
   const handlePickCandidate = useCallback(
@@ -1354,7 +1358,7 @@ export function DevPreviewPane({
                           <Play className="h-3.5 w-3.5" />
                           <span className="text-xs">Run</span>
                         </Button>
-                        {commandInputError && (
+                        {commandInput.trim() && commandInputError && (
                           <p className="text-[11px] text-status-warning">{commandInputError}</p>
                         )}
                       </div>
