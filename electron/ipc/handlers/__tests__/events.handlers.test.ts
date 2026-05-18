@@ -165,4 +165,43 @@ describe("events IPC handler — action:dispatched", () => {
     expect(emit).not.toHaveBeenCalled();
     cleanup();
   });
+
+  it("preserves confirmed:true through normalization", () => {
+    const { emit, cleanup } = setup();
+    ipcMainMock._invoke("events:emit", "action:dispatched", {
+      ...base,
+      confirmed: true,
+    });
+
+    expect(emit).toHaveBeenCalledTimes(1);
+    const normalized = emit.mock.calls[0]![1] as { confirmed?: boolean };
+    expect(normalized.confirmed).toBe(true);
+    cleanup();
+  });
+
+  it("preserves confirmed:false through normalization", () => {
+    const { emit, cleanup } = setup();
+    ipcMainMock._invoke("events:emit", "action:dispatched", {
+      ...base,
+      confirmed: false,
+    });
+
+    expect(emit).toHaveBeenCalledTimes(1);
+    const normalized = emit.mock.calls[0]![1] as { confirmed?: boolean };
+    expect(normalized.confirmed).toBe(false);
+    cleanup();
+  });
+
+  it("strips non-boolean confirmed values", () => {
+    const { emit, cleanup } = setup();
+    ipcMainMock._invoke("events:emit", "action:dispatched", {
+      ...base,
+      confirmed: "true",
+    });
+
+    expect(emit).toHaveBeenCalledTimes(1);
+    const normalized = emit.mock.calls[0]![1] as { confirmed?: unknown };
+    expect(normalized.confirmed).toBeUndefined();
+    cleanup();
+  });
 });

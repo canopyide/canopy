@@ -174,6 +174,9 @@ function normalizeActionDispatchedPayload(
       ? dangerRaw
       : "safe";
 
+  const confirmed: boolean | undefined =
+    typeof payload.confirmed === "boolean" ? payload.confirmed : undefined;
+
   return {
     actionId,
     args: safeArgs,
@@ -184,6 +187,7 @@ function normalizeActionDispatchedPayload(
     durationMs,
     danger,
     ...(safeBreadcrumbArgs ? { safeArgs: safeBreadcrumbArgs } : {}),
+    ...(confirmed !== undefined ? { confirmed } : {}),
   };
 }
 
