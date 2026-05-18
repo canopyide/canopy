@@ -1709,6 +1709,7 @@ export const globalTabIcons: Record<GlobalSettingsTab, ReactNode> = {
   agents: <Plug className="w-5 h-5 text-text-secondary" />,
   assistant: <DaintreeIcon className="w-5 h-5 text-text-secondary" size={20} />,
   github: <Github className="w-5 h-5 text-text-secondary" />,
+  forge: <GitBranch className="w-5 h-5 text-text-secondary" />,
   portal: <PanelRight className="w-5 h-5 text-text-secondary" />,
   toolbar: <SettingsIcon className="w-5 h-5 text-text-secondary" />,
   notifications: <Bell className="w-5 h-5 text-text-secondary" />,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GitBranch } from "lucide-react";
 import type { ForgeProviderEntry } from "@shared/types";
 import { SettingsSection } from "./SettingsSection";
@@ -6,7 +6,10 @@ import { SettingsSelect, type SettingsSelectOption } from "./SettingsSelect";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { logError } from "@/utils/logger";
 
-const AUTO_DETECT_VALUE = "";
+// Non-empty sentinel because Radix's `SelectItem` rejects an empty string value
+// (it reserves `""` to clear the selection and show the placeholder). Mapped
+// to `null` at the IPC boundary in `handleChange`.
+const AUTO_DETECT_VALUE = "__auto-detect__";
 const AUTO_DETECT_LABEL = "No global default (auto-detect from hostname)";
 
 interface ForgeSettings {
@@ -20,6 +23,7 @@ export function ForgeIntegrationsTab() {
   const [providers, setProviders] = useState<ForgeProviderEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const writeSeqRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,12 +84,20 @@ export function ForgeIntegrationsTab() {
 
   const handleChange = useCallback(async (value: string) => {
     const next = value === AUTO_DETECT_VALUE ? null : value;
-    setSettings({ defaultProviderId: next });
+    const seq = ++writeSeqRef.current;
+    let previous: ForgeSettings | undefined;
+    setSettings((current) => {
+      previous = current;
+      return { defaultProviderId: next };
+    });
     setError(null);
     try {
       const result = await window.electron.forge.setDefaultProvider(next);
+      if (seq !== writeSeqRef.current) return;
       setSettings({ defaultProviderId: result.defaultProviderId });
     } catch (err) {
+      if (seq !== writeSeqRef.current) return;
+      if (previous) setSettings(previous);
       setError(formatErrorMessage(err, "Couldn't save forge integrations"));
       logError("Failed to save default forge provider", err);
     }
@@ -112,7 +124,7 @@ export function ForgeIntegrationsTab() {
             void handleChange(value);
           }}
           options={options}
-          disabled={loading || Boolean(error)}
+          disabled={loading}
           placeholder={loading ? "Loading…" : AUTO_DETECT_LABEL}
           error={error ?? undefined}
         />
