@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { usePanelStore } from "@/store";
+import { useUrlHistoryStore } from "@/store/urlHistoryStore";
 import type { BrowserHistory } from "@shared/types/browser";
 import type { ViewportPresetId } from "@shared/types/panel";
 import { getViewportPreset } from "@/panels/dev-preview/viewportPresets";
@@ -17,6 +18,7 @@ export type DevPreviewBlockedNav = {
 interface UseDevPreviewLoadLifecycleParams {
   webviewElement: Electron.WebviewTag | null;
   id: string;
+  projectId?: string;
   loadTimeoutMs: number;
   zoomFactor: number;
   viewportPreset: ViewportPresetId | undefined;
@@ -43,6 +45,7 @@ interface UseDevPreviewLoadLifecycleResult {
 export function useDevPreviewLoadLifecycle({
   webviewElement,
   id,
+  projectId,
   loadTimeoutMs,
   zoomFactor,
   viewportPreset,
@@ -56,6 +59,12 @@ export function useDevPreviewLoadLifecycle({
   const [isLoading, setIsLoading] = useState(false);
   const [isSlowLoad, setIsSlowLoad] = useState(false);
   const [webviewLoadError, setWebviewLoadError] = useState<string | null>(null);
+
+  // Read projectId through a ref so a late project-hydration transition
+  // (undefined → id) doesn't rebind the webview listeners mid-load and clear
+  // the load watchdog timer.
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
 
   const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const slowLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -87,6 +96,34 @@ export function useDevPreviewLoadLifecycle({
       setIsWebviewReady(false);
       return undefined;
     }
+
+    const recordVisit = (navigatedUrl: string) => {
+      const currentProjectId = projectIdRef.current;
+      if (!currentProjectId) return;
+      if (navigatedUrl === "about:blank") return;
+      let title: string | undefined;
+      try {
+        title = webview.getTitle();
+      } catch {
+        // webview may not be ready for getTitle
+      }
+      useUrlHistoryStore.getState().recordVisit(currentProjectId, navigatedUrl, title);
+    };
+
+    const handlePageTitleUpdated = (event: Event) => {
+      const detail = event as Event & { title?: string; explicitSet?: boolean };
+      if (detail.explicitSet === false) return;
+      const currentProjectId = projectIdRef.current;
+      if (currentProjectId && detail.title) {
+        try {
+          useUrlHistoryStore
+            .getState()
+            .updateTitle(currentProjectId, webview.getURL(), detail.title);
+        } catch {
+          // webview may be detached
+        }
+      }
+    };
 
     const handleDidStartLoading = () => {
       setIsLoading(true);
@@ -254,6 +291,7 @@ export function useDevPreviewLoadLifecycle({
         setHistory((prev) => pushBrowserHistory(prev, navigatedUrl));
         lastSetUrlRef.current = navigatedUrl;
       }
+      recordVisit(navigatedUrl);
     };
 
     const handleDidNavigateInPage = (e: Electron.DidNavigateInPageEvent) => {
@@ -264,6 +302,7 @@ export function useDevPreviewLoadLifecycle({
         setHistory((prev) => pushBrowserHistory(prev, navigatedUrl));
         lastSetUrlRef.current = navigatedUrl;
       }
+      recordVisit(navigatedUrl);
     };
 
     webview.addEventListener("did-start-loading", handleDidStartLoading);
@@ -275,6 +314,7 @@ export function useDevPreviewLoadLifecycle({
       "did-navigate-in-page",
       handleDidNavigateInPage as unknown as EventListener
     );
+    webview.addEventListener("page-title-updated", handlePageTitleUpdated);
 
     return () => {
       webview.removeEventListener("did-start-loading", handleDidStartLoading);
@@ -286,6 +326,7 @@ export function useDevPreviewLoadLifecycle({
         "did-navigate-in-page",
         handleDidNavigateInPage as unknown as EventListener
       );
+      webview.removeEventListener("page-title-updated", handlePageTitleUpdated);
       if (failLoadRetryRef.current) {
         clearTimeout(failLoadRetryRef.current);
         failLoadRetryRef.current = null;
