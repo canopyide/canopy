@@ -168,6 +168,12 @@ function normalizeActionDispatchedPayload(
 
   const safeBreadcrumbArgs = sanitizeSafeArgs(payload.safeArgs);
 
+  const dangerRaw = payload.danger;
+  const danger =
+    dangerRaw === "safe" || dangerRaw === "confirm" || dangerRaw === "restricted"
+      ? dangerRaw
+      : "safe";
+
   return {
     actionId,
     args: safeArgs,
@@ -176,6 +182,7 @@ function normalizeActionDispatchedPayload(
     timestamp,
     category,
     durationMs,
+    danger,
     ...(safeBreadcrumbArgs ? { safeArgs: safeBreadcrumbArgs } : {}),
   };
 }

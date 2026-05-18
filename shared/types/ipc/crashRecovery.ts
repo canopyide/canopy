@@ -1,3 +1,5 @@
+import type { ActionDanger } from "../actions.js";
+
 export type ActionBreadcrumbSource = "user" | "keybinding" | "menu" | "agent" | "context-menu";
 
 export interface ActionBreadcrumb {
@@ -5,6 +7,7 @@ export interface ActionBreadcrumb {
   actionId: string;
   category: string;
   source: ActionBreadcrumbSource;
+  danger: ActionDanger;
   durationMs: number;
   timestamp: number;
   args?: Record<string, unknown>;

@@ -46,6 +46,7 @@ const base = {
   timestamp: 1_700_000_000_000,
   category: "test",
   durationMs: 5,
+  danger: "safe" as const,
 };
 
 describe("events IPC handler — action:dispatched", () => {
@@ -135,6 +136,19 @@ describe("events IPC handler — action:dispatched", () => {
     const normalized = emit.mock.calls[0]![1] as Record<string, unknown>;
     expect(normalized.category).toBe("");
     expect(normalized.durationMs).toBe(0);
+    expect(normalized.danger).toBe("safe");
+    cleanup();
+  });
+
+  it("defaults missing or invalid danger to safe", () => {
+    const { emit, cleanup } = setup();
+    ipcMainMock._invoke("events:emit", "action:dispatched", {
+      ...base,
+      danger: "not-a-valid-danger",
+    });
+
+    const normalized = emit.mock.calls[0]![1] as Record<string, unknown>;
+    expect(normalized.danger).toBe("safe");
     cleanup();
   });
 
