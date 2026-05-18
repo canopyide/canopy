@@ -111,8 +111,10 @@ describe("CommitList Enter key handling", () => {
       fireEvent.keyDown(input, { key: "Enter" });
     });
 
-    const optionsAfter = container.querySelectorAll("[role='option']");
-    expect(optionsAfter[0]?.getAttribute("aria-expanded")).toBe("true");
+    await waitFor(() => {
+      const optionsAfter = container.querySelectorAll("[role='option']");
+      expect(optionsAfter[0]?.getAttribute("aria-expanded")).toBe("true");
+    });
     const pre = container.querySelector("pre");
     expect(pre?.textContent).toContain("Detailed body line 1.");
     expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
@@ -170,8 +172,10 @@ describe("CommitList Enter key handling", () => {
       fireEvent.keyDown(input, { key: "Enter" });
     });
 
-    const firstOption = container.querySelector("[role='option']");
-    expect(firstOption?.getAttribute("aria-expanded")).toBe("true");
+    await waitFor(() => {
+      const firstOption = container.querySelector("[role='option']");
+      expect(firstOption?.getAttribute("aria-expanded")).toBe("true");
+    });
 
     const loadMore = container.querySelector("#commit-load-more");
     expect(loadMore).not.toBeNull();
