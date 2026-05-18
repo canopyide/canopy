@@ -6,12 +6,7 @@ import type { RunCommand } from "@shared/types";
 vi.mock("@/lib/utils", () => ({ cn: (...args: unknown[]) => args.filter(Boolean).join(" ") }));
 
 vi.mock("@/components/ui/button", () => ({
-  Button: ({
-    children,
-    onClick,
-    disabled,
-    title,
-  }: React.ComponentProps<"button">) => (
+  Button: ({ children, onClick, disabled, title }: React.ComponentProps<"button">) => (
     <button onClick={onClick} disabled={disabled} title={title}>
       {children}
     </button>
