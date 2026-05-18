@@ -1,4 +1,4 @@
-import { Suspense, useState, useCallback, useEffect } from "react";
+import { Suspense, useState, useCallback, useEffect, useRef } from "react";
 import { ChevronUp, RotateCw, CircleStop } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -7,13 +7,23 @@ import { XtermAdapter } from "../Terminal/XtermAdapter";
 import { terminalInstanceService } from "../../services/TerminalInstanceService";
 import { TerminalRefreshTier } from "@/types";
 import type { DevPreviewStatus } from "@/hooks/useDevServer";
+import { useConsoleCaptureStore, ZERO_COUNTS } from "@/store/consoleCaptureStore";
+import { ConsolePanel } from "./ConsolePanel";
+
+export type ConsoleDrawerTab = "output" | "console";
 
 interface ConsoleDrawerProps {
   terminalId: string;
+  /** Panel ID — keys the guest-page console-capture store. */
+  paneId: string;
+  /** webContentsId of the live guest webview, for lazy object inspection. */
+  webContentsId?: number;
   status?: DevPreviewStatus;
   isOpen?: boolean;
   onOpenChange?: (isOpen: boolean) => void;
   defaultOpen?: boolean;
+  activeTab?: ConsoleDrawerTab;
+  onTabChange?: (tab: ConsoleDrawerTab) => void;
   isRestarting?: boolean;
   onHardRestart?: () => void;
   onStop?: () => void;
@@ -55,18 +65,78 @@ const STATUS_LABEL: Record<
   },
 };
 
+const DRAWER_HEIGHT = 300;
+
+interface DrawerTabButtonProps {
+  tab: ConsoleDrawerTab;
+  label: string;
+  isActive: boolean;
+  controlsId: string;
+  onSelect: () => void;
+  badge?: number;
+}
+
+function DrawerTabButton({
+  tab,
+  label,
+  isActive,
+  controlsId,
+  onSelect,
+  badge,
+}: DrawerTabButtonProps) {
+  return (
+    <button
+      type="button"
+      id={`${controlsId}-tab`}
+      data-tab={tab}
+      onClick={onSelect}
+      tabIndex={isActive ? 0 : -1}
+      role="tab"
+      aria-selected={isActive}
+      aria-controls={controlsId}
+      className={cn(
+        "relative px-3 py-1.5 text-xs font-medium rounded transition-colors",
+        "hover:text-daintree-text hover:bg-overlay-soft",
+        "focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-status-info",
+        isActive ? "text-daintree-text" : "text-daintree-text/65"
+      )}
+    >
+      {label}
+      {badge !== undefined && badge > 0 && (
+        <span className="ml-1.5 px-1.5 py-0.5 text-xs tabular-nums bg-status-error/15 text-status-error rounded-full">
+          {badge}
+        </span>
+      )}
+      {isActive && <div className="absolute bottom-0 left-0 right-0 h-px bg-daintree-accent/70" />}
+    </button>
+  );
+}
+
 export function ConsoleDrawer({
   terminalId,
+  paneId,
+  webContentsId,
   status = "stopped",
   isOpen: controlledIsOpen,
   onOpenChange,
   defaultOpen = false,
+  activeTab: controlledActiveTab,
+  onTabChange,
   isRestarting = false,
   onHardRestart,
   onStop,
 }: ConsoleDrawerProps) {
   const [uncontrolledIsOpen, setUncontrolledIsOpen] = useState(defaultOpen);
   const isOpen = controlledIsOpen ?? uncontrolledIsOpen;
+
+  const [uncontrolledTab, setUncontrolledTab] = useState<ConsoleDrawerTab>("output");
+  const activeTab = controlledActiveTab ?? uncontrolledTab;
+
+  const tablistRef = useRef<HTMLDivElement>(null);
+
+  const errorCount = useConsoleCaptureStore(
+    (state) => (state.counters.get(paneId) ?? ZERO_COUNTS).errorCount
+  );
 
   const toggleDrawer = useCallback(() => {
     const nextIsOpen = !isOpen;
@@ -76,18 +146,66 @@ export function ConsoleDrawer({
     onOpenChange?.(nextIsOpen);
   }, [isOpen, controlledIsOpen, onOpenChange]);
 
+  const selectTab = useCallback(
+    (tab: ConsoleDrawerTab) => {
+      if (controlledActiveTab === undefined) {
+        setUncontrolledTab(tab);
+      }
+      onTabChange?.(tab);
+    },
+    [controlledActiveTab, onTabChange]
+  );
+
+  const handleTablistKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const container = tablistRef.current;
+      if (!container) return;
+
+      const tabButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+      const focusedIndex = tabButtons.indexOf(document.activeElement as HTMLButtonElement);
+      if (focusedIndex === -1) return;
+
+      let nextIndex: number | null = null;
+      switch (e.key) {
+        case "ArrowRight":
+          nextIndex = (focusedIndex + 1) % tabButtons.length;
+          break;
+        case "ArrowLeft":
+          nextIndex = (focusedIndex - 1 + tabButtons.length) % tabButtons.length;
+          break;
+        case "Home":
+          nextIndex = 0;
+          break;
+        case "End":
+          nextIndex = tabButtons.length - 1;
+          break;
+        default:
+          return;
+      }
+
+      e.preventDefault();
+      const nextTab = tabButtons[nextIndex];
+      if (!nextTab) return;
+      nextTab.focus();
+      const tabId = nextTab.dataset.tab as ConsoleDrawerTab | undefined;
+      if (tabId) selectTab(tabId);
+    },
+    [selectTab]
+  );
+
+  const isOutputVisible = isOpen && activeTab === "output";
+
   useEffect(() => {
-    terminalInstanceService.setVisible(terminalId, isOpen);
-  }, [terminalId, isOpen]);
+    terminalInstanceService.setVisible(terminalId, isOutputVisible);
+  }, [terminalId, isOutputVisible]);
 
   const getRefreshTier = useCallback(() => {
-    return isOpen ? TerminalRefreshTier.VISIBLE : TerminalRefreshTier.BACKGROUND;
-  }, [isOpen]);
+    return isOutputVisible ? TerminalRefreshTier.VISIBLE : TerminalRefreshTier.BACKGROUND;
+  }, [isOutputVisible]);
 
   const statusLabel = isRestarting
     ? { label: "Restarting", textClass: "text-server-starting", dotClass: "bg-server-starting" }
     : (STATUS_LABEL[status] ?? STATUS_LABEL.stopped);
-  const toggleLabel = isOpen ? "Hide Terminal" : "Show Terminal";
   const hardRestartDisabled = !onHardRestart || isRestarting || status === "starting";
   const restartTooltip =
     status === "installing"
@@ -106,6 +224,10 @@ export function ConsoleDrawer({
     statusLabel.textClass
   );
 
+  const drawerRegionId = `console-drawer-${terminalId}`;
+  const outputPanelId = `dev-preview-output-panel-${terminalId}`;
+  const consolePanelId = `dev-preview-console-panel-${terminalId}`;
+
   return (
     <div className="flex flex-col border-t border-overlay bg-surface">
       <div className="flex items-stretch bg-overlay-soft">
@@ -114,14 +236,14 @@ export function ConsoleDrawer({
           onClick={toggleDrawer}
           className="flex min-h-8 min-w-0 flex-1 items-center gap-2 border-r border-overlay/70 px-3 py-1.5 text-xs font-semibold text-daintree-text/80 transition-colors hover:bg-overlay-medium focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-status-info"
           aria-expanded={isOpen}
-          aria-controls={`console-drawer-${terminalId}`}
-          aria-label={toggleLabel}
+          aria-controls={drawerRegionId}
+          aria-label="Toggle output drawer"
         >
           <ChevronUp
             className={cn("h-4 w-4 shrink-0 transition-transform", isOpen && "rotate-180")}
             aria-hidden="true"
           />
-          <span className="truncate">{toggleLabel}</span>
+          <span className="truncate">Output drawer</span>
         </button>
 
         <div className={statusClass} role="status" aria-live="polite">
@@ -177,19 +299,64 @@ export function ConsoleDrawer({
       </div>
 
       <div
-        id={`console-drawer-${terminalId}`}
-        className={cn("overflow-hidden transition-[height]", isOpen ? "h-[300px]" : "h-0")}
+        id={drawerRegionId}
+        className="overflow-hidden transition-[height]"
+        style={{ height: isOpen ? DRAWER_HEIGHT : 0 }}
         aria-hidden={!isOpen}
       >
-        <div className="h-[300px] bg-surface-canvas">
-          <Suspense fallback={null}>
-            <XtermAdapter
-              terminalId={terminalId}
-              getRefreshTier={getRefreshTier}
-              restoreOnAttach={true}
-              className="!rounded-none !px-0 !pt-0 !pb-0"
+        <div className="flex h-full flex-col bg-surface-canvas">
+          <div
+            ref={tablistRef}
+            role="tablist"
+            aria-label="Dev preview console tabs"
+            onKeyDown={handleTablistKeyDown}
+            className="flex shrink-0 items-center gap-1 border-b border-overlay/70 bg-overlay-soft px-2"
+          >
+            <DrawerTabButton
+              tab="output"
+              label="Output"
+              isActive={activeTab === "output"}
+              controlsId={outputPanelId}
+              onSelect={() => selectTab("output")}
             />
-          </Suspense>
+            <DrawerTabButton
+              tab="console"
+              label="Console"
+              isActive={activeTab === "console"}
+              controlsId={consolePanelId}
+              onSelect={() => selectTab("console")}
+              badge={errorCount}
+            />
+          </div>
+
+          <div className="relative min-h-0 flex-1">
+            <div
+              id={outputPanelId}
+              role="tabpanel"
+              aria-labelledby={`${outputPanelId}-tab`}
+              hidden={activeTab !== "output"}
+              className="absolute inset-0"
+            >
+              <Suspense fallback={null}>
+                <XtermAdapter
+                  terminalId={terminalId}
+                  getRefreshTier={getRefreshTier}
+                  restoreOnAttach={true}
+                  className="!rounded-none !px-0 !pt-0 !pb-0"
+                />
+              </Suspense>
+            </div>
+            {activeTab === "console" && (
+              <div
+                id={consolePanelId}
+                role="tabpanel"
+                aria-labelledby={`${consolePanelId}-tab`}
+                className="absolute inset-0"
+              >
+                <ConsolePanel paneId={paneId} webContentsId={webContentsId} />
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

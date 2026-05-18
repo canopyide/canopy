@@ -22,6 +22,7 @@ export const createBrowserActions = (
   | "setBrowserZoom"
   | "setBrowserConsoleOpen"
   | "setDevPreviewConsoleOpen"
+  | "setDevPreviewConsoleTab"
   | "setViewportPreset"
   | "setViewportRotated"
   | "setViewportDpr"
@@ -98,6 +99,22 @@ export const createBrowserActions = (
       const newById = {
         ...state.panelsById,
         [id]: { ...terminal, devPreviewConsoleOpen: isOpen },
+      };
+      saveNormalized(newById, state.panelIds);
+      return { panelsById: newById };
+    });
+  },
+
+  setDevPreviewConsoleTab: (id, tab) => {
+    set((state) => {
+      const terminal = state.panelsById[id];
+      if (!terminal) return state;
+      if (terminal.kind !== "dev-preview") return state;
+      if (terminal.devPreviewConsoleTab === tab) return state;
+
+      const newById = {
+        ...state.panelsById,
+        [id]: { ...terminal, devPreviewConsoleTab: tab },
       };
       saveNormalized(newById, state.panelIds);
       return { panelsById: newById };

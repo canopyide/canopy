@@ -26,6 +26,7 @@ const DESERIALIZERS: Record<string, PanelKindDeserializer> = {
       browserHistory: saved.browserHistory,
       browserZoom: saved.browserZoom,
       devPreviewConsoleOpen: saved.devPreviewConsoleOpen,
+      devPreviewConsoleTab: saved.devPreviewConsoleTab,
       viewportPreset: sanitizeViewportPreset(saved.viewportPreset),
       viewportRotated: saved.viewportRotated === true,
       viewportDpr: saved.viewportDpr === 2 || saved.viewportDpr === 3 ? saved.viewportDpr : 1,
