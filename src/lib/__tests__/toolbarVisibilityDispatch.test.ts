@@ -18,15 +18,18 @@ function makeDeps(
 }
 
 describe("dispatchToolbarVisibility", () => {
-  it("undefined-pinned agent + installed availability flips to false (hide)", () => {
-    const deps = makeDeps({
-      agentSettings: { agents: {} } as AgentSettings,
-      agentAvailability: { claude: "ready" } as unknown as CliAvailability,
-    });
-    dispatchToolbarVisibility("claude", "left", deps);
-    expect(deps.setAgentPinned).toHaveBeenCalledWith("claude", false);
-    expect(deps.toggleButtonVisibility).not.toHaveBeenCalled();
-  });
+  it.each(["ready", "installed", "blocked", "unauthenticated"] as const)(
+    "undefined-pinned agent + %s availability flips to false (hide — already visible)",
+    (state) => {
+      const deps = makeDeps({
+        agentSettings: { agents: {} } as AgentSettings,
+        agentAvailability: { claude: state } as unknown as CliAvailability,
+      });
+      dispatchToolbarVisibility("claude", "left", deps);
+      expect(deps.setAgentPinned).toHaveBeenCalledWith("claude", false);
+      expect(deps.toggleButtonVisibility).not.toHaveBeenCalled();
+    }
+  );
 
   it("undefined-pinned agent + missing availability flips to true (show)", () => {
     const deps = makeDeps({
