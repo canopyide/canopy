@@ -2,11 +2,13 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook } from "@testing-library/react";
+import { renderHook, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import { useDevPreviewConsoleCapture } from "../useDevPreviewConsoleCapture";
 import { useConsoleCaptureStore } from "@/store/consoleCaptureStore";
+import { usePanelStore } from "@/store";
 import type { SerializedConsoleRow } from "@shared/types/ipc/webviewConsole";
+import type { TerminalInstance } from "@/types";
 
 const PANE_ID = "pane-1";
 const WC_ID = 42;
@@ -43,6 +45,8 @@ beforeEach(() => {
   clearedCb = undefined;
   vi.clearAllMocks();
   useConsoleCaptureStore.setState({ messages: new Map(), counters: new Map() });
+  // Default: panel is NOT registered (treated as a real teardown).
+  usePanelStore.setState({ panelsById: {} });
   (window as unknown as { electron: Record<string, unknown> }).electron = {
     webview: {
       startConsoleCapture,
@@ -98,17 +102,18 @@ describe("useDevPreviewConsoleCapture", () => {
     expect(startConsoleCapture).not.toHaveBeenCalled();
   });
 
-  it("stops capture and unsubscribes on unmount", () => {
+  it("stops capture and unsubscribes on unmount", async () => {
     const ref = makeWebviewRef();
     ref.current = { getWebContentsId: () => WC_ID } as unknown as Electron.WebviewTag;
     const { unmount } = renderHook(() => useDevPreviewConsoleCapture(PANE_ID, ref, true, false));
     unmount();
     expect(offMessage).toHaveBeenCalledTimes(1);
     expect(offCleared).toHaveBeenCalledTimes(1);
-    expect(stopConsoleCapture).toHaveBeenCalledWith(WC_ID, PANE_ID);
+    // stop is chained after the start promise settles (microtask).
+    await waitFor(() => expect(stopConsoleCapture).toHaveBeenCalledWith(WC_ID, PANE_ID));
   });
 
-  it("stops capture when the panel becomes evicted", () => {
+  it("stops capture when the panel becomes evicted", async () => {
     const ref = makeWebviewRef();
     ref.current = { getWebContentsId: () => WC_ID } as unknown as Electron.WebviewTag;
     const { rerender } = renderHook(
@@ -119,7 +124,7 @@ describe("useDevPreviewConsoleCapture", () => {
     expect(startConsoleCapture).toHaveBeenCalledTimes(1);
 
     rerender({ evicted: true });
-    expect(stopConsoleCapture).toHaveBeenCalledWith(WC_ID, PANE_ID);
+    await waitFor(() => expect(stopConsoleCapture).toHaveBeenCalledWith(WC_ID, PANE_ID));
   });
 
   it("routes only matching-pane console messages into the store", () => {
@@ -147,7 +152,7 @@ describe("useDevPreviewConsoleCapture", () => {
     expect(useConsoleCaptureStore.getState().getMessages(PANE_ID)[0]?.isStale).toBe(true);
   });
 
-  it("drops the pane's buffered rows when the panel unmounts", () => {
+  it("drops the pane's buffered rows when the panel is deleted (no longer registered)", () => {
     const ref = makeWebviewRef();
     ref.current = { getWebContentsId: () => WC_ID } as unknown as Electron.WebviewTag;
     const { unmount } = renderHook(() => useDevPreviewConsoleCapture(PANE_ID, ref, true, false));
@@ -156,5 +161,21 @@ describe("useDevPreviewConsoleCapture", () => {
 
     unmount();
     expect(useConsoleCaptureStore.getState().getMessages(PANE_ID)).toHaveLength(0);
+  });
+
+  it("keeps buffered rows when the panel only deactivates in a grid tab group", () => {
+    // Panel is still registered: unmount is a tab-switch deactivation, not a
+    // deletion, so captured rows must survive until the user switches back.
+    usePanelStore.setState({
+      panelsById: { [PANE_ID]: { id: PANE_ID } as unknown as TerminalInstance },
+    });
+    const ref = makeWebviewRef();
+    ref.current = { getWebContentsId: () => WC_ID } as unknown as Electron.WebviewTag;
+    const { unmount } = renderHook(() => useDevPreviewConsoleCapture(PANE_ID, ref, true, false));
+    messageCb?.(row({ paneId: PANE_ID }));
+    expect(useConsoleCaptureStore.getState().getMessages(PANE_ID)).toHaveLength(1);
+
+    unmount();
+    expect(useConsoleCaptureStore.getState().getMessages(PANE_ID)).toHaveLength(1);
   });
 });

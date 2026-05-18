@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useConsoleCaptureStore } from "@/store/consoleCaptureStore";
+import { usePanelStore } from "@/store";
 import { logError } from "@/utils/logger";
 
 /**
@@ -35,9 +36,14 @@ export function useDevPreviewConsoleCapture(
       return;
     }
 
-    void window.electron.webview.startConsoleCapture(webContentsId, paneId).catch((err) => {
-      logError("[DevPreviewConsoleCapture] startConsoleCapture failed", err);
-    });
+    // Chain stop after start settles so a fast ready→evict cycle can't let a
+    // slow startConsoleCapture resolve after cleanup already fired, which
+    // would leave a CDP session attached with nothing to detach it.
+    const started = window.electron.webview
+      .startConsoleCapture(webContentsId, paneId)
+      .catch((err) => {
+        logError("[DevPreviewConsoleCapture] startConsoleCapture failed", err);
+      });
 
     const store = useConsoleCaptureStore.getState();
 
@@ -56,16 +62,25 @@ export function useDevPreviewConsoleCapture(
     return () => {
       offMessage();
       offCleared();
-      void window.electron.webview.stopConsoleCapture(webContentsId, paneId).catch((err) => {
-        logError("[DevPreviewConsoleCapture] stopConsoleCapture failed", err);
+      void started.finally(() => {
+        void window.electron.webview.stopConsoleCapture(webContentsId, paneId).catch((err) => {
+          logError("[DevPreviewConsoleCapture] stopConsoleCapture failed", err);
+        });
       });
     };
   }, [paneId, webviewRef, isWebviewReady, isEvicted]);
 
-  // Drop this pane's buffered rows + counts when the panel unmounts entirely.
+  // Drop this pane's buffered rows + counts only when the panel is gone for
+  // good. Unmount alone is not deletion: a DevPreview panel in a grid tab
+  // group fully unmounts when another tab is activated, and we must keep its
+  // captured rows so they survive a tab switch. By cleanup time a deleted
+  // panel is already absent from the panel registry, so its absence is the
+  // signal that this is a real teardown rather than a deactivation.
   useEffect(() => {
     return () => {
-      useConsoleCaptureStore.getState().removePane(paneId);
+      if (!usePanelStore.getState().panelsById?.[paneId]) {
+        useConsoleCaptureStore.getState().removePane(paneId);
+      }
     };
   }, [paneId]);
 }

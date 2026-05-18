@@ -15,6 +15,7 @@ export function createDevPreviewDefaults(
     devServerError: options.devServerError,
     devServerTerminalId: options.devServerTerminalId,
     devPreviewConsoleOpen: options.devPreviewConsoleOpen,
+    devPreviewConsoleTab: options.devPreviewConsoleTab,
     exitBehavior: options.exitBehavior,
     viewportPreset: options.viewportPreset,
     viewportRotated: options.viewportRotated ?? false,
