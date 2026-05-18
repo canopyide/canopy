@@ -14,6 +14,7 @@ interface PullRequestServiceLike {
     candidateCount: number;
     resolvedCount: number;
     isEnabled: boolean;
+    detectionStateTripped: boolean;
   };
 }
 
@@ -46,6 +47,8 @@ export interface PRIntegrationCallbacks {
     }
   ): void;
   onIssueNotFound(worktreeId: string, issueNumber: number): void;
+  /** Circuit breaker tripped (detection paused) or recovered. Service-wide, not per-worktree. */
+  onDetectionStateChanged?(tripped: boolean): void;
 }
 
 export class PRIntegrationService {
@@ -120,6 +123,12 @@ export class PRIntegrationService {
       })
     );
 
+    this.prEventUnsubscribers.push(
+      this.eventBus.on("sys:pr:detection-state", (data) => {
+        this.callbacks.onDetectionStateChanged?.(data.tripped);
+      })
+    );
+
     // Seed PR service with existing monitors as candidates.
     // The partial object doesn't match the full WorktreeSnapshot type expected
     // by sys:worktree:update, but PullRequestService only reads these fields.
@@ -144,7 +153,9 @@ export class PRIntegrationService {
       candidateCount: status.candidateCount,
       resolvedPRCount: status.resolvedCount,
       lastCheckTime: undefined,
-      circuitBreakerTripped: !status.isEnabled,
+      // Use the dedicated breaker flag, NOT `!isEnabled`: a rate-limit pause
+      // also disables polling but must not show the "detection paused" badge.
+      circuitBreakerTripped: status.detectionStateTripped,
     };
   }
 

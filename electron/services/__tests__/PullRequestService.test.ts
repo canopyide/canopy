@@ -212,6 +212,128 @@ describe("PullRequestService", () => {
     pullRequestService.destroy();
   });
 
+  it("emits sys:pr:detection-state once on trip and once on recovery", async () => {
+    let callCount = 0;
+    const batchCheckLinkedPRs = vi.fn(async () => {
+      callCount++;
+      if (callCount <= 3) {
+        return { results: new Map(), error: "API rate limit exceeded" };
+      }
+      return { results: new Map() };
+    });
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    const states: DaintreeEventMap["sys:pr:detection-state"][] = [];
+    const unsubscribe = events.on("sys:pr:detection-state", (p) => states.push(p));
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/test" })
+    );
+
+    await pullRequestService.start(0);
+    expect(callCount).toBe(1);
+    // First two failures don't trip the breaker — no event yet.
+    expect(states).toHaveLength(0);
+
+    await vi.advanceTimersToNextTimerAsync();
+    expect(callCount).toBe(2);
+    expect(states).toHaveLength(0);
+
+    // Third failure trips the breaker — exactly one tripped:true emission.
+    await vi.advanceTimersToNextTimerAsync();
+    expect(callCount).toBe(3);
+    expect(states).toEqual([expect.objectContaining({ tripped: true })]);
+
+    // Recovery after backoff emits exactly one tripped:false.
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    expect(pullRequestService.getStatus().isEnabled).toBe(true);
+    expect(states.filter((s) => s.tripped === true)).toHaveLength(1);
+    expect(states.filter((s) => s.tripped === false)).toHaveLength(1);
+    expect(states[states.length - 1].tripped).toBe(false);
+
+    unsubscribe();
+    pullRequestService.destroy();
+  });
+
+  it("emits sys:pr:detection-state false when refresh() clears a tripped breaker", async () => {
+    let callCount = 0;
+    const batchCheckLinkedPRs = vi.fn(async () => {
+      callCount++;
+      if (callCount <= 3) {
+        return { results: new Map(), error: "API rate limit exceeded" };
+      }
+      return { results: new Map() };
+    });
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    const states: DaintreeEventMap["sys:pr:detection-state"][] = [];
+    const unsubscribe = events.on("sys:pr:detection-state", (p) => states.push(p));
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/test" })
+    );
+
+    await pullRequestService.start(0);
+    await vi.advanceTimersToNextTimerAsync();
+    await vi.advanceTimersToNextTimerAsync();
+    expect(pullRequestService.getStatus().isEnabled).toBe(false);
+    expect(states).toEqual([expect.objectContaining({ tripped: true })]);
+
+    await pullRequestService.refresh();
+    expect(states.filter((s) => s.tripped === false)).toHaveLength(1);
+    expect(states[states.length - 1].tripped).toBe(false);
+
+    unsubscribe();
+    pullRequestService.destroy();
+  });
+
+  it("does not emit sys:pr:detection-state for rate-limit pauses", async () => {
+    const batchCheckLinkedPRs = vi.fn(async () => ({
+      results: new Map(),
+      error: "secondary rate limit",
+      rateLimit: { kind: "secondary" as const, resumeAt: Date.now() + 60_000 },
+    }));
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ batchCheckLinkedPRs, clearPRCaches }));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    const states: DaintreeEventMap["sys:pr:detection-state"][] = [];
+    const unsubscribe = events.on("sys:pr:detection-state", (p) => states.push(p));
+
+    pullRequestService.initialize("/repo");
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/test" })
+    );
+
+    await pullRequestService.start(0);
+    await vi.advanceTimersToNextTimerAsync();
+    await vi.advanceTimersToNextTimerAsync();
+
+    // Rate-limit pause disables polling but must NOT trip the breaker signal.
+    expect(pullRequestService.getStatus().isEnabled).toBe(false);
+    expect(pullRequestService.getStatus().consecutiveErrors).toBe(0);
+    expect(pullRequestService.getStatus().detectionStateTripped).toBe(false);
+    expect(states).toHaveLength(0);
+
+    unsubscribe();
+    pullRequestService.destroy();
+  });
+
   it("revalidates resolved PRs at 90-second intervals", async () => {
     let checkCallCount = 0;
     const batchCheckLinkedPRs = vi.fn(async (_cwd: string, candidates: PRCheckCandidate[]) => {

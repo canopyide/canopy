@@ -21,6 +21,7 @@ type PortEventName =
   | "worktree-activated"
   | "pr-detected"
   | "pr-cleared"
+  | "pr-detection-state"
   | "issue-detected"
   | "issue-not-found";
 
@@ -91,6 +92,7 @@ beforeEach(() => {
     },
     worktree: {
       getAllIssueAssociations: () => Promise.resolve({}),
+      getPRStatus: () => Promise.resolve(null),
     },
   } as unknown as typeof window.electron;
 });

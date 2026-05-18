@@ -10,6 +10,7 @@ import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { usePanelStore } from "@/store/panelStore";
 import { usePulseStore } from "@/store/pulseStore";
 import { useProjectStore } from "@/store/projectStore";
+import { usePRCircuitBreakerStore } from "@/store/prCircuitBreakerStore";
 import { wakeActiveWorktreeTerminals } from "@/store/wakeActiveWorktreeTerminals";
 import { worktreeClient } from "@/clients/worktreeClient";
 import { mutateCacheEntries } from "@/lib/githubResourceCache";
@@ -100,6 +101,21 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
       if (!isWake) {
         store.getState().setLoading(true);
       }
+
+      // Replay-on-wake: the circuit breaker is pushed via `pr-detection-state`,
+      // but a view that wakes after it tripped would miss that push. Re-seed
+      // from the request-response status. Fire-and-forget and non-critical —
+      // on failure the store stays `false` and the next push corrects it.
+      void worktreeClient
+        .getPRStatus()
+        .then((status) => {
+          if (thisGen !== generation) return;
+          usePRCircuitBreakerStore.getState().setTripped(status?.circuitBreakerTripped ?? false);
+        })
+        .catch(() => {
+          /* non-critical — next pr-detection-state push corrects it */
+        });
+
       worktreePort
         .request("get-all-states")
         .then(async (response: { states: WorktreeSnapshot[] }) => {
@@ -326,6 +342,14 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
           },
           store.getState().nextVersion()
         );
+      })
+    );
+
+    cleanups.push(
+      worktreePort.onEvent("pr-detection-state", (data) => {
+        // Service-wide ambient signal — not keyed to a worktree. Use
+        // `.getState()` (not a captured ref) since this callback fires async.
+        usePRCircuitBreakerStore.getState().setTripped((data as { tripped: boolean }).tripped);
       })
     );
 

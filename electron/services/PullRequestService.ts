@@ -95,6 +95,7 @@ class PullRequestService {
   private isPolling: boolean = false;
   private consecutiveErrors: number = 0;
   private nextRetryAt: number = 0;
+  private detectionStateTripped: boolean = false;
   private boostExpiresAt: number | null = null;
   private lastCheckAt: number = Number.NEGATIVE_INFINITY;
   private startupDelayTimer: NodeJS.Timeout | null = null;
@@ -364,6 +365,7 @@ class PullRequestService {
     this.boostExpiresAt = null;
     this.nextRetryAt = 0;
     this.consecutiveErrors = 0;
+    this.setDetectionState(false);
     clearPRCaches();
     // Force a full re-detect cycle so already-resolved worktrees re-query
     // dynamic PR fields (state, CI status). Without this, checkForPRs() skips
@@ -391,6 +393,13 @@ class PullRequestService {
     this.detectedPRs.clear();
     this.consecutiveErrors = 0;
     this.nextRetryAt = 0;
+    // reset() runs on project switch, service teardown, and token removal
+    // (updateToken(null) → reset()). Token removal does NOT re-attach the
+    // worktree port, so a silent clear would strand a tripped glyph in the
+    // renderer until the next wake. setDetectionState only emits on a genuine
+    // true→false transition, so this is a no-op when not tripped and cannot
+    // suppress a later genuine trip (the flag is false afterward).
+    this.setDetectionState(false);
     this.boostExpiresAt = null;
     this.lastCheckAt = Number.NEGATIVE_INFINITY;
   }
@@ -494,6 +503,7 @@ class PullRequestService {
           logDebug("Circuit breaker recovery - running immediate check");
           this.consecutiveErrors = 0;
           this.nextRetryAt = 0;
+          this.setDetectionState(false);
           void this.checkForPRs()
             .catch((err) => this.handleError(formatErrorMessage(err, "PR check failed")))
             .finally(() => this.scheduleNextPoll());
@@ -861,7 +871,22 @@ class PullRequestService {
         message: "PR detection paused due to errors. Will retry automatically.",
         id: "pr-service-circuit-breaker",
       });
+      this.setDetectionState(true);
     }
+  }
+
+  /**
+   * Emit the circuit-breaker ambient state to the renderer, but only on a
+   * genuine transition. Errors keep arriving while the breaker is tripped and
+   * `refresh()` runs frequently, so an unconditional emit would flood the
+   * worktree port and the PR badge store with redundant events.
+   */
+  private setDetectionState(tripped: boolean): void {
+    if (this.detectionStateTripped === tripped) {
+      return;
+    }
+    this.detectionStateTripped = tripped;
+    events.emit("sys:pr:detection-state", { tripped, timestamp: Date.now() });
   }
 
   public getStatus(): {
@@ -870,6 +895,7 @@ class PullRequestService {
     candidateCount: number;
     resolvedCount: number;
     consecutiveErrors: number;
+    detectionStateTripped: boolean;
   } {
     return {
       isPolling: this.isPolling,
@@ -877,6 +903,10 @@ class PullRequestService {
       candidateCount: this.candidates.size,
       resolvedCount: this.resolvedWorktrees.size,
       consecutiveErrors: this.consecutiveErrors,
+      // Distinct from `!isEnabled`: a rate-limit pause also disables polling
+      // but does NOT trip the circuit breaker. The badge ambient signal must
+      // only reflect the genuine 3-error breaker, not a transient 429 pause.
+      detectionStateTripped: this.detectionStateTripped,
     };
   }
 }

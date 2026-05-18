@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { Clock, CornerDownRight, GitPullRequest } from "lucide-react";
+import { Clock, CloudOff, CornerDownRight, GitPullRequest } from "lucide-react";
 import type { GitHubPRCIStatus } from "@shared/types/github";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import { usePRTooltip } from "@/hooks/useGitHubTooltip";
@@ -20,6 +20,8 @@ interface PRBadgeProps {
   isActive?: boolean;
   underlineOnHover?: boolean;
   rowLastUpdatedAt?: number;
+  /** Service-wide PR detection circuit breaker tripped — this rollup may be stale. */
+  prDetectionPaused?: boolean;
 }
 
 export function PRBadge({
@@ -32,6 +34,7 @@ export function PRBadge({
   isActive,
   underlineOnHover,
   rowLastUpdatedAt,
+  prDetectionPaused,
 }: PRBadgeProps) {
   const { data, loading, error, missingToken, fetchTooltip, reset } = usePRTooltip(
     worktreePath,
@@ -62,11 +65,14 @@ export function PRBadge({
 
   const ciVisual = getPRCIStatusVisual(prCiStatus);
 
+  const showDetectionPaused = (prDetectionPaused ?? false) && !missingToken;
+
   const ariaLabel = missingToken
     ? "Configure GitHub token to see PR details"
-    : ciVisual
-      ? `Open ${prStateLabel} pull request #${prNumber} on GitHub — ${ciVisual.ariaLabel}`
-      : `Open ${prStateLabel} pull request #${prNumber} on GitHub`;
+    : (ciVisual
+        ? `Open ${prStateLabel} pull request #${prNumber} on GitHub — ${ciVisual.ariaLabel}`
+        : `Open ${prStateLabel} pull request #${prNumber} on GitHub`) +
+      (showDetectionPaused ? " — PR detection paused" : "");
 
   const freshnessSuffixStr = useMemo(
     () => freshnessSuffix(freshnessLevel, rowLastUpdatedAt ?? cacheLastUpdatedAt, now),
@@ -127,6 +133,9 @@ export function PRBadge({
               aria-hidden="true"
             />
           )}
+          {showDetectionPaused && (
+            <CloudOff className="w-3 h-3 shrink-0 text-text-muted" aria-hidden="true" />
+          )}
         </button>
       </TooltipTrigger>
       <TooltipContent side="right" align="start" className="p-3">
@@ -143,6 +152,11 @@ export function PRBadge({
         )}
         {freshnessSuffixStr && (
           <span className="block text-[11px] text-text-muted mt-1">{freshnessSuffixStr}</span>
+        )}
+        {showDetectionPaused && (
+          <span className="block text-[11px] text-text-muted mt-1">
+            PR detection paused — retrying
+          </span>
         )}
       </TooltipContent>
     </Tooltip>

@@ -417,6 +417,11 @@ export type WorkspaceHostEvent =
       /** Branch the clear was initiated against — receiver drops the overlay if the worktree's branch has since changed. */
       branchName?: string;
     }
+  | {
+      /** Service-wide PR detection circuit breaker tripped (paused) or recovered. */
+      type: "pr-detection-state";
+      tripped: boolean;
+    }
   // Issue events
   | {
       type: "issue-detected";

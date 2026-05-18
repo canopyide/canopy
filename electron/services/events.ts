@@ -100,6 +100,12 @@ export const EVENT_META: Record<keyof DaintreeEventMap, EventMetadata> = {
     requiresTimestamp: true,
     description: "Pull request association cleared",
   },
+  "sys:pr:detection-state": {
+    category: "system",
+    requiresContext: false,
+    requiresTimestamp: true,
+    description: "PR detection circuit breaker tripped or recovered",
+  },
   "sys:issue:detected": {
     category: "system",
     requiresContext: true,
@@ -451,6 +457,11 @@ export type DaintreeEventMap = {
     branchName?: string;
     timestamp: number;
   };
+  "sys:pr:detection-state": {
+    /** True when the circuit breaker has tripped (detection paused); false on recovery. */
+    tripped: boolean;
+    timestamp: number;
+  };
 
   "sys:issue:detected": {
     worktreeId: string;
@@ -783,6 +794,7 @@ export const ALL_EVENT_TYPES: Array<keyof DaintreeEventMap> = [
   "watcher:change",
   "sys:pr:detected",
   "sys:pr:cleared",
+  "sys:pr:detection-state",
   "sys:issue:detected",
   "sys:issue:not-found",
   "agent:spawned",

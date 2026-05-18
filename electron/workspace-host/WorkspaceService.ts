@@ -247,6 +247,9 @@ export class WorkspaceService {
           issueNumber,
         });
       },
+      onDetectionStateChanged: (tripped) => {
+        this.sendEvent({ type: "pr-detection-state", tripped });
+      },
     });
 
     this.resourceActionExecutor = new ResourceActionExecutor({
