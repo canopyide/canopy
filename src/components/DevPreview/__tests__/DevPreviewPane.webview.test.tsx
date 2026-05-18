@@ -765,8 +765,6 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         stopConsoleCapture: vi.fn(() => Promise.resolve()),
         onConsoleMessage: vi.fn(() => vi.fn()),
         onConsoleContextCleared: vi.fn(() => vi.fn()),
-        onUnresponsive: vi.fn(() => vi.fn()),
-        onResponsive: vi.fn(() => vi.fn()),
       },
     };
 
@@ -823,8 +821,6 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         stopConsoleCapture: vi.fn(() => Promise.resolve()),
         onConsoleMessage: vi.fn(() => vi.fn()),
         onConsoleContextCleared: vi.fn(() => vi.fn()),
-        onUnresponsive: vi.fn(() => vi.fn()),
-        onResponsive: vi.fn(() => vi.fn()),
       },
     };
 
@@ -871,8 +867,6 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         stopConsoleCapture: vi.fn(() => Promise.resolve()),
         onConsoleMessage: vi.fn(() => vi.fn()),
         onConsoleContextCleared: vi.fn(() => vi.fn()),
-        onUnresponsive: vi.fn(() => vi.fn()),
-        onResponsive: vi.fn(() => vi.fn()),
       },
     };
 

@@ -434,16 +434,6 @@ export function useDevPreviewLoadLifecycle({
       recordVisit(navigatedUrl);
     };
 
-    const handleRenderProcessGone = (e: Event) => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      const details = (e as unknown as { details?: { reason?: string; exitCode?: number } }).details;
-      if (!details || details.reason === "clean-exit") return;
-      onRenderProcessGone?.({
-        reason: details.reason ?? "unknown",
-        exitCode: details.exitCode ?? -1,
-      });
-    };
-
     webview.addEventListener("did-start-loading", handleDidStartLoading);
     webview.addEventListener("did-stop-loading", handleDidStopLoading);
     webview.addEventListener("did-finish-load", handleDidFinishLoad);
@@ -458,7 +448,6 @@ export function useDevPreviewLoadLifecycle({
       handleDidNavigateInPage as unknown as EventListener
     );
     webview.addEventListener("page-title-updated", handlePageTitleUpdated);
-    webview.addEventListener("render-process-gone", handleRenderProcessGone);
 
     return () => {
       webview.removeEventListener("did-start-loading", handleDidStartLoading);
@@ -475,7 +464,6 @@ export function useDevPreviewLoadLifecycle({
         handleDidNavigateInPage as unknown as EventListener
       );
       webview.removeEventListener("page-title-updated", handlePageTitleUpdated);
-      webview.removeEventListener("render-process-gone", handleRenderProcessGone);
       if (failLoadRetryRef.current) {
         clearTimeout(failLoadRetryRef.current);
         failLoadRetryRef.current = null;
