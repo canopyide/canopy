@@ -5,7 +5,13 @@ import type { DevPreviewSessionState } from "../../shared/types/ipc/devPreview";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
 
-export type DevPreviewStatus = "stopped" | "starting" | "installing" | "running" | "error";
+export type DevPreviewStatus =
+  | "stopped"
+  | "starting"
+  | "installing"
+  | "running"
+  | "stopping"
+  | "error";
 
 export interface UseDevServerOptions {
   panelId: string;
@@ -34,6 +40,7 @@ export interface UseDevServerReturn extends UseDevServerState {
    * Resets to 0 whenever status leaves `starting`.
    */
   stuckTier: DevServerStuckTier;
+  forceKilled?: boolean;
 }
 
 /**
@@ -103,6 +110,7 @@ export function useDevServer({
   const [error, setError] = useState<DevServerError | null>(null);
   const [isRestarting, setIsRestarting] = useState(false);
   const [stuckTier, setStuckTier] = useState<DevServerStuckTier>(0);
+  const [forceKilled, setForceKilled] = useState<boolean | undefined>(undefined);
   const latestSessionRef = useRef<{
     status: DevPreviewStatus;
     url: string | null;
@@ -173,6 +181,7 @@ export function useDevServer({
     setTerminalId(state.terminalId);
     setError(state.error ?? null);
     setIsRestarting(state.isRestarting);
+    setForceKilled(state.forceKilled);
   }, []);
 
   const applyInvokeError = useCallback((err: unknown) => {
@@ -494,5 +503,6 @@ export function useDevServer({
     restart,
     isRestarting,
     stuckTier,
+    forceKilled,
   };
 }

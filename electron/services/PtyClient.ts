@@ -657,7 +657,7 @@ export class PtyClient extends EventEmitter {
     this.send({ type: "resize", id, cols, rows });
   }
 
-  kill(id: string, reason?: string): void {
+  kill(id: string, reason?: string, options?: { escalationDelayMs?: number }): void {
     getTrashedPidTracker().removeTrashed(id);
     const wasKnown = this.pendingSpawns.has(id);
     this.pendingSpawns.delete(id);
@@ -684,7 +684,7 @@ export class PtyClient extends EventEmitter {
     }
     // Always send the kill IPC. The host-side handler kills the terminal if
     // it exists and removes any persisted session state for the id.
-    this.send({ type: "kill", id, reason });
+    this.send({ type: "kill", id, reason, escalationDelayMs: options?.escalationDelayMs });
   }
 
   /** Check if a terminal exists (based on local tracking) */

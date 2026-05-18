@@ -1,5 +1,5 @@
 import { Suspense, useState, useCallback, useEffect } from "react";
-import { ChevronUp, RotateCw } from "lucide-react";
+import { ChevronUp, RotateCw, CircleStop } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -16,6 +16,7 @@ interface ConsoleDrawerProps {
   defaultOpen?: boolean;
   isRestarting?: boolean;
   onHardRestart?: () => void;
+  onStop?: () => void;
 }
 
 const STATUS_LABEL: Record<
@@ -42,6 +43,11 @@ const STATUS_LABEL: Record<
     textClass: "text-server-running",
     dotClass: "bg-server-running",
   },
+  stopping: {
+    label: "Stopping",
+    textClass: "text-server-starting",
+    dotClass: "bg-server-starting",
+  },
   error: {
     label: "Error",
     textClass: "text-server-error",
@@ -57,6 +63,7 @@ export function ConsoleDrawer({
   defaultOpen = false,
   isRestarting = false,
   onHardRestart,
+  onStop,
 }: ConsoleDrawerProps) {
   const [uncontrolledIsOpen, setUncontrolledIsOpen] = useState(defaultOpen);
   const isOpen = controlledIsOpen ?? uncontrolledIsOpen;
@@ -86,9 +93,16 @@ export function ConsoleDrawer({
     status === "installing"
       ? "Hard restart dev preview (may interrupt installation)"
       : "Hard restart dev preview";
+  const stopVisible =
+    onStop &&
+    (status === "starting" ||
+      status === "installing" ||
+      status === "running" ||
+      status === "stopping");
+  const stopDisabled = isRestarting || status === "stopping";
   const statusClass = cn(
     "inline-flex min-h-8 items-center px-3 text-[10px] font-semibold uppercase tracking-wide",
-    onHardRestart && "border-r border-overlay/70",
+    (onHardRestart || stopVisible) && "border-r border-overlay/70",
     statusLabel.textClass
   );
 
@@ -114,6 +128,29 @@ export function ConsoleDrawer({
           <span className={cn("mr-2 h-1.5 w-1.5 shrink-0 rounded-full", statusLabel.dotClass)} />
           {statusLabel.label}
         </div>
+
+        {stopVisible && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <button
+                  type="button"
+                  onClick={onStop}
+                  disabled={stopDisabled}
+                  className={cn(
+                    "p-1.5 rounded hover:bg-overlay-medium disabled:opacity-30 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors",
+                    status === "stopping" && "animate-pulse-immediate"
+                  )}
+                  aria-label="Stop dev server"
+                  aria-busy={status === "stopping"}
+                >
+                  <CircleStop className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Stop dev server</TooltipContent>
+          </Tooltip>
+        )}
 
         {onHardRestart && (
           <Tooltip>

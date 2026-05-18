@@ -403,6 +403,7 @@ export const BUILT_IN_ACTION_IDS = [
   "devServer.start",
   "devPreview.restartClearCache",
   "devPreview.reinstall",
+  "devPreview.stop",
 
   // -- devPreviewActions --
   "devPreview.reloadPreview",

@@ -963,7 +963,7 @@ export class TerminalProcess {
     });
   }
 
-  kill(reason?: string): void {
+  kill(reason?: string, escalationDelayMs?: number): void {
     const terminal = this.terminalInfo;
     const exitReason: ExitReason = reason === "graceful-shutdown" ? "graceful-shutdown" : "kill";
 
@@ -995,7 +995,7 @@ export class TerminalProcess {
     // `reason: "kill"` carried through the lifecycle state machine.
     this.disposeHeadless();
 
-    this.processTreeKiller.execute(false);
+    this.processTreeKiller.execute(false, escalationDelayMs);
   }
 
   checkFlooding(): { flooded: boolean; resumed: boolean } {
