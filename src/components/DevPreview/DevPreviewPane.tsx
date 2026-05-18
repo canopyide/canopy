@@ -280,14 +280,14 @@ export function DevPreviewPane({
   const previousIsEvictedRef = useRef(false);
 
   useEffect(() => {
-    if (previousIsEvictedRef.current && !isEvicted) {
+    if (previousIsEvictedRef.current && !isEvicted && hasBeenVisible) {
       setIsRecoveringFromEviction(true);
     }
     if (isEvicted) {
       setIsRecoveringFromEviction(false);
     }
     previousIsEvictedRef.current = isEvicted;
-  }, [isEvicted]);
+  }, [isEvicted, hasBeenVisible]);
 
   const showRecoverySpinner = useDeferredLoading(isRecoveringFromEviction, UI_DOHERTY_THRESHOLD);
 
@@ -306,6 +306,15 @@ export function DevPreviewPane({
     };
 
     webview.addEventListener("did-finish-load", handleRecoveryFinishLoad);
+
+    try {
+      if (webview.getURL() !== "about:blank" && !webview.isLoading()) {
+        setIsRecoveringFromEviction(false);
+      }
+    } catch {
+      // Webview not ready
+    }
+
     return () => {
       webview.removeEventListener("did-finish-load", handleRecoveryFinishLoad);
     };
@@ -999,7 +1008,7 @@ export function DevPreviewPane({
                       )}
                     </div>
                   )}
-                  {showRecoverySpinner && !isLoading && !webviewLoadError && (
+                  {showRecoverySpinner && !webviewLoadError && (
                     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-daintree-bg gap-3">
                       <Spinner size="2xl" className="text-status-info" />
                       <p className="text-xs text-daintree-text/50">Rehydrating preview...</p>
