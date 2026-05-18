@@ -59,9 +59,29 @@ vi.mock("@/components/Notifications/NotificationCenter", () => ({
   NotificationCenter: () => null,
 }));
 
+vi.mock("@/components/ui/context-menu", () => ({
+  ContextMenu: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  ContextMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  ContextMenuContent: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="context-menu-content">{children}</div>
+  ),
+  ContextMenuItem: ({
+    children,
+    onSelect,
+  }: {
+    children: React.ReactNode;
+    onSelect?: (e: Event) => void;
+  }) => (
+    <div role="menuitem" onClick={(e) => onSelect?.(e as unknown as Event)}>
+      {children}
+    </div>
+  ),
+}));
+
 vi.mock("lucide-react", () => ({
   Bell: () => <span data-testid="icon-bell" />,
   BellOff: () => <span data-testid="icon-bell-off" />,
+  Unplug: () => <span data-testid="icon-unplug" />,
 }));
 
 function resetStores() {

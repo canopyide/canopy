@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { SlidersHorizontal } from "lucide-react";
+import { SlidersHorizontal, Unplug } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
 import {
@@ -12,6 +12,7 @@ import {
 import { createTooltipContent } from "@/lib/tooltipShortcut";
 import { useAriaKeyshortcuts, useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
 import { actionService } from "@/services/ActionService";
+import { useToolbarPreferencesStore } from "@/store/toolbarPreferencesStore";
 
 const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text relative";
 
@@ -38,6 +39,7 @@ export function ToolbarSettingsButton({
   const settingsShortcut = useKeybindingDisplay("app.settings");
   const settingsAriaShortcut = useAriaKeyshortcuts("app.settings");
   const settingsHover = useShortcutHintHover("app.settings");
+  const toggleButtonVisibility = useToolbarPreferencesStore((s) => s.toggleButtonVisibility);
 
   return (
     <ContextMenu>
@@ -70,7 +72,7 @@ export function ToolbarSettingsButton({
           </TooltipContent>
         </Tooltip>
       </ContextMenuTrigger>
-      <ContextMenuContent>
+      <ContextMenuContent className="max-h-[var(--radix-context-menu-content-available-height)] overflow-y-auto">
         {SETTINGS_CONTEXT_MENU_TABS.map(({ tab, label }) => (
           <ContextMenuItem
             key={tab}
@@ -107,6 +109,11 @@ export function ToolbarSettingsButton({
           }
         >
           Troubleshooting
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={() => toggleButtonVisibility("settings", "right")}>
+          <Unplug className="mr-2 h-3.5 w-3.5" />
+          Unpin from Toolbar
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

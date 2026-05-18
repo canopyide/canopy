@@ -1,12 +1,19 @@
 import { useEffect, useRef } from "react";
-import { Mic } from "lucide-react";
+import { Mic, Unplug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
 import { cn } from "@/lib/utils";
 import { useAriaKeyshortcuts, useKeybindingDisplay } from "@/hooks";
 import { useDeferredLoading } from "@/hooks/useDeferredLoading";
 import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
+import { useToolbarPreferencesStore } from "@/store/toolbarPreferencesStore";
 import { useVoiceRecordingStore } from "@/store/voiceRecordingStore";
 import { voiceRecordingService } from "@/services/VoiceRecordingService";
 
@@ -50,6 +57,7 @@ export function VoiceRecordingToolbarButton({
   const audioLevel = useVoiceRecordingStore((state) => state.audioLevel);
   const shortcut = useKeybindingDisplay("voiceInput.toggle");
   const ariaShortcut = useAriaKeyshortcuts("voiceInput.toggle");
+  const toggleButtonVisibility = useToolbarPreferencesStore((s) => s.toggleButtonVisibility);
 
   const isConnecting = status === "connecting";
   const isRecording = status === "recording";
@@ -175,88 +183,100 @@ export function VoiceRecordingToolbarButton({
     .join(" · ");
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          data-toolbar-item={dataToolbarItem}
-          onClick={() => {
-            void voiceRecordingService.focusActiveTarget();
-          }}
-          className={cn(
-            "toolbar-icon-button relative mr-0.5 text-daintree-text",
-            "hover:text-[var(--toolbar-control-hover-fg,var(--theme-accent-primary))]"
-          )}
-          aria-label={tooltipTitle}
-          aria-keyshortcuts={ariaShortcut}
-        >
-          <Mic className="h-4 w-4" />
-          {/* Orbit overlay — absolute inset on the relative Button. No
-              contain:strict at this scale: the toolbar button is a flex
-              child and clipping the orbit would crop the ring. */}
-          <span
-            ref={trackRef}
-            aria-hidden="true"
-            className="absolute inset-1 rounded-full pointer-events-none"
-            style={{
-              opacity: 0.08,
-              background: `var(--theme-accent-primary)`,
-              mask: `linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)`,
-              WebkitMask: `linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)`,
-              maskComposite: "exclude",
-              WebkitMaskComposite: "xor",
-              padding: `${BASE_THICKNESS}px`,
-              transition: "opacity 80ms ease-out",
-            }}
-          />
-          <div
-            ref={wrapperRef}
-            aria-hidden="true"
-            className="absolute inset-1 pointer-events-none"
-            style={{ willChange: "transform" }}
-          >
-            <span
-              ref={ringRef}
-              className="absolute inset-0 rounded-full"
-              style={{
-                padding: `${BASE_THICKNESS}px`,
-                mask: `linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)`,
-                WebkitMask: `linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)`,
-                maskComposite: "exclude",
-                WebkitMaskComposite: "xor",
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              data-toolbar-item={dataToolbarItem}
+              onClick={() => {
+                void voiceRecordingService.focusActiveTarget();
               }}
-            />
-            <span
-              ref={dotHaloRef}
-              className="absolute rounded-full bg-daintree-accent/30"
-              style={{
-                width: "6px",
-                height: "6px",
-                top: 0,
-                left: "50%",
-                transform: "translate(-50%, -35%)",
-              }}
-            />
-            <span
-              ref={dotCoreRef}
-              className="absolute rounded-full bg-daintree-accent"
-              style={{
-                width: "3.5px",
-                height: "3.5px",
-                top: 0,
-                left: "50%",
-                transform: "translate(-50%, -15%)",
-              }}
-            />
-          </div>
-          <ShortcutRevealChip actionId="voiceInput.toggle" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom" className="text-center">
-        <div className="font-medium">{tooltipTitle}</div>
-        {tooltipExtra && <div className="text-[11px] text-daintree-text/60">{tooltipExtra}</div>}
-      </TooltipContent>
-    </Tooltip>
+              className={cn(
+                "toolbar-icon-button relative mr-0.5 text-daintree-text",
+                "hover:text-[var(--toolbar-control-hover-fg,var(--theme-accent-primary))]"
+              )}
+              aria-label={tooltipTitle}
+              aria-keyshortcuts={ariaShortcut}
+            >
+              <Mic className="h-4 w-4" />
+              {/* Orbit overlay — absolute inset on the relative Button. No
+                  contain:strict at this scale: the toolbar button is a flex
+                  child and clipping the orbit would crop the ring. */}
+              <span
+                ref={trackRef}
+                aria-hidden="true"
+                className="absolute inset-1 rounded-full pointer-events-none"
+                style={{
+                  opacity: 0.08,
+                  background: `var(--theme-accent-primary)`,
+                  mask: `linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)`,
+                  WebkitMask: `linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)`,
+                  maskComposite: "exclude",
+                  WebkitMaskComposite: "xor",
+                  padding: `${BASE_THICKNESS}px`,
+                  transition: "opacity 80ms ease-out",
+                }}
+              />
+              <div
+                ref={wrapperRef}
+                aria-hidden="true"
+                className="absolute inset-1 pointer-events-none"
+                style={{ willChange: "transform" }}
+              >
+                <span
+                  ref={ringRef}
+                  className="absolute inset-0 rounded-full"
+                  style={{
+                    padding: `${BASE_THICKNESS}px`,
+                    mask: `linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)`,
+                    WebkitMask: `linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)`,
+                    maskComposite: "exclude",
+                    WebkitMaskComposite: "xor",
+                  }}
+                />
+                <span
+                  ref={dotHaloRef}
+                  className="absolute rounded-full bg-daintree-accent/30"
+                  style={{
+                    width: "6px",
+                    height: "6px",
+                    top: 0,
+                    left: "50%",
+                    transform: "translate(-50%, -35%)",
+                  }}
+                />
+                <span
+                  ref={dotCoreRef}
+                  className="absolute rounded-full bg-daintree-accent"
+                  style={{
+                    width: "3.5px",
+                    height: "3.5px",
+                    top: 0,
+                    left: "50%",
+                    transform: "translate(-50%, -15%)",
+                  }}
+                />
+              </div>
+              <ShortcutRevealChip actionId="voiceInput.toggle" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-center">
+            <div className="font-medium">{tooltipTitle}</div>
+            {tooltipExtra && (
+              <div className="text-[11px] text-daintree-text/60">{tooltipExtra}</div>
+            )}
+          </TooltipContent>
+        </Tooltip>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="max-h-[var(--radix-context-menu-content-available-height)] overflow-y-auto">
+        <ContextMenuItem onSelect={() => toggleButtonVisibility("voice-recording", "right")}>
+          <Unplug className="mr-2 h-3.5 w-3.5" />
+          Unpin from Toolbar
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

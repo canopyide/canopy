@@ -10,9 +10,15 @@ import {
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { Plug, Pin, Settings2, ChevronRight, Keyboard } from "lucide-react";
+import { Plug, Pin, Settings2, ChevronRight, Keyboard, Unplug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,6 +48,7 @@ import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import { useCcrPresetsStore } from "@/store/ccrPresetsStore";
 import { useProjectPresetsStore } from "@/store/projectPresetsStore";
 import { usePanelStore } from "@/store/panelStore";
+import { useToolbarPreferencesStore } from "@/store/toolbarPreferencesStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 
 import { useKeybindingDisplay } from "@/hooks";
@@ -310,6 +317,7 @@ export function AgentTrayButton({
   const projectPresetsByAgent = useProjectPresetsStore((s) => s.presetsByAgent);
   const setAgentPinned = useAgentSettingsStore((s) => s.setAgentPinned);
   const updateWorktreePreset = useAgentSettingsStore((s) => s.updateWorktreePreset);
+  const toggleButtonVisibility = useToolbarPreferencesStore((s) => s.toggleButtonVisibility);
 
   const getSortedActionMruList = useActionMruStore((s) => s.getSortedActionMruList);
 
@@ -650,31 +658,43 @@ export function AgentTrayButton({
           handleOpenChange(o);
         }}
       >
-        <Tooltip open={tooltipOpen} onOpenChange={handleTooltipOpenChange}>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                data-toolbar-item={dataToolbarItem}
-                className="toolbar-agent-button text-daintree-text"
-                aria-label={showDiscoveryBadge ? "Agent tray — new agents detected" : "Agent tray"}
-                onPointerEnter={clearFocusRestoreSuppression}
-              >
-                <span className="relative inline-flex items-center justify-center">
-                  <Plug />
-                  <span
-                    data-testid="agent-tray-discovery-badge"
-                    data-visible={showDiscoveryBadge}
-                    className="toolbar-badge absolute top-0 right-0 size-1.5 rounded-full bg-status-info ring-1 ring-daintree-sidebar"
-                    aria-hidden="true"
-                  />
-                </span>
-              </Button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Agent Tray</TooltipContent>
-        </Tooltip>
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <Tooltip open={tooltipOpen} onOpenChange={handleTooltipOpenChange}>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    data-toolbar-item={dataToolbarItem}
+                    className="toolbar-agent-button text-daintree-text"
+                    aria-label={
+                      showDiscoveryBadge ? "Agent tray — new agents detected" : "Agent tray"
+                    }
+                    onPointerEnter={clearFocusRestoreSuppression}
+                  >
+                    <span className="relative inline-flex items-center justify-center">
+                      <Plug />
+                      <span
+                        data-testid="agent-tray-discovery-badge"
+                        data-visible={showDiscoveryBadge}
+                        className="toolbar-badge absolute top-0 right-0 size-1.5 rounded-full bg-status-info ring-1 ring-daintree-sidebar"
+                        aria-hidden="true"
+                      />
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Agent Tray</TooltipContent>
+            </Tooltip>
+          </ContextMenuTrigger>
+          <ContextMenuContent className="max-h-[var(--radix-context-menu-content-available-height)] overflow-y-auto">
+            <ContextMenuItem onSelect={() => toggleButtonVisibility("agent-tray", "left")}>
+              <Unplug className="mr-2 h-3.5 w-3.5" />
+              Unpin from Toolbar
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
         <DropdownMenuContent
           align="start"
           sideOffset={4}
