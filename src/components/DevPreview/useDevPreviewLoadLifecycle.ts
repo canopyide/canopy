@@ -2,7 +2,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { usePanelStore } from "@/store";
 import { useUrlHistoryStore } from "@/store/urlHistoryStore";
 import type { BrowserHistory } from "@shared/types/browser";
-import { getDevPreviewWebContents } from "./viewportEmulation";
+import { getViewportPreset } from "@/panels/dev-preview/viewportPresets";
+import { getDevPreviewWebContents, buildEmulationParams } from "./viewportEmulation";
 import { pushBrowserHistory } from "../Browser/historyUtils";
 import { loadWebviewUrl } from "./loadWebviewUrl";
 import type { BlockedNavAction } from "./BlockedNavBanner";
@@ -89,13 +90,14 @@ export function useDevPreviewLoadLifecycle({
   // Mirror the active preset/rotation/DPR into refs so handleDidFinishLoad can
   // re-apply overrides after cross-origin navigation without the load-listener
   // effect depending on these values (which would tear down/rebuild load timers
-  // on every change).
-  const viewportPresetRef = useRef(viewportPreset);
-  viewportPresetRef.current = viewportPreset;
-  const viewportRotatedRef = useRef(viewportRotated);
-  viewportRotatedRef.current = viewportRotated;
-  const viewportDprRef = useRef(viewportDpr);
-  viewportDprRef.current = viewportDpr;
+  // on every change). Updated on each render from the terminal store selector.
+  const terminal = usePanelStore((s) => s.getTerminal(id));
+  const viewportPresetRef = useRef(terminal?.viewportPreset);
+  viewportPresetRef.current = terminal?.viewportPreset;
+  const viewportRotatedRef = useRef(terminal?.viewportRotated ?? false);
+  viewportRotatedRef.current = terminal?.viewportRotated ?? false;
+  const viewportDprRef = useRef(terminal?.viewportDpr ?? 1);
+  viewportDprRef.current = terminal?.viewportDpr ?? 1;
 
   const clearLoadTimers = useCallback(() => {
     if (slowLoadTimeoutRef.current) {
