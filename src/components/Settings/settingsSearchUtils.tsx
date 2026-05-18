@@ -98,9 +98,7 @@ export function filterSettings(
   if (!cleanQuery && filterModified) {
     const modifiedTabs = options?.modifiedTabs;
     if (!modifiedTabs || modifiedTabs.size === 0) return [];
-    const scopedIndex = activeScope
-      ? index.filter((entry) => entry.scope === activeScope)
-      : index;
+    const scopedIndex = activeScope ? index.filter((entry) => entry.scope === activeScope) : index;
     return scopedIndex.filter((entry) => modifiedTabs.has(entry.tab));
   }
 
