@@ -136,6 +136,10 @@ export function useOrchestrationMilestones(isStateLoaded: boolean): void {
           title: milestone.title,
           message: milestone.message,
           duration: TOAST_DURATION,
+          // One-shot celebration; the milestone is already captured in
+          // onboarding state, so inbox persistence would just accumulate
+          // stale "Milestone reached" rows with no recovery path.
+          transient: true,
         });
       }
 

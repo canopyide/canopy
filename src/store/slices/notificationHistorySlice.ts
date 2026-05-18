@@ -75,6 +75,17 @@ interface NotificationHistoryState {
   evictedToInboxCount: number;
   addEntry: (entry: AddEntryInput) => string;
   /**
+   * Replaces the `message` text on an existing entry without bumping
+   * `timestamp` or any read/archived state. Used by the rate-limit overflow
+   * path to refresh an in-place summary row ("{N} more events") as more
+   * overflowed events arrive. Returns `true` when the entry was updated,
+   * `false` when the entry was missing or archived — callers that depend on
+   * the row staying live (e.g. the rate-limit overflow summary) must treat
+   * `false` as a signal to recreate the row rather than silently drop the
+   * subsequent event.
+   */
+  updateEntryMessage: (id: string, message: string) => boolean;
+  /**
    * Flips an entry's `seenAsToast` back to false (it's no longer visible as a
    * toast). Pass `silent: true` to skip the discoverability-cue increment
    * (`evictedToInboxCount`) — used when the notification center is already
@@ -106,7 +117,7 @@ interface NotificationHistoryState {
   resetEvictedCount: () => void;
 }
 
-export const useNotificationHistoryStore = create<NotificationHistoryState>((set) => ({
+export const useNotificationHistoryStore = create<NotificationHistoryState>((set, get) => ({
   entries: [],
   unreadCount: 0,
   evictedToInboxCount: 0,
@@ -152,6 +163,15 @@ export const useNotificationHistoryStore = create<NotificationHistoryState>((set
       return { entries: updated, unreadCount: computeUnreadCount(updated) };
     });
     return newEntry.id;
+  },
+  updateEntryMessage: (id, message) => {
+    const state = get();
+    const entry = state.entries.find((e) => e.id === id);
+    if (!entry || entry.archivedAt) return false;
+    set({
+      entries: state.entries.map((e) => (e.id === id ? { ...e, message } : e)),
+    });
+    return true;
   },
   markUnseenAsToast: (id, options) =>
     set((state) => {
