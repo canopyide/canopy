@@ -107,7 +107,7 @@ function DrawerTabButton({
           {badge}
         </span>
       )}
-      {isActive && <div className="absolute bottom-0 left-0 right-0 h-px bg-daintree-accent/70" />}
+      {isActive && <div className="absolute bottom-0 left-0 right-0 h-px bg-daintree-text/70" />}
     </button>
   );
 }
