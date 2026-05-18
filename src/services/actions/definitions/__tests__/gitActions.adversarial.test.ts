@@ -1,6 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActionCallbacks, ActionRegistry, AnyActionDefinition } from "../../actionTypes";
 import { registerGitActions } from "../gitActions";
+import { useGitPushConfirmStore } from "@/store/gitPushConfirmStore";
+
+/**
+ * `git.push` now awaits a deferred-Promise confirm gate (#8242). In a unit
+ * context there is no mounted `GitPushConfirmDialog`, so resolve the pending
+ * request explicitly once `run()` has registered it.
+ */
+async function resolvePushConfirm(ok: boolean): Promise<void> {
+  await vi.waitFor(() => {
+    expect(useGitPushConfirmStore.getState().pendingConfirm).not.toBeNull();
+  });
+  useGitPushConfirmStore.getState().resolveConfirmation(ok);
+}
 
 type GitStub = {
   [K in
@@ -106,14 +119,26 @@ describe("gitActions adversarial", () => {
 
   it("git.push preserves explicit setUpstream:false (doesn't convert it to undefined)", async () => {
     const { run, git } = setupActions();
-    await run("git.push", { cwd: "/repo", setUpstream: false });
+    const p = run("git.push", { cwd: "/repo", setUpstream: false });
+    await resolvePushConfirm(true);
+    await p;
     expect(git.push).toHaveBeenCalledWith("/repo", false);
   });
 
   it("git.push preserves explicit setUpstream:true", async () => {
     const { run, git } = setupActions();
-    await run("git.push", { cwd: "/repo", setUpstream: true });
+    const p = run("git.push", { cwd: "/repo", setUpstream: true });
+    await resolvePushConfirm(true);
+    await p;
     expect(git.push).toHaveBeenCalledWith("/repo", true);
+  });
+
+  it("git.push does not reach IPC when the confirm gate is declined", async () => {
+    const { run, git } = setupActions();
+    const p = run("git.push", { cwd: "/repo" });
+    await resolvePushConfirm(false);
+    await p;
+    expect(git.push).not.toHaveBeenCalled();
   });
 
   it("git.getFileDiff forwards cwd, filePath, and status positionally without mutation", async () => {

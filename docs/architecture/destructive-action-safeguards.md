@@ -48,14 +48,14 @@ Columns:
 | `git.stageFile` / `git.unstageFile` | safe | n/a | local-undo (inverse exists) | one file | D0 | Leave | — |
 | `git.stageAll` / `git.unstageAll` | safe | n/a | local-undo (inverse exists) | worktree | D0 | Leave | — |
 | `git.commit` (action) | safe | n/a (caller-supplied msg required) | local-undo (amend / reset until push) | one commit | D0 | Leave action; but every commit _submission_ call site must gate on authored, non-fallback message (see follow-ups) | — |
-| `git.push` (action) | **confirm** (updated #7881) | none in palette/keybinding path | shared-state (force-push to undo) | one branch on origin | D2 | Add commit-and-push confirmation when invoked outside ReviewHub | TBD |
-| `git.snapshotRevert` | confirm | none at `WorktreeCard.tsx:183` direct IPC call | local-irreversible (wipes working tree to snapshot) | one worktree | D1 | Wire `ConfirmDialog` at the WorktreeMenu call site | TBD |
+| `git.push` (action) | **confirm** (updated #7881) | yes — `GitPushConfirmDialog` (deferred-Promise gate via `gitPushConfirmStore`; the action `run()` awaits confirmation, dialog previews target branch + recent local commits, #8242) | shared-state (force-push to undo) | one branch on origin | D2 | Done (#8242) — palette/keybinding push gates on the same D2 preview | — |
+| `git.snapshotRevert` | confirm | yes — `ConfirmDialog` via `useWorktreeActions` / `WorktreeDialogs` (preview names the snapshot capture time; #8242) | local-irreversible (wipes working tree to snapshot) | one worktree | D1 | Done (#8242) — confirm wired at the WorktreeCard menu call site | — |
 | `git.snapshotDelete` | **confirm** (updated #7881) | none — call site not yet identified | local-irreversible (no recovery once deleted) | one worktree | D1 | Wire `ConfirmDialog` wherever the action is invoked | TBD |
 | `ReviewHubContent.tsx` `handleCommitAndPush(message)` | (bypass — chains `commit` + `runPush`) | yes (`CommitPanel` push confirm — every remote push gates on `ConfirmDialog` with branch pill + commit message preview + per-worktree opt-out, #8025) | shared-state | one branch on origin | D2 | Leave — wired model for bundled commit-and-push | — |
 | `ForcePushConfirmDialog.tsx` `forcePushWithLease` | (bypass, but **dialog already wired**) | yes (`ForcePushConfirmDialog`) | shared-state, recoverable only by lease check | one branch on origin | D2 | Leave — current implementation is the model for D2 confirms | — |
-| `ReviewHubContent.tsx:896` `pullRebase` | (bypass) | none | local-irreversible until pushed (rebase can clobber) | one worktree | D1 | Add confirm + show divergence preview before rebase | TBD |
+| `ReviewHubContent.tsx:896` `pullRebase` | (bypass, but **dialog now wired**) | yes — `ConfirmDialog` previews local-ahead vs incoming-behind divergence on the current branch before rebase (#8242); `git.pullRebase` action reclassified `safe`→`confirm` | local-irreversible until pushed (rebase can clobber) | one worktree | D1 | Done (#8242) — confirm + divergence preview wired at the ReviewHub call site | — |
 | `ReviewHubContent.tsx:733` `abortRepositoryOperation` | (bypass) | none | local-undo (abort is the recovery) | one worktree | D0 | Leave (abort _is_ the recovery path) | — |
-| `ReviewHubContent.tsx:778` `checkoutOursTheirs` | (bypass) | none | local-irreversible (overwrites conflict resolution) | one file | D1 | Add confirm for files with uncommitted work; otherwise inline button is acceptable | TBD |
+| `ReviewHubContent.tsx:778` `checkoutOursTheirs` | (bypass, but **dialog now wired**) | yes — `ConfirmDialog` in `ConflictPanel` previews the file path + side (rebase-aware) before overwriting the conflict buffer (#8242) | local-irreversible (overwrites conflict resolution) | one file | D1 | Done (#8242) — every conflict-buffer overwrite gates on a per-file confirm | — |
 
 ### Worktree operations
 
@@ -163,11 +163,11 @@ Direct `window.electron.*` IPC calls that skip `ActionService`. These are the hi
 
 | File | Operation | Has UI confirm? |
 | --- | --- | --- |
-| `src/components/Worktree/WorktreeCard.tsx` | `git.snapshotRevert` (context menu) | **No** — context menu invokes directly |
+| `src/components/Worktree/WorktreeCard.tsx` | `git.snapshotRevert` (context menu) | **Yes** — `ConfirmDialog` via `useWorktreeActions` / `WorktreeDialogs` (#8242) |
 | `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | `stageAll`, `unstageAll`, `stageFile`, `commit` block | Authored-message gate on commit; no top-level dialog |
 | `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | `handleCommitAndPush` (bundled `commit` + `push`) | **Yes** — `CommitPanel` push confirm with branch pill + commit message preview + per-worktree opt-out (#8025); only user-initiated remote push path |
-| `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | `pullRebase` | **No** |
-| `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | `checkoutOursTheirs` | **No** |
+| `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | `pullRebase` | **Yes** — `ConfirmDialog` with ahead/behind divergence preview (#8242) |
+| `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | `checkoutOursTheirs` | **Yes** — per-file `ConfirmDialog` in `ConflictPanel` (#8242) |
 | `src/components/Worktree/ReviewHub/ForcePushConfirmDialog.tsx` | `forcePushWithLease` | **Yes** — model implementation |
 
 ## Maintenance

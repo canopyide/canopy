@@ -234,6 +234,7 @@ describe("duplicate registrations", () => {
  */
 const EXPECTED_CONFIRM_DANGER: ReadonlyArray<ActionId> = [
   "git.push",
+  "git.pullRebase",
   "git.snapshotRevert",
   "git.snapshotDelete",
   "terminal.kill",

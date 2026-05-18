@@ -296,6 +296,30 @@ const makeWorktreeState = (path = WORKTREE_PATH): WorktreeState =>
     lastActivityTimestamp: null,
   }) as unknown as WorktreeState;
 
+/**
+ * `checkoutOursTheirs` now gates on a per-file `ConfirmDialog` (#8242). The
+ * row button only opens the dialog; clicking its `Take ours` / `Take theirs`
+ * confirm button is what reaches the IPC.
+ */
+async function confirmCheckout(side: "ours" | "theirs"): Promise<void> {
+  const dialog = await screen.findByRole("alertdialog");
+  const confirmBtn = within(dialog).getByRole("button", {
+    name: side === "ours" ? "Take ours" : "Take theirs",
+  });
+  fireEvent.click(confirmBtn);
+}
+
+/**
+ * `pullRebase` now gates on a `ConfirmDialog` showing the divergence preview
+ * (#8242). The push-error CTA only opens the dialog; clicking its
+ * `Pull and rebase` confirm button is what reaches the IPC.
+ */
+async function confirmPullRebase(): Promise<void> {
+  const dialog = await screen.findByRole("alertdialog");
+  const confirmBtn = within(dialog).getByRole("button", { name: "Pull and rebase" });
+  fireEvent.click(confirmBtn);
+}
+
 describe("ReviewHub", () => {
   let capturedUpdateCallback: ((state: WorktreeState) => void) | null = null;
   const mockUnsubscribe = vi.fn();
@@ -1275,6 +1299,7 @@ describe("ReviewHub", () => {
       await waitFor(() => screen.getByTestId("conflict-panel"));
       const takeOurs = screen.getByRole("button", { name: /Take ours for src\/app\.ts/i });
       fireEvent.click(takeOurs);
+      await confirmCheckout("ours");
 
       await waitFor(() => {
         expect(checkoutOursTheirsMock).toHaveBeenCalledWith(WORKTREE_PATH, "src/app.ts", "ours");
@@ -1289,6 +1314,7 @@ describe("ReviewHub", () => {
       await waitFor(() => screen.getByTestId("conflict-panel"));
       const takeTheirs = screen.getByRole("button", { name: /Take theirs for src\/app\.ts/i });
       fireEvent.click(takeTheirs);
+      await confirmCheckout("theirs");
 
       await waitFor(() => {
         expect(checkoutOursTheirsMock).toHaveBeenCalledWith(WORKTREE_PATH, "src/app.ts", "theirs");
@@ -1380,6 +1406,7 @@ describe("ReviewHub", () => {
       await waitFor(() => screen.getByTestId("conflict-panel"));
       const takeOurs = screen.getByRole("button", { name: /Take ours for src\/app\.ts/i });
       fireEvent.click(takeOurs);
+      await confirmCheckout("ours");
 
       await waitFor(() => {
         // The row reappears after rollback — the Take ours button is still rendered.
@@ -1408,6 +1435,7 @@ describe("ReviewHub", () => {
       await waitFor(() => screen.getByTestId("conflict-panel"));
       const takeOurs = screen.getByRole("button", { name: /Take ours for src\/app\.ts/i });
       fireEvent.click(takeOurs);
+      await confirmCheckout("ours");
 
       // After the click, the optimistic row disappears for `src/app.ts` —
       // only `src/other.ts` remains conflicted. Continue must still be
@@ -1729,6 +1757,10 @@ describe("ReviewHub", () => {
         fireEvent.click(screen.getByTestId("review-hub-push-error-cta"));
         await Promise.resolve();
       });
+      await act(async () => {
+        await confirmPullRebase();
+        await Promise.resolve();
+      });
 
       await waitFor(() => expect(pullRebaseMock).toHaveBeenCalledWith(WORKTREE_PATH));
       await waitFor(() => expect(screen.queryByTestId("review-hub-push-error")).toBeNull());
@@ -1759,6 +1791,10 @@ describe("ReviewHub", () => {
 
       await act(async () => {
         fireEvent.click(screen.getByTestId("review-hub-push-error-cta"));
+        await Promise.resolve();
+      });
+      await act(async () => {
+        await confirmPullRebase();
         await Promise.resolve();
       });
 

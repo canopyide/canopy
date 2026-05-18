@@ -1,6 +1,7 @@
 import type { ActionCallbacks, ActionRegistry } from "../actionTypes";
 import type { ActionContext } from "@shared/types/actions";
 import { GitStatusSchema, PulseRangeDaysSchema } from "./schemas";
+import { useGitPushConfirmStore } from "@/store/gitPushConfirmStore";
 import { z } from "zod";
 
 export function registerGitActions(actions: ActionRegistry, _callbacks: ActionCallbacks): void {
@@ -217,6 +218,12 @@ export function registerGitActions(actions: ActionRegistry, _callbacks: ActionCa
       const { cwd, setUpstream } = (args ?? {}) as { cwd?: string; setUpstream?: boolean };
       const resolvedCwd = cwd ?? ctx.activeWorktreePath;
       if (!resolvedCwd) throw new Error("No active worktree");
+      // Agent sources are gated by ActionService before run() is reached;
+      // palette/keybinding/user sources reach here directly, so enforce the
+      // D2 push preview here (#8242). The dialog shows the target branch and
+      // the commits that would be pushed before the IPC fires.
+      const confirmed = await useGitPushConfirmStore.getState().requestConfirmation(resolvedCwd);
+      if (!confirmed) return;
       return await window.electron.git.push(resolvedCwd, setUpstream);
     },
   }));
@@ -227,7 +234,7 @@ export function registerGitActions(actions: ActionRegistry, _callbacks: ActionCa
     description: "Pull remote changes and rebase local commits",
     category: "git",
     kind: "command",
-    danger: "safe",
+    danger: "confirm",
     scope: "renderer",
     argsSchema: z.object({ cwd: z.string().optional() }).optional(),
     run: async (args: unknown, ctx: ActionContext) => {
