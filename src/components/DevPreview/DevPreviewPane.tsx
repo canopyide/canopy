@@ -417,6 +417,7 @@ export function DevPreviewPane({
     setIsSlowLoad,
     webviewLoadError,
     setWebviewLoadError,
+    reconnectAttempt,
     clearLoadTimers,
     clearRetryState,
   } = useDevPreviewLoadLifecycle({
@@ -580,7 +581,7 @@ export function DevPreviewPane({
     } catch {
       // Webview detached
     }
-    setWebviewLoadError("Load cancelled.");
+    setWebviewLoadError({ code: "aborted", message: "Load cancelled." });
   }, [clearLoadTimers, setIsSlowLoad, setIsLoading, setWebviewLoadError]);
 
   const handleRetryWebviewLoad = useCallback(() => {
@@ -978,7 +979,15 @@ export function DevPreviewPane({
           ) : status === "error" && error ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-daintree-bg text-daintree-text p-6">
               <AlertTriangle className="w-6 h-6 text-status-warning mb-3" />
-              <h3 className="text-sm font-medium text-daintree-text/70 mb-1">Dev Server Error</h3>
+              <h3 className="text-sm font-medium text-daintree-text/70 mb-1">
+                {error.type === "port-conflict"
+                  ? "Port conflict"
+                  : error.type === "missing-dependencies"
+                    ? "Missing dependencies"
+                    : error.type === "permission"
+                      ? "Permission denied"
+                      : "Dev server error"}
+              </h3>
               <p className="text-xs text-daintree-text/50 text-center mb-3 max-w-md">
                 {error.message}
               </p>
@@ -990,9 +999,21 @@ export function DevPreviewPane({
                   className="gap-1.5 px-2.5 py-1.5 group"
                 >
                   <RotateCw className="h-3.5 w-3.5" />
-                  <span className="text-xs">Retry</span>
+                  <span className="text-xs">
+                    {error.type === "missing-dependencies" ? "Retry install" : "Retry"}
+                  </span>
                 </Button>
-                {currentUrl && (
+                {error.type === "missing-dependencies" || error.type === "permission" ? (
+                  <Button
+                    onClick={() => setDevPreviewConsoleOpen(id, true)}
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1.5 px-2.5 py-1.5 group text-daintree-text/50 hover:text-daintree-text/70"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    <span className="text-xs">View terminal</span>
+                  </Button>
+                ) : currentUrl ? (
                   <Button
                     onClick={handleOpenExternal}
                     variant="ghost"
@@ -1002,7 +1023,7 @@ export function DevPreviewPane({
                     <ExternalLink className="h-3.5 w-3.5" />
                     <span className="text-xs">Open external</span>
                   </Button>
-                )}
+                ) : null}
               </div>
             </div>
           ) : !currentUrl || status !== "running" ? (
@@ -1010,7 +1031,7 @@ export function DevPreviewPane({
               {isUnconfigured ? (
                 <div className="flex flex-col items-center text-center max-w-md">
                   <h3 className="text-sm font-medium text-daintree-text/70 mb-1">
-                    Configure Dev Server
+                    Configure dev server
                   </h3>
                   <p className="text-xs text-daintree-text/50 mb-4 leading-relaxed">
                     No dev server command is configured for this project.
@@ -1057,7 +1078,7 @@ export function DevPreviewPane({
               ) : (
                 <div className="flex flex-col items-center text-center max-w-md">
                   <h3 className="text-sm font-medium text-daintree-text/70 mb-1">
-                    Waiting for Dev Server
+                    Waiting for dev server
                   </h3>
                   <p className="text-xs text-daintree-text/50 mb-4 leading-relaxed">
                     The development server will appear here once it starts and a URL is detected.
@@ -1097,28 +1118,37 @@ export function DevPreviewPane({
                 }
               >
                 <>
+                  {reconnectAttempt > 0 && !webviewLoadError && (
+                    <div className="absolute bottom-0 left-0 right-0 z-20 flex items-center justify-center gap-2 px-3 py-1.5 text-xs bg-status-info/10 border-t border-status-info/20 text-daintree-text/70">
+                      <Spinner size="xs" className="text-status-info" />
+                      <span>Reconnecting (attempt {reconnectAttempt} of 5)...</span>
+                    </div>
+                  )}
                   {webviewLoadError && (
                     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-daintree-bg text-daintree-text p-6">
                       <AlertTriangle className="w-6 h-6 text-status-warning mb-3" />
                       <h3 className="text-sm font-medium text-daintree-text/70 mb-1">
-                        {webviewLoadError.startsWith("Load timed out") ||
-                        webviewLoadError.startsWith("Connection to")
-                          ? "Page Load Timed Out"
-                          : webviewLoadError.startsWith("Load cancelled")
-                            ? "Load Cancelled"
-                            : "Dev Server Unreachable"}
+                        {webviewLoadError.code === "timeout"
+                          ? "Page load timed out"
+                          : webviewLoadError.code === "aborted"
+                            ? "Load cancelled"
+                            : webviewLoadError.code === "connection_refused"
+                              ? "Dev server unreachable"
+                              : webviewLoadError.code === "name_not_resolved"
+                                ? "Couldn't resolve address"
+                                : webviewLoadError.code === "internet_disconnected"
+                                  ? "No internet connection"
+                                  : "Page load failed"}
                       </h3>
                       <p className="text-xs text-daintree-text/50 text-center mb-3 max-w-md">
-                        {webviewLoadError}
+                        {webviewLoadError.message}
                       </p>
                       <div className="flex items-center gap-1">
                         <Button
                           onClick={
-                            webviewLoadError.startsWith("Load cancelled") ||
-                            webviewLoadError.startsWith("Load timed out") ||
-                            webviewLoadError.startsWith("Connection to")
-                              ? handleRetryWebviewLoad
-                              : handleHardRestart
+                            webviewLoadError.code === "connection_refused"
+                              ? handleHardRestart
+                              : handleRetryWebviewLoad
                           }
                           variant="ghost"
                           size="sm"
@@ -1126,11 +1156,9 @@ export function DevPreviewPane({
                         >
                           <RotateCw className="h-3.5 w-3.5" />
                           <span className="text-xs">
-                            {webviewLoadError.startsWith("Load cancelled") ||
-                            webviewLoadError.startsWith("Load timed out") ||
-                            webviewLoadError.startsWith("Connection to")
-                              ? "Retry"
-                              : "Hard Restart"}
+                            {webviewLoadError.code === "connection_refused"
+                              ? "Hard restart"
+                              : "Retry"}
                           </span>
                         </Button>
                         {currentUrl && (

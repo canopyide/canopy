@@ -53,7 +53,12 @@ type DevServerState = {
   status: "stopped" | "starting" | "installing" | "running" | "error";
   url: string | null;
   terminalId: string | null;
-  error: { type: "unknown" | "port-conflict" | "missing-dependencies"; message: string } | null;
+  error: {
+    type: "unknown" | "port-conflict" | "missing-dependencies" | "permission";
+    message: string;
+    port?: string;
+    module?: string;
+  } | null;
   start: ReturnType<typeof vi.fn>;
   restart: ReturnType<typeof vi.fn>;
   isRestarting: boolean;
@@ -387,7 +392,7 @@ describe("DevPreviewPane webview lifecycle regression", () => {
 
     expect(webview.stop).toHaveBeenCalledTimes(1);
     expect(webview.reload).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("Page Load Timed Out");
+    expect(container.textContent).toContain("Page load timed out");
   });
 
   it("clears stuck-load timeout when loading fails", () => {
@@ -1027,7 +1032,7 @@ describe("DevPreviewPane webview lifecycle regression", () => {
       }
     }
 
-    expect(container.textContent).toContain("Dev Server Unreachable");
+    expect(container.textContent).toContain("Dev server unreachable");
     expect(container.textContent).toContain("Unable to connect to dev server");
   });
 
@@ -1052,11 +1057,11 @@ describe("DevPreviewPane webview lifecycle regression", () => {
       }
     }
 
-    expect(container.textContent).toContain("Dev Server Unreachable");
+    expect(container.textContent).toContain("Dev server unreachable");
 
     fireEvent.click(screen.getByTestId("hard-restart"));
 
-    expect(container.textContent).not.toContain("Dev Server Unreachable");
+    expect(container.textContent).not.toContain("Dev server unreachable");
   });
 
   describe("slow-load and timeout escalation", () => {
@@ -1120,7 +1125,7 @@ describe("DevPreviewPane webview lifecycle regression", () => {
 
       expect(webview.stop).toHaveBeenCalledTimes(1);
       expect(webview.reload).not.toHaveBeenCalled();
-      expect(container.textContent).toContain("Page Load Timed Out");
+      expect(container.textContent).toContain("Page load timed out");
     });
 
     it("Retry from timeout clears error and loads current URL", () => {
