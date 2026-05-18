@@ -1774,6 +1774,14 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
     args: [webContentsId: number];
     result: number;
   };
+  "webview:set-device-emulation": {
+    args: [
+      webContentsId: number,
+      panelId: string,
+      params: { screenPosition: "mobile" | "desktop"; width: number; height: number } | null,
+    ];
+    result: void;
+  };
 
   // Demo mode channels (dev-only, gated by --demo-mode flag)
   // Agent session history channels

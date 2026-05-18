@@ -463,7 +463,6 @@ export function useDevPreviewLoadLifecycle({
       } catch {
         // WebContents not available yet
       }
-      applyViewportEmulation(webview, id, viewportPreset);
       if (slowLoadTimeoutRef.current) {
         clearTimeout(slowLoadTimeoutRef.current);
         slowLoadTimeoutRef.current = null;
@@ -510,7 +509,6 @@ export function useDevPreviewLoadLifecycle({
         } catch {
           // WebContents not available
         }
-        applyViewportEmulation(webview, id, viewportPreset);
         // dom-ready already fired before this listener attached. Run scroll
         // restore here so the position survives tab switches and other
         // re-renders that don't trigger another dom-ready.

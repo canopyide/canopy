@@ -1044,10 +1044,14 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
     if (
       (screenPosition !== "mobile" && screenPosition !== "desktop") ||
       typeof width !== "number" ||
-      typeof height !== "number"
+      !Number.isFinite(width) ||
+      width <= 0 ||
+      typeof height !== "number" ||
+      !Number.isFinite(height) ||
+      height <= 0
     ) {
       throw new Error(
-        "Invalid arguments: params must have screenPosition ('mobile'|'desktop'), numeric width and height"
+        "Invalid arguments: params must have screenPosition ('mobile'|'desktop') and positive finite width/height"
       );
     }
 
@@ -1058,8 +1062,6 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
       viewPosition: { x: 0, y: 0 },
       deviceScaleFactor: 0,
       scale: 1,
-      fitToView: false,
-      offset: { x: 0, y: 0 },
     });
   };
 
