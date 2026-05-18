@@ -76,7 +76,7 @@ export function computeOverflow(
   const targetWidth = availableWidth - OVERFLOW_TRIGGER_WIDTH;
 
   for (const item of sortedForRemoval) {
-    if (currentWidth <= targetWidth) break;
+    if (currentWidth < targetWidth) break;
     overflowSet.add(item.id);
     currentWidth -= itemWidths.get(item.id) ?? DEFAULT_ITEM_WIDTH;
   }
