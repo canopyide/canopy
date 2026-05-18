@@ -10,18 +10,27 @@ interface AvatarProps {
   className?: string;
 }
 
+// Synchronous memory-cache probe. A fresh Image set to an already-cached URL
+// (HTTP or blob) reports complete/naturalWidth immediately, so this runs in a
+// lazy useState initializer to render cached avatars loaded on the first paint
+// instead of flashing the placeholder for one commit.
+function probeCache(url: string): boolean {
+  const img = new Image();
+  img.src = url;
+  return img.complete && img.naturalWidth > 0;
+}
+
 export function Avatar({ src, alt, title, className }: AvatarProps) {
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(() => probeCache(src));
   const [error, setError] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
 
+  // On src change the lazy initializer above does not re-run, so re-probe
+  // here: cached → stay loaded (no placeholder flash on avatar swaps),
+  // otherwise reset to false and let the img's onLoad drive the cold path.
   useEffect(() => {
-    setLoaded(false);
     setError(false);
-    const img = imgRef.current;
-    if (img?.complete && img.naturalWidth > 0) {
-      setLoaded(true);
-    }
+    setLoaded(probeCache(src));
   }, [src]);
 
   const avatarContent = (
