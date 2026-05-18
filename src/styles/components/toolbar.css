@@ -356,9 +356,10 @@ html[data-shortcut-reveal] .shortcut-reveal-chip {
 
 /* ── Reduced motion ──
  * WCAG 2.3.3: remove spatial motion (scale/transform), keep opacity.
- * Dual-gate: OS-level prefers-reduced-motion + Daintree toggle.
+ * `@variant reduce-motion` emits both the OS media query and the Daintree
+ * "Reduce UI animations" toggle (`body[data-reduce-animations="true"]`).
  */
-@media (prefers-reduced-motion: reduce) {
+@variant reduce-motion {
   .shortcut-reveal-chip {
     transition: none;
   }
@@ -384,26 +385,4 @@ html[data-shortcut-reveal] .shortcut-reveal-chip {
       display 0s,
       opacity 200ms ease;
   }
-}
-
-body[data-reduce-animations="true"] .toolbar-badge {
-  transition:
-    display 0s,
-    opacity 200ms ease,
-    transform 0s;
-}
-
-body[data-reduce-animations="true"] .toolbar-badge[data-visible="true"] {
-  transform: none;
-
-  @starting-style {
-    opacity: 0;
-    transform: none;
-  }
-}
-
-body[data-reduce-animations="true"] .toolbar-badge-chip {
-  transition:
-    display 0s,
-    opacity 200ms ease;
 }

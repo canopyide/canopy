@@ -8,6 +8,20 @@
 @import "./styles/components/sidebar.css";
 @import "./styles/components/panels.css";
 
+/* Reduced-motion variant — composes OS-level `prefers-reduced-motion: reduce`
+ * with the Daintree "Reduce UI animations" toggle (`body[data-reduce-animations="true"]`).
+ * Use as `@variant reduce-motion { ... }` to write a single rule that applies
+ * under either trigger; preserves the same selector specificity as the
+ * pre-consolidation `body[data-reduce-animations="true"] X` mirror block. */
+@custom-variant reduce-motion {
+  @media (prefers-reduced-motion: reduce) {
+    @slot;
+  }
+  body[data-reduce-animations="true"] & {
+    @slot;
+  }
+}
+
 @theme inline {
   --color-*: initial;
 
@@ -1527,8 +1541,12 @@ body,
  * Daintree-level "Reduce UI animations" toggle (body[data-reduce-animations])
  * both remove spatial motion while leaving opacity changes intact.
  * WCAG 2.2 SC 2.3.3: remove motion, don't just speed it up.
+ *
+ * Single source of truth via `@variant reduce-motion` — the variant emits
+ * both the OS media query and the body-attribute selector. See the
+ * `@custom-variant reduce-motion` definition near the top of this file.
  */
-@media (prefers-reduced-motion: reduce) {
+@variant reduce-motion {
   .animate-activity-pulse,
   .animate-agent-pulse,
   .animate-breathe,
@@ -1567,6 +1585,12 @@ body,
   .animate-skeleton-shimmer::after {
     display: none;
     will-change: auto;
+  }
+
+  /* Content fade-in — drop the keyframe and snap to visible. */
+  .content-fade-in {
+    animation: none;
+    opacity: 1;
   }
 
   /* Fleet polish animations — opacity-only already, but drop the keyframe
@@ -1648,6 +1672,16 @@ body,
     transition: none;
   }
 
+  /* Palette body height transition — drop the height interpolation. */
+  .palette-body-height {
+    transition: none !important;
+  }
+
+  /* Chevron rotation — drop the rotation transition. */
+  [data-animated-chevron] {
+    transition: none !important;
+  }
+
   *:focus-visible {
     transition: none !important;
   }
@@ -1683,136 +1717,6 @@ body,
   }
 }
 
-body[data-reduce-animations="true"]
-  :is(
-    .animate-activity-pulse,
-    .animate-agent-pulse,
-    .animate-breathe,
-    .animate-spin,
-    .animate-spin-slow,
-    .animate-pulse-delayed,
-    .animate-pulse-immediate,
-    .animate-skeleton-shimmer,
-    .animate-hint-fade-in,
-    .status-working,
-    .animate-badge-bump,
-    .animate-action-row-bump,
-    .animate-activity-blip,
-    .animate-trash-pulse,
-    .animate-all-clear-flash,
-    .animate-diagnostics-flash,
-    .animate-border-flash
-  ) {
-  animation: none;
-  opacity: 1;
-  transform: none;
-  will-change: auto;
-}
-
-body[data-reduce-animations="true"] .animate-skeleton-shimmer::after {
-  display: none;
-  will-change: auto;
-}
-
-body[data-reduce-animations="true"] .content-fade-in {
-  animation: none;
-  opacity: 1;
-}
-
-body[data-reduce-animations="true"] .palette-results-stale,
-body[data-reduce-animations="true"] .surface-stale {
-  opacity: 1 !important;
-  transition: none !important;
-}
-
-body[data-reduce-animations="true"] .animate-fleet-bar-refocus-pulse::before,
-body[data-reduce-animations="true"] .animate-fleet-bar-commit-flash::before {
-  animation: none;
-  will-change: auto;
-}
-
-body[data-reduce-animations="true"] .fleet-exit-pulse-overlay {
-  animation: none;
-  opacity: 0;
-  will-change: auto;
-}
-
-body[data-reduce-animations="true"] .file-change-row-new::before {
-  animation: none;
-  opacity: 0;
-  will-change: auto;
-}
-
-body[data-reduce-animations="true"] .animate-input-receipt-flash {
-  animation: none;
-  opacity: 0;
-  will-change: auto;
-}
-
-body[data-reduce-animations="true"] .animate-checklist-complete-flash {
-  animation: none;
-  opacity: 0;
-  will-change: auto;
-}
-
-body[data-reduce-animations="true"] :is(.animate-label-swap-out, .animate-label-swap-in) {
-  animation: none;
-  transform: none !important;
-  filter: none !important;
-  will-change: auto;
-}
-
-body[data-reduce-animations="true"] .animate-label-swap-out {
-  opacity: 0;
-}
-
-body[data-reduce-animations="true"] .palette-body-height {
-  transition: none !important;
-}
-
-body[data-reduce-animations="true"] *:focus-visible {
-  transition: none !important;
-}
-
-body[data-reduce-animations="true"]
-  :is(
-    .animate-activity-pulse,
-    .animate-agent-pulse,
-    .animate-breathe,
-    .status-working,
-    .panel-state-working
-  ) {
-  transition: none;
-}
-
-body[data-reduce-animations="true"]
-  :is(
-    button:not([data-state="open"]):not([data-state="closed"]),
-    [role="button"]:not([data-state="open"]):not([data-state="closed"]),
-    [type="button"]:not([data-state="open"]):not([data-state="closed"]),
-    [type="submit"]:not([data-state="open"]):not([data-state="closed"]),
-    [type="reset"]:not([data-state="open"]):not([data-state="closed"])
-  ) {
-  transform: none !important;
-  transition: none !important;
-}
-
-body[data-reduce-animations="true"] [data-animated-chevron] {
-  transition: none !important;
-}
-
-/* Radix overlay enter/exit under the app-level reduce-animations toggle.
- * Mirrors the prefers-reduced-motion block above. WCAG 2.3.3.
- */
-body[data-reduce-animations="true"] [data-state][data-side] {
-  --tw-enter-scale: 1;
-  --tw-exit-scale: 1;
-  --tw-enter-translate-x: 0;
-  --tw-enter-translate-y: 0;
-  --tw-exit-translate-x: 0;
-  --tw-exit-translate-y: 0;
-}
-
 /* Terminal restore animation. Closing is instant — no trash animation. */
 @keyframes terminal-restore {
   from {
@@ -1829,14 +1733,10 @@ body[data-reduce-animations="true"] [data-state][data-side] {
   animation: terminal-restore var(--terminal-animation-duration) ease-out;
 }
 
-@media (prefers-reduced-motion: reduce) {
+@variant reduce-motion {
   .terminal-restoring {
     animation: none;
   }
-}
-
-body[data-reduce-animations="true"] .terminal-restoring {
-  animation: none;
 }
 
 /* Diagnostics dock — 200ms height transition (semantic exception per CLAUDE.md):
@@ -1850,14 +1750,10 @@ body[data-reduce-animations="true"] .terminal-restoring {
   transition: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
+@variant reduce-motion {
   .diagnostics-dock {
     transition: none;
   }
-}
-
-body[data-reduce-animations="true"] .diagnostics-dock {
-  transition: none;
 }
 
 /* Terminal Selection State */
@@ -2059,7 +1955,7 @@ body[data-reduce-animations="true"] .diagnostics-dock {
 }
 
 /* Respect reduced motion — OS + Daintree toggle */
-@media (prefers-reduced-motion: reduce) {
+@variant reduce-motion {
   .animate-terminal-ping::before,
   .animate-terminal-ping::after,
   .animate-terminal-header-ping {
@@ -2083,29 +1979,6 @@ body[data-reduce-animations="true"] .diagnostics-dock {
   .terminal-pane {
     transition: none !important;
   }
-}
-
-body[data-reduce-animations="true"] .animate-terminal-ping::before,
-body[data-reduce-animations="true"] .animate-terminal-ping::after,
-body[data-reduce-animations="true"] .animate-terminal-header-ping {
-  animation: none;
-  opacity: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-body[data-reduce-animations="true"] .animate-terminal-ping-select {
-  animation: none !important;
-  transition: none !important;
-}
-
-body[data-reduce-animations="true"] :is(.animate-eco-title, .animate-eco-title-select) {
-  animation: none;
-  text-shadow: none;
-}
-
-body[data-reduce-animations="true"] .terminal-pane {
-  transition: none !important;
 }
 
 /* GitHub Status Indicator Animations
@@ -2222,7 +2095,7 @@ body[data-reduce-animations="true"] .terminal-pane {
 }
 
 /* Respect user's motion preferences */
-@media (prefers-reduced-motion: reduce) {
+@variant reduce-motion {
   .github-status-loading::after {
     display: none;
   }
@@ -2527,13 +2400,19 @@ body[data-performance-mode="true"] .github-status-error {
   vertical-align: top;
 }
 
-/* Performance Mode Overrides - disables animations when data-performance-mode="true" */
+/* Performance Mode Overrides — narrow the transition kill-list to expensive
+ * properties only. Keeps cheap state-feedback transitions alive (color,
+ * background-color, opacity, outline-color, border-color) so hover/focus/
+ * selected cues still respond. Expensive properties — transform, width,
+ * height, box-shadow, backdrop-filter, filter — are stripped by the
+ * !important narrowing. Animations remain fully suppressed; performance
+ * mode targets resource conservation, not vestibular safety (see the
+ * `reduce-motion` variant for that). */
 body[data-performance-mode="true"] *,
 body[data-performance-mode="true"] *::before,
 body[data-performance-mode="true"] *::after {
   animation: none !important;
-  animation-play-state: paused !important;
-  transition: none !important;
+  transition-property: color, background-color, opacity, outline-color, border-color !important;
   will-change: auto !important;
 }
 
@@ -2768,7 +2647,7 @@ body[data-performance-mode="true"] [class*="backdrop-blur"] {
   z-index: 1;
 }
 
-@media (prefers-reduced-motion: reduce) {
+@variant reduce-motion {
   ::view-transition-group(*),
   ::view-transition-image-pair(*),
   ::view-transition-old(*),

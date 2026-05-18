@@ -512,15 +512,15 @@ describe("animate-hint-fade-in CSS contract", () => {
     expect(css).toMatch(/\.animate-hint-fade-in\s*\{/);
   });
 
-  it("disables the fade under prefers-reduced-motion", () => {
-    const block = css.match(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*?\n\}/)?.[0];
-    expect(block).toBeTruthy();
-    expect(block).toMatch(/\.animate-hint-fade-in/);
+  it("declares the reduce-motion custom variant", () => {
+    expect(css).toMatch(/@custom-variant\s+reduce-motion\s*\{/);
+    expect(css).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)/);
+    expect(css).toMatch(/body\[data-reduce-animations="true"\]\s*&/);
   });
 
-  it("disables the fade under body[data-reduce-animations]", () => {
+  it("disables the fade under @variant reduce-motion (OS + app toggle)", () => {
     expect(css).toMatch(
-      /body\[data-reduce-animations="true"\][\s\S]*?\.animate-hint-fade-in[\s\S]*?animation:\s*none/
+      /@variant\s+reduce-motion\s*\{[\s\S]*?\.animate-hint-fade-in[\s\S]*?animation:\s*none/
     );
   });
 
@@ -544,15 +544,9 @@ describe("animate-skeleton-shimmer CSS contract", () => {
     expect(css).toMatch(/\.animate-skeleton-shimmer\s*\{/);
   });
 
-  it("hides the ::after sweep under prefers-reduced-motion", () => {
-    const block = css.match(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*?\n\}/)?.[0];
-    expect(block).toBeTruthy();
-    expect(block).toMatch(/\.animate-skeleton-shimmer::after\s*\{[^}]*display:\s*none/);
-  });
-
-  it("hides the ::after sweep under body[data-reduce-animations]", () => {
+  it("hides the ::after sweep under @variant reduce-motion (OS + app toggle)", () => {
     expect(css).toMatch(
-      /body\[data-reduce-animations="true"\]\s+\.animate-skeleton-shimmer::after\s*\{[^}]*display:\s*none/
+      /@variant\s+reduce-motion\s*\{[\s\S]*?\.animate-skeleton-shimmer::after[\s\S]*?display:\s*none/
     );
   });
 
