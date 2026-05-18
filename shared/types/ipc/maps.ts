@@ -203,6 +203,7 @@ export interface OnboardingState {
   newsletterPromptSeen: boolean;
   waitingNudgeSeen: boolean;
   seenAgentIds: string[];
+  availabilityFirstSeen: Record<string, number>;
   welcomeCardDismissed: boolean;
   setupBannerDismissed: boolean;
   checklist: ChecklistState;
@@ -1553,6 +1554,10 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
     result: void;
   };
   "onboarding:mark-agents-seen": {
+    args: [agentIds: string[]];
+    result: OnboardingState;
+  };
+  "onboarding:record-agent-first-seen": {
     args: [agentIds: string[]];
     result: OnboardingState;
   };

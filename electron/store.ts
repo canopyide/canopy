@@ -248,6 +248,7 @@ export interface StoreSchema {
     newsletterPromptSeen: boolean;
     waitingNudgeSeen: boolean;
     seenAgentIds: string[];
+    availabilityFirstSeen: Record<string, number>;
     welcomeCardDismissed: boolean;
     setupBannerDismissed: boolean;
     checklist: {
@@ -409,7 +410,7 @@ const storeOptions = {
       autoRestoreOnCrash: false,
     },
     onboarding: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       completed: false,
       currentStep: null,
       agentSetupIds: [],
@@ -417,6 +418,7 @@ const storeOptions = {
       newsletterPromptSeen: false,
       waitingNudgeSeen: false,
       seenAgentIds: [],
+      availabilityFirstSeen: {},
       welcomeCardDismissed: false,
       setupBannerDismissed: false,
       checklist: {

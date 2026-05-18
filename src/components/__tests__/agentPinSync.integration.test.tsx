@@ -26,20 +26,36 @@ const setAgentPinnedMock = vi.fn(async (id: string, pinned: boolean) => {
 const dispatchMock = vi.fn();
 const refreshAvailabilityMock = vi.fn().mockResolvedValue(undefined);
 const toggleButtonVisibilityMock = vi.fn();
+const updateAgentMock = vi.fn().mockResolvedValue(undefined);
+const updateWorktreePresetMock = vi.fn().mockResolvedValue(undefined);
+const recordActionMruMock = vi.fn();
+
+// AgentTrayButton calls `useAgentSettingsStore.getState()` inside
+// `handleLaunch`, so the mock has to expose both the hook selector and a
+// static `getState`. `settings` reads via a getter so `beforeEach`
+// mutations to `sharedSettings` propagate through the static handle too.
+const agentSettingsState = {
+  get settings() {
+    return sharedSettings;
+  },
+  setAgentPinned: setAgentPinnedMock,
+  updateAgent: updateAgentMock,
+  updateWorktreePreset: updateWorktreePresetMock,
+};
 
 vi.mock("@/store/agentSettingsStore", () => ({
-  useAgentSettingsStore: (
-    selector: (s: {
-      settings: AgentSettings | null;
-      setAgentPinned: typeof setAgentPinnedMock;
-    }) => unknown
-  ) => selector({ settings: sharedSettings, setAgentPinned: setAgentPinnedMock }),
+  useAgentSettingsStore: Object.assign(
+    (selector: (s: typeof agentSettingsState) => unknown) => selector(agentSettingsState),
+    { getState: () => agentSettingsState }
+  ),
 }));
 
 vi.mock("@/store/actionMruStore", () => ({
-  useActionMruStore: (
-    selector: (s: { getSortedActionMruList: () => ActionFrecencyEntry[] }) => unknown
-  ) => selector({ getSortedActionMruList: () => [] }),
+  useActionMruStore: Object.assign(
+    (selector: (s: { getSortedActionMruList: () => ActionFrecencyEntry[] }) => unknown) =>
+      selector({ getSortedActionMruList: () => [] }),
+    { getState: () => ({ recordActionMru: recordActionMruMock }) }
+  ),
 }));
 
 let sharedAvailability: CliAvailability = {} as CliAvailability;
@@ -104,11 +120,17 @@ vi.mock("@/store/projectPresetsStore", () => ({
 }));
 
 vi.mock("@/hooks/app/useAgentDiscoveryOnboarding", () => ({
+  NEW_AGENT_TTL_MS: 14 * 24 * 60 * 60 * 1000,
   useAgentDiscoveryOnboarding: () => ({
     loaded: true,
     seenAgentIds: [],
+    availabilityFirstSeen: {},
     welcomeCardDismissed: true,
+    setupBannerDismissed: true,
     markAgentsSeen: vi.fn(),
+    recordAgentFirstSeen: vi.fn(),
+    dismissWelcomeCard: vi.fn(),
+    dismissSetupBanner: vi.fn(),
   }),
 }));
 
@@ -249,6 +271,9 @@ describe("agent pin sync — Settings > Toolbar and Agent Tray share state (#511
     toggleButtonVisibilityMock.mockClear();
     dispatchMock.mockClear();
     refreshAvailabilityMock.mockClear();
+    updateAgentMock.mockClear();
+    updateWorktreePresetMock.mockClear();
+    recordActionMruMock.mockClear();
     sharedSettings = {
       agents: {
         claude: { pinned: true },
