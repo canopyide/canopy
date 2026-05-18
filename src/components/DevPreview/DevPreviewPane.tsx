@@ -410,6 +410,21 @@ export function DevPreviewPane({
     };
   }, [phaseLabel]);
 
+  // Bypass debounce on deliberate transitions (e.g. restart) so the user sees
+  // the label even when the backend replaces it within the 600ms window.
+  useEffect(() => {
+    if (isRestarting) {
+      lastPhaseChangeAtRef.current = 0;
+      if (phaseDebounceTimerRef.current) {
+        clearTimeout(phaseDebounceTimerRef.current);
+        phaseDebounceTimerRef.current = null;
+      }
+      if (phaseLabel) {
+        setDebouncedPhaseLabel(phaseLabel);
+      }
+    }
+  }, [isRestarting]); // eslint-disable-line react-hooks/exhaustive-deps -- phaseLabel is read but not needed as dep; only restart transitions matter
+
   // Stall detection — auto-open console drawer on fatal error or 15s no-phase-progress
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasAutoOpenedConsoleRef = useRef(false);
@@ -433,6 +448,7 @@ export function DevPreviewPane({
     }
 
     if (status === "starting" || status === "installing") {
+      hasAutoOpenedConsoleRef.current = false;
       if (stallTimerRef.current) {
         clearTimeout(stallTimerRef.current);
       }
