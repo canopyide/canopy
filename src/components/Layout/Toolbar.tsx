@@ -234,6 +234,12 @@ export function Toolbar({
   const leftGroupRef = useRef<HTMLDivElement>(null);
   const rightGroupRef = useRef<HTMLDivElement>(null);
   const activeToolbarIndexRef = useRef<number>(0);
+  // Tracks the last toolbar item that received focus. Read in the
+  // layout-effect tab-stop sync to detect when that item has been evicted
+  // (moved into overflow or unmounted) — in that case the browser drops
+  // focus to document.body, and we redirect it to the overflow trigger or
+  // nearest visible item to preserve keyboard navigation (WCAG 2.4.3).
+  const prevFocusedToolbarItemRef = useRef<HTMLElement | null>(null);
   const githubStatsRef = useRef<GitHubStatsHandle>(null);
   // Set in onPointerDownOutside, read in onCloseAutoFocus on the overflow
   // dropdown. Suppresses focus restoration for pointer dismissals so the
@@ -333,7 +339,16 @@ export function Toolbar({
       toolbarRef.current
         ? Array.from(
             toolbarRef.current.querySelectorAll<HTMLElement>("[data-toolbar-item]:not([disabled])")
-          ).filter((el) => el.offsetParent !== null)
+          ).filter(
+            // Overflow-hidden buttons use `invisible absolute` Tailwind
+            // classes plus aria-hidden="true" on their wrapper. visibility:
+            // hidden alone does not null offsetParent, so the aria-hidden
+            // ancestor check is the canonical "this item is overflow-hidden,
+            // skip it" signal — without it, evicted items stay in the list,
+            // get tabIndex assigned, and the overflow focus redirect can
+            // never fire.
+            (el) => el.offsetParent !== null && el.closest('[aria-hidden="true"]') === null
+          )
         : [],
     []
   );
@@ -349,6 +364,26 @@ export function Toolbar({
     const clamped = Math.min(activeToolbarIndexRef.current, items.length - 1);
     activeToolbarIndexRef.current = clamped;
     syncToolbarTabStops(items, clamped);
+
+    const prevFocused = prevFocusedToolbarItemRef.current;
+    if (prevFocused && !items.includes(prevFocused)) {
+      // Clear the ref unconditionally on eviction. If the user has since
+      // moved focus into a Radix portal (activeElement !== body), the
+      // redirect below is skipped — but the ref must still be cleared so
+      // a later unrelated re-render doesn't trigger a phantom redirect.
+      prevFocusedToolbarItemRef.current = null;
+      if (document.activeElement === document.body) {
+        // Redirect to the overflow trigger on the SAME side as the
+        // evicted item; falling back to the other side's trigger would
+        // pull focus across the toolbar to the wrong group.
+        const side = leftGroupRef.current?.contains(prevFocused) ? "left" : "right";
+        const sideTrigger = toolbarRef.current?.querySelector<HTMLElement>(
+          `[data-toolbar-overflow-trigger][data-toolbar-overflow-side="${side}"]`
+        );
+        const redirect = sideTrigger && items.includes(sideTrigger) ? sideTrigger : items[clamped];
+        redirect?.focus();
+      }
+    }
   });
 
   const handleToolbarFocusCapture = useCallback(
@@ -358,6 +393,7 @@ export function Toolbar({
       const idx = items.indexOf(target);
       if (idx !== -1) {
         activeToolbarIndexRef.current = idx;
+        prevFocusedToolbarItemRef.current = target;
         syncToolbarTabStops(items, idx);
       }
     },
@@ -366,6 +402,14 @@ export function Toolbar({
 
   const handleToolbarKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLElement>) => {
+      // React synthetic events bubble through the React tree, so keydowns
+      // inside portaled children (Radix DropdownMenu/ContextMenu content
+      // rendered in document.body) still reach this handler. The DOM
+      // containment check excludes those — portal content is not a DOM
+      // descendant of the toolbar — so Arrow keys inside an open menu can
+      // navigate the menu instead of being stolen by toolbar roving focus.
+      if (!toolbarRef.current?.contains(e.target as Node)) return;
+
       if (e.metaKey || e.altKey || e.ctrlKey) return;
 
       const items = getToolbarItems();
@@ -883,6 +927,8 @@ export function Toolbar({
                 variant="ghost"
                 size="icon"
                 data-toolbar-item=""
+                data-toolbar-overflow-trigger=""
+                data-toolbar-overflow-side={side}
                 className={toolbarIconButtonClass}
                 aria-label={ariaLabel}
               >
