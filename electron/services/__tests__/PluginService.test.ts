@@ -46,6 +46,11 @@ vi.mock("../pluginMenuRegistry.js", () => ({
 vi.mock("../forgeProviderRegistry.js", () => ({
   registerForgeProviders: vi.fn(),
   unregisterForgeProviders: vi.fn(),
+  registerForgeProviderImpl: vi.fn(),
+  unregisterForgeProviderImpl: vi.fn(),
+  unregisterForgeProviderImpls: vi.fn(),
+  getForgeProviderImpl: vi.fn(),
+  clearForgeProviderImplRegistry: vi.fn(),
 }));
 
 import { PluginService } from "../PluginService.js";
@@ -63,7 +68,13 @@ import {
   unregisterPluginToolbarButtons,
 } from "../../../shared/config/toolbarButtonRegistry.js";
 import { registerPluginMenuItem, unregisterPluginMenuItems } from "../pluginMenuRegistry.js";
-import { registerForgeProviders, unregisterForgeProviders } from "../forgeProviderRegistry.js";
+import {
+  registerForgeProviderImpl,
+  registerForgeProviders,
+  unregisterForgeProviderImpl,
+  unregisterForgeProviderImpls,
+  unregisterForgeProviders,
+} from "../forgeProviderRegistry.js";
 import { CHANNELS } from "../../ipc/channels.js";
 
 function makeCtx(pluginId: string, overrides: Partial<PluginIpcContext> = {}): PluginIpcContext {
@@ -1450,6 +1461,7 @@ type CreateHostShape = (pluginId: string) => {
     pluginId: string;
     registerHandler: (channel: string, handler: (...args: unknown[]) => unknown) => void;
     broadcastToRenderer: (channel: string, payload: unknown) => void;
+    registerForgeProvider: (descriptor: { id: string }, impl: unknown) => () => void;
   };
   revoke: () => void;
 };
@@ -1520,6 +1532,103 @@ describe("createHost (plugin activation API)", () => {
       /host revoked: registerHandler/
     );
     expect(() => host.broadcastToRenderer("x", null)).toThrow(/host revoked: broadcastToRenderer/);
+    expect(() => host.registerForgeProvider({ id: "github" }, {})).toThrow(
+      /host revoked: registerForgeProvider/
+    );
+  });
+});
+
+describe("createHost — registerForgeProvider", () => {
+  it("binds the impl via registerForgeProviderImpl with the descriptor id", async () => {
+    await writePlugin("forge-host", { name: "acme.forge-host", version: "1.0.0" });
+    const service = new PluginService(tmpDir);
+    await service.initialize();
+
+    const { host } = (service as unknown as { createHost: CreateHostShape }).createHost(
+      "acme.forge-host"
+    );
+
+    vi.mocked(registerForgeProviderImpl).mockClear();
+    const impl = { tag: "impl-a" };
+    host.registerForgeProvider({ id: "github" }, impl);
+    expect(registerForgeProviderImpl).toHaveBeenCalledWith("acme.forge-host", "github", impl);
+  });
+
+  it("returns a disposer that calls unregisterForgeProviderImpl exactly once", async () => {
+    await writePlugin("forge-dispose", { name: "acme.forge-dispose", version: "1.0.0" });
+    const service = new PluginService(tmpDir);
+    await service.initialize();
+
+    const { host } = (service as unknown as { createHost: CreateHostShape }).createHost(
+      "acme.forge-dispose"
+    );
+
+    vi.mocked(unregisterForgeProviderImpl).mockClear();
+    const dispose = host.registerForgeProvider({ id: "github" }, { tag: "impl" });
+    dispose();
+    dispose(); // idempotent — only the first call should propagate
+    expect(unregisterForgeProviderImpl).toHaveBeenCalledTimes(1);
+    expect(unregisterForgeProviderImpl).toHaveBeenCalledWith("acme.forge-dispose", "github");
+  });
+
+  it("rejects a descriptor missing an id", async () => {
+    await writePlugin("forge-baddesc", { name: "acme.forge-baddesc", version: "1.0.0" });
+    const service = new PluginService(tmpDir);
+    await service.initialize();
+
+    const { host } = (service as unknown as { createHost: CreateHostShape }).createHost(
+      "acme.forge-baddesc"
+    );
+
+    expect(() =>
+      host.registerForgeProvider({} as unknown as { id: string }, { tag: "impl" })
+    ).toThrow(/descriptor.id must be a non-empty string/);
+  });
+
+  it("rejects a non-object impl", async () => {
+    await writePlugin("forge-badimpl", { name: "acme.forge-badimpl", version: "1.0.0" });
+    const service = new PluginService(tmpDir);
+    await service.initialize();
+
+    const { host } = (service as unknown as { createHost: CreateHostShape }).createHost(
+      "acme.forge-badimpl"
+    );
+
+    expect(() => host.registerForgeProvider({ id: "github" }, null)).toThrow(
+      /impl must be an object/
+    );
+  });
+
+  it("unloadPlugin fires unregisterForgeProviderImpls alongside unregisterForgeProviders", async () => {
+    await writePlugin("forge-unload", { name: "acme.forge-unload", version: "1.0.0" });
+    const service = new PluginService(tmpDir);
+    await service.initialize();
+
+    vi.mocked(unregisterForgeProviderImpls).mockClear();
+    vi.mocked(unregisterForgeProviders).mockClear();
+
+    service.unloadPlugin("acme.forge-unload");
+
+    expect(unregisterForgeProviders).toHaveBeenCalledWith("acme.forge-unload");
+    expect(unregisterForgeProviderImpls).toHaveBeenCalledWith("acme.forge-unload");
+  });
+
+  it("unloadPlugin flushes per-provider disposers from pluginEventCleanups", async () => {
+    await writePlugin("forge-flush", { name: "acme.forge-flush", version: "1.0.0" });
+    const service = new PluginService(tmpDir);
+    await service.initialize();
+
+    const { host } = (service as unknown as { createHost: CreateHostShape }).createHost(
+      "acme.forge-flush"
+    );
+    host.registerForgeProvider({ id: "github" }, { tag: "impl" });
+
+    vi.mocked(unregisterForgeProviderImpl).mockClear();
+    service.unloadPlugin("acme.forge-flush");
+    // The per-provider disposer fires through the pluginEventCleanups flush
+    // path during unloadPlugin — independent from the bulk unregisterForgeProviderImpls
+    // belt-and-suspenders call.
+    expect(unregisterForgeProviderImpl).toHaveBeenCalledWith("acme.forge-flush", "github");
   });
 });
 
@@ -2225,20 +2334,26 @@ describe("Plugin worktree host API", () => {
       "id",
       "isCurrent",
       "isMainWorktree",
-      "issueNumber",
-      "issueTitle",
       "lastActivityTimestamp",
+      "linked",
       "mood",
       "name",
       "path",
-      "prNumber",
-      "prState",
-      "prTitle",
-      "prUrl",
       "worktreeId",
     ];
     expect(Object.keys(active).sort()).toEqual(expected);
     expect("_secret" in active).toBe(false);
+    // None of the removed GitHub-shaped fields should leak through.
+    for (const removed of [
+      "issueNumber",
+      "issueTitle",
+      "prNumber",
+      "prState",
+      "prTitle",
+      "prUrl",
+    ]) {
+      expect(removed in active).toBe(false);
+    }
   });
 });
 
