@@ -379,8 +379,12 @@ function SettingsDialogInner({
 
   const searchResults = useMemo(
     () =>
-      filterSettings(SETTINGS_SEARCH_INDEX, deferredQuery, { modifiedTabs, scope: activeScope }),
-    [deferredQuery, modifiedTabs, activeScope]
+      filterSettings(SETTINGS_SEARCH_INDEX, deferredQuery, {
+        modifiedTabs,
+        scope: activeScope,
+        hasProject,
+      }),
+    [deferredQuery, modifiedTabs, activeScope, hasProject]
   );
 
   const cleanSearchQuery = useMemo(() => parseQuery(deferredQuery).cleanQuery, [deferredQuery]);
@@ -405,8 +409,15 @@ function SettingsDialogInner({
     // Defer scrollToSection together with the tab change. Setting it
     // urgently would let the previously-active tab's effect consume the
     // pending id (it sees isActive=true after the urgent commit but
-    // before the transition makes the new tab active).
+    // before the transition makes the new tab active). The scope switch
+    // must share the transition so the scope toggle and tab content
+    // commit together — splitting them yields a torn render where the
+    // toggle flips while the panel still shows the previous scope.
+    const nextScope = scopeForTab(tab);
     startTransition(() => {
+      if (nextScope !== activeScope) {
+        setActiveScope(nextScope);
+      }
       setActiveTab(tab);
       setScrollToSection(sectionId ?? null);
     });
@@ -1172,6 +1183,15 @@ function MatchBadge({ count }: { count: number }) {
   );
 }
 
+function ScopeChip({ scope }: { scope: SettingsScope }) {
+  const label = scope === "project" ? "Project" : "Global";
+  return (
+    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-tint/10 text-daintree-text/60 leading-none shrink-0">
+      {label}
+    </span>
+  );
+}
+
 interface SearchResultsProps {
   results: ReturnType<typeof filterSettings>;
   query: string;
@@ -1247,6 +1267,7 @@ function SearchResults({
           <div className="flex items-center gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-0.5">
+                <ScopeChip scope={result.scope} />
                 <span className="text-[10px] font-medium text-daintree-text/40 uppercase tracking-wide">
                   {result.tabLabel}
                 </span>
