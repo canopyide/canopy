@@ -31,7 +31,7 @@ import type {
 export type OAuthLoopbackPhase =
   | { phase: "started" }
   | { phase: "token-exchange-intercepted" }
-  | { phase: "completed"; callbackUrl: string }
+  | { phase: "completed"; callbackUrl: string; success: boolean }
   | { phase: "timed-out" }
   | { phase: "error"; message: string };
 

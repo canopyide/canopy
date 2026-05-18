@@ -7,7 +7,7 @@ import type { SessionStorageEntry } from "./useDevPreviewLoadLifecycle";
 export type OAuthPhase =
   | { phase: "started" }
   | { phase: "token-exchange-intercepted" }
-  | { phase: "completed"; callbackUrl: string }
+  | { phase: "completed"; callbackUrl: string; success: boolean }
   | { phase: "timed-out" }
   | { phase: "error"; message: string };
 
@@ -101,10 +101,22 @@ function OAuthStatusRow({
         </div>
       );
     case "completed":
-      return (
+      return phase.success ? (
         <div className="flex items-center gap-2 text-xs">
           <Check className="h-3 w-3 text-green-400" />
           <span className="text-daintree-text/70">Sign in completed</span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-xs">
+          <AlertTriangle className="h-3 w-3 text-status-warning" />
+          <span className="text-daintree-text/70">Authorization denied</span>
+          <button
+            type="button"
+            onClick={onRetryOAuth}
+            className="shrink-0 px-2 py-0.5 rounded text-xs bg-status-warning/20 hover:bg-status-warning/30 text-daintree-text/90 transition-colors"
+          >
+            Try again
+          </button>
         </div>
       );
     case "timed-out":

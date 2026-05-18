@@ -57,9 +57,16 @@ export function startOAuthLoopback(
   if (prior) {
     cancelOAuthLoopback(panelId);
   }
-  const generation = (prior?.generation ?? -1) + 1;
+  const generation = (prior?.generation ?? 0) + 1;
 
-  const parsed = new URL(authUrl);
+  let parsed: URL;
+  try {
+    parsed = new URL(authUrl);
+  } catch {
+    console.warn("[OAuthLoopback] Invalid auth URL:", authUrl);
+    onPhase?.({ phase: "error", message: "Invalid authorization URL" }, generation);
+    return Promise.resolve(null);
+  }
   const originalRedirectUri = parsed.searchParams.get("redirect_uri");
 
   if (!originalRedirectUri) {
@@ -123,7 +130,7 @@ export function startOAuthLoopback(
           `</body></html>`
       );
 
-      emit({ phase: "completed", callbackUrl: originalCallback.toString() });
+      emit({ phase: "completed", callbackUrl: originalCallback.toString(), success: !hasError });
       settle(originalCallback.toString());
     });
 

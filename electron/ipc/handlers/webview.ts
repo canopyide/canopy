@@ -913,12 +913,16 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
               requestId: p.requestId,
               postData: Buffer.from(rewrittenBody).toString("base64"),
             })
+            .then(() => {
+              clearTimeout(timeout);
+              finishIntercept();
+            })
             .catch((err) => {
               logError("OAuth CDP token-exchange continueRequest failed", err, { panelId });
+              navigationError = err instanceof Error ? err : new Error(String(err));
+              clearTimeout(timeout);
+              finishIntercept();
             });
-
-          clearTimeout(timeout);
-          finishIntercept();
         };
 
         wc.debugger.on("message", interceptorListener);
