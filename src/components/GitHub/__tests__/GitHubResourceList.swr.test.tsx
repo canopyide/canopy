@@ -9,6 +9,7 @@ import { setCache, buildCacheKey, _resetForTests } from "@/lib/githubResourceCac
 import { useGitHubFilterStore } from "@/store/githubFilterStore";
 import { useIssueSelectionStore } from "@/store/issueSelectionStore";
 import { useGitHubRateLimitStore } from "@/store/githubRateLimitStore";
+import { useSystemWakeStore } from "@/store/systemWakeStore";
 
 const mockListIssues = vi.fn();
 const mockListPRs = vi.fn();
@@ -552,7 +553,7 @@ describe("GitHubResourceList focus/visibility revalidation", () => {
     expect(mockListIssues).toHaveBeenCalledTimes(1);
   });
 
-  it("revalidates on visibilitychange when the document becomes visible", async () => {
+  it("does not revalidate on visibilitychange (consolidated onto wake-coordinator in #8066)", async () => {
     const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
     setCache(cacheKey, {
       items: [makeIssue(1)],
@@ -561,9 +562,7 @@ describe("GitHubResourceList focus/visibility revalidation", () => {
       timestamp: Date.now(),
     });
 
-    mockListIssues
-      .mockResolvedValueOnce(makeResponse([makeIssue(1)]))
-      .mockResolvedValueOnce(makeResponse([makeIssue(1), makeIssue(3)]));
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
 
     render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
 
@@ -571,20 +570,17 @@ describe("GitHubResourceList focus/visibility revalidation", () => {
       expect(mockListIssues).toHaveBeenCalledTimes(1);
     });
 
+    // visibilitychange must NOT trigger a refetch after migration — sleep-wake
+    // is dispatched through `useSystemWakeStore.wakeEpoch` (separate test).
     await vi.advanceTimersByTimeAsync(31_000);
-
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
       get: () => "visible",
     });
     document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
 
-    await waitFor(() => {
-      expect(mockListIssues).toHaveBeenCalledTimes(2);
-    });
-    await waitFor(() => {
-      expect(screen.getByTestId("item-3")).toBeTruthy();
-    });
+    expect(mockListIssues).toHaveBeenCalledTimes(1);
   });
 
   it("revalidates a PR list on focus — the actual code path that ships ciStatus", async () => {
@@ -628,7 +624,7 @@ describe("GitHubResourceList focus/visibility revalidation", () => {
     expect(mockListPRs.mock.calls[1]?.[0]).toMatchObject({ bypassCache: true });
   });
 
-  it("removes focus and visibilitychange listeners on unmount", async () => {
+  it("removes the focus listener on unmount", async () => {
     const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
     setCache(cacheKey, {
       items: [makeIssue(1)],
@@ -649,17 +645,67 @@ describe("GitHubResourceList focus/visibility revalidation", () => {
 
     await vi.advanceTimersByTimeAsync(31_000);
     window.dispatchEvent(new Event("focus"));
-    Object.defineProperty(document, "visibilityState", {
-      configurable: true,
-      get: () => "visible",
-    });
-    document.dispatchEvent(new Event("visibilitychange"));
     await vi.advanceTimersByTimeAsync(0);
 
     expect(mockListIssues).toHaveBeenCalledTimes(1);
   });
+});
 
-  it("does not revalidate on visibilitychange when the document is hidden", async () => {
+describe("GitHubResourceList wake-coordinator revalidation", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    useSystemWakeStore.setState({
+      wakeEpoch: 0,
+      lastSleepDuration: 0,
+      isWakeRevalidating: false,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("revalidates when wakeEpoch bumps, bypassing the focus throttle window", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(1)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+
+    mockListIssues
+      .mockResolvedValueOnce(makeResponse([makeIssue(1)]))
+      .mockResolvedValueOnce(makeResponse([makeIssue(1), makeIssue(4)]));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(1);
+    });
+
+    // No timer advance — the wake path must NOT respect the 30s throttle.
+    await act(async () => {
+      useSystemWakeStore.setState((s) => ({ wakeEpoch: s.wakeEpoch + 1 }));
+    });
+
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("item-4")).toBeTruthy();
+    });
+  });
+
+  it("does not revalidate when wakeEpoch is unchanged from the mount value", async () => {
+    // A previous wake landed before this list mounts — the consumer must NOT
+    // retroactively refetch on mount.
+    useSystemWakeStore.setState({
+      wakeEpoch: 4,
+      lastSleepDuration: 0,
+      isWakeRevalidating: false,
+    });
+
     const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
     setCache(cacheKey, {
       items: [makeIssue(1)],
@@ -676,13 +722,6 @@ describe("GitHubResourceList focus/visibility revalidation", () => {
       expect(mockListIssues).toHaveBeenCalledTimes(1);
     });
 
-    await vi.advanceTimersByTimeAsync(31_000);
-
-    Object.defineProperty(document, "visibilityState", {
-      configurable: true,
-      get: () => "hidden",
-    });
-    document.dispatchEvent(new Event("visibilitychange"));
     await vi.advanceTimersByTimeAsync(0);
 
     expect(mockListIssues).toHaveBeenCalledTimes(1);

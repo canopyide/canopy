@@ -10,6 +10,7 @@ import {
 import { isRateLimitError, isTokenRelatedError, isTransientNetworkError } from "@/lib/githubErrors";
 import { githubClient } from "@/clients/githubClient";
 import { useGitHubRateLimitStore } from "@/store/githubRateLimitStore";
+import { useSystemWakeStore } from "@/store/systemWakeStore";
 import type { GitHubIssue, GitHubPR, GitHubSortOrder } from "@shared/types/github";
 import { parseNumberQuery } from "@/lib/parseNumberQuery";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
@@ -468,10 +469,12 @@ export function useGitHubResourceListSWR({
     return () => abortController.abort();
   }, [debouncedSearch, filterState, projectPath, type, fetchData, numberQuery, cacheKey]);
 
-  // Background revalidation when the window regains focus or the tab becomes
-  // visible. CI status flips on every push, so a user returning from another
-  // app expects the list to refresh — without this, stale green ticks can
-  // linger for the full backend cache window.
+  // Background revalidation when the window regains focus. CI status flips
+  // on every push, so a user returning from another app expects the list to
+  // refresh — without this, stale green ticks can linger for the full backend
+  // cache window. The `visibilitychange` path was removed in #8066: system
+  // sleep-wake is consolidated onto `useSystemWakeStore.wakeEpoch` (effect
+  // below), and in-tab visibility flips no longer trigger a redundant fetch.
   useEffect(() => {
     if (numberQuery !== null) {
       return;
@@ -495,15 +498,35 @@ export function useGitHubResourceListSWR({
       });
     };
 
-    document.addEventListener("visibilitychange", maybeRevalidate);
     window.addEventListener("focus", maybeRevalidate);
 
     return () => {
-      document.removeEventListener("visibilitychange", maybeRevalidate);
       window.removeEventListener("focus", maybeRevalidate);
       abortController.abort();
     };
   }, [fetchData, cacheKey, numberQuery]);
+
+  // Wake-coordinator subscription (#8066). Bypasses the 30-second throttle
+  // gate that applies to focus events: a system wake is rare enough that we
+  // always want a fresh fetch, and the wake-coordinator's threshold (>30s
+  // sleep) already filters out short OS naps. `lastSeenWakeEpochRef` is
+  // seeded with the current epoch so this consumer never refetches for a
+  // wake that landed before it mounted.
+  const wakeEpoch = useSystemWakeStore((s) => s.wakeEpoch);
+  const lastSeenWakeEpochRef = useRef(useSystemWakeStore.getState().wakeEpoch);
+  useEffect(() => {
+    if (numberQuery !== null) return;
+    if (wakeEpoch <= lastSeenWakeEpochRef.current) return;
+    lastSeenWakeEpochRef.current = wakeEpoch;
+    const abortController = new AbortController();
+    const gen = nextGeneration(cacheKey);
+    void fetchData(null, false, abortController.signal, {
+      revalidating: true,
+      generation: gen,
+      cacheKey,
+    });
+    return () => abortController.abort();
+  }, [wakeEpoch, numberQuery, fetchData, cacheKey]);
 
   // Numeric query effect — handles single number (#42), multi-number
   // (#1, #2, #3), range (#10-20), and open-ended (#>=100) searches.

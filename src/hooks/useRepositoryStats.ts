@@ -6,6 +6,7 @@ import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { buildCacheKey, getCache, setCache } from "@/lib/githubResourceCache";
 import { useGlobalMinuteTicker } from "@/hooks/useGlobalMinuteTicker";
 import { usePollingLifecycle } from "@/hooks/usePollingLifecycle";
+import { useSystemWakeStore } from "@/store/systemWakeStore";
 
 function isValidPagePayload(page: unknown): page is {
   items: unknown[];
@@ -53,6 +54,11 @@ export type FreshnessLevel = "fresh" | "aging" | "stale-disk" | "errored";
 export interface UseRepositoryStatsReturn {
   stats: RepositoryStats | null;
   loading: boolean;
+  // True while a refetch is in flight regardless of whether stats are already
+  // available. Distinct from `loading`, which narrows to the first-fetch
+  // (no-data-yet) case so background revalidations don't flip skeletons or
+  // loading indicators back on top of stale-but-visible data.
+  isValidating: boolean;
   error: string | null;
   isTokenError: boolean;
   isStale: boolean;
@@ -85,6 +91,7 @@ export interface UseRepositoryStatsReturn {
 export function useRepositoryStats(): UseRepositoryStatsReturn {
   const [stats, setStats] = useState<RepositoryStats | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isStale, setIsStale] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
@@ -207,7 +214,16 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
           return;
         }
 
-        if (mountedRef.current) setLoading(true);
+        if (mountedRef.current) {
+          // Always signal that a refetch is in flight so callers can show a
+          // subtle in-progress affordance without hiding visible data. Only
+          // flip the full `loading` skeleton when no result has been applied
+          // yet — once `applyStatsResult` has run (network or disk hydration),
+          // background revalidations (wake, focus, interval, manual refresh)
+          // must not flash the skeleton over existing rows.
+          setIsValidating(true);
+          if (!hasAppliedResultRef.current) setLoading(true);
+        }
 
         const repoStats = await githubClient.getRepoStats(project.path, force);
 
@@ -234,7 +250,10 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
           lastErrorRef.current = errorMessage;
         }
       } finally {
-        if (mountedRef.current) setLoading(false);
+        if (mountedRef.current) {
+          setLoading(false);
+          setIsValidating(false);
+        }
       }
     },
     calculateNextInterval: ({ isVisible }) => {
@@ -419,6 +438,21 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
     return cleanup;
   }, [applyStatsResult]);
 
+  // Coalesce sleep-wake fetches onto the shared wake-coordinator slice
+  // (#8066). The store bumps `wakeEpoch` once per qualifying wake; every
+  // consumer reacts to the same epoch instead of independently registering
+  // `system.onWake` listeners or duplicating short-sleep heuristics. The
+  // `lastSeenWakeEpochRef` is seeded with the current value at mount so a
+  // component that arrives after a previous wake doesn't fire a spurious
+  // refetch.
+  const wakeEpoch = useSystemWakeStore((s) => s.wakeEpoch);
+  const lastSeenWakeEpochRef = useRef(useSystemWakeStore.getState().wakeEpoch);
+  useEffect(() => {
+    if (wakeEpoch <= lastSeenWakeEpochRef.current) return;
+    lastSeenWakeEpochRef.current = wakeEpoch;
+    void polling.refresh();
+  }, [wakeEpoch, polling]);
+
   useEffect(() => {
     const cleanup = githubClient.onRateLimitChanged((payload) => {
       if (!mountedRef.current) return;
@@ -489,6 +523,7 @@ export function useRepositoryStats(): UseRepositoryStatsReturn {
   return {
     stats,
     loading,
+    isValidating,
     error,
     isTokenError,
     isStale,
