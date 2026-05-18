@@ -253,6 +253,35 @@ describe("useMcpBridge", () => {
     });
   });
 
+  it("preserves the bound context across the confirmation wait (#8317)", async () => {
+    mocks.get.mockReturnValue(confirmManifestEntry());
+    mocks.dispatch.mockResolvedValue({ ok: true, result: { ok: true } });
+
+    renderHook(() => useMcpBridge());
+
+    const boundContext = { focusedWorktreeId: "wt-confirm" };
+    const dispatched = dispatchHandler?.({
+      requestId: "req-confirm-ctx",
+      actionId: "worktree.delete",
+      args: { worktreeId: "wt-1" },
+      context: boundContext,
+    });
+
+    await Promise.resolve();
+    expect(mocks.dispatch).not.toHaveBeenCalled();
+
+    useMcpConfirmStore.getState().resolveCurrent("approved");
+    await dispatched;
+
+    // contextOverride must be the value captured in the handler closure,
+    // not re-read from live state after the modal await resolved.
+    expect(mocks.dispatch).toHaveBeenCalledWith(
+      "worktree.delete",
+      { worktreeId: "wt-1" },
+      { source: "agent", confirmed: true, contextOverride: boundContext }
+    );
+  });
+
   it("returns USER_REJECTED without ever calling actionService.dispatch when the user cancels", async () => {
     mocks.get.mockReturnValue(confirmManifestEntry());
     mocks.dispatch.mockResolvedValue({ ok: true, result: { ok: true } });

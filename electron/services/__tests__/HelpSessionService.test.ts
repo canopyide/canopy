@@ -27,6 +27,7 @@ const {
     setEnabled: vi.fn().mockResolvedValue(undefined),
     setHelpTokenValidator: vi.fn(),
     setHelpSessionWebContentsResolver: vi.fn(),
+    setHelpSessionActionContextResolver: vi.fn(),
     setSessionIdResolver: vi.fn(),
     recordTurnOutcome: vi.fn(),
     getRuntimeState: vi.fn<
@@ -347,6 +348,34 @@ describe("HelpSessionService", () => {
 
     await service.revokeSession(result.sessionId);
     expect(service.getWebContentsIdForToken(result.token)).toBeNull();
+  });
+
+  it("getActionContextForToken returns the provision-time snapshot and null for unknown / revoked / context-less tokens (#8317)", async () => {
+    const withCtx = await service.provisionSession({
+      ...provisionInput(),
+      actionContext: { focusedWorktreeId: "wt-1", focusedTerminalId: "term-9" },
+    });
+    if (!withCtx) throw new Error("expected result");
+
+    expect(service.getActionContextForToken(withCtx.token)).toEqual({
+      focusedWorktreeId: "wt-1",
+      focusedTerminalId: "term-9",
+    });
+    expect(service.getActionContextForToken("not-a-real-token")).toBeNull();
+    expect(service.getActionContextForToken("")).toBeNull();
+
+    await service.revokeSession(withCtx.sessionId);
+    expect(service.getActionContextForToken(withCtx.token)).toBeNull();
+
+    // A session provisioned without a context snapshot falls back to null so
+    // pinned dispatch keeps live context (pre-#8317 behaviour).
+    const noCtx = await service.provisionSession({
+      ...provisionInput(),
+      projectId: "proj-noctx",
+      projectPath: "/tmp/proj-noctx",
+    });
+    if (!noCtx) throw new Error("expected result");
+    expect(service.getActionContextForToken(noCtx.token)).toBeNull();
   });
 
   it("getWebContentsIdForToken returns the per-session pin when two sessions are minted from different views", async () => {

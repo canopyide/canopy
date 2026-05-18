@@ -59,7 +59,12 @@ export function registerHelpActions(actions: ActionRegistry, callbacks: ActionCa
       // during the model's turn can't retarget actions onto the wrong
       // worktree/terminal (#8317). Capturing after an await would
       // reintroduce the exact stale-read race this fixes (lesson #5087).
+      // `currentProject` is captured in the same synchronous block so the
+      // session is provisioned with a project identity and context snapshot
+      // that are guaranteed consistent — a project switch during the
+      // `getFolderPath()` await can't split them (#8317).
       const capturedContext = actionService.getContext();
+      const project = useProjectStore.getState().currentProject;
       const folderPath = await window.electron.help.getFolderPath();
       if (!folderPath) {
         // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
@@ -87,7 +92,6 @@ export function registerHelpActions(actions: ActionRegistry, callbacks: ActionCa
       const helpPrompt =
         "I need help with Daintree, an Electron-based IDE for orchestrating AI coding agents. Please briefly tell me how you can help.";
 
-      const project = useProjectStore.getState().currentProject;
       let session: Awaited<ReturnType<typeof window.electron.help.provisionSession>> | null = null;
       if (!project) {
         // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
