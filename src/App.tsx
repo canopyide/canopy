@@ -249,6 +249,22 @@ const LazyPanelLimitConfirmDialog = lazy(() =>
   preloadPanelLimitConfirmDialog().then((m) => ({ default: m.PanelLimitConfirmDialog }))
 );
 
+function preloadGitPushConfirmDialog() {
+  return import("./components/Git/GitPushConfirmDialog");
+}
+const LazyGitPushConfirmDialog = lazy(() =>
+  preloadGitPushConfirmDialog().then((m) => ({ default: m.GitPushConfirmDialog }))
+);
+
+function preloadGitPullRebaseConfirmDialog() {
+  return import("./components/Git/GitPullRebaseConfirmDialog");
+}
+const LazyGitPullRebaseConfirmDialog = lazy(() =>
+  preloadGitPullRebaseConfirmDialog().then((m) => ({
+    default: m.GitPullRebaseConfirmDialog,
+  }))
+);
+
 import { Toaster } from "./components/ui/toaster";
 import { ShortcutHint } from "./components/ui/ShortcutHint";
 import { ReEntrySummary } from "./components/ui/ReEntrySummary";
@@ -1221,6 +1237,30 @@ function App() {
               >
                 <Suspense fallback={null}>
                   <LazyPanelLimitConfirmDialog />
+                </Suspense>
+              </ErrorBoundary>
+            )}
+
+            {isStateLoaded && (
+              <ErrorBoundary
+                variant="component"
+                componentName="GitPushConfirmDialog"
+                resetKeys={[Number(isStateLoaded)]}
+              >
+                <Suspense fallback={null}>
+                  <LazyGitPushConfirmDialog />
+                </Suspense>
+              </ErrorBoundary>
+            )}
+
+            {isStateLoaded && (
+              <ErrorBoundary
+                variant="component"
+                componentName="GitPullRebaseConfirmDialog"
+                resetKeys={[Number(isStateLoaded)]}
+              >
+                <Suspense fallback={null}>
+                  <LazyGitPullRebaseConfirmDialog />
                 </Suspense>
               </ErrorBoundary>
             )}

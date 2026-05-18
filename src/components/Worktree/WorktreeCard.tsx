@@ -159,44 +159,6 @@ export function WorktreeCard({
     }
   };
 
-  const [hasSnapshot, setHasSnapshot] = useState(false);
-
-  // Check for snapshot availability — re-runs when agent activity changes
-  React.useEffect(() => {
-    let cancelled = false;
-    window.electron.git
-      .snapshotGet(worktree.id)
-      .then((info) => {
-        if (!cancelled) setHasSnapshot(info !== null && info.hasChanges);
-      })
-      .catch(() => {
-        // Ignore errors — snapshot check is best-effort
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [worktree.id, worktree.lastActivityTimestamp]);
-
-  const handleRevertAgentChanges = async () => {
-    try {
-      const result = await window.electron.git.snapshotRevert(worktree.id);
-      setHasSnapshot(false);
-      if (result.hasConflicts) {
-        // Notify about conflicts
-        void actionService.dispatch(
-          "app.showNotification",
-          {
-            type: "warning",
-            message: result.message,
-          },
-          { source: "user" }
-        );
-      }
-    } catch {
-      // Error handled by IPC layer
-    }
-  };
-
   const {
     counts: terminalCounts,
     terminals: worktreeTerminals,
@@ -328,6 +290,8 @@ export function WorktreeCard({
     handleCloseAll,
     handleTerminateAll,
     handleResourceTeardown,
+    hasSnapshot,
+    handleRevertAgentChanges,
   } = useWorktreeActions({
     worktree,
     onCopyTree,

@@ -40,6 +40,7 @@ import { ConflictPanel } from "./ConflictPanel";
 import { FileDiffModal } from "../FileDiffModal";
 import { BaseBranchDiffModal } from "./BaseBranchDiffModal";
 import { ForcePushConfirmDialog } from "./ForcePushConfirmDialog";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -238,6 +239,7 @@ export function ReviewHubContent({
   const [viewedFiles, setViewedFiles] = useState<Set<string>>(() => new Set());
   const [diffMode, setDiffMode] = useState<DiffMode>("working-tree");
   const [forcePushDialogOpen, setForcePushDialogOpen] = useState(false);
+  const [pullRebaseConfirmOpen, setPullRebaseConfirmOpen] = useState(false);
   const [pullRebasing, setPullRebasing] = useState(false);
   const isPullRebasingRef = useRef(false);
   const [baseBranchFiles, setBaseBranchFiles] = useState<CrossWorktreeFile[] | null>(null);
@@ -391,6 +393,15 @@ export function ReviewHubContent({
     for (const wt of state.worktrees.values()) {
       if (wt.path === worktreePath) {
         return wt.behindCount;
+      }
+    }
+    return undefined;
+  });
+
+  const aheadCount = useWorktreeStore((state) => {
+    for (const wt of state.worktrees.values()) {
+      if (wt.path === worktreePath) {
+        return wt.aheadCount;
       }
     }
     return undefined;
@@ -1359,7 +1370,7 @@ export function ReviewHubContent({
                   void handleRetryPush();
                   return;
                 case "pull-rebase":
-                  void handlePullRebase();
+                  setPullRebaseConfirmOpen(true);
                   return;
                 case "force-push":
                   setForcePushDialogOpen(true);
@@ -2068,6 +2079,40 @@ export function ReviewHubContent({
           onError={handleForcePushError}
         />
       )}
+
+      <ConfirmDialog
+        isOpen={pullRebaseConfirmOpen}
+        onClose={() => setPullRebaseConfirmOpen(false)}
+        title={`Pull and rebase '${status?.currentBranch ?? "current branch"}'?`}
+        description={
+          <span>
+            Replays{" "}
+            {aheadCount != null ? (
+              <span className="font-medium text-daintree-text">
+                {aheadCount} local commit{aheadCount === 1 ? "" : "s"}
+              </span>
+            ) : (
+              "your local commits"
+            )}{" "}
+            on top of{" "}
+            {behindCount != null ? (
+              <span className="font-medium text-daintree-text">
+                {behindCount} incoming commit{behindCount === 1 ? "" : "s"}
+              </span>
+            ) : (
+              "the incoming commits"
+            )}{" "}
+            from the remote. Rebasing rewrites local commit history and cannot be undone.
+          </span>
+        }
+        confirmLabel="Pull and rebase"
+        cancelLabel="Cancel"
+        variant="destructive"
+        onConfirm={() => {
+          setPullRebaseConfirmOpen(false);
+          void handlePullRebase();
+        }}
+      />
     </>
   );
 }
