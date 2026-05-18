@@ -1362,7 +1362,7 @@ export function ReviewHubContent({
                 case "settings-github":
                   void actionService.dispatch(
                     "app.settings.openTab",
-                    { tab: "github" },
+                    { tab: "code-forge", subtab: "github" },
                     { source: "user" }
                   );
                   return;

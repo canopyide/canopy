@@ -153,7 +153,7 @@ export function GitHubSettingsTab() {
     );
   };
 
-  useSettingsTabValidation("github", Boolean(loadError) || loadTimedOut);
+  useSettingsTabValidation("code-forge", Boolean(loadError) || loadTimedOut);
 
   if (isLoading) {
     if (loadTimedOut) {

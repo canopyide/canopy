@@ -37,7 +37,7 @@ const GOLDEN_QUERIES = [
   { query: "microphone", expectedTopResults: ["tab-nav-voice", "voice-enable"] },
   { query: "appearance", expectedTopResults: ["tab-nav-terminalAppearance", "appearance-theme"] },
   { query: "hibernate", expectedTopResults: ["general-hibernation"] },
-  { query: "github", expectedTopResults: ["github-token", "tab-nav-github"] },
+  { query: "github", expectedTopResults: ["github-token", "tab-nav-code-forge"] },
 ] as const;
 
 describe("filterSettings", () => {
@@ -138,8 +138,8 @@ describe("countMatchesPerTab", () => {
     for (const count of Object.values(counts)) {
       expect(count).toBeGreaterThan(0);
     }
-    // And github should be one of the tabs with matches
-    expect(counts.github).toBeGreaterThanOrEqual(1);
+    // And code-forge should be one of the tabs with matches
+    expect(counts["code-forge"]).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -289,7 +289,7 @@ describe("SETTINGS_SEARCH_INDEX", () => {
       "terminalAppearance",
       "worktree",
       "agents",
-      "github",
+      "code-forge",
       "portal",
       "toolbar",
       "notifications",
@@ -347,8 +347,7 @@ describe("SETTINGS_SEARCH_INDEX", () => {
       terminalAppearance: "Appearance",
       worktree: "Worktree",
       agents: "CLI agents",
-      github: "GitHub",
-      forge: "Forge integrations",
+      "code-forge": "Code Forge",
       portal: "Portal",
       toolbar: "Toolbar",
       notifications: "Notifications",
@@ -385,8 +384,7 @@ describe("SETTINGS_SEARCH_INDEX", () => {
       terminalAppearance: "Appearance",
       worktree: "Worktree Paths",
       agents: "CLI agents",
-      github: "GitHub Integration",
-      forge: "Forge Integrations",
+      "code-forge": "Code Forge",
       portal: "Portal Links",
       toolbar: "Toolbar Customization",
       notifications: "Notifications",
@@ -443,7 +441,7 @@ describe("voice tab coverage", () => {
 
 describe("tab-name ranking", () => {
   it("tab-nav entry ranks first for exact tab name queries", () => {
-    const queries = ["Panel Grid", "Keyboard", "GitHub"];
+    const queries = ["Panel Grid", "Keyboard", "Code Forge"];
     for (const query of queries) {
       const results = filterSettings(SETTINGS_SEARCH_INDEX, query);
       expect(
@@ -626,7 +624,7 @@ describe("@modified filter", () => {
   });
 
   it("compound @modified query returns empty when no modified tabs match", () => {
-    const modifiedTabs = new Set<SettingsTab>(["github"]);
+    const modifiedTabs = new Set<SettingsTab>(["code-forge"]);
     const results = filterSettings(SETTINGS_SEARCH_INDEX, "font @modified", { modifiedTabs });
     expect(results).toHaveLength(0);
   });
