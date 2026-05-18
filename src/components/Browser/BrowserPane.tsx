@@ -684,7 +684,7 @@ export function BrowserPane({
                   >
                     <ExternalLink className="h-3.5 w-3.5 text-daintree-text/50 group-hover:text-daintree-text/70 transition-colors" />
                     <span className="text-xs text-daintree-text/50 group-hover:text-daintree-text/70 transition-colors">
-                      Open in External Browser
+                      Open in external browser
                     </span>
                   </button>
                 </div>
@@ -713,7 +713,7 @@ export function BrowserPane({
                     }}
                     className="shrink-0 px-2 py-0.5 rounded text-xs bg-status-warning/20 hover:bg-status-warning/30 text-daintree-text/90 transition-colors"
                   >
-                    Open in External Browser
+                    Open in external browser
                   </button>
                 )}
                 <button
