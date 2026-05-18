@@ -114,6 +114,7 @@ export function BrowserToolbar({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const chipRowRef = useRef<HTMLDivElement>(null);
+  const dprRowRef = useRef<HTMLDivElement>(null);
   const lastViewportPresetRef = useRef<ViewportPresetId>("iphone");
   const [chipFocusedIndex, setChipFocusedIndex] = useState<number>(-1);
   const listboxId = useId();
@@ -192,6 +193,51 @@ export function BrowserToolbar({
     return () =>
       container.removeEventListener("keydown", handleKeyDown as unknown as EventListener);
   }, [onViewportPresetChange, viewportPreset]);
+
+  useEffect(() => {
+    const container = dprRowRef.current;
+    if (!container) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const buttons = Array.from(
+        container.querySelectorAll<HTMLButtonElement>("button[role='radio']:not(:disabled)")
+      );
+      if (buttons.length === 0) return;
+
+      const currentIndex = buttons.findIndex((b) => b === document.activeElement);
+      let nextIndex = currentIndex;
+
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        e.preventDefault();
+        nextIndex = currentIndex < buttons.length - 1 ? currentIndex + 1 : 0;
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        e.preventDefault();
+        nextIndex = currentIndex > 0 ? currentIndex - 1 : buttons.length - 1;
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        nextIndex = 0;
+      } else if (e.key === "End") {
+        e.preventDefault();
+        nextIndex = buttons.length - 1;
+      } else {
+        return;
+      }
+
+      if (nextIndex !== currentIndex && nextIndex >= 0 && nextIndex < buttons.length) {
+        const nextButton = buttons[nextIndex];
+        nextButton?.focus();
+        // APG radiogroup contract: selection follows focus.
+        const dprValue = Number(nextButton?.getAttribute("data-dpr"));
+        if ((dprValue === 1 || dprValue === 2 || dprValue === 3) && onViewportDprChange) {
+          onViewportDprChange(dprValue);
+        }
+      }
+    };
+
+    container.addEventListener("keydown", handleKeyDown as unknown as EventListener);
+    return () =>
+      container.removeEventListener("keydown", handleKeyDown as unknown as EventListener);
+  }, [onViewportDprChange, viewportPreset, viewportDpr]);
 
   useEffect(() => {
     if (!isEditing) {
@@ -578,6 +624,7 @@ export function BrowserToolbar({
               )}
               {onViewportDprChange && (
                 <div
+                  ref={dprRowRef}
                   role="radiogroup"
                   aria-label="Device pixel ratio"
                   className="flex items-center ml-0.5"
@@ -591,6 +638,8 @@ export function BrowserToolbar({
                         role="radio"
                         aria-checked={isSelected}
                         aria-label={`Device pixel ratio ${dpr}x`}
+                        data-dpr={dpr}
+                        tabIndex={isSelected ? 0 : -1}
                         onClick={() => {
                           if (!isSelected) onViewportDprChange(dpr);
                         }}

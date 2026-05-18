@@ -89,6 +89,11 @@ describe("computeFitScale", () => {
     expect(computeFitScale(900, 800, 820, 1180)).toBeCloseTo(800 / 1180, 5);
   });
 
+  it("scales a wide viewport down when width is the constraint", () => {
+    // iPad landscape 1180×820 in a narrow 300×1200 pane — width is the constraint
+    expect(computeFitScale(300, 1200, 1180, 820)).toBeCloseTo(300 / 1180, 5);
+  });
+
   it("never upscales a small viewport (caps at 1)", () => {
     // Galaxy 360×780 in a huge 1920×1200 pane stays device-accurate
     expect(computeFitScale(1920, 1200, 360, 780)).toBe(1);
