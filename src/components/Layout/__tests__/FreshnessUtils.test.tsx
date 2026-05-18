@@ -1,5 +1,12 @@
+// @vitest-environment jsdom
 import { describe, it, expect } from "vitest";
-import { freshnessOpacityClass, formatTimeSince, freshnessSuffix } from "../FreshnessUtils";
+import { render } from "@testing-library/react";
+import {
+  freshnessOpacityClass,
+  FreshnessGlyph,
+  formatTimeSince,
+  freshnessSuffix,
+} from "../FreshnessUtils";
 
 describe("freshnessOpacityClass", () => {
   it("returns empty string for fresh level", () => {
@@ -16,6 +23,34 @@ describe("freshnessOpacityClass", () => {
 
   it("returns opacity-50 for errored level", () => {
     expect(freshnessOpacityClass("errored")).toBe("opacity-50");
+  });
+});
+
+describe("FreshnessGlyph", () => {
+  it("renders nothing for fresh level", () => {
+    const { container } = render(<FreshnessGlyph level="fresh" />);
+    expect(container.querySelector("svg")).toBeNull();
+  });
+
+  it("renders a clock glyph for aging level (issue #8180 — replaces opacity dim)", () => {
+    const { container } = render(<FreshnessGlyph level="aging" />);
+    const svg = container.querySelector("svg");
+    expect(svg).not.toBeNull();
+    expect(svg?.getAttribute("aria-hidden")).toBe("true");
+    expect(svg?.getAttribute("class")).toContain("text-muted-foreground");
+  });
+
+  it("renders a clock glyph for stale-disk level", () => {
+    const { container } = render(<FreshnessGlyph level="stale-disk" />);
+    const svg = container.querySelector("svg");
+    expect(svg).not.toBeNull();
+    expect(svg?.getAttribute("aria-hidden")).toBe("true");
+    expect(svg?.getAttribute("class")).toContain("text-muted-foreground");
+  });
+
+  it("renders nothing for errored level (covered by GitHubStatusIndicator)", () => {
+    const { container } = render(<FreshnessGlyph level="errored" />);
+    expect(container.querySelector("svg")).toBeNull();
   });
 });
 

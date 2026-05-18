@@ -26,9 +26,15 @@ describe("GitHubStatsToolbarButton freshness wiring", () => {
 
   it("imports freshness helpers from co-located FreshnessUtils", () => {
     expect(source).toContain('from "./FreshnessUtils"');
-    expect(source).toContain("freshnessOpacityClass");
     expect(source).toContain("FreshnessGlyph");
     expect(source).toContain("freshnessSuffix");
+  });
+
+  it("does not import or use freshnessOpacityClass (issue #8180)", () => {
+    // Opacity-as-stale reads as a disabled control on always-clickable pills
+    // (WCAG 1.4.3/1.4.11/4.1.2). Staleness is carried by FreshnessGlyph + the
+    // freshnessSuffix tooltip copy instead.
+    expect(source).not.toContain("freshnessOpacityClass");
   });
 
   it("passes FreshnessGlyph to all three GitHubStatPill instances", () => {
@@ -37,14 +43,22 @@ describe("GitHubStatsToolbarButton freshness wiring", () => {
     expect(glyphs?.length).toBe(3);
   });
 
-  it("uses freshnessOpacityClass in className for all three pills", () => {
-    // Commits uses commitFreshnessLevel (errored→fresh); issues + PRs use freshnessLevel.
-    const commitsMatch = source.match(/freshnessOpacityClass\(commitFreshnessLevel\)/g);
-    const sharedMatch = source.match(/freshnessOpacityClass\(freshnessLevel\)/g);
-    expect(commitsMatch).not.toBeNull();
-    expect(commitsMatch?.length).toBe(1);
-    expect(sharedMatch).not.toBeNull();
-    expect(sharedMatch?.length).toBe(2);
+  it("does not dim any pill className via freshness opacity (issue #8180)", () => {
+    // The freshness signal moved off opacity entirely. The only remaining
+    // opacity classes are the token-error disabled state (opacity-40) and the
+    // zero-count de-emphasis (opacity-50) — both distinct from freshness.
+    expect(source).not.toMatch(/freshnessOpacityClass\(commitFreshnessLevel\)/);
+    expect(source).not.toMatch(/freshnessOpacityClass\(freshnessLevel\)/);
+    // Guard the inline equivalents too — the freshness opacity tiers were
+    // opacity-75 (aging) and opacity-60 (stale-disk); neither should reappear.
+    expect(source).not.toContain("opacity-75");
+    expect(source).not.toContain("opacity-60");
+  });
+
+  it("wires the commits pill glyph to commitFreshnessLevel, not freshnessLevel", () => {
+    // Commits are git-local — a GitHub connectivity error must not dim or
+    // glyph the commits pill. commitFreshnessLevel maps errored→fresh.
+    expect(source).toContain("<FreshnessGlyph level={commitFreshnessLevel} />");
   });
 
   it("uses freshnessSuffix in ariaLabel and tooltipContent for freshness-aware copy", () => {

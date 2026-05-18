@@ -16,7 +16,7 @@ export function freshnessOpacityClass(level: FreshnessLevel): string {
 }
 
 export function FreshnessGlyph({ level }: { level: FreshnessLevel }) {
-  if (level === "stale-disk") {
+  if (level === "stale-disk" || level === "aging") {
     return <Clock className="h-3 w-3 text-muted-foreground" aria-hidden="true" />;
   }
   return null;
