@@ -177,6 +177,20 @@ export function registerHelpActions(actions: ActionRegistry, callbacks: ActionCa
     },
   }));
 
+  actions.set("help.gettingStarted.show", () => ({
+    id: "help.gettingStarted.show",
+    title: "Getting Started",
+    description: "Show the getting started checklist",
+    category: "help",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    keywords: ["onboarding", "checklist", "welcome", "tutorial"],
+    run: async () => {
+      window.dispatchEvent(new CustomEvent("daintree:show-getting-started"));
+    },
+  }));
+
   actions.set("help.togglePanel", () => ({
     id: "help.togglePanel",
     title: "Toggle Help Panel",
