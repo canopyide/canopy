@@ -94,7 +94,7 @@ export function ForgeProviderSelectorDropdown({
           className={cn(
             "flex items-center gap-2 w-full px-3 py-2 text-sm rounded-[var(--radius-md)]",
             "border border-daintree-border bg-daintree-bg text-daintree-text",
-            "hover:border-daintree-accent/50 transition-colors",
+            "hover:border-daintree-border-strong transition-colors",
             "focus:outline-hidden focus:ring-2 focus:ring-daintree-accent/50"
           )}
         >
