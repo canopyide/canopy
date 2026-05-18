@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseConventionalCommit } from "../commitListUtils";
+import { parseConventionalCommit } from "../components/commitListUtils";
 
 describe("parseConventionalCommit", () => {
   it("parses a standard conventional commit", () => {

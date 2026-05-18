@@ -10,7 +10,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { GitHubResourceRowsSkeleton } from "./GitHubDropdownSkeletons";
 import { logError } from "@/utils/logger";
 
-interface IssueSelectorProps {
+export interface IssueSelectorProps {
   projectPath: string;
   selectedIssue: GitHubIssue | null;
   onSelect: (issue: GitHubIssue | null) => void;

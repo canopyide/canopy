@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
 import { Activity, type ReactNode } from "react";
-import { GitHubListItem } from "../GitHubListItem";
+import { GitHubListItem } from "../components/GitHubListItem";
 import type { GitHubIssue, GitHubPR } from "@shared/types/github";
 import { actionService } from "@/services/ActionService";
 

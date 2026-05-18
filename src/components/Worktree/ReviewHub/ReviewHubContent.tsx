@@ -32,7 +32,7 @@ import {
 import { isProtectedBranch } from "@shared/utils/gitConstants";
 import { useUIStore } from "@/store/uiStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
-import { getPRCIStatusVisual } from "@/components/GitHub/prCIStatus";
+import { getPRCIStatusVisual } from "@github-renderer/utils/prCIStatus";
 import { Spinner } from "@/components/ui/Spinner";
 import { FileStageRow, type FileStageRowSection } from "./FileStageRow";
 import { CommitPanel } from "./CommitPanel";

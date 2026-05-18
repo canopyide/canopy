@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { useGitHubFilterStore, resetGitHubFilterStore } from "../githubFilterStore";
+import { useGitHubFilterStore, resetGitHubFilterStore } from "../stores/githubFilterStore";
 
 describe("githubFilterStore", () => {
   afterEach(() => {

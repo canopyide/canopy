@@ -4,7 +4,7 @@ import {
   getStageLabel,
   type ProgressState,
   type ItemStatus,
-} from "../bulkCreateReducer";
+} from "../components/bulkCreateReducer";
 
 function emptyState(): ProgressState {
   return { phase: "idle", total: 0, items: new Map() };

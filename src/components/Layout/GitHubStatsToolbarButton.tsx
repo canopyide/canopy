@@ -24,18 +24,18 @@ import { actionService } from "@/services/ActionService";
 import { useToolbarPreferencesStore } from "@/store/toolbarPreferencesStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
-import { useGitHubFilterStore } from "@/store/githubFilterStore";
+import { useGitHubFilterStore } from "@github-renderer/stores/githubFilterStore";
 import { useRepositoryStats } from "@/hooks/useRepositoryStats";
 import { useGlobalMinuteTicker } from "@/hooks/useGlobalMinuteTicker";
 import { useGitHubTokenExpiryNotification } from "@/hooks/useGitHubTokenExpiryNotification";
 import {
   GitHubResourceListSkeleton,
   CommitListSkeleton,
-} from "@/components/GitHub/GitHubDropdownSkeletons";
+} from "@github-renderer/components/GitHubDropdownSkeletons";
 import { GitHubStatusIndicator, type GitHubStatusIndicatorStatus } from "./GitHubStatusIndicator";
 import { githubClient } from "@/clients/githubClient";
 import { buildCacheKey, getCache, setCache } from "@/lib/githubResourceCache";
-import { useGitHubConfigStore } from "@/store/githubConfigStore";
+import { useGitHubConfigStore } from "@github-renderer/stores/githubConfigStore";
 import type { Project } from "@shared/types";
 import type { GitHubRateLimitDetails, RepositoryStats } from "@shared/types";
 import { FreshnessGlyph, freshnessSuffix } from "./FreshnessUtils";
@@ -79,8 +79,8 @@ export { msUntilNextLabelChange } from "./RateLimitDetails";
 // Without this, even a fully-cached chunk still flashes the skeleton fallback
 // for one render — React.lazy suspends on the first render of its boundary
 // regardless of whether the import promise has already resolved.
-const importGitHubResourceList = () => import("@/components/GitHub/GitHubResourceList");
-const importCommitList = () => import("@/components/GitHub/CommitList");
+const importGitHubResourceList = () => import("@github-renderer/components/GitHubResourceList");
+const importCommitList = () => import("@github-renderer/components/CommitList");
 
 const LazyGitHubResourceList = lazy(() =>
   importGitHubResourceList().then((m) => ({ default: m.GitHubResourceList }))
@@ -88,8 +88,8 @@ const LazyGitHubResourceList = lazy(() =>
 const LazyCommitList = lazy(() => importCommitList().then((m) => ({ default: m.CommitList })));
 
 type GitHubResourceListType =
-  typeof import("@/components/GitHub/GitHubResourceList").GitHubResourceList;
-type CommitListType = typeof import("@/components/GitHub/CommitList").CommitList;
+  typeof import("@github-renderer/components/GitHubResourceList").GitHubResourceList;
+type CommitListType = typeof import("@github-renderer/components/CommitList").CommitList;
 
 export interface GitHubStatsHandle {
   closeAll: () => void;

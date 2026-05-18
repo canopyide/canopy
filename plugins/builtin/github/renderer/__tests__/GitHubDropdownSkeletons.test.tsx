@@ -9,7 +9,7 @@ import {
   RESOURCE_ITEM_HEIGHT_PX,
   COMMIT_ITEM_HEIGHT_PX,
   MAX_SKELETON_ITEMS,
-} from "../GitHubDropdownSkeletons";
+} from "../components/GitHubDropdownSkeletons";
 
 describe("GitHubResourceListSkeleton", () => {
   it("renders MAX_SKELETON_ITEMS rows by default", () => {

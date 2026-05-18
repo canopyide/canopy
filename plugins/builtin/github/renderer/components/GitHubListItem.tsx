@@ -17,7 +17,7 @@ import { formatTimeAgo } from "@/utils/timeAgo";
 import { actionService } from "@/services/ActionService";
 import type { GitHubIssue, GitHubPR, GitHubLabel } from "@shared/types/github";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { getPRCIStatusVisual, getPRCIStatusTooltip } from "./prCIStatus";
+import { getPRCIStatusVisual, getPRCIStatusTooltip } from "../utils/prCIStatus";
 import {
   DropdownMenu,
   DropdownMenuTrigger,

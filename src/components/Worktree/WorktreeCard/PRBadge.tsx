@@ -8,7 +8,7 @@ import { useGitHubBadgeTooltip } from "./hooks/useGitHubBadgeTooltip";
 import { useGitHubBadgeFreshness } from "./hooks/useGitHubBadgeFreshness";
 import { freshnessSuffix } from "@/components/Layout/FreshnessUtils";
 import { PRTooltipContent, TooltipLoading, TokenMissingTooltip } from "./GitHubTooltipContent";
-import { getPRCIStatusVisual } from "@/components/GitHub/prCIStatus";
+import { getPRCIStatusVisual } from "@github-renderer/utils/prCIStatus";
 
 interface PRBadgeProps {
   prNumber: number;

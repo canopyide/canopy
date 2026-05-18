@@ -279,7 +279,8 @@ import {
   useNotificationSettingsStore,
   usePreferencesStore,
 } from "./store";
-import { useGitHubConfigStore } from "./store/githubConfigStore";
+import { useGitHubConfigStore } from "@github-renderer/stores/githubConfigStore";
+import "@github-renderer/index";
 import { useShallow } from "zustand/react/shallow";
 import { LazyMotion, MotionConfig } from "framer-motion";
 import { useMacroFocusStore } from "./store/macroFocusStore";

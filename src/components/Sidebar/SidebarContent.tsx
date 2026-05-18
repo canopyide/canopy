@@ -25,7 +25,8 @@ import {
 import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
 import { formatRelativeTime } from "@/lib/formatRelativeTime";
 import { WorktreeSidebarSearchBar, QuickStateFilterBar } from "@/components/Worktree";
-import { BulkCreateWorktreeDialog } from "@/components/GitHub/BulkCreateWorktreeDialog";
+import { getBuiltinView } from "@/registry/builtinRendererRegistry";
+import type { BulkCreateWorktreeDialogProps } from "@github-renderer/components/BulkCreateWorktreeDialog";
 import { FleetPickerPalette } from "@/components/Fleet/FleetPickerPalette";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -1290,14 +1291,22 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         componentName="BulkCreateWorktreeDialog"
         resetKeys={[Number(bulkCreateDialog.isOpen)]}
       >
-        <BulkCreateWorktreeDialog
-          isOpen={bulkCreateDialog.isOpen}
-          onClose={closeBulkCreateDialog}
-          mode={bulkCreateDialog.mode}
-          selectedIssues={bulkCreateDialog.selectedIssues}
-          selectedPRs={bulkCreateDialog.selectedPRs}
-          onComplete={closeBulkCreateDialog}
-        />
+        {(() => {
+          const BulkCreateWorktreeDialog = getBuiltinView<BulkCreateWorktreeDialogProps>(
+            "github.bulkCreateWorktreeDialog"
+          );
+          if (!BulkCreateWorktreeDialog) return null;
+          return (
+            <BulkCreateWorktreeDialog
+              isOpen={bulkCreateDialog.isOpen}
+              onClose={closeBulkCreateDialog}
+              mode={bulkCreateDialog.mode}
+              selectedIssues={bulkCreateDialog.selectedIssues}
+              selectedPRs={bulkCreateDialog.selectedPRs}
+              onComplete={closeBulkCreateDialog}
+            />
+          );
+        })()}
       </ErrorBoundary>
 
       <ErrorBoundary

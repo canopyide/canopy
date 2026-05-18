@@ -6,7 +6,7 @@ import { render, screen, cleanup, waitFor, act } from "@testing-library/react";
 import React, { Activity, type ReactNode } from "react";
 import type { GitHubIssue, GitHubListResponse, GitHubListOptions } from "@shared/types/github";
 import { setCache, buildCacheKey, _resetForTests } from "@/lib/githubResourceCache";
-import { useGitHubFilterStore } from "@/store/githubFilterStore";
+import { useGitHubFilterStore } from "../stores/githubFilterStore";
 import { useIssueSelectionStore } from "@/store/issueSelectionStore";
 import { useGitHubRateLimitStore } from "@/store/githubRateLimitStore";
 import { useSystemWakeStore } from "@/store/systemWakeStore";
@@ -33,7 +33,7 @@ let mockGitHubConfig: { hasToken: boolean } | null = { hasToken: true };
 let mockGitHubConfigInitialized = true;
 const initializeMock = vi.fn().mockResolvedValue(undefined);
 
-vi.mock("@/store/githubConfigStore", () => {
+vi.mock("../stores/githubConfigStore", () => {
   const useGitHubConfigStore = (
     selector: (s: {
       isInitialized: boolean;
@@ -98,13 +98,13 @@ vi.mock("react-dom", async () => {
   return { ...actual, createPortal: (children: ReactNode) => children };
 });
 
-vi.mock("../GitHubListItem", () => ({
+vi.mock("../components/GitHubListItem", () => ({
   GitHubListItem: ({ item }: { item: GitHubIssue }) => (
     <div data-testid={`item-${item.number}`}>{item.title}</div>
   ),
 }));
 
-vi.mock("../BulkActionBar", () => ({
+vi.mock("../components/BulkActionBar", () => ({
   BulkActionBar: () => null,
 }));
 
@@ -130,7 +130,7 @@ vi.mock("framer-motion", () => {
   };
 });
 
-vi.mock("../GitHubDropdownSkeletons", () => ({
+vi.mock("../components/GitHubDropdownSkeletons", () => ({
   GitHubResourceRowsSkeleton: () => <div data-testid="skeleton">Loading...</div>,
   MAX_SKELETON_ITEMS: 6,
   RESOURCE_ITEM_HEIGHT_PX: 68,
@@ -172,7 +172,7 @@ vi.mock("@/components/Worktree/LiveTimeAgo", () => ({
   },
 }));
 
-import { GitHubResourceList } from "../GitHubResourceList";
+import { GitHubResourceList } from "../components/GitHubResourceList";
 
 const makeIssue = (n: number): GitHubIssue => ({
   number: n,

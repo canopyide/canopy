@@ -8,7 +8,7 @@ import type { GitHubIssue, GitHubPR } from "@shared/types/github";
 import { worktreeClient, githubClient } from "@/clients";
 import { actionService } from "@/services/ActionService";
 import { usePreferencesStore } from "@/store/preferencesStore";
-import { useGitHubConfigStore } from "@/store/githubConfigStore";
+import { useGitHubConfigStore } from "@github-renderer/stores/githubConfigStore";
 import { notify } from "@/lib/notify";
 import { systemClient } from "@/clients/systemClient";
 import { useRecipeStore } from "@/store/recipeStore";

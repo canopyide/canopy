@@ -4,7 +4,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { GitHubSettingsTab } from "../GitHubSettingsTab";
 import { SettingsValidationProvider } from "../SettingsValidationRegistry";
 
-vi.mock("@/store", () => ({
+vi.mock("@github-renderer/stores/githubConfigStore", () => ({
   useGitHubConfigStore: vi.fn(),
 }));
 
@@ -14,7 +14,7 @@ vi.mock("@/services/ActionService", () => ({
   },
 }));
 
-import { useGitHubConfigStore } from "@/store";
+import { useGitHubConfigStore } from "@github-renderer/stores/githubConfigStore";
 import { actionService } from "@/services/ActionService";
 
 const mockedUseGitHubConfigStore = vi.mocked(useGitHubConfigStore);

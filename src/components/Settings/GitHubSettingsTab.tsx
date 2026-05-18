@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Key, Check, AlertCircle, FlaskConical, ExternalLink, Github } from "lucide-react";
-import { useGitHubConfigStore } from "@/store";
+// TODO(#8061): replace with plugin settings contribution when forge settings UI lands
+import { useGitHubConfigStore } from "@github-renderer/stores/githubConfigStore";
 import { actionService } from "@/services/ActionService";
 import type { GitHubTokenConfig, GitHubTokenValidation } from "@/types";
 import { SettingsSection } from "./SettingsSection";

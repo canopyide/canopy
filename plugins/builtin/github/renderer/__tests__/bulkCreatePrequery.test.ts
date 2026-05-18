@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { resolveIssuePrequeries } from "../bulkCreatePrequery";
+import { resolveIssuePrequeries } from "../components/bulkCreatePrequery";
 import type { GitHubIssue } from "@shared/types";
 
 describe("resolveIssuePrequeries", () => {
