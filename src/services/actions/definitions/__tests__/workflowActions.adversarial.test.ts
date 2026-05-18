@@ -13,6 +13,7 @@ const githubClientMock = vi.hoisted(() => ({
   getIssueByNumber: vi.fn(),
   getPRByNumber: vi.fn(),
   assignIssue: vi.fn(),
+  getConfig: vi.fn(),
 }));
 
 const projectClientMock = vi.hoisted(() => ({
@@ -25,7 +26,6 @@ const copyTreeClientMock = vi.hoisted(() => ({
 
 const projectStoreMock = vi.hoisted(() => ({ getState: vi.fn() }));
 const recipeStoreMock = vi.hoisted(() => ({ getState: vi.fn() }));
-const githubConfigStoreMock = vi.hoisted(() => ({ getState: vi.fn() }));
 const preferencesStoreMock = vi.hoisted(() => ({ getState: vi.fn() }));
 const currentViewStoreMock = vi.hoisted(() => ({ getCurrentViewStore: vi.fn() }));
 const panelStoreMock = vi.hoisted(() => ({ getState: vi.fn() }));
@@ -43,7 +43,6 @@ vi.mock("@/clients", () => ({
 }));
 vi.mock("@/store/projectStore", () => ({ useProjectStore: projectStoreMock }));
 vi.mock("@/store/recipeStore", () => ({ useRecipeStore: recipeStoreMock }));
-vi.mock("@/store/githubConfigStore", () => ({ useGitHubConfigStore: githubConfigStoreMock }));
 vi.mock("@/store/preferencesStore", () => ({ usePreferencesStore: preferencesStoreMock }));
 vi.mock("@/store/createWorktreeStore", () => currentViewStoreMock);
 vi.mock("@/store/panelStore", () => ({ usePanelStore: panelStoreMock }));
@@ -104,7 +103,9 @@ function setMainWorktree(branch: string | null) {
 }
 
 function setGithubUser(username: string | null) {
-  githubConfigStoreMock.getState.mockReturnValue({ config: username ? { username } : null });
+  githubClientMock.getConfig.mockResolvedValue(
+    username ? { hasToken: true, username } : { hasToken: false }
+  );
 }
 
 function setAssignPreference(value: boolean) {

@@ -96,7 +96,7 @@ vi.mock("@/store/preferencesStore", () => ({
     }),
 }));
 
-vi.mock("@/store/githubConfigStore", () => ({
+vi.mock("../stores/githubConfigStore", () => ({
   useGitHubConfigStore: Object.assign(
     (selector: (s: Record<string, unknown>) => unknown) =>
       selector({
@@ -244,7 +244,7 @@ vi.mock("@/lib/utils", () => ({
   cn: (...args: unknown[]) => args.filter(Boolean).join(" "),
 }));
 
-import { BulkCreateWorktreeDialog } from "../BulkCreateWorktreeDialog";
+import { BulkCreateWorktreeDialog } from "../components/BulkCreateWorktreeDialog";
 
 async function advanceTimersGradually(totalMs: number, stepMs = 100) {
   for (let elapsed = 0; elapsed < totalMs; elapsed += stepMs) {

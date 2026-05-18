@@ -13,7 +13,7 @@ vi.mock("@/store/worktreeStore", () => ({
     selector({ openBulkCreateDialog, openBulkCreateDialogForPRs }),
 }));
 
-import { BulkActionBar } from "../BulkActionBar";
+import { BulkActionBar } from "../components/BulkActionBar";
 
 const makeIssue = (n: number): GitHubIssue => ({
   number: n,

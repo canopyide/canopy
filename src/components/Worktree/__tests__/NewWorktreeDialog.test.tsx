@@ -88,7 +88,7 @@ vi.mock("@/store/preferencesStore", () => ({
     }),
 }));
 
-vi.mock("@/store/githubConfigStore", () => ({
+vi.mock("@github-renderer/stores/githubConfigStore", () => ({
   useGitHubConfigStore: Object.assign(
     (selector: (s: Record<string, unknown>) => unknown) =>
       selector({ config: null, initialize: vi.fn(), refresh: vi.fn() }),
@@ -215,8 +215,10 @@ vi.mock("@/components/ui/Spinner", () => ({
   Spinner: () => <span data-testid="spinner" />,
 }));
 
-vi.mock("@/components/GitHub/IssueSelector", () => ({
-  IssueSelector: () => <div data-testid="issue-selector" />,
+vi.mock("@/registry/builtinRendererRegistry", () => ({
+  getBuiltinView: () => () => <div data-testid="issue-selector" />,
+  registerBuiltinView: vi.fn(),
+  unregisterBuiltinView: vi.fn(),
 }));
 
 vi.mock("@/lib/utils", () => ({

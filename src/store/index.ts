@@ -65,8 +65,6 @@ export { useUIStore } from "./uiStore";
 export { usePaletteStore } from "./paletteStore";
 export type { PaletteId } from "./paletteStore";
 
-export { useGitHubConfigStore, cleanupGitHubConfigStore } from "./githubConfigStore";
-
 export {
   useAgentSettingsStore,
   cleanupAgentSettingsStore,

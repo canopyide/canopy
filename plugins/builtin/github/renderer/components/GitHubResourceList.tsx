@@ -28,8 +28,8 @@ import {
   useGitHubFilterStore,
   type IssueStateFilter,
   type PRStateFilter,
-} from "@/store/githubFilterStore";
-import { useGitHubConfigStore } from "@/store/githubConfigStore";
+} from "../stores/githubFilterStore";
+import { useGitHubConfigStore } from "../stores/githubConfigStore";
 import type { GitHubIssue, GitHubPR, GitHubSortOrder } from "@shared/types/github";
 import { MULTI_FETCH_CAP } from "@/lib/parseNumberQuery";
 import {
@@ -38,7 +38,7 @@ import {
   RESOURCE_ITEM_HEIGHT_PX,
 } from "./GitHubDropdownSkeletons";
 import { LiveTimeAgo } from "@/components/Worktree/LiveTimeAgo";
-import { useGitHubResourceListSWR } from "./useGitHubResourceListSWR";
+import { useGitHubResourceListSWR } from "../hooks/useGitHubResourceListSWR";
 
 type StateFilter = IssueStateFilter | PRStateFilter;
 

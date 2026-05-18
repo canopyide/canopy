@@ -10,7 +10,7 @@ import {
   BACKOFF_BASE_MS,
   BACKOFF_CAP_MS,
   MAX_AUTO_RETRIES,
-} from "../bulkCreateUtils";
+} from "../components/bulkCreateUtils";
 
 function makeIssue(overrides: Partial<GitHubIssue> = {}): GitHubIssue {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test fixture with minimal fields

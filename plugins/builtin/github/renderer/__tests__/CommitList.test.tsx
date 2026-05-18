@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, cleanup, waitFor, act } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { CommitList } from "../CommitList";
+import { CommitList } from "../components/CommitList";
 import type { GitCommit } from "@shared/types/github";
 
 const dispatchMock = vi.fn();

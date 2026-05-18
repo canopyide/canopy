@@ -10,7 +10,7 @@ import { worktreeClient, githubClient, agentSettingsClient, systemClient } from 
 import { resolveIssuePrequeries } from "./bulkCreatePrequery";
 import { notify } from "@/lib/notify";
 import { usePreferencesStore } from "@/store/preferencesStore";
-import { useGitHubConfigStore } from "@/store/githubConfigStore";
+import { useGitHubConfigStore } from "../stores/githubConfigStore";
 import { useRecipeStore, type RecipeSpawnResults } from "@/store/recipeStore";
 import { useProjectStore } from "@/store/projectStore";
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
@@ -40,7 +40,7 @@ import type { BranchInfo } from "@shared/types";
 
 type BulkCreateMode = "issue" | "pr";
 
-interface BulkCreateWorktreeDialogProps {
+export interface BulkCreateWorktreeDialogProps {
   isOpen: boolean;
   onClose: () => void;
   mode: BulkCreateMode;

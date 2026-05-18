@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { CommitListItem } from "../CommitListItem";
+import { CommitListItem } from "../components/CommitListItem";
 import type { GitCommit } from "@shared/types/github";
 
 vi.mock("@/utils/timeAgo", () => ({

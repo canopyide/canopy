@@ -5,7 +5,6 @@ import { worktreeClient, githubClient, copyTreeClient } from "@/clients";
 import { useProjectStore } from "@/store/projectStore";
 import { useRecipeStore } from "@/store/recipeStore";
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
-import { useGitHubConfigStore } from "@/store/githubConfigStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
 import { TerminalSpawnSourceSchema } from "./schemas";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
@@ -213,7 +212,7 @@ export function registerWorkflowCreationActions(
         let assignedToSelf = false;
         let assignmentError: string | null = null;
         if (issueNumber && effectiveAssignToSelf) {
-          const username = useGitHubConfigStore.getState().config?.username;
+          const username = (await githubClient.getConfig()).username;
           if (username) {
             try {
               await githubClient.assignIssue(rootPath, issueNumber, username);
@@ -459,7 +458,7 @@ export function registerWorkflowCreationActions(
         let assignedToSelf = false;
         let assignmentError: string | null = null;
         if (effectiveAssignToSelf) {
-          const username = useGitHubConfigStore.getState().config?.username;
+          const username = (await githubClient.getConfig()).username;
           if (username) {
             try {
               await githubClient.assignIssue(rootPath, issue.number, username);
