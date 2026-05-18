@@ -9,7 +9,12 @@ const scanOutputMock = vi.hoisted(() =>
     (
       data: string,
       buffer: string
-    ) => { buffer: string; url?: string; error?: { type: string; message: string } }
+    ) => {
+      buffer: string;
+      url?: string;
+      error?: { type: string; message: string };
+      readyMarker?: boolean;
+    }
   >()
 );
 
@@ -343,6 +348,62 @@ describe("DevPreviewSessionService adversarial", () => {
         state.status === "error" && state.error?.message === "Port 3000 is already in use"
     );
     expect(errorStates).toHaveLength(1);
+  });
+
+  it("re-probes immediately when a readiness marker arrives during the poll interval", async () => {
+    // Every HEAD attempt fails, so the readiness poll stays in its sleep
+    // window between attempts and never resolves on its own.
+    const impl = ((_: unknown, __: unknown, _cb: (res: MockIncomingMessage) => void) => {
+      const req: MockRequest = {
+        on: (event, handler) => {
+          if (event === "error") setTimeout(() => handler(new Error("ECONNREFUSED")), 0);
+          return req;
+        },
+        end: () => {},
+        destroy: () => {},
+      };
+      return req;
+    }) as unknown as typeof http.request;
+    vi.mocked(http.request).mockImplementation(impl);
+
+    scanOutputMock.mockImplementation((data, buffer) => {
+      if (data.includes("http://localhost")) return { buffer, url: "http://localhost:3000/" };
+      if (data.includes("ready in")) return { buffer, readyMarker: true };
+      return { buffer };
+    });
+
+    const started = await service.ensure(baseRequest);
+    ptyClient.emitData(started.terminalId!, "Local: http://localhost:3000/");
+    await vi.advanceTimersByTimeAsync(10);
+    const callsAfterUrl = vi.mocked(http.request).mock.calls.length;
+    expect(callsAfterUrl).toBeGreaterThanOrEqual(1);
+
+    // Marker arrives well before the 500ms poll interval would retry — the
+    // fast-path must abort the sleeping poll and re-probe right away.
+    ptyClient.emitData(started.terminalId!, "VITE v6.0.0  ready in 200 ms");
+    await vi.advanceTimersByTimeAsync(10);
+    expect(vi.mocked(http.request).mock.calls.length).toBeGreaterThan(callsAfterUrl);
+  });
+
+  it("handles a readiness marker that arrives before the URL without breaking startup", async () => {
+    scanOutputMock.mockImplementation((data, buffer) => {
+      if (data.includes("ready in")) return { buffer, readyMarker: true };
+      if (data.includes("http://localhost")) return { buffer, url: "http://localhost:3000/" };
+      return { buffer };
+    });
+
+    const started = await service.ensure(baseRequest);
+    ptyClient.emitData(started.terminalId!, "VITE v6.0.0  ready in 200 ms");
+    await vi.advanceTimersByTimeAsync(10);
+    ptyClient.emitData(started.terminalId!, "Local: http://localhost:3000/");
+    await vi.advanceTimersByTimeAsync(10);
+
+    const finalState = service.getState({
+      panelId: baseRequest.panelId,
+      projectId: baseRequest.projectId,
+    });
+    expect(finalState.status).toBe("running");
+    expect(finalState.url).toBe("http://localhost:3000/");
   });
 
   it("suppresses late state changes after dispose while stop is still waiting for the terminal to die", async () => {

@@ -40,6 +40,7 @@ interface DevPreviewSession extends DevPreviewSessionState {
   lastErrorKey: string | null;
   pendingUrl: string | null;
   readinessAbort: AbortController | null;
+  markerSeen: boolean;
   needsInstall: boolean;
   isRunningInstall: boolean;
   installAttemptedGeneration: number | null;
@@ -372,6 +373,7 @@ export class DevPreviewSessionService {
       lastErrorKey: null,
       pendingUrl: null,
       readinessAbort: null,
+      markerSeen: false,
       needsInstall: false,
       isRunningInstall: false,
       installAttemptedGeneration: null,
@@ -491,6 +493,7 @@ export class DevPreviewSessionService {
       session.readinessAbort?.abort();
       session.readinessAbort = null;
       session.pendingUrl = null;
+      session.markerSeen = false;
       session.needsInstall = false;
       session.isRunningInstall = false;
       this.updateSession(session, { terminalId: null, url: null, assignedUrl: null });
@@ -529,6 +532,7 @@ export class DevPreviewSessionService {
 
     session.buffer = "";
     session.lastErrorKey = null;
+    session.markerSeen = false;
     session.assignedUrl = assignedUrl;
     this.attachTerminal(session, terminalId);
     this.updateSession(session, {
@@ -655,6 +659,7 @@ export class DevPreviewSessionService {
     session.readinessAbort?.abort();
     session.readinessAbort = null;
     session.pendingUrl = null;
+    session.markerSeen = false;
     session.needsInstall = false;
     session.isRunningInstall = false;
 
@@ -728,6 +733,7 @@ export class DevPreviewSessionService {
     const result = this.detector.scanOutput(dataString, session.buffer);
     session.buffer = result.buffer;
 
+    let urlJustStarted = false;
     if (result.url && result.url !== session.url && result.url !== session.pendingUrl) {
       markPerformance(PERF_MARKS.DEVPREVIEW_URL_DETECTED, {
         panelId: session.panelId,
@@ -742,6 +748,25 @@ export class DevPreviewSessionService {
       session.pendingUrl = result.url;
 
       this.pollServerReadiness(session, result.url, abort.signal, session.generation);
+      urlJustStarted = true;
+    }
+
+    // A framework readiness line ("ready in N ms", "✓ Ready in", "compiled
+    // successfully") confirms the HTTP server is bound. When a poll is already
+    // mid-cycle (sleeping between HEAD attempts), abort it and re-probe now to
+    // skip the remaining poll interval. The poll itself stays the fallback for
+    // unrecognized frameworks, so no marker means no behavior change.
+    if (
+      result.readyMarker &&
+      !session.markerSeen &&
+      !urlJustStarted &&
+      session.pendingUrl
+    ) {
+      session.markerSeen = true;
+      session.readinessAbort?.abort();
+      const abort = new AbortController();
+      session.readinessAbort = abort;
+      this.pollServerReadiness(session, session.pendingUrl, abort.signal, session.generation);
     }
 
     if (!result.error) return;
@@ -779,6 +804,7 @@ export class DevPreviewSessionService {
     session.readinessAbort?.abort();
     session.readinessAbort = null;
     session.pendingUrl = null;
+    session.markerSeen = false;
 
     this.detachTerminal(session);
     session.buffer = "";
