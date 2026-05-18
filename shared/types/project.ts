@@ -309,7 +309,7 @@ export type FleetSavedScope = SnapshotFleetSavedScope | PredicateFleetSavedScope
 
 /** Per-project terminal configuration overrides */
 export interface ProjectTerminalSettings {
-  /** Override shell executable path (machine-local, not stored in .daintree/settings.json) */
+  /** Override shell executable path */
   shell?: string;
   /** Override shell arguments (replaces default args when set) */
   shellArgs?: string[];
@@ -319,6 +319,26 @@ export interface ProjectTerminalSettings {
   scrollbackLines?: number;
 }
 
+/**
+ * Classifies how a `ProjectSettings` (or sub-field) field is persisted.
+ * - `shareable`: written to `.daintree/settings.json` (committed to git, shared with teammates)
+ * - `local`: persisted only in the machine-local project store, never written to the repo file
+ * - `transient`: runtime-only, never persisted to disk
+ *
+ * The shareability tables (`PROJECT_SETTINGS_SHAREABILITY`,
+ * `PROJECT_TERMINAL_SETTINGS_SHAREABILITY`) are the single source of truth — adding a new
+ * field to `ProjectSettings` without classifying it here is a build error.
+ */
+export type FieldShareability = "shareable" | "local" | "transient";
+
+/** Shareability classification for each field of `ProjectTerminalSettings`. */
+export const PROJECT_TERMINAL_SETTINGS_SHAREABILITY = {
+  shell: "local",
+  shellArgs: "shareable",
+  defaultWorkingDirectory: "shareable",
+  scrollbackLines: "shareable",
+} as const satisfies Record<keyof ProjectTerminalSettings, FieldShareability>;
+
 /** Project-level settings that persist per repository */
 export interface ProjectSettings {
   /** List of custom run commands for this project */
@@ -327,9 +347,9 @@ export interface ProjectSettings {
   environmentVariables?: Record<string, string>;
   /** List of env var keys stored separately from settings.json */
   secureEnvironmentVariables?: string[];
-  /** List of env var keys found in plaintext that should be migrated (transient, not persisted) */
+  /** List of env var keys found in plaintext that should be migrated */
   insecureEnvironmentVariables?: string[];
-  /** List of secure keys that couldn't be decrypted (transient, not persisted) */
+  /** List of secure keys that couldn't be decrypted */
   unresolvedSecureEnvironmentVariables?: string[];
   /** Paths to exclude from monitoring */
   excludedPaths?: string[];
@@ -379,10 +399,9 @@ export interface ProjectSettings {
   /** Git remote name to use for GitHub integration (defaults to "origin") */
   githubRemote?: string;
   /**
-   * Pinned forge provider for this project (machine-local). When set, overrides hostname auto-detection
+   * Pinned forge provider for this project. When set, overrides hostname auto-detection
    * for forge integrations. `null` (or absent) = auto-detect. Stores the bare `contribution.id` of a
-   * provider registered via the forge provider registry. Never written to `.daintree/settings.json` —
-   * machine-local because provider availability depends on installed plugins.
+   * provider registered via the forge provider registry.
    */
   forgeProviderOverride?: string | null;
   /** Per-project worktree path pattern override (uses global default when unset) */
@@ -391,7 +410,7 @@ export interface ProjectSettings {
   fleetSavedScopes?: FleetSavedScope[];
   /** Per-project terminal configuration overrides */
   terminalSettings?: ProjectTerminalSettings;
-  /** Per-project notification overrides (machine-local, never written to .daintree/settings.json) */
+  /** Per-project notification overrides */
   notificationOverrides?: Partial<NotificationSettings>;
   /** @deprecated Use resourceEnvironments instead. Kept for migration only. */
   resourceEnvironment?: ResourceEnvironment;
@@ -417,6 +436,52 @@ export interface ProjectSettings {
    */
   exposeDaintreeMcpToAgents?: boolean;
 }
+
+/**
+ * Shareability classification for each field of `ProjectSettings`.
+ *
+ * The `satisfies Record<keyof ProjectSettings, FieldShareability>` constraint makes adding
+ * a new `ProjectSettings` field without a classification entry a compile-time error.
+ *
+ * `terminalSettings` is marked `shareable` because it contains shareable sub-fields; the
+ * nested object is filtered through `PROJECT_TERMINAL_SETTINGS_SHAREABILITY` by the writer.
+ */
+export const PROJECT_SETTINGS_SHAREABILITY = {
+  runCommands: "shareable",
+  environmentVariables: "local",
+  secureEnvironmentVariables: "local",
+  insecureEnvironmentVariables: "transient",
+  unresolvedSecureEnvironmentVariables: "transient",
+  excludedPaths: "shareable",
+  projectIconSvg: "local",
+  defaultWorktreeRecipeId: "local",
+  devServerCommand: "shareable",
+  devServerDismissed: "local",
+  devServerAutoDetected: "local",
+  cloudSyncWarningDismissed: "local",
+  devServerLoadTimeout: "shareable",
+  turbopackEnabled: "shareable",
+  copyTreeSettings: "shareable",
+  commandOverrides: "local",
+  gitInitDefaults: "local",
+  preferredEditor: "local",
+  preferredImageViewer: "local",
+  branchPrefixMode: "local",
+  branchPrefixCustom: "local",
+  githubRemote: "local",
+  forgeProviderOverride: "local",
+  worktreePathPattern: "shareable",
+  fleetSavedScopes: "local",
+  terminalSettings: "shareable",
+  notificationOverrides: "local",
+  resourceEnvironment: "local",
+  resourceEnvironments: "local",
+  activeResourceEnvironment: "local",
+  defaultWorktreeMode: "local",
+  browserAllowedHosts: "local",
+  daintreeMcpTier: "local",
+  exposeDaintreeMcpToAgents: "local",
+} as const satisfies Record<keyof ProjectSettings, FieldShareability>;
 
 /** Tier of Daintree MCP access exposed to agents in a project. */
 export type DaintreeMcpTier = "off" | "workbench" | "action" | "system";
