@@ -23,10 +23,14 @@ function toGitHubRateLimitPayload(info: RateLimitInfo): GitHubRateLimitPayload {
   if (info.remaining !== 0 && !info.secondaryThrottled) {
     return { blocked: false, kind: null };
   }
+  // `applyRemoteState` requires `resetAt` for any blocked payload (absent
+  // `resetAt` it calls `clear()`). Use a 60s fallback matching the secondary
+  // throttle convention so the block is always preserved across the relay.
+  const resetAt = info.resetAt ?? Date.now() + 60_000;
   return {
     blocked: true,
     kind: info.secondaryThrottled ? "secondary" : "primary",
-    ...(info.resetAt ? { resetAt: info.resetAt } : {}),
+    resetAt,
   };
 }
 

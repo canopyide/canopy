@@ -274,6 +274,7 @@ describe("PullRequestService", () => {
 
     expect(mockImpl.getRateLimit).toHaveBeenCalled();
     expect(mockImpl.findPRByBranch).not.toHaveBeenCalled();
+    expect(mockImpl.getIssue).not.toHaveBeenCalled();
 
     const status = pullRequestService.getStatus();
     expect(status.isEnabled).toBe(false);
@@ -307,6 +308,7 @@ describe("PullRequestService", () => {
 
     expect(mockImpl.getRateLimit).toHaveBeenCalled();
     expect(mockImpl.findPRByBranch).not.toHaveBeenCalled();
+    expect(mockImpl.getIssue).not.toHaveBeenCalled();
 
     pullRequestService.destroy();
   });
@@ -422,10 +424,8 @@ describe("PullRequestService", () => {
     // Manually revalidate — now getRateLimit returns blocked
     await (pullRequestService as any).revalidateResolvedPRs();
 
-    // getRateLimit was called 3 times (resolveProvider + check + checkForPRs + revalidate)
-    // Actually: resolveProvider doesn't call getRateLimit. It's called:
-    // 1 & 2: checkRateLimitGate in checkForPRs + checkRateLimitGate in revalidate
-    // 3: checkRateLimitGate again when revalidateResolvedPRs runs again
+    // Revalidation was blocked by rate-limit gate; provider PR ops were NOT called
+    expect(mockImpl.getPR).not.toHaveBeenCalled();
 
     pullRequestService.destroy();
   });

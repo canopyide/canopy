@@ -765,16 +765,17 @@ class PullRequestService {
     }
     try {
       const info: RateLimitInfo = await this.providerImpl.getRateLimit();
+      const now = Date.now();
       if (info.secondaryThrottled) {
-        return {
-          blocked: true,
-          resumeAt: info.resetAt ?? Date.now() + RATE_LIMIT_SECONDARY_FALLBACK_MS,
-        };
+        const resumeAt = info.resetAt ?? now + RATE_LIMIT_SECONDARY_FALLBACK_MS;
+        if (resumeAt <= now) return { blocked: false, resumeAt: null };
+        return { blocked: true, resumeAt };
       }
       if (info.remaining === 0) {
         const resumeAt = info.resetAt
           ? info.resetAt + RATE_LIMIT_CLOCK_SKEW_MS
-          : Date.now() + RATE_LIMIT_SECONDARY_FALLBACK_MS;
+          : now + RATE_LIMIT_SECONDARY_FALLBACK_MS;
+        if (resumeAt <= now) return { blocked: false, resumeAt: null };
         return { blocked: true, resumeAt };
       }
       return { blocked: false, resumeAt: null };
