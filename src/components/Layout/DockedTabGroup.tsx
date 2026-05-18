@@ -472,6 +472,7 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
       <TerminalContextMenu terminalId={activePanel.id} forceLocation="dock">
         <PopoverTrigger asChild>
           <button
+            data-dock-item=""
             className={cn(
               "flex items-center gap-1.5 px-3 h-[var(--dock-item-height)] rounded-[var(--radius-md)] text-xs border transition duration-150 max-w-[280px]",
               "bg-[var(--dock-item-bg)] border-[var(--dock-item-border)] text-daintree-text/70",
