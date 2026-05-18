@@ -126,6 +126,16 @@ export function ConsolePanel({ paneId, webContentsId }: ConsolePanelProps) {
   const counts = useConsoleCaptureStore((state) => state.counters.get(paneId) ?? ZERO_COUNTS);
   const clearMessages = useConsoleCaptureStore((state) => state.clearMessages);
 
+  const handleClear = useCallback(() => {
+    clearMessages(paneId);
+    // Also release the CDP-retained remote object references for this pane so
+    // long-lived sessions with heavy object logging don't leak main-process
+    // memory. Best-effort: the renderer-side clear is the user-visible action.
+    if (webContentsId != null) {
+      void window.electron.webview.clearConsoleCapture(webContentsId, paneId).catch(() => {});
+    }
+  }, [clearMessages, paneId, webContentsId]);
+
   // Apply level and search filters, then handle group collapsing
   const filtered = useMemo(() => {
     const lowerSearch = search ? search.toLowerCase() : "";
@@ -333,7 +343,7 @@ export function ConsolePanel({ paneId, webContentsId }: ConsolePanelProps) {
           <TooltipTrigger asChild>
             <button
               type="button"
-              onClick={() => clearMessages(paneId)}
+              onClick={handleClear}
               className="p-1 rounded hover:bg-overlay-medium text-daintree-text/50 hover:text-daintree-text transition-colors"
               aria-label="Clear console"
             >

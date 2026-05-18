@@ -79,6 +79,7 @@ const {
   };
   const terminalStoreState = {
     activeDockTerminalId: undefined as string | undefined,
+    panelsById: {} as Record<string, unknown>,
     getTerminal: vi.fn(),
     setBrowserUrl: vi.fn(),
     setBrowserHistory: vi.fn(),
