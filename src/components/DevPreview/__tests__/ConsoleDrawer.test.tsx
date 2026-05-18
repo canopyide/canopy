@@ -32,6 +32,31 @@ vi.mock("@/components/ui/tooltip", () => ({
   TooltipTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
+vi.mock("@/components/ui/dropdown-menu", () => ({
+  DropdownMenu: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DropdownMenuItem: ({
+    children,
+    onSelect,
+    disabled,
+  }: {
+    children: React.ReactNode;
+    onSelect?: () => void;
+    disabled?: boolean;
+  }) => (
+    <button onClick={onSelect} disabled={disabled} role="menuitem">
+      {children}
+    </button>
+  ),
+  DropdownMenuSeparator: () => <hr role="separator" />,
+  DropdownMenuLabel: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DropdownMenuRadioGroup: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DropdownMenuRadioItem: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DropdownMenuCheckboxItem: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DropdownMenuShortcut: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 describe("ConsoleDrawer", () => {
   const mockTerminalId = "test-terminal-id";
   const getToggleButton = () => screen.getByRole("button", { name: /(?:show|hide) terminal/i });
@@ -169,103 +194,163 @@ describe("ConsoleDrawer", () => {
     });
   });
 
-  describe("hard restart action", () => {
-    it("does not render restart button without handler", () => {
+  describe("tiered restart actions", () => {
+    it("does not render restart controls without handler", () => {
       render(<ConsoleDrawer terminalId={mockTerminalId} defaultOpen={false} />);
-      expect(screen.queryByRole("button", { name: "Hard restart dev preview" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Restart dev server" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "More restart options" })).toBeNull();
     });
 
-    it("renders restart button when handler is provided", () => {
+    it("renders primary restart button and chevron when handler is provided", () => {
       render(
         <ConsoleDrawer
           terminalId={mockTerminalId}
           defaultOpen={false}
-          onHardRestart={vi.fn()}
+          onRestartDevServer={vi.fn()}
           status="running"
         />
       );
-      expect(screen.getByRole("button", { name: "Hard restart dev preview" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Restart dev server" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "More restart options" })).toBeTruthy();
     });
 
-    it("renders restart button as icon-only with no visible text", () => {
+    it("renders all four tier options in dropdown", () => {
       render(
         <ConsoleDrawer
           terminalId={mockTerminalId}
           defaultOpen={false}
-          onHardRestart={vi.fn()}
+          onReloadPreview={vi.fn()}
+          onRestartDevServer={vi.fn()}
+          onRequestRestartAndClearCache={vi.fn()}
+          onRequestReinstallAndRestart={vi.fn()}
           status="running"
         />
       );
-      const restartButton = screen.getByRole("button", { name: "Hard restart dev preview" });
-      expect(restartButton.textContent).toBe("");
-      expect(restartButton.querySelector("svg")).toBeTruthy();
+      expect(screen.getByRole("menuitem", { name: "Reload preview" })).toBeTruthy();
+      expect(screen.getByRole("menuitem", { name: "Restart dev server" })).toBeTruthy();
+      expect(screen.getByRole("menuitem", { name: "Restart and clear cache" })).toBeTruthy();
+      expect(screen.getByRole("menuitem", { name: "Reinstall dependencies" })).toBeTruthy();
     });
 
-    it("calls onHardRestart when restart button is clicked", () => {
-      const onHardRestart = vi.fn();
+    it("calls onRestartDevServer when primary button is clicked", () => {
+      const onRestartDevServer = vi.fn();
       render(
         <ConsoleDrawer
           terminalId={mockTerminalId}
           defaultOpen={false}
-          onHardRestart={onHardRestart}
+          onRestartDevServer={onRestartDevServer}
           status="running"
         />
       );
 
-      const restartButton = screen.getByRole("button", { name: "Hard restart dev preview" });
+      const restartButton = screen.getByRole("button", { name: "Restart dev server" });
       fireEvent.click(restartButton);
 
-      expect(onHardRestart).toHaveBeenCalledTimes(1);
+      expect(onRestartDevServer).toHaveBeenCalledTimes(1);
     });
 
-    it("disables restart button while restarting", () => {
+    it("calls tier callbacks when dropdown items are selected", () => {
+      const onReloadPreview = vi.fn();
+      const onRestartDevServer = vi.fn();
+      const onRequestRestartAndClearCache = vi.fn();
+      const onRequestReinstallAndRestart = vi.fn();
+
       render(
         <ConsoleDrawer
           terminalId={mockTerminalId}
           defaultOpen={false}
-          onHardRestart={vi.fn()}
+          onReloadPreview={onReloadPreview}
+          onRestartDevServer={onRestartDevServer}
+          onRequestRestartAndClearCache={onRequestRestartAndClearCache}
+          onRequestReinstallAndRestart={onRequestReinstallAndRestart}
+          status="running"
+        />
+      );
+
+      fireEvent.click(screen.getByRole("menuitem", { name: "Reload preview" }));
+      expect(onReloadPreview).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(screen.getByRole("menuitem", { name: "Restart dev server" }));
+      expect(onRestartDevServer).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(screen.getByRole("menuitem", { name: "Restart and clear cache" }));
+      expect(onRequestRestartAndClearCache).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(screen.getByRole("menuitem", { name: "Reinstall dependencies" }));
+      expect(onRequestReinstallAndRestart).toHaveBeenCalledTimes(1);
+    });
+
+    it("disables primary button and chevron while restarting", () => {
+      render(
+        <ConsoleDrawer
+          terminalId={mockTerminalId}
+          defaultOpen={false}
+          onRestartDevServer={vi.fn()}
           status="running"
           isRestarting={true}
         />
       );
 
-      const restartButton = screen.getByRole("button", { name: "Hard restart dev preview" });
+      const restartButton = screen.getByRole("button", { name: "Restart dev server" });
       expect(restartButton.getAttribute("disabled")).not.toBeNull();
       expect(restartButton.getAttribute("aria-busy")).toBe("true");
       expect(screen.getByText("Restarting")).toBeTruthy();
+
+      const chevron = screen.getByRole("button", { name: "More restart options" });
+      expect(chevron.getAttribute("disabled")).not.toBeNull();
     });
 
-    it("disables restart button while starting", () => {
+    it("disables primary button and chevron while starting", () => {
       render(
         <ConsoleDrawer
           terminalId={mockTerminalId}
           defaultOpen={false}
-          onHardRestart={vi.fn()}
+          onRestartDevServer={vi.fn()}
           status="starting"
         />
       );
 
-      const restartButton = screen.getByRole("button", { name: "Hard restart dev preview" });
+      const restartButton = screen.getByRole("button", { name: "Restart dev server" });
       expect(restartButton.getAttribute("disabled")).not.toBeNull();
+
+      const chevron = screen.getByRole("button", { name: "More restart options" });
+      expect(chevron.getAttribute("disabled")).not.toBeNull();
     });
 
-    it("enables restart button while installing with warning tooltip", () => {
+    it("enables primary while installing with warning tooltip", () => {
       render(
         <ConsoleDrawer
           terminalId={mockTerminalId}
           defaultOpen={false}
-          onHardRestart={vi.fn()}
+          onRestartDevServer={vi.fn()}
           status="installing"
         />
       );
 
       const restartButton = screen.getByRole("button", {
-        name: "Hard restart dev preview (may interrupt installation)",
+        name: "Restart dev server (may interrupt installation)",
       });
       expect(restartButton.getAttribute("disabled")).toBeNull();
-      expect(restartButton.getAttribute("aria-label")).toBe(
-        "Hard restart dev preview (may interrupt installation)"
+    });
+
+    it("disables destructive dropdown items while restarting or installing", () => {
+      render(
+        <ConsoleDrawer
+          terminalId={mockTerminalId}
+          defaultOpen={false}
+          onRestartDevServer={vi.fn()}
+          onRequestRestartAndClearCache={vi.fn()}
+          onRequestReinstallAndRestart={vi.fn()}
+          status="installing"
+        />
       );
+
+      expect(
+        screen.getByRole("menuitem", { name: "Restart and clear cache" }).getAttribute("disabled")
+      ).not.toBeNull();
+      expect(
+        screen.getByRole("menuitem", { name: "Reinstall dependencies" }).getAttribute("disabled")
+      ).not.toBeNull();
     });
   });
 
