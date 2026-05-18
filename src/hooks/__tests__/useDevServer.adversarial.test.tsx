@@ -609,7 +609,7 @@ describe("useDevServer adversarial races", () => {
     expect(result.current.url).toBe("http://localhost:4173/");
   });
 
-  it("auto-restarts a stuck starting session once when no URL is detected", async () => {
+  it("escalates stuckTier at 6s/12s/25s without restarting a stuck starting session (#8276)", async () => {
     vi.useFakeTimers();
     try {
       ensureMock.mockImplementation((request: { projectId: string }) =>
@@ -632,16 +632,6 @@ describe("useDevServer adversarial races", () => {
           })
         )
       );
-      restartMock.mockImplementation((request: { projectId: string }) =>
-        Promise.resolve(
-          buildState({
-            panelId: "panel-1",
-            projectId: request.projectId,
-            status: "starting",
-            terminalId: `restart-${request.projectId}`,
-          })
-        )
-      );
 
       const { result } = renderHook(() =>
         useDevServer({
@@ -657,24 +647,29 @@ describe("useDevServer adversarial races", () => {
       });
 
       expect(result.current.status).toBe("starting");
+      expect(result.current.stuckTier).toBe(0);
       expect(ensureMock).toHaveBeenCalledTimes(1);
 
       await act(async () => {
-        vi.advanceTimersByTime(10000);
+        vi.advanceTimersByTime(6000);
         await Promise.resolve();
       });
-
-      expect(restartMock).toHaveBeenCalledTimes(1);
-      expect(restartMock).toHaveBeenCalledWith(
-        expect.objectContaining({ panelId: "panel-1", projectId: "project-1" })
-      );
+      expect(result.current.stuckTier).toBe(1);
 
       await act(async () => {
-        vi.advanceTimersByTime(20000);
+        vi.advanceTimersByTime(6000);
         await Promise.resolve();
       });
+      expect(result.current.stuckTier).toBe(2);
 
-      expect(restartMock).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        vi.advanceTimersByTime(13000);
+        await Promise.resolve();
+      });
+      expect(result.current.stuckTier).toBe(3);
+
+      // The #8276 contract: escalation never silently restarts.
+      expect(restartMock).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
@@ -726,6 +721,8 @@ describe("useDevServer adversarial races", () => {
       });
 
       expect(restartMock).not.toHaveBeenCalled();
+      // Installing is exempt from stuck-start escalation (#8276).
+      expect(result.current.stuckTier).toBe(0);
     } finally {
       vi.useRealTimers();
     }
@@ -779,6 +776,7 @@ describe("useDevServer adversarial races", () => {
       });
 
       expect(restartMock).not.toHaveBeenCalled();
+      expect(result.current.stuckTier).toBe(0);
     } finally {
       vi.useRealTimers();
     }

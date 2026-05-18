@@ -15,6 +15,7 @@ import { useProjectSettingsStore } from "@/store/projectSettingsStore";
 import type { BrowserHistory } from "@shared/types/browser";
 import { ContentPanel, type BasePanelProps } from "@/components/Panel";
 import { BrowserToolbar } from "../Browser/BrowserToolbar";
+import { InlineStatusBanner, type BannerAction } from "../Terminal/InlineStatusBanner";
 import { normalizeBrowserUrl } from "../Browser/browserUtils";
 import {
   goBackBrowserHistory,
@@ -22,7 +23,7 @@ import {
   initializeBrowserHistory,
   pushBrowserHistory,
 } from "../Browser/historyUtils";
-import { useDevServer } from "@/hooks/useDevServer";
+import { useDevServer, type UseDevServerReturn } from "@/hooks/useDevServer";
 import { ConsoleDrawer } from "./ConsoleDrawer";
 import { useIsDragging } from "@/components/DragDrop";
 import { cn } from "@/lib/utils";
@@ -31,6 +32,7 @@ import { findDevServerCandidate } from "@/utils/devServerDetection";
 import { useProjectSettings } from "@/hooks/useProjectSettings";
 import { projectClient } from "@/clients";
 import { actionService } from "@/services/ActionService";
+import type { ActionId } from "@shared/types/actions";
 import { useWebviewThrottle } from "@/hooks/useWebviewThrottle";
 import { useHasBeenVisible } from "@/hooks/useHasBeenVisible";
 import { useWebviewEviction } from "@/hooks/useWebviewEviction";
@@ -178,6 +180,81 @@ export interface DevPreviewPaneProps extends BasePanelProps {
   worktreeId?: string;
 }
 
+const STUCK_REMEDY_LABELS: Record<string, string> = {
+  "devPreview.restartClearCache": "Restart and clear cache",
+  "devPreview.reinstall": "Reinstall dependencies",
+};
+
+interface DevPreviewStuckBannerProps {
+  tier: 2 | 3;
+  error: UseDevServerReturn["error"];
+  onRestart: () => void;
+  onRemedy: (actionId: string) => void;
+}
+
+/**
+ * Staged stuck-start escalation banner (#8276). Replaces the old silent
+ * auto-restart with a user-driven signal: Tier 2 is a warning that the
+ * server is slow, Tier 3 an error that names likely causes and, when the
+ * dev server emitted a recognised error, offers a variant-specific remedy
+ * (`error.recommendedActionId`) alongside a plain restart.
+ */
+function DevPreviewStuckBanner({ tier, error, onRestart, onRemedy }: DevPreviewStuckBannerProps) {
+  const restartAction: BannerAction = {
+    id: "dev-preview-stuck-restart",
+    label: "Restart dev server",
+    icon: RotateCw,
+    variant: "primary",
+    onClick: onRestart,
+  };
+
+  if (tier === 2) {
+    return (
+      <InlineStatusBanner
+        icon={AlertTriangle}
+        severity="warning"
+        title="Dev server is slow to start"
+        description="It's been a while without a URL. Check the terminal logs for what it's waiting on — restarting clears those logs."
+        role="status"
+        ariaLive="polite"
+        actions={[restartAction]}
+      />
+    );
+  }
+
+  const remedyId = error?.recommendedActionId;
+  const remedyLabel = remedyId ? STUCK_REMEDY_LABELS[remedyId] : undefined;
+  const actions: BannerAction[] =
+    remedyId && remedyLabel
+      ? [
+          {
+            id: `dev-preview-stuck-remedy-${remedyId}`,
+            label: remedyLabel,
+            icon: RotateCw,
+            variant: "primary",
+            onClick: () => onRemedy(remedyId),
+          },
+          restartAction,
+        ]
+      : [restartAction];
+
+  const description = error?.message
+    ? error.message
+    : "Likely causes: the port is still bound by another process, dependencies are missing, or the build cache is stuck. Check the terminal logs.";
+
+  return (
+    <InlineStatusBanner
+      icon={AlertTriangle}
+      severity="error"
+      title="Dev server still hasn't started"
+      description={description}
+      role="alert"
+      ariaLive="assertive"
+      actions={actions}
+    />
+  );
+}
+
 function sanitizePartitionToken(value: string | undefined): string {
   const token = (value ?? "default").trim().toLowerCase();
   const sanitized = token.replace(/[^a-z0-9_-]/g, "-").replace(/-+/g, "-");
@@ -218,7 +295,7 @@ export function DevPreviewPane({
     terminal?.devCommand?.trim() || projectSettings?.devServerCommand?.trim() || "";
   const viewportPreset = terminal?.viewportPreset;
 
-  const { status, url, terminalId, error, start, restart, isRestarting } = useDevServer({
+  const { status, url, terminalId, error, start, restart, isRestarting, stuckTier } = useDevServer({
     panelId: id,
     devCommand,
     cwd,
@@ -510,6 +587,18 @@ export function DevPreviewPane({
     setWebviewLoadError,
   ]);
 
+  const handleStuckRemedy = useCallback(
+    (actionId: string) => {
+      if (!currentProjectId) return;
+      void actionService.dispatch(
+        actionId as ActionId,
+        { panelId: id, projectId: currentProjectId },
+        { source: "user" }
+      );
+    },
+    [currentProjectId, id]
+  );
+
   const handleAutoDetect = useCallback(async () => {
     if (!currentProjectId || isAutoDetecting) return;
 
@@ -726,6 +815,7 @@ export function DevPreviewPane({
       onRestore={onRestore}
       gridPanelCount={gridPanelCount}
       kind="dev-preview"
+      className={stuckTier >= 1 ? "panel-state-working" : undefined}
     >
       <div className="flex flex-col h-full">
         <BrowserToolbar
@@ -745,6 +835,15 @@ export function DevPreviewPane({
           onZoomChange={handleZoomChange}
           onViewportPresetChange={handleViewportPresetChange}
         />
+
+        {stuckTier >= 2 && (
+          <DevPreviewStuckBanner
+            tier={stuckTier >= 3 ? 3 : 2}
+            error={error}
+            onRestart={handleHardRestart}
+            onRemedy={handleStuckRemedy}
+          />
+        )}
 
         <div className="relative flex-1 min-h-0 bg-surface-canvas overflow-auto">
           {viewportPreset && (
