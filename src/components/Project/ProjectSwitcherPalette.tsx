@@ -681,11 +681,9 @@ function ProjectSwitcherFooter({ mode }: { mode?: ProjectSwitcherMode }) {
           </span>
         )}
       </div>
-      {mode !== "modal" && (
-        <span className="text-daintree-text/30">
-          <span>Right-click for more</span>
-        </span>
-      )}
+      <span className="text-daintree-text/30">
+        <span>Right-click for more</span>
+      </span>
     </div>
   );
 }

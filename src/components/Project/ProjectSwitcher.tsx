@@ -9,7 +9,6 @@ import { Spinner } from "@/components/ui/Spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useKeybindingDisplay } from "@/hooks/useKeybinding";
 import { useProjectSwitcherPalette } from "@/hooks";
-import { useCopyWithFeedback } from "@/hooks/useCopyWithFeedback";
 import { actionService } from "@/services/ActionService";
 import { ProjectSwitcherPalette } from "./ProjectSwitcherPalette";
 import type { SearchableProject } from "@/hooks/useProjectSwitcherPalette";
@@ -86,14 +85,6 @@ export function ProjectSwitcher() {
     [projectSwitcher]
   );
 
-  const { copy: copyProjectPath } = useCopyWithFeedback();
-  const handleCopyPath = useCallback(
-    (path: string) => {
-      void copyProjectPath(path);
-    },
-    [copyProjectPath]
-  );
-
   const handleSelectNewWindow = useCallback(
     (project: SearchableProject) => {
       if (project.isMissing) return;
@@ -157,7 +148,7 @@ export function ProjectSwitcher() {
             onCloseProject={handleCloseProject}
             onLocateProject={handleLocateProject}
             onTogglePinProject={handleTogglePinProject}
-            onCopyPath={handleCopyPath}
+            onCopyPath={projectSwitcher.copyPath}
             onSelectNewWindow={handleSelectNewWindow}
             onHoverProject={projectSwitcher.onHoverProject}
             onHoverProjectEnd={projectSwitcher.onHoverProjectEnd}
@@ -226,7 +217,7 @@ export function ProjectSwitcher() {
         onLocateProject={handleLocateProject}
         onTogglePinProject={handleTogglePinProject}
         onOpenProjectSettings={handleOpenSettings}
-        onCopyPath={handleCopyPath}
+        onCopyPath={projectSwitcher.copyPath}
         onHoverProject={projectSwitcher.onHoverProject}
         onHoverProjectEnd={projectSwitcher.onHoverProjectEnd}
         removeConfirmProject={projectSwitcher.removeConfirmProject}

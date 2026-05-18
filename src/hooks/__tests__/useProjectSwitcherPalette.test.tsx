@@ -2,54 +2,62 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getBulkStatsMock, useProjectStoreMock, notifyMock, projectState, projectStatsState } =
-  vi.hoisted(() => {
-    const getBulkStatsMock = vi.fn();
+const {
+  getBulkStatsMock,
+  useProjectStoreMock,
+  notifyMock,
+  copyMock,
+  projectState,
+  projectStatsState,
+} = vi.hoisted(() => {
+  const getBulkStatsMock = vi.fn();
+  const copyMock = vi.fn().mockResolvedValue(true);
 
-    const projectStatsState = {
-      stats: {} as Record<
-        string,
-        { activeAgentCount: number; waitingAgentCount: number; processCount: number }
-      >,
-    };
+  const projectStatsState = {
+    stats: {} as Record<
+      string,
+      { activeAgentCount: number; waitingAgentCount: number; processCount: number }
+    >,
+  };
 
-    const projectState = {
-      projects: [
-        {
-          id: "project-1",
-          name: "Project One",
-          path: "/repo/one",
-          emoji: "🌲",
-          color: "#00aa00",
-          lastOpened: 123,
-          frecencyScore: 3.0,
-          status: "active" as const,
-        },
-      ],
-      currentProject: null as { id: string } | null,
-      switchProject: vi.fn().mockResolvedValue(undefined),
-      reopenProject: vi.fn().mockResolvedValue(undefined),
-      loadProjects: vi.fn().mockResolvedValue(undefined),
-      addProject: vi.fn().mockResolvedValue(undefined),
-      closeProject: vi.fn().mockResolvedValue({ processesKilled: 0 }),
-      closeActiveProject: vi.fn().mockResolvedValue({ processesKilled: 0 }),
-      removeProject: vi.fn().mockResolvedValue(undefined),
-      locateProject: vi.fn().mockResolvedValue(undefined),
-    };
+  const projectState = {
+    projects: [
+      {
+        id: "project-1",
+        name: "Project One",
+        path: "/repo/one",
+        emoji: "🌲",
+        color: "#00aa00",
+        lastOpened: 123,
+        frecencyScore: 3.0,
+        status: "active" as const,
+      },
+    ],
+    currentProject: null as { id: string } | null,
+    switchProject: vi.fn().mockResolvedValue(undefined),
+    reopenProject: vi.fn().mockResolvedValue(undefined),
+    loadProjects: vi.fn().mockResolvedValue(undefined),
+    addProject: vi.fn().mockResolvedValue(undefined),
+    closeProject: vi.fn().mockResolvedValue({ processesKilled: 0 }),
+    closeActiveProject: vi.fn().mockResolvedValue({ processesKilled: 0 }),
+    removeProject: vi.fn().mockResolvedValue(undefined),
+    locateProject: vi.fn().mockResolvedValue(undefined),
+  };
 
-    const useProjectStoreMock = vi.fn((selector: (state: typeof projectState) => unknown) =>
-      selector(projectState)
-    );
-    const notifyMock = vi.fn().mockReturnValue("");
+  const useProjectStoreMock = vi.fn((selector: (state: typeof projectState) => unknown) =>
+    selector(projectState)
+  );
+  const notifyMock = vi.fn().mockReturnValue("");
 
-    return {
-      getBulkStatsMock,
-      useProjectStoreMock,
-      notifyMock,
-      projectState,
-      projectStatsState,
-    };
-  });
+  return {
+    getBulkStatsMock,
+    useProjectStoreMock,
+    notifyMock,
+    copyMock,
+    projectState,
+    projectStatsState,
+  };
+});
 
 vi.mock("@/clients", () => ({
   projectClient: {
@@ -69,6 +77,10 @@ vi.mock("@/store/projectStatsStore", () => ({
 
 vi.mock("@/lib/notify", () => ({
   notify: notifyMock,
+}));
+
+vi.mock("@/hooks/useCopyWithFeedback", () => ({
+  useCopyWithFeedback: () => ({ copied: false, copy: copyMock }),
 }));
 
 import { usePaletteStore } from "@/store/paletteStore";
@@ -785,6 +797,39 @@ describe("useProjectSwitcherPalette", () => {
         result.current.toggle();
       });
       expect(result.current.selectedIndex).toBe(1);
+    });
+  });
+
+  describe("copyPath", () => {
+    it("writes the path to the clipboard and emits a transient Path copied toast on success", async () => {
+      copyMock.mockResolvedValueOnce(true);
+
+      const { result } = renderHook(() => useProjectSwitcherPalette());
+
+      await act(async () => {
+        result.current.copyPath("/repo/one");
+      });
+
+      expect(copyMock).toHaveBeenCalledWith("/repo/one");
+      expect(notifyMock).toHaveBeenCalledWith({
+        type: "info",
+        title: "Path copied",
+        message: "/repo/one",
+        transient: true,
+      });
+    });
+
+    it("does not emit a toast when the clipboard write fails", async () => {
+      copyMock.mockResolvedValueOnce(false);
+
+      const { result } = renderHook(() => useProjectSwitcherPalette());
+
+      await act(async () => {
+        result.current.copyPath("/repo/one");
+      });
+
+      expect(copyMock).toHaveBeenCalledWith("/repo/one");
+      expect(notifyMock).not.toHaveBeenCalled();
     });
   });
 });

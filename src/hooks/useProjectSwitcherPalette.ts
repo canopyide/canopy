@@ -6,6 +6,7 @@ import { useProjectSettingsStore } from "@/store/projectSettingsStore";
 import { useScratchStore } from "@/store/scratchStore";
 import { usePaletteStore } from "@/store/paletteStore";
 import { notify } from "@/lib/notify";
+import { useCopyWithFeedback } from "@/hooks/useCopyWithFeedback";
 import type { Project, Scratch } from "@shared/types";
 import { projectClient, scratchClient } from "@/clients";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
@@ -70,6 +71,12 @@ export interface UseProjectSwitcherPaletteReturn {
   removeProject: (projectId: string) => Promise<void>;
   locateProject: (projectId: string) => Promise<void>;
   togglePinProject: (projectId: string) => Promise<void>;
+  /**
+   * Write the project's absolute path to the clipboard and surface a transient
+   * "Path copied" toast. Used by the Copy path context menu action in all
+   * project picker render sites (sidebar dropdown, toolbar dropdown, modal).
+   */
+  copyPath: (path: string) => void;
   stopConfirmProjectId: string | null;
   setStopConfirmProjectId: (projectId: string | null) => void;
   confirmStopProject: () => Promise<void>;
@@ -156,6 +163,8 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
   const removeProject = useProjectStore((state) => state.removeProject);
   const locateProjectFn = useProjectStore((state) => state.locateProject);
   const projectStats = useProjectStatsStore((state) => state.stats);
+
+  const { copy: copyToClipboard } = useCopyWithFeedback();
 
   const scratches = useScratchStore((state) => state.scratches);
   const currentScratch = useScratchStore((state) => state.currentScratch);
@@ -420,6 +429,17 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
       await locateProjectFn(projectId);
     },
     [locateProjectFn]
+  );
+
+  const copyPath = useCallback(
+    (path: string) => {
+      void copyToClipboard(path).then((ok) => {
+        if (ok) {
+          notify({ type: "info", title: "Path copied", message: path, transient: true });
+        }
+      });
+    },
+    [copyToClipboard]
   );
 
   const togglePinProject = useCallback(
@@ -703,6 +723,7 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
     removeProject: removeProjectFromList,
     locateProject,
     togglePinProject,
+    copyPath,
     stopConfirmProjectId,
     setStopConfirmProjectId,
     confirmStopProject,
