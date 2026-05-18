@@ -18,8 +18,10 @@ async function getRunCommandDetector(): Promise<
   }
   return cachedRunCommandDetector;
 }
-import { typedHandle } from "../../utils.js";
+import { z } from "zod";
+import { typedHandle, typedHandleValidated } from "../../utils.js";
 import { validateFolderName } from "../../../../shared/utils/folderName.js";
+import { ProjectSettingsSaveSchema } from "../../../services/projectSettingsCodec.js";
 import type { ProjectSettings } from "../../../types/index.js";
 
 export function registerProjectSettingsHandlers(): () => void {
@@ -33,32 +35,33 @@ export function registerProjectSettingsHandlers(): () => void {
   };
   handlers.push(typedHandle(CHANNELS.PROJECT_GET_SETTINGS, handleProjectGetSettings));
 
-  const handleProjectSaveSettings = async (payload: {
-    projectId: string;
-    settings: ProjectSettings;
-  }): Promise<void> => {
-    if (!payload || typeof payload !== "object") {
-      throw new Error("Invalid payload");
-    }
+  const ProjectSaveSettingsPayloadSchema = z.object({
+    projectId: z.string().min(1),
+    settings: ProjectSettingsSaveSchema,
+  });
+
+  const handleProjectSaveSettings = async (
+    payload: z.output<typeof ProjectSaveSettingsPayloadSchema>
+  ): Promise<void> => {
     const { projectId, settings } = payload;
-    if (typeof projectId !== "string" || !projectId) {
-      throw new Error("Invalid project ID");
-    }
-    if (!settings || typeof settings !== "object") {
-      throw new Error("Invalid settings object");
-    }
     const previousSettings = await projectStore.getProjectSettings(projectId);
-    await projectStore.saveProjectSettings(projectId, settings);
+    await projectStore.saveProjectSettings(projectId, settings as ProjectSettings);
     const project = projectStore.getProjectById(projectId);
     if (project?.inRepoSettings) {
-      await projectStore.writeInRepoSettings(project.path, settings);
+      await projectStore.writeInRepoSettings(project.path, settings as ProjectSettings);
     }
     if (settings.githubRemote !== previousSettings.githubRemote) {
       const { clearGitHubCaches } = await import("../../../services/GitHubService.js");
       clearGitHubCaches();
     }
   };
-  handlers.push(typedHandle(CHANNELS.PROJECT_SAVE_SETTINGS, handleProjectSaveSettings));
+  handlers.push(
+    typedHandleValidated(
+      CHANNELS.PROJECT_SAVE_SETTINGS,
+      ProjectSaveSettingsPayloadSchema,
+      handleProjectSaveSettings
+    )
+  );
 
   const handleProjectDetectRunners = async (projectId: string) => {
     if (typeof projectId !== "string" || !projectId) {

@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import { ProjectSettingsManager } from "../ProjectSettingsManager.js";
 import { generateProjectId } from "../projectStorePaths.js";
+import { PROJECT_SETTINGS_SCHEMA_VERSION } from "../projectSettingsCodec.js";
 
 vi.mock("../CommandService.js", () => ({
   commandService: {
@@ -20,6 +21,28 @@ vi.mock("../ProjectEnvSecureStorage.js", () => ({
     deleteAllForProject: vi.fn(),
     migrateAllForProject: vi.fn(),
   },
+}));
+
+const broadcastSpy = vi.fn();
+vi.mock("../../ipc/utils.js", () => ({
+  broadcastToRenderer: (...args: unknown[]) => broadcastSpy(...args),
+  // Re-export the other surface members that production callers might pull
+  // in transitively; tests only exercise broadcastToRenderer here.
+  typedHandle: vi.fn(),
+  typedHandleValidated: vi.fn(),
+  typedHandleWithContext: vi.fn(),
+  typedHandleWithContextValidated: vi.fn(),
+  typedBroadcast: vi.fn(),
+  typedSend: vi.fn(),
+  sendToRenderer: vi.fn(),
+  sendToRendererContext: vi.fn(),
+  channelToCategory: {},
+  checkRateLimit: vi.fn(),
+  waitForRateLimitSlot: vi.fn(),
+  drainRateLimitQueues: vi.fn(),
+  armRestoreQuota: vi.fn(),
+  consumeRestoreQuota: vi.fn(),
+  _resetRateLimitQueuesForTest: vi.fn(),
 }));
 
 function createMockStore() {
@@ -45,6 +68,7 @@ describe("ProjectSettingsManager caching", () => {
   let projectId: string;
 
   beforeEach(async () => {
+    broadcastSpy.mockReset();
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "daintree-settings-"));
     manager = new ProjectSettingsManager(tempDir, createMockStore());
 
@@ -259,7 +283,7 @@ describe("ProjectSettingsManager caching", () => {
     expect(loaded.daintreeMcpTier).toBeUndefined();
   });
 
-  it("preserves the deprecated exposeDaintreeMcpToAgents flag for migration", async () => {
+  it("migrates the deprecated exposeDaintreeMcpToAgents flag to daintreeMcpTier on read", async () => {
     const settingsPath = path.join(tempDir, projectId, "settings.json");
     await fs.writeFile(
       settingsPath,
@@ -268,8 +292,11 @@ describe("ProjectSettingsManager caching", () => {
     );
 
     const loaded = await manager.getProjectSettings(projectId);
+    // The codec normalises legacy exposeDaintreeMcpToAgents: true to
+    // daintreeMcpTier: "workbench". The legacy field is still surfaced so
+    // callers in mixed-version cohorts don't break.
+    expect(loaded.daintreeMcpTier).toBe("workbench");
     expect(loaded.exposeDaintreeMcpToAgents).toBe(true);
-    expect(loaded.daintreeMcpTier).toBeUndefined();
   });
 
   it("loads settings whose JSON is prefixed with a UTF-8 BOM", async () => {
@@ -377,5 +404,74 @@ describe("ProjectSettingsManager caching", () => {
 
     getMock.mockReset();
     getMock.mockReturnValue(undefined);
+  });
+
+  it("writes the schema version envelope on save", async () => {
+    await manager.saveProjectSettings(projectId, { runCommands: [] });
+
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    const onDisk = JSON.parse(await fs.readFile(settingsPath, "utf-8"));
+    expect(onDisk._schemaVersion).toBe(PROJECT_SETTINGS_SCHEMA_VERSION);
+  });
+
+  it("migrates legacy resourceEnvironment to resourceEnvironments on read", async () => {
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    await fs.writeFile(
+      settingsPath,
+      JSON.stringify({
+        runCommands: [],
+        resourceEnvironment: { provision: ["echo legacy"] },
+      }),
+      "utf-8"
+    );
+
+    const loaded = await manager.getProjectSettings(projectId);
+    expect(loaded.resourceEnvironments).toEqual({ default: { provision: ["echo legacy"] } });
+    expect(loaded.activeResourceEnvironment).toBe("default");
+  });
+
+  it("migrates legacy exposeDaintreeMcpToAgents true to daintreeMcpTier workbench", async () => {
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    await fs.writeFile(
+      settingsPath,
+      JSON.stringify({ runCommands: [], exposeDaintreeMcpToAgents: true }),
+      "utf-8"
+    );
+
+    const loaded = await manager.getProjectSettings(projectId);
+    expect(loaded.daintreeMcpTier).toBe("workbench");
+  });
+
+  it("broadcasts a corruption toast when JSON.parse fails", async () => {
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    await fs.writeFile(settingsPath, "{{invalid json", "utf-8");
+
+    const result = await manager.getProjectSettings(projectId);
+    expect(result).toEqual({ runCommands: [] });
+
+    expect(broadcastSpy).toHaveBeenCalledTimes(1);
+    const [channel, payload] = broadcastSpy.mock.calls[0];
+    expect(channel).toBe("notification:show-toast");
+    expect(payload).toMatchObject({ type: "error", title: "Project settings corrupted" });
+  });
+
+  it("quarantines and broadcasts on a future-version envelope without overwriting the file", async () => {
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    await fs.writeFile(
+      settingsPath,
+      JSON.stringify({ _schemaVersion: PROJECT_SETTINGS_SCHEMA_VERSION + 99, runCommands: [] }),
+      "utf-8"
+    );
+
+    const result = await manager.getProjectSettings(projectId);
+    expect(result).toEqual({ runCommands: [] });
+
+    const dirEntries = await fs.readdir(path.join(tempDir, projectId));
+    expect(dirEntries.some((name) => name.includes(".future-v"))).toBe(true);
+    expect(dirEntries).not.toContain("settings.json");
+
+    expect(broadcastSpy).toHaveBeenCalledTimes(1);
+    const [, payload] = broadcastSpy.mock.calls[0];
+    expect(payload).toMatchObject({ type: "error", title: "Settings file too new" });
   });
 });
