@@ -866,7 +866,28 @@ export interface ElectronAPI {
       panelId: string,
       webContentsId: number,
       sessionStorageSnapshot?: Array<[string, string]>
-    ): Promise<{ success: true } | null>;
+    ): Promise<
+      | {
+          success: true;
+          callbackUrl: string;
+          loopbackRedirectUri: string;
+          originalRedirectUri: string;
+        }
+      | {
+          success: false;
+          cause: "cancelled" | "timed-out" | "server-error" | "open-external-failed";
+        }
+    >;
+    /** Cancel an in-progress OAuth loopback flow for a panel */
+    cancelOAuthLoopback(panelId: string): Promise<void>;
+    /** Subscribe to OAuth loopback phase transitions from main process */
+    onOAuthLoopbackStatus(
+      callback: (payload: {
+        panelId: string;
+        phase: "token-exchange-intercepted" | "completed" | "timed-out" | "error";
+        message?: string;
+      }) => void
+    ): () => void;
     /** Start CDP console capture for a webview panel */
     startConsoleCapture(webContentsId: number, paneId: string): Promise<void>;
     /** Stop CDP console capture for a webview panel */

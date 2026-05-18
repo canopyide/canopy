@@ -1828,7 +1828,18 @@ const api: ElectronAPI = {
       panelId: string,
       webContentsId: number,
       sessionStorageSnapshot?: Array<[string, string]>
-    ): Promise<{ success: true } | null> =>
+    ): Promise<
+      | {
+          success: true;
+          callbackUrl: string;
+          loopbackRedirectUri: string;
+          originalRedirectUri: string;
+        }
+      | {
+          success: false;
+          cause: "cancelled" | "timed-out" | "server-error" | "open-external-failed";
+        }
+    > =>
       _unwrappingInvoke(
         CHANNELS.WEBVIEW_OAUTH_LOOPBACK,
         authUrl,
@@ -1836,6 +1847,15 @@ const api: ElectronAPI = {
         webContentsId,
         sessionStorageSnapshot
       ),
+    cancelOAuthLoopback: (panelId: string): Promise<void> =>
+      _unwrappingInvoke(CHANNELS.WEBVIEW_CANCEL_OAUTH_LOOPBACK, { panelId }),
+    onOAuthLoopbackStatus: (
+      callback: (payload: {
+        panelId: string;
+        phase: "token-exchange-intercepted" | "completed" | "timed-out" | "error";
+        message?: string;
+      }) => void
+    ): (() => void) => _typedOn(CHANNELS.WEBVIEW_OAUTH_LOOPBACK_STATUS, callback),
     startConsoleCapture: (webContentsId: number, paneId: string): Promise<void> =>
       _unwrappingInvoke(CHANNELS.WEBVIEW_START_CONSOLE_CAPTURE, webContentsId, paneId),
     stopConsoleCapture: (webContentsId: number, paneId: string): Promise<void> =>

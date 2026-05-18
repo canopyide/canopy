@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, useReducer } from "react";
 import { useBrowserActionListeners } from "@/hooks/useBrowserActionListeners";
 import {
   AlertTriangle,
@@ -65,12 +65,9 @@ import type { ViewportPresetId } from "@shared/types/panel";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { logError } from "@/utils/logger";
 import { loadWebviewUrl } from "./loadWebviewUrl";
-import {
-  useDevPreviewLoadLifecycle,
-  type DevPreviewBlockedNav,
-  type SessionStorageEntry,
-} from "./useDevPreviewLoadLifecycle";
+import { useDevPreviewLoadLifecycle, type SessionStorageEntry } from "./useDevPreviewLoadLifecycle";
 
+import { BlockedNavBanner, blockedNavReducer } from "./BlockedNavBanner";
 import { looksLikeOAuthUrl } from "@shared/utils/urlUtils";
 
 async function captureWebviewSessionStorage(
@@ -106,93 +103,6 @@ async function captureWebviewSessionStorage(
   } catch {
     return [];
   }
-}
-
-function BlockedNavBanner({
-  blockedNav,
-  panelId,
-  webviewElement,
-  onDismiss,
-}: {
-  blockedNav: {
-    url: string;
-    canOpenExternal: boolean;
-    sessionStorageSnapshot: SessionStorageEntry[];
-  };
-  panelId: string;
-  webviewElement: Electron.WebviewTag | null;
-  onDismiss: () => void;
-}) {
-  const isOAuth = looksLikeOAuthUrl(blockedNav.url);
-  const hostname = (() => {
-    try {
-      return new URL(blockedNav.url).hostname;
-    } catch {
-      return blockedNav.url;
-    }
-  })();
-
-  return (
-    <div className="flex items-center gap-2 px-3 py-1.5 text-xs bg-status-warning/10 border-b border-status-warning/20 text-daintree-text/80">
-      <ExternalLink className="h-3.5 w-3.5 shrink-0 text-status-warning" />
-      <span className="truncate flex-1">Navigation to external site blocked: {hostname}</span>
-      {isOAuth ? (
-        <button
-          type="button"
-          onClick={async () => {
-            const url = blockedNav.url;
-            onDismiss();
-            // Get webContentsId for CDP interception of the token exchange
-            let wcId: number | undefined;
-            try {
-              wcId = (
-                webviewElement as unknown as { getWebContentsId(): number }
-              )?.getWebContentsId();
-            } catch {
-              /* webview not ready */
-            }
-            if (wcId != null) {
-              try {
-                await window.electron.webview.startOAuthLoopback(
-                  url,
-                  panelId,
-                  wcId,
-                  blockedNav.sessionStorageSnapshot
-                );
-              } catch {
-                // OAuth loopback may fail if the webview is gone or CDP setup
-                // breaks; silently fall through — the dialog has been dismissed.
-              }
-            }
-          }}
-          className="shrink-0 px-2 py-0.5 rounded text-xs bg-status-warning/20 hover:bg-status-warning/30 text-daintree-text/90 transition-colors"
-        >
-          Sign in via browser
-        </button>
-      ) : blockedNav.canOpenExternal ? (
-        <button
-          type="button"
-          onClick={() => {
-            safeFireAndForget(window.electron.system.openExternal(blockedNav.url), {
-              context: "Opening blocked dev preview URL externally",
-            });
-            onDismiss();
-          }}
-          className="shrink-0 px-2 py-0.5 rounded text-xs bg-status-warning/20 hover:bg-status-warning/30 text-daintree-text/90 transition-colors"
-        >
-          Open in external browser
-        </button>
-      ) : null}
-      <button
-        type="button"
-        onClick={onDismiss}
-        className="shrink-0 text-daintree-text/40 hover:text-daintree-text/70 transition-colors"
-        aria-label="Dismiss"
-      >
-        ×
-      </button>
-    </div>
-  );
 }
 
 export interface DevPreviewPaneProps extends BasePanelProps {
@@ -380,7 +290,7 @@ export function DevPreviewPane({
     return Number.isFinite(savedZoom) ? Math.max(0.25, Math.min(2.0, savedZoom)) : 1.0;
   });
 
-  const [blockedNav, setBlockedNav] = useState<DevPreviewBlockedNav | null>(null);
+  const [blockedNav, dispatchBlockedNav] = useReducer(blockedNavReducer, null);
   const blockedNavTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastSetUrlRef = useRef<string>("");
   const [consoleTerminalId, setConsoleTerminalId] = useState<string | null>(terminalId);
@@ -491,7 +401,7 @@ export function DevPreviewPane({
     lastSetUrlRef,
     originalUaRef,
     setHistory,
-    setBlockedNav,
+    setBlockedNav: dispatchBlockedNav,
   });
 
   useEffect(() => {
@@ -1076,14 +986,20 @@ export function DevPreviewPane({
     isFocused
   );
 
-  // Listen for blocked navigation events from main process
+  // Listen for blocked navigation events from main process.
+  // 150ms debounce: latest URL wins — repeated blocks within the window
+  // replace the pending data rather than stacking.
   useEffect(() => {
     let disposed = false;
+    let latestUrl: string | null = null;
+
     const cleanup = window.electron.webview.onNavigationBlocked((data) => {
       if (data.panelId !== id) return;
+      latestUrl = data.url;
       const sessionStorageSnapshotPromise = looksLikeOAuthUrl(data.url)
         ? captureWebviewSessionStorage(webviewElement)
         : Promise.resolve<SessionStorageEntry[]>([]);
+
       if (blockedNavTimerRef.current) {
         clearTimeout(blockedNavTimerRef.current);
       }
@@ -1091,8 +1007,9 @@ export function DevPreviewPane({
         void sessionStorageSnapshotPromise
           .then((sessionStorageSnapshot) => {
             if (disposed) return;
-            setBlockedNav({
-              url: data.url,
+            dispatchBlockedNav({
+              type: "BLOCKED",
+              url: latestUrl ?? data.url,
               canOpenExternal: data.canOpenExternal,
               sessionStorageSnapshot,
             });
@@ -1112,13 +1029,6 @@ export function DevPreviewPane({
       }
     };
   }, [id, webviewElement]);
-
-  // Auto-dismiss blocked navigation notification after 10 seconds
-  useEffect(() => {
-    if (!blockedNav) return;
-    const timer = setTimeout(() => setBlockedNav(null), 10_000);
-    return () => clearTimeout(timer);
-  }, [blockedNav]);
 
   return (
     <ContentPanel
@@ -1538,14 +1448,12 @@ export function DevPreviewPane({
                       </div>
                     </div>
                   )}
-                  {blockedNav && (
-                    <BlockedNavBanner
-                      blockedNav={blockedNav}
-                      panelId={id}
-                      webviewElement={webviewElement}
-                      onDismiss={() => setBlockedNav(null)}
-                    />
-                  )}
+                  <BlockedNavBanner
+                    state={blockedNav}
+                    panelId={id}
+                    webviewElement={webviewElement}
+                    onDispatch={dispatchBlockedNav}
+                  />
                   {isLoading && (
                     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-daintree-bg gap-3">
                       <Spinner size="2xl" className="text-status-info" />

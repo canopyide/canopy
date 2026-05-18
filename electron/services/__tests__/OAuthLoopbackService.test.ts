@@ -98,7 +98,7 @@ describe("OAuthLoopbackService", () => {
         "https://auth.example.com/authorize?client_id=abc&response_type=code",
         "test-panel"
       );
-      expect(result).toBeNull();
+      expect(result).toEqual({ success: false, cause: "server-error" });
       expect(shell.openExternal).not.toHaveBeenCalled();
     });
 
@@ -227,7 +227,7 @@ describe("OAuthLoopbackService", () => {
       // Clean up — cancel so the promise resolves
       cancelOAuthLoopback("test-panel");
       const result = await loopbackPromise;
-      expect(result).toBeNull();
+      expect(result).toEqual({ success: false, cause: "cancelled" });
     });
 
     it("cancels a previous flow when starting a new one for the same panel", async () => {
@@ -243,14 +243,14 @@ describe("OAuthLoopbackService", () => {
       // Start a second flow for the same panel — should cancel the first
       const secondPromise = startOAuthLoopback(authUrl, "test-panel");
 
-      // First should resolve as null (cancelled)
+      // First should resolve as cancelled
       const firstResult = await firstPromise;
-      expect(firstResult).toBeNull();
+      expect(firstResult).toEqual({ success: false, cause: "cancelled" });
 
       // Clean up second
       cancelOAuthLoopback("test-panel");
       const secondResult = await secondPromise;
-      expect(secondResult).toBeNull();
+      expect(secondResult).toEqual({ success: false, cause: "cancelled" });
     });
 
     it("allows concurrent flows on different panels", async () => {
@@ -297,7 +297,7 @@ describe("OAuthLoopbackService", () => {
 
       cancelOAuthLoopback("test-panel");
       const result = await promise;
-      expect(result).toBeNull();
+      expect(result).toEqual({ success: false, cause: "cancelled" });
     });
   });
 });
