@@ -62,10 +62,10 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
   const [branchPrefixMode, setBranchPrefixMode] = useState<"none" | "username" | "custom">("none");
   const [branchPrefixCustom, setBranchPrefixCustom] = useState<string>("");
   const [worktreePathPattern, setWorktreePathPattern] = useState<string>("");
-  const [terminalShell, setTerminalShell] = useState<string>("");
-  const [terminalShellArgs, setTerminalShellArgs] = useState<string>("");
-  const [terminalDefaultCwd, setTerminalDefaultCwd] = useState<string>("");
-  const [terminalScrollback, setTerminalScrollback] = useState<string>("");
+  const [terminalShell, setTerminalShell] = useState<string | undefined>(undefined);
+  const [terminalShellArgs, setTerminalShellArgs] = useState<string | undefined>(undefined);
+  const [terminalDefaultCwd, setTerminalDefaultCwd] = useState<string | undefined>(undefined);
+  const [terminalScrollback, setTerminalScrollback] = useState<string | undefined>(undefined);
   const [notificationOverrides, setNotificationOverrides] = useState<Partial<NotificationSettings>>(
     {}
   );
@@ -104,17 +104,24 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
 
   const currentTerminalSettings = useMemo((): ProjectTerminalSettings | undefined => {
     const result: ProjectTerminalSettings = {};
-    if (terminalShell.trim()) result.shell = terminalShell.trim();
-    if (terminalShellArgs.trim()) result.shellArgs = terminalShellArgs.trim().split(/\s+/);
-    if (terminalDefaultCwd.trim()) result.defaultWorkingDirectory = terminalDefaultCwd.trim();
-    if (terminalScrollback.trim()) {
+    if (terminalShell !== undefined && terminalShell.trim()) result.shell = terminalShell.trim();
+    if (terminalShellArgs !== undefined && terminalShellArgs.trim())
+      result.shellArgs = terminalShellArgs.trim().split(/\s+/);
+    if (terminalDefaultCwd !== undefined && terminalDefaultCwd.trim())
+      result.defaultWorkingDirectory = terminalDefaultCwd.trim();
+    if (terminalScrollback !== undefined && terminalScrollback.trim()) {
       const num = Number(terminalScrollback);
       if (Number.isFinite(num) && num >= SCROLLBACK_MIN && num <= SCROLLBACK_MAX) {
         result.scrollbackLines = Math.trunc(num);
+      } else if (projectSettings?.terminalSettings?.scrollbackLines !== undefined) {
+        // Invalid in-flight input must not silently wipe an existing valid
+        // override — preserve the last saved value until the user types a
+        // valid number or resets the field.
+        result.scrollbackLines = projectSettings.terminalSettings.scrollbackLines;
       }
     }
     return Object.keys(result).length > 0 ? result : undefined;
-  }, [terminalShell, terminalShellArgs, terminalDefaultCwd, terminalScrollback]);
+  }, [terminalShell, terminalShellArgs, terminalDefaultCwd, terminalScrollback, projectSettings]);
 
   const currentProjectSnapshot = useMemo(() => {
     if (!currentProject) return null;
@@ -200,10 +207,10 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
       setBranchPrefixMode("none");
       setBranchPrefixCustom("");
       setWorktreePathPattern("");
-      setTerminalShell("");
-      setTerminalShellArgs("");
-      setTerminalDefaultCwd("");
-      setTerminalScrollback("");
+      setTerminalShell(undefined);
+      setTerminalShellArgs(undefined);
+      setTerminalDefaultCwd(undefined);
+      setTerminalScrollback(undefined);
       setNotificationOverrides({});
       setGithubRemote(undefined);
       setForgeProviderOverride(null);
@@ -274,13 +281,15 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     setBranchPrefixMode(initialBranchPrefixMode);
     setBranchPrefixCustom(initialBranchPrefixCustom);
     setWorktreePathPattern(initialWorktreePathPattern);
-    setTerminalShell(initialTerminalSettings?.shell ?? "");
-    setTerminalShellArgs(initialTerminalSettings?.shellArgs?.join(" ") ?? "");
-    setTerminalDefaultCwd(initialTerminalSettings?.defaultWorkingDirectory ?? "");
+    setTerminalShell(initialTerminalSettings?.shell);
+    setTerminalShellArgs(
+      initialTerminalSettings?.shellArgs ? initialTerminalSettings.shellArgs.join(" ") : undefined
+    );
+    setTerminalDefaultCwd(initialTerminalSettings?.defaultWorkingDirectory);
     setTerminalScrollback(
       initialTerminalSettings?.scrollbackLines !== undefined
         ? String(initialTerminalSettings.scrollbackLines)
-        : ""
+        : undefined
     );
     setNotificationOverrides(initialNotificationOverrides);
     setGithubRemote(initialGithubRemote);
