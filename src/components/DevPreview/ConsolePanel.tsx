@@ -9,6 +9,7 @@ import {
   ZERO_COUNTS,
 } from "@/store/consoleCaptureStore";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { safeFireAndForget } from "@/utils/safeFireAndForget";
 import { ObjectInspector } from "./ObjectInspector";
 import { StackTrace } from "./StackTrace";
 
@@ -132,7 +133,9 @@ export function ConsolePanel({ paneId, webContentsId }: ConsolePanelProps) {
     // long-lived sessions with heavy object logging don't leak main-process
     // memory. Best-effort: the renderer-side clear is the user-visible action.
     if (webContentsId != null) {
-      void window.electron.webview.clearConsoleCapture(webContentsId, paneId).catch(() => {});
+      safeFireAndForget(window.electron.webview.clearConsoleCapture(webContentsId, paneId), {
+        context: "Clearing dev-preview console capture",
+      });
     }
   }, [clearMessages, paneId, webContentsId]);
 
