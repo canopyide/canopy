@@ -362,3 +362,13 @@ export interface ForgeProviderDescriptor {
   settingsScopeRef?: string;
   viewRefs?: string[];
 }
+
+/**
+ * Registry-surface shape for a `forgeProviders` contribution, paired with the
+ * `pluginId` that registered it. Used by the host registry and surfaced over
+ * IPC to the renderer so Preferences can list installed providers.
+ */
+export interface ForgeProviderEntry {
+  pluginId: string;
+  contribution: ForgeProviderContribution;
+}

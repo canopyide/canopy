@@ -532,3 +532,11 @@ export type {
   SanitizedAnalyticsEvent,
   TelemetryPreviewState,
 } from "./ipc/telemetryPreview.js";
+
+// Forge provider types — plugin-contributed forge integrations
+export type {
+  ForgeProviderContribution,
+  ForgeProviderDescriptor,
+  ForgeProviderEntry,
+  ForgeCapabilityHint,
+} from "./forge.js";

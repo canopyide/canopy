@@ -22,6 +22,7 @@ import type { AgentSettings, AgentSettingsEntry } from "../agentSettings.js";
 import type { AgentPreset } from "../../config/agentRegistry.js";
 import type { VoiceInputStatus } from "../voice.js";
 export type { VoiceInputStatus };
+import type { ForgeProviderEntry } from "../forge.js";
 import type { ResourceProfilePayload } from "../resourceProfile.js";
 import type {
   CreateWorktreeOptions,
@@ -1248,6 +1249,22 @@ export interface ElectronAPI {
   shortcutHints: {
     getCounts(): Promise<Record<string, number>>;
     incrementCount(actionId: string): Promise<void>;
+  };
+  forge: {
+    /** Read the persisted forge settings (global default provider id). */
+    getSettings(): Promise<{ defaultProviderId: string | null }>;
+    /**
+     * Persist the global default forge provider id. Pass `null` to clear the
+     * default and fall back to hostname auto-match. Server treats empty
+     * strings as `null`.
+     */
+    setDefaultProvider(providerId: string | null): Promise<{ defaultProviderId: string | null }>;
+    /**
+     * List forge providers contributed by currently-loaded plugins. Reflects
+     * the live registry — plugins loaded after settings open should appear
+     * on the next call without restart.
+     */
+    getProviders(): Promise<ForgeProviderEntry[]>;
   };
   voiceInput: {
     getSettings(): Promise<VoiceInputSettings>;

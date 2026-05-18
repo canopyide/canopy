@@ -1,5 +1,6 @@
 import type {
   ForgeProviderContribution,
+  ForgeProviderEntry,
   ForgeProviderImpl,
   RepoRef,
 } from "../../shared/types/forge.js";
@@ -29,10 +30,8 @@ const PLUGIN_FORGE_PROVIDERS = new Map<string, ForgeProviderContribution[]>();
  */
 const PLUGIN_FORGE_PROVIDER_IMPLS = new Map<string, ForgeProviderImpl>();
 
-export interface RegisteredForgeProvider {
-  pluginId: string;
-  contribution: ForgeProviderContribution;
-}
+/** @deprecated Use {@link ForgeProviderEntry} from `shared/types/forge`. */
+export type RegisteredForgeProvider = ForgeProviderEntry;
 
 export function registerForgeProviders(
   pluginId: string,

@@ -670,6 +670,11 @@ export const CHANNELS = {
   DEMO_CAPTURE_CHUNK: "demo:capture-chunk",
   DEMO_CAPTURE_STOP: "demo:capture-stop",
 
+  // Forge integration channels
+  FORGE_GET_SETTINGS: "forge:get-settings",
+  FORGE_SET_DEFAULT_PROVIDER: "forge:set-default-provider",
+  FORGE_GET_PROVIDERS: "forge:get-providers",
+
   // Plugin channels
   PLUGIN_LIST: "plugin:list",
   PLUGIN_INVOKE: "plugin:invoke",

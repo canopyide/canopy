@@ -93,6 +93,7 @@ const importKeyboardShortcutsTab = () => import("./KeyboardShortcutsTab");
 const importWorktreeSettingsTab = () => import("./WorktreeSettingsTab");
 const importToolbarSettingsTab = () => import("./ToolbarSettingsTab");
 const importIntegrationsTab = () => import("./IntegrationsTab");
+const importForgeIntegrationsTab = () => import("./ForgeIntegrationsTab");
 const importVoiceInputSettingsTab = () => import("./VoiceInputSettingsTab");
 const importMcpServerSettingsTab = () => import("./McpServerSettingsTab");
 const importDaintreeAssistantSettingsTab = () => import("./DaintreeAssistantSettingsTab");
@@ -141,6 +142,9 @@ const LazyToolbarSettingsTab = lazy(() =>
 );
 const LazyIntegrationsTab = lazy(() =>
   importIntegrationsTab().then((m) => ({ default: m.IntegrationsTab }))
+);
+const LazyForgeIntegrationsTab = lazy(() =>
+  importForgeIntegrationsTab().then((m) => ({ default: m.ForgeIntegrationsTab }))
 );
 const LazyVoiceInputSettingsTab = lazy(() =>
   importVoiceInputSettingsTab().then((m) => ({ default: m.VoiceInputSettingsTab }))
@@ -1049,6 +1053,50 @@ export const SETTINGS_REGISTRY = [
   } satisfies LazySettingsTabEntry,
 
   {
+    id: "forge",
+    scope: "global",
+    group: "Integrations",
+    label: "Forge integrations",
+    headerTitle: "Forge Integrations",
+    icon: <GitBranch className="w-4 h-4" />,
+    importKind: "lazy",
+    importer: importForgeIntegrationsTab,
+    LazyComponent: LazyForgeIntegrationsTab,
+    searchNavDescription: "Default forge provider for new projects (GitHub, GitLab, Gitea, ...)",
+    searchNavKeywords: [
+      "forge",
+      "provider",
+      "plugin",
+      "github",
+      "gitlab",
+      "gitea",
+      "bitbucket",
+      "default",
+      "integrations",
+    ],
+    sections: [
+      {
+        id: "forge-default-provider",
+        section: "Default forge provider",
+        title: "Default forge provider",
+        description:
+          "Choose the forge provider used for newly opened projects when no per-project setting wins.",
+        keywords: [
+          "forge",
+          "provider",
+          "default",
+          "global",
+          "github",
+          "gitlab",
+          "gitea",
+          "auto-detect",
+          "hostname",
+        ],
+      },
+    ],
+  } satisfies LazySettingsTabEntry,
+
+  {
     id: "integrations",
     scope: "global",
     group: "Integrations",
@@ -1661,6 +1709,7 @@ export const globalTabIcons: Record<GlobalSettingsTab, ReactNode> = {
   agents: <Plug className="w-5 h-5 text-text-secondary" />,
   assistant: <DaintreeIcon className="w-5 h-5 text-text-secondary" size={20} />,
   github: <Github className="w-5 h-5 text-text-secondary" />,
+  forge: <GitBranch className="w-5 h-5 text-text-secondary" />,
   portal: <PanelRight className="w-5 h-5 text-text-secondary" />,
   toolbar: <SettingsIcon className="w-5 h-5 text-text-secondary" />,
   notifications: <Bell className="w-5 h-5 text-text-secondary" />,

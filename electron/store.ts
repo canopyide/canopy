@@ -292,6 +292,13 @@ export interface StoreSchema {
   plugins: {
     disabledBuiltins: string[];
   };
+  /**
+   * Global default forge provider id for newly opened projects. `null` (or
+   * absent) means "no global default — fall back to hostname auto-match"
+   * per the forge resolver contract. Read with `?? null` fallback — no
+   * migration entry required (mirrors `dismissedUpdateVersion` pattern).
+   */
+  forgeDefaultProviderId?: string | null;
 }
 
 const storeOptions = {
