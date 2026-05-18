@@ -212,16 +212,20 @@ export function registerWorkflowCreationActions(
         let assignedToSelf = false;
         let assignmentError: string | null = null;
         if (issueNumber && effectiveAssignToSelf) {
-          const username = (await githubClient.getConfig()).username;
-          if (username) {
-            try {
-              await githubClient.assignIssue(rootPath, issueNumber, username);
-              assignedToSelf = true;
-            } catch (err) {
-              assignmentError = formatErrorMessage(err, "Failed to assign issue");
+          try {
+            const username = (await githubClient.getConfig()).username;
+            if (username) {
+              try {
+                await githubClient.assignIssue(rootPath, issueNumber, username);
+                assignedToSelf = true;
+              } catch (err) {
+                assignmentError = formatErrorMessage(err, "Failed to assign issue");
+              }
+            } else {
+              assignmentError = "No GitHub username configured";
             }
-          } else {
-            assignmentError = "No GitHub username configured";
+          } catch (err) {
+            assignmentError = formatErrorMessage(err, "Failed to read GitHub config");
           }
         }
 
@@ -458,16 +462,20 @@ export function registerWorkflowCreationActions(
         let assignedToSelf = false;
         let assignmentError: string | null = null;
         if (effectiveAssignToSelf) {
-          const username = (await githubClient.getConfig()).username;
-          if (username) {
-            try {
-              await githubClient.assignIssue(rootPath, issue.number, username);
-              assignedToSelf = true;
-            } catch (err) {
-              assignmentError = formatErrorMessage(err, "Failed to assign issue");
+          try {
+            const username = (await githubClient.getConfig()).username;
+            if (username) {
+              try {
+                await githubClient.assignIssue(rootPath, issue.number, username);
+                assignedToSelf = true;
+              } catch (err) {
+                assignmentError = formatErrorMessage(err, "Failed to assign issue");
+              }
+            } else {
+              assignmentError = "No GitHub username configured";
             }
-          } else {
-            assignmentError = "No GitHub username configured";
+          } catch (err) {
+            assignmentError = formatErrorMessage(err, "Failed to read GitHub config");
           }
         }
 

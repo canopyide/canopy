@@ -645,6 +645,21 @@ describe("workflow.startWorkOnIssue", () => {
     expect(result.assignmentError).toBe("rate limit");
   });
 
+  it("getConfig() rejection surfaces in assignmentError, worktree still returned", async () => {
+    githubClientMock.getIssueByNumber.mockResolvedValue({ number: 6609, title: "t", url: "u" });
+    githubClientMock.getConfig.mockRejectedValue(new Error("IPC unavailable"));
+    const def = setupActions(makeCallbacks())("workflow.startWorkOnIssue");
+    const result = (await def.run(
+      { issueNumber: 6609, agentId: "claude", assignToSelf: true },
+      {} as never
+    )) as Record<string, unknown>;
+    expect(githubClientMock.assignIssue).not.toHaveBeenCalled();
+    expect(result.worktreeId).toBe("wt-new");
+    expect(result.terminalId).toBe("term-1");
+    expect(result.assignedToSelf).toBe(false);
+    expect(result.assignmentError).toBe("IPC unavailable");
+  });
+
   it("derives a sane branch name from the issue title when none is provided", async () => {
     githubClientMock.getIssueByNumber.mockResolvedValue({
       number: 42,
@@ -758,6 +773,19 @@ describe("worktree.createWithRecipe — issue assignment", () => {
     expect(githubClientMock.assignIssue).not.toHaveBeenCalled();
     expect(result.assignedToSelf).toBe(false);
     expect(result.assignmentError).toBeNull();
+  });
+
+  it("getConfig() rejection during assignment surfaces in assignmentError, worktree still created", async () => {
+    githubClientMock.getConfig.mockRejectedValue(new Error("IPC unavailable"));
+    const def = setupActions(makeCallbacks())("worktree.createWithRecipe");
+    const result = (await def.run(
+      { branchName: "feature/foo", issueNumber: 6609, assignToSelf: true },
+      {} as never
+    )) as Record<string, unknown>;
+    expect(githubClientMock.assignIssue).not.toHaveBeenCalled();
+    expect(result.worktreeId).toBe("wt-new");
+    expect(result.assignedToSelf).toBe(false);
+    expect(result.assignmentError).toBe("IPC unavailable");
   });
 });
 
