@@ -45,7 +45,7 @@ export const SEL = {
     shortcutResetAllButton: 'button:has-text("Reset All")',
     fontSizeInput: '[aria-label="Terminal font size"]',
     developerModeToggle: '[aria-label="Developer Mode Toggle"]',
-    agentDropdownTrigger: '[aria-haspopup="listbox"]',
+    agentDropdownTrigger: '[data-testid="agent-selector-trigger"]',
     agentDropdownList: "#agent-selector-list",
     notifCompletedCheckbox: "#notif-completed",
     notifWaitingCheckbox: "#notif-waiting",
@@ -171,14 +171,14 @@ export const SEL = {
   },
   agent: {
     panel: '[aria-label^="Claude agent:"]',
-    startButton: '[aria-label="Start Claude Agent"]',
+    startButton: '[aria-label="Start Claude"]',
     trayButton: '[aria-label^="Agent tray"]',
     chromeAgentPanel: (agentId: string) => `[data-chrome-agent-id="${agentId}"]`,
     everDetectedAgentPanel: '[data-ever-detected-agent="true"]',
   },
   opencodeAgent: {
     panel: '[aria-label^="OpenCode agent:"]',
-    startButton: '[aria-label="Start OpenCode Agent"]',
+    startButton: '[aria-label="Start OpenCode"]',
   },
   fileViewer: {
     dialog: '[data-testid="file-viewer-dialog"]',

@@ -2762,29 +2762,34 @@ describe("ReviewHub", () => {
       renderOpen();
       await waitFor(() => screen.getByPlaceholderText("Commit message…"));
 
-      const textarea = screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
+      const getTextarea = () =>
+        screen.getByPlaceholderText("Commit message…") as HTMLTextAreaElement;
 
       // Position cursor at 0 (empty textarea)
-      focusTextareaAt(textarea, 0);
+      focusTextareaAt(getTextarea(), 0);
 
-      fireEvent.keyDown(textarea, { key: "ArrowUp" });
+      fireEvent.keyDown(getTextarea(), { key: "ArrowUp" });
       expect(listCommitsMock).toHaveBeenCalledWith({
         cwd: WORKTREE_PATH,
         limit: 8,
       });
 
       // After fetch, the textarea should show the most recent commit message
-      await waitFor(() => expect(textarea.value).toBe("feat: most recent commit"));
+      await waitFor(() => expect(getTextarea().value).toBe("feat: most recent commit"));
 
       // ArrowUp again → next older commit (with body)
-      focusTextareaAt(textarea, 0);
-      fireEvent.keyDown(textarea, { key: "ArrowUp" });
-      await waitFor(() => expect(textarea.value).toBe("fix: older commit\n\nDetailed body text."));
+      focusTextareaAt(getTextarea(), 0);
+      fireEvent.keyDown(getTextarea(), { key: "ArrowUp" });
+      await waitFor(() =>
+        expect(getTextarea().value).toBe("fix: older commit\n\nDetailed body text.")
+      );
 
       // ArrowUp again → no more commits, stays at last
-      focusTextareaAt(textarea, 0);
-      fireEvent.keyDown(textarea, { key: "ArrowUp" });
-      await waitFor(() => expect(textarea.value).toBe("fix: older commit\n\nDetailed body text."));
+      focusTextareaAt(getTextarea(), 0);
+      fireEvent.keyDown(getTextarea(), { key: "ArrowUp" });
+      await waitFor(() =>
+        expect(getTextarea().value).toBe("fix: older commit\n\nDetailed body text.")
+      );
     });
 
     it("ArrowDown unwinds through history and restores original draft", async () => {

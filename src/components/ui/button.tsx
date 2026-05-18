@@ -100,12 +100,14 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       onClick,
       disabled,
       children,
+      "aria-disabled": ariaDisabled,
       ...props
     },
     ref
   ) => {
     const Comp = asChild ? Slot : "button";
     const resolvedSize: ButtonSize = size ?? "default";
+    const resolvedAriaDisabled = loading || disabled ? true : ariaDisabled || undefined;
 
     const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
       if (loading) {
@@ -141,7 +143,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         // Component-owned loading state — placed after the prop spread so a
         // consumer can't silently desync the announced ARIA state.
         aria-busy={loading || undefined}
-        aria-disabled={loading || disabled || undefined}
+        aria-disabled={resolvedAriaDisabled}
         data-loading={loading || undefined}
       >
         {spinner}

@@ -331,6 +331,14 @@ const CORE_KEYBINDINGS: KeybindingConfig[] = [
     category: "Agents",
   },
   {
+    actionId: "agent.browser",
+    combo: "Cmd+Alt+B",
+    scope: "global",
+    priority: 0,
+    description: "Launch browser panel in current worktree",
+    category: "Agents",
+  },
+  {
     actionId: "agent.focusNextWaiting",
     combo: "Cmd+Alt+/",
     scope: "global",

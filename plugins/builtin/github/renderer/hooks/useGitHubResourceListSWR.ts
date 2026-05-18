@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, useLayoutEffect } from "react";
 import { useDebounce } from "@/hooks/useDebounce";
 import {
   buildCacheKey,
@@ -514,6 +514,11 @@ export function useGitHubResourceListSWR({
   // wake that landed before it mounted.
   const wakeEpoch = useSystemWakeStore((s) => s.wakeEpoch);
   const lastSeenWakeEpochRef = useRef(useSystemWakeStore.getState().wakeEpoch);
+  useLayoutEffect(() => {
+    if (numberQuery !== null && wakeEpoch > lastSeenWakeEpochRef.current) {
+      lastSeenWakeEpochRef.current = wakeEpoch;
+    }
+  }, [wakeEpoch, numberQuery]);
   useEffect(() => {
     if (wakeEpoch <= lastSeenWakeEpochRef.current) return;
     // Always consume the epoch — even when a numeric search is active and we

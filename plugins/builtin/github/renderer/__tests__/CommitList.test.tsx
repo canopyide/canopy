@@ -87,6 +87,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+async function moveToCommit(container: HTMLElement, input: HTMLInputElement, commit: GitCommit) {
+  await act(async () => {
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+  });
+
+  await waitFor(() => {
+    expect(input.getAttribute("aria-activedescendant")).toBe(`commit-option-${commit.hash}`);
+    expect(
+      document.getElementById(`commit-option-${commit.hash}`)?.getAttribute("aria-selected")
+    ).toBe("true");
+    expect(container.querySelectorAll("[role='option']").length).toBeGreaterThan(0);
+  });
+}
+
 describe("CommitList Enter key handling", () => {
   it("Enter on a commit with body toggles its expansion (renders body pre)", async () => {
     arrangeDispatchSuccess([commitWithBody, commitNoBody]);
@@ -96,13 +110,11 @@ describe("CommitList Enter key handling", () => {
       expect(container.querySelectorAll("[role='option']").length).toBeGreaterThan(0);
     });
 
-    const input = container.querySelector("input[role='combobox']");
+    const input = container.querySelector<HTMLInputElement>("input[role='combobox']");
     expect(input).not.toBeNull();
     if (!input) return;
 
-    await act(async () => {
-      fireEvent.keyDown(input, { key: "ArrowDown" });
-    });
+    await moveToCommit(container, input, commitWithBody);
 
     const optionsBefore = container.querySelectorAll("[role='option']");
     expect(optionsBefore[0]?.getAttribute("aria-expanded")).toBe("false");
@@ -128,13 +140,11 @@ describe("CommitList Enter key handling", () => {
       expect(container.querySelectorAll("[role='option']").length).toBeGreaterThan(0);
     });
 
-    const input = container.querySelector("input[role='combobox']");
+    const input = container.querySelector<HTMLInputElement>("input[role='combobox']");
     expect(input).not.toBeNull();
     if (!input) return;
 
-    await act(async () => {
-      fireEvent.keyDown(input, { key: "ArrowDown" });
-    });
+    await moveToCommit(container, input, commitNoBody);
     await act(async () => {
       fireEvent.keyDown(input, { key: "Enter" });
     });
@@ -161,13 +171,11 @@ describe("CommitList Enter key handling", () => {
       expect(container.querySelectorAll("[role='option']").length).toBe(1);
     });
 
-    const input = container.querySelector("input[role='combobox']");
+    const input = container.querySelector<HTMLInputElement>("input[role='combobox']");
     expect(input).not.toBeNull();
     if (!input) return;
 
-    await act(async () => {
-      fireEvent.keyDown(input, { key: "ArrowDown" });
-    });
+    await moveToCommit(container, input, commitWithBody);
     await act(async () => {
       fireEvent.keyDown(input, { key: "Enter" });
     });
@@ -205,13 +213,11 @@ describe("CommitList Enter key handling", () => {
       expect(container.querySelectorAll("[role='option']").length).toBe(1);
     });
 
-    const input = container.querySelector("input[role='combobox']");
+    const input = container.querySelector<HTMLInputElement>("input[role='combobox']");
     expect(input).not.toBeNull();
     if (!input) return;
 
-    await act(async () => {
-      fireEvent.keyDown(input, { key: "ArrowDown" });
-    });
+    await moveToCommit(container, input, commitNoBody);
     await act(async () => {
       fireEvent.keyDown(input, { key: "Enter" });
     });
@@ -227,13 +233,11 @@ describe("CommitList Enter key handling", () => {
       expect(container.querySelectorAll("[role='option']").length).toBeGreaterThan(0);
     });
 
-    const input = container.querySelector("input[role='combobox']");
+    const input = container.querySelector<HTMLInputElement>("input[role='combobox']");
     expect(input).not.toBeNull();
     if (!input) return;
 
-    await act(async () => {
-      fireEvent.keyDown(input, { key: "ArrowDown" });
-    });
+    await moveToCommit(container, input, commitWithBody);
     await act(async () => {
       fireEvent.keyDown(input, { key: "Enter" });
     });

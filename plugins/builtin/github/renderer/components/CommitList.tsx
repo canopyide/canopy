@@ -61,10 +61,6 @@ export function CommitList({ projectPath, branch, onClose, initialCount }: Commi
   const listId = "commit-list";
 
   useEffect(() => {
-    setCursorIndex(-1);
-  }, [data]);
-
-  useEffect(() => {
     setExpandedHashes(new Set());
   }, [debouncedSearch, projectPath, branch]);
 
@@ -87,6 +83,7 @@ export function CommitList({ projectPath, branch, onClose, initialCount }: Commi
         setLoadingMore(true);
         setLoadMoreError(null);
       } else {
+        setCursorIndex(-1);
         setLoading(true);
         setError(null);
         setLoadMoreError(null);

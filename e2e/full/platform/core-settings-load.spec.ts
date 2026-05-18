@@ -256,7 +256,10 @@ test.describe.serial("Core: Settings Pages Load", () => {
   test("Integrations tab loads", async () => {
     const { window } = ctx;
 
-    await window.locator(`${SEL.settings.navSidebar} button`, { hasText: "Integrations" }).click();
+    await window
+      .locator(SEL.settings.navSidebar)
+      .getByRole("tab", { name: "Integrations", exact: true })
+      .click();
     // Integrations tab combines Editor and Image Viewer sections
     await expect(window.locator("h4", { hasText: "External editor" })).toBeVisible({
       timeout: T_SHORT,

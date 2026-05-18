@@ -1235,7 +1235,11 @@ export function Toolbar({
                       data-toolbar-item=""
                       className="toolbar-project-pill app-no-drag pointer-events-auto flex h-9 min-w-0 max-w-full items-center justify-center gap-2 overflow-hidden border px-3 outline-hidden"
                       data-testid="project-switcher-trigger"
-                      aria-label={currentProject ? undefined : "Open project"}
+                      aria-label={
+                        currentProject
+                          ? `Open project switcher for ${currentProject.name}`
+                          : "Open project"
+                      }
                       role={currentProject ? "combobox" : undefined}
                       aria-haspopup={currentProject ? "listbox" : undefined}
                       aria-expanded={currentProject ? isDropdownOpen : undefined}

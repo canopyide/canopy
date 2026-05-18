@@ -1,14 +1,28 @@
+type RadixOutsideEvent = Event & {
+  preventDefault: () => void;
+  detail?: {
+    originalEvent?: Event;
+  };
+};
+
+function getOutsideEventTarget(event: RadixOutsideEvent): Element | null {
+  const originalTarget = event.detail?.originalEvent?.target;
+  if (originalTarget instanceof Element) return originalTarget;
+
+  return event.target instanceof Element ? event.target : null;
+}
+
 /**
  * Prevents Radix Popover from dismissing when the user interacts with elements
  * inside a dock panel rendered via createPortal (which breaks the React context
  * chain that Radix's DismissableLayer relies on for nested floating elements).
  */
 export function handleDockInteractOutside(
-  event: Event & { preventDefault: () => void },
+  event: RadixOutsideEvent,
   portalContainer: HTMLElement | null
 ) {
-  const target = event.target;
-  if (!(target instanceof Element)) return;
+  const target = getOutsideEventTarget(event);
+  if (!target) return;
 
   // Guard 1: Click originated inside the dock panel's portal container
   if (portalContainer?.contains(target)) {

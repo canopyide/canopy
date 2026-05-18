@@ -135,6 +135,7 @@ export type BuiltInKeyAction =
   | "agent.palette"
   | AgentKeyAction
   | "agent.terminal"
+  | "agent.browser"
   | "agent.focusNextWaiting"
   | "agent.focusNextWorking"
   | "agent.focusNextAgent"
@@ -315,6 +316,7 @@ export const KEY_ACTION_VALUES: ReadonlySet<string> = new Set<string>([
   "agent.palette",
   ...BUILT_IN_AGENT_KEY_ACTIONS,
   "agent.terminal",
+  "agent.browser",
   "agent.focusNextWaiting",
   "agent.focusNextWorking",
   "agent.focusNextAgent",

@@ -82,10 +82,12 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
   }, [sidebarHidden]);
 
   const portalTarget = useDockPanelPortal();
+  const portalContainerElementRef = useRef<HTMLDivElement | null>(null);
   const [portalContainer, setPortalContainer] = useState<HTMLDivElement | null>(null);
 
   // Use callback ref to capture the DOM element when it mounts
   const portalContainerRef = useCallback((node: HTMLDivElement | null) => {
+    portalContainerElementRef.current = node;
     setPortalContainer(node);
   }, []);
 
@@ -350,8 +352,8 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
           align="start"
           sideOffset={10}
           collisionPadding={collisionPadding}
-          onInteractOutside={(e) => handleDockInteractOutside(e, portalContainer)}
-          onEscapeKeyDown={(e) => handleDockEscapeKeyDown(e, portalContainer)}
+          onInteractOutside={(e) => handleDockInteractOutside(e, portalContainerElementRef.current)}
+          onEscapeKeyDown={(e) => handleDockEscapeKeyDown(e, portalContainerElementRef.current)}
           onOpenAutoFocus={(event) => {
             event.preventDefault();
             if (terminal.spawnedBy === "mcp") {

@@ -767,7 +767,9 @@ describe("GitHubResourceList wake-coordinator revalidation", () => {
     });
 
     // Advance past debounce.
-    await vi.advanceTimersByTimeAsync(400);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
 
     // The list-query effect re-runs twice on search-clear (numberQuery flip,
     // then debouncedSearch flip after the debounce timer) — both calls are

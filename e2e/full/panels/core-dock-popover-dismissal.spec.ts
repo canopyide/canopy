@@ -87,12 +87,15 @@ test.describe.serial("Core: Dock popover dismissal guard", () => {
 
     const openDockPopover = async () => {
       await ensureWindowFocused(app);
-      await dockChip.hover();
-      await dockChip.click();
+      if (!(await portalTarget.isVisible({ timeout: 1_000 }).catch(() => false))) {
+        await dockChip.click();
+      }
       await expect(portalTarget).toBeVisible({ timeout: T_MEDIUM });
     };
 
     await openDockPopover();
+    await window.waitForTimeout(T_SETTLE);
+    await expect(portalTarget).toBeVisible({ timeout: T_SHORT });
 
     // Contract 1: clicking on an element marked data-dock-popover-child must
     // NOT dismiss the dock popover. This is the original Guard 2 purpose
@@ -103,16 +106,18 @@ test.describe.serial("Core: Dock popover dismissal guard", () => {
       overlay.setAttribute("data-dock-popover-child", "");
       Object.assign(overlay.style, {
         position: "fixed",
-        top: "20px",
-        right: "20px",
+        top: "96px",
+        right: "48px",
         width: "120px",
         height: "32px",
         background: "rgba(0,128,255,0.4)",
+        pointerEvents: "auto",
         zIndex: "99999",
       });
       document.body.appendChild(overlay);
     });
-    await window.locator("#test-dock-popover-child").click({ force: true });
+    await expect(window.locator("#test-dock-popover-child")).toBeVisible({ timeout: T_SHORT });
+    await window.locator("#test-dock-popover-child").click();
     await window.waitForTimeout(T_SETTLE);
     await expect(portalTarget).toBeVisible({ timeout: T_SHORT });
     await window.evaluate(() => document.getElementById("test-dock-popover-child")?.remove());
@@ -127,16 +132,18 @@ test.describe.serial("Core: Dock popover dismissal guard", () => {
       overlay.setAttribute("data-radix-popper-content-wrapper", "");
       Object.assign(overlay.style, {
         position: "fixed",
-        top: "70px",
-        right: "20px",
+        top: "144px",
+        right: "48px",
         width: "120px",
         height: "32px",
         background: "rgba(255,128,0,0.4)",
+        pointerEvents: "auto",
         zIndex: "99999",
       });
       document.body.appendChild(overlay);
     });
-    await window.locator("#test-radix-popper").click({ force: true });
+    await expect(window.locator("#test-radix-popper")).toBeVisible({ timeout: T_SHORT });
+    await window.locator("#test-radix-popper").click();
     await expect(portalTarget).not.toBeVisible({ timeout: T_MEDIUM });
     await window.evaluate(() => document.getElementById("test-radix-popper")?.remove());
   });

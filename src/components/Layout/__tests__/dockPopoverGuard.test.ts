@@ -7,6 +7,24 @@ function makeEvent(target: EventTarget | null): Event & { preventDefault: () => 
   return { target, preventDefault } as unknown as Event & { preventDefault: () => void };
 }
 
+function makeRadixOutsideEvent(
+  originalTarget: EventTarget | null,
+  eventTarget: EventTarget | null
+): Event & {
+  preventDefault: () => void;
+  detail: { originalEvent: Event };
+} {
+  const preventDefault = vi.fn();
+  return {
+    target: eventTarget,
+    detail: { originalEvent: { target: originalTarget } as Event },
+    preventDefault,
+  } as unknown as Event & {
+    preventDefault: () => void;
+    detail: { originalEvent: Event };
+  };
+}
+
 describe("handleDockInteractOutside", () => {
   it("prevents dismissal when target is inside the portal container", () => {
     const container = document.createElement("div");
@@ -33,6 +51,23 @@ describe("handleDockInteractOutside", () => {
 
     expect(event.preventDefault).toHaveBeenCalled();
     wrapper.remove();
+  });
+
+  it("uses Radix originalEvent target for dock-popover-child portals", () => {
+    const layerTarget = document.createElement("div");
+    const wrapper = document.createElement("div");
+    wrapper.setAttribute("data-dock-popover-child", "");
+    const menuItem = document.createElement("div");
+    wrapper.appendChild(menuItem);
+    document.body.appendChild(wrapper);
+    document.body.appendChild(layerTarget);
+
+    const event = makeRadixOutsideEvent(menuItem, layerTarget);
+    handleDockInteractOutside(event, null);
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    wrapper.remove();
+    layerTarget.remove();
   });
 
   it("allows dismissal when target is on an unrelated Radix popper wrapper", () => {

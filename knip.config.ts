@@ -21,11 +21,10 @@ const config: KnipConfig = {
     // an explicit entry.
     "src/workers/*.worker.ts",
 
-    // Invoked by the electron-builder CLI and documented / diagnostic scripts
+    // Invoked by the electron-builder CLI and documented diagnostic scripts
     // that aren't wired through package.json.
     "electron-builder.config.cjs",
     "scripts/generate-sounds.mjs",
-    "scripts/find-critical-compiler-errors.mjs",
 
     // Playwright discovers specs by filesystem glob; knip has no visibility
     // into the test runner, so tests appear unused without these roots.
@@ -75,6 +74,14 @@ const config: KnipConfig = {
     // "fixtures"). Knip cannot trace runtime path resolution, so these
     // files appear unused.
     "scripts/codegen/__tests__/fixtures/*.ts",
+
+    // why: compat shims preserved for legacy test/import paths after the
+    // GitHub services moved into plugins/builtin/github/main (#8060). No
+    // runtime code imports these leaf shims directly today, but removing them
+    // would break the compatibility promise documented in
+    // electron/services/github/index.ts.
+    "electron/services/github/GitHubRateLimitService.ts",
+    "electron/services/github/types.ts",
   ],
 
   // why: these packages are consumed via mechanisms Knip can't trace:

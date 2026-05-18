@@ -109,10 +109,12 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
   // Per-agent shortcut actions (`agent.claude`, `agent.codex`, …) accept
   // optional `location` and `spawnedBy` args so MCP-initiated launches can set
   // placement and be marked non-focus-stealing. See #6959, #7669.
-  const shortcutLaunchSchema = z.object({
-    location: LaunchLocationSchema.optional(),
-    spawnedBy: TerminalSpawnSourceSchema.optional(),
-  });
+  const shortcutLaunchSchema = z
+    .object({
+      location: LaunchLocationSchema.optional(),
+      spawnedBy: TerminalSpawnSourceSchema.optional(),
+    })
+    .optional();
 
   const shortcutResultSchema = z.object({
     terminalId: z.string(),
@@ -162,6 +164,30 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
         spawnedBy?: TerminalSpawnSource;
       };
       const result = await callbacks.onLaunchAgent("terminal", {
+        location,
+        spawnedBy,
+      });
+      if (!result) return null;
+      return { terminalId: result.terminalId, location: result.location };
+    },
+  }));
+
+  actions.set("agent.browser", () => ({
+    id: "agent.browser",
+    title: "Launch Browser",
+    description: "Launch a browser panel",
+    category: "agent",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    argsSchema: shortcutLaunchSchema,
+    resultSchema: shortcutResultSchema,
+    run: async (args: unknown) => {
+      const { location, spawnedBy } = (args ?? {}) as {
+        location?: "grid" | "dock";
+        spawnedBy?: TerminalSpawnSource;
+      };
+      const result = await callbacks.onLaunchAgent("browser", {
         location,
         spawnedBy,
       });

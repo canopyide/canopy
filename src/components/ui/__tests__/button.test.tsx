@@ -153,6 +153,13 @@ describe("Button loading state", () => {
     expect(button.getAttribute("aria-disabled")).toBe("true");
   });
 
+  it("preserves consumer aria-disabled when not loading", () => {
+    const { container } = render(<Button aria-disabled="true">Save</Button>);
+    const button = container.querySelector("button")!;
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    expect(button.hasAttribute("disabled")).toBe(false);
+  });
+
   it("clears all loading affordances when rerendered to not loading", () => {
     const { container, rerender } = render(<Button loading>Save</Button>);
     expect(container.querySelector('[data-slot="button-spinner"]')).toBeTruthy();

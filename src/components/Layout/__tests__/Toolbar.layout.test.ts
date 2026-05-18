@@ -149,8 +149,10 @@ describe("Toolbar layout — issue #2584 project switcher collision", () => {
       expect(source).not.toMatch(/>Beta</);
     });
 
-    it("empty-state button has conditional aria-label for accessibility", () => {
-      expect(source).toContain('aria-label={currentProject ? undefined : "Open project"}');
+    it("project switcher button has an accessible aria-label", () => {
+      expect(source).toMatch(
+        /aria-label=\{[\s\S]*currentProject[\s\S]*Open project switcher for \$\{currentProject\.name\}[\s\S]*"Open project"[\s\S]*\}/
+      );
     });
   });
 
