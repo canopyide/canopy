@@ -383,14 +383,15 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
         });
       }
 
-      const sanitizedWorktreePathPattern = worktreePathPattern.trim() || undefined;
-      if (sanitizedWorktreePathPattern) {
-        const patternValidation = validatePathPattern(sanitizedWorktreePathPattern);
-        if (!patternValidation.valid) {
-          setProjectAutoSaveError("Invalid worktree path pattern — other settings were not saved");
-          return;
-        }
-      }
+      const trimmedWorktreePathPattern = worktreePathPattern.trim();
+      const draftPathPattern = trimmedWorktreePathPattern || undefined;
+      const pathPatternIsValid = !draftPathPattern || validatePathPattern(draftPathPattern).valid;
+      // When the draft pattern is invalid, preserve the previously persisted value
+      // (the field-level error renders inline in AutomationTab) so unrelated field
+      // edits still auto-save.
+      const sanitizedWorktreePathPattern = pathPatternIsValid
+        ? draftPathPattern
+        : projectSettings.worktreePathPattern;
 
       await saveProjectSettings({
         ...projectSettings,
