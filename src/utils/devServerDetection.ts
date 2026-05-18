@@ -4,7 +4,13 @@ const DEV_SCRIPT_PRIORITY = ["dev", "start", "serve"];
 
 const NEXT_DEV_RE = /\bnext\s+dev\b/;
 const TURBOPACK_FLAG_RE = /--turbo(?:pack)?\b/;
-const SHELL_CONTROL_RE = /[;&|#]|<|>|\$\(/;
+/**
+ * Rejects commands containing shell-control characters, command
+ * substitution, or line breaks. Used both to gate turbopack injection on
+ * detected scripts and to validate the manual dev-command input in the
+ * dev preview empty state.
+ */
+export const SHELL_CONTROL_RE = /[;&|#`\n\r]|<|>|\$\(/;
 
 function applyNextjsTurbopack(runner: RunCommand, turbopackEnabled = true): RunCommand {
   if (!turbopackEnabled) return runner;

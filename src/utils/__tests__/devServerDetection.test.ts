@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findDevServerCandidate } from "../devServerDetection";
+import { findDevServerCandidate, SHELL_CONTROL_RE } from "../devServerDetection";
 import type { RunCommand } from "@shared/types";
 
 function runner(name: string, command: string, description?: string): RunCommand {
@@ -113,5 +113,39 @@ describe("findDevServerCandidate", () => {
       const runners = [runner("dev", "npm run dev", "next dev | tee log")];
       expect(findDevServerCandidate(runners)?.command).toBe("npm run dev");
     });
+  });
+});
+
+describe("SHELL_CONTROL_RE", () => {
+  it("rejects shell-control characters", () => {
+    for (const cmd of [
+      "npm run dev; rm -rf /",
+      "npm run dev && echo done",
+      "npm run dev | tee log",
+      "npm run dev # comment",
+      "echo `whoami`",
+      "cat < file",
+      "echo > file",
+      "echo $(whoami)",
+    ]) {
+      expect(SHELL_CONTROL_RE.test(cmd)).toBe(true);
+    }
+  });
+
+  it("rejects line breaks", () => {
+    expect(SHELL_CONTROL_RE.test("npm run dev\nrm -rf /")).toBe(true);
+    expect(SHELL_CONTROL_RE.test("npm run dev\r\necho hi")).toBe(true);
+  });
+
+  it("accepts plain dev-server commands", () => {
+    for (const cmd of [
+      "npm run dev",
+      "pnpm vite --host 0.0.0.0",
+      "bun --bun vite",
+      "yarn dev --port 5173",
+      "php artisan serve",
+    ]) {
+      expect(SHELL_CONTROL_RE.test(cmd)).toBe(false);
+    }
   });
 });

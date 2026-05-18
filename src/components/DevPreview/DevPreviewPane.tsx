@@ -4,9 +4,7 @@ import {
   AlertTriangle,
   RotateCw,
   ExternalLink,
-  Settings,
   Square,
-  WandSparkles,
   OctagonAlert,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
@@ -31,6 +29,8 @@ import { useIsDragging } from "@/components/DragDrop";
 import { cn } from "@/lib/utils";
 import { computeDevServerUrl } from "./urlSync";
 import { findDevServerCandidate } from "@/utils/devServerDetection";
+import { DevPreviewEmptyState } from "./DevPreviewEmptyState";
+import type { RunCommand } from "@shared/types";
 import { useProjectSettings } from "@/hooks/useProjectSettings";
 import { projectClient } from "@/clients";
 import { actionService } from "@/services/ActionService";
@@ -379,6 +379,7 @@ export function DevPreviewPane({
   // Store the original guest UA so we can restore it when clearing a preset
   const originalUaRef = useRef<string | null>(null);
   const [isAutoDetecting, setIsAutoDetecting] = useState(false);
+  const [isSavingManual, setIsSavingManual] = useState(false);
   const { saveSettings } = useProjectSettings();
   const allDetectedRunners = useProjectSettingsStore((state) => state.allDetectedRunners);
   const isSettingsLoading = useProjectSettingsStore((state) => state.isLoading);
@@ -394,6 +395,13 @@ export function DevPreviewPane({
   const canGoForward = history.future.length > 0;
   const isUnconfigured =
     Boolean(currentProjectId) && !isSettingsLoading && projectSettings !== null && !devCommand;
+
+  const turbopackEnabled = projectSettings?.turbopackEnabled ?? true;
+  const detectedCandidate = useMemo(() => {
+    const candidate = findDevServerCandidate(allDetectedRunners, turbopackEnabled);
+    if (candidate) return candidate;
+    return allDetectedRunners?.find((r) => r.id === "devcontainer-poststart");
+  }, [allDetectedRunners, turbopackEnabled]);
 
   const { isEvicted, evictingRef } = useWebviewEviction(id, location);
 
@@ -751,32 +759,36 @@ export function DevPreviewPane({
     [currentProjectId, id]
   );
 
+  const persistDevServerCommand = useCallback(
+    async (command: string, autoDetected: boolean) => {
+      if (!currentProjectId) return;
+      const latestSettings = await projectClient.getSettings(currentProjectId);
+      if (!latestSettings) return;
+      await saveSettings({
+        ...latestSettings,
+        devServerCommand: command,
+        devServerAutoDetected: autoDetected,
+        devServerDismissed: false,
+      });
+    },
+    [currentProjectId, saveSettings]
+  );
+
   const handleAutoDetect = useCallback(async () => {
     if (!currentProjectId || isAutoDetecting) return;
 
     setIsAutoDetecting(true);
     try {
       const freshRunners = await projectClient.detectRunners(currentProjectId);
-      const candidate = findDevServerCandidate(
-        freshRunners,
-        projectSettings?.turbopackEnabled ?? true
-      );
+      const candidate =
+        findDevServerCandidate(freshRunners, turbopackEnabled) ??
+        freshRunners?.find((r) => r.id === "devcontainer-poststart");
 
       if (!candidate) {
         return;
       }
 
-      const latestSettings = await projectClient.getSettings(currentProjectId);
-      if (!latestSettings) {
-        return;
-      }
-
-      await saveSettings({
-        ...latestSettings,
-        devServerCommand: candidate.command,
-        devServerAutoDetected: true,
-        devServerDismissed: false,
-      });
+      await persistDevServerCommand(candidate.command, true);
     } catch (err) {
       logError("Failed to auto-detect dev server", err);
     } finally {
@@ -784,7 +796,39 @@ export function DevPreviewPane({
         setIsAutoDetecting(false);
       }
     }
-  }, [currentProjectId, isAutoDetecting, saveSettings, projectSettings?.turbopackEnabled]);
+  }, [currentProjectId, isAutoDetecting, persistDevServerCommand, turbopackEnabled]);
+
+  const handleSelectRunner = useCallback(
+    (runner: RunCommand) => {
+      void (async () => {
+        try {
+          await persistDevServerCommand(runner.command, false);
+        } catch (err) {
+          logError("Failed to apply selected dev server script", err);
+        }
+      })();
+    },
+    [persistDevServerCommand]
+  );
+
+  const handleManualSubmit = useCallback(
+    (command: string) => {
+      if (isSavingManual) return;
+      setIsSavingManual(true);
+      void (async () => {
+        try {
+          await persistDevServerCommand(command, false);
+        } catch (err) {
+          logError("Failed to save manual dev server command", err);
+        } finally {
+          if (isMountedRef.current) {
+            setIsSavingManual(false);
+          }
+        }
+      })();
+    },
+    [isSavingManual, persistDevServerCommand]
+  );
 
   const handleOpenSettings = useCallback(() => {
     void actionService.dispatch("project.settings.open", undefined, { source: "user" });
@@ -1125,63 +1169,18 @@ export function DevPreviewPane({
             </div>
           ) : !currentUrl || status !== "running" ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-daintree-bg text-daintree-text p-6">
-              {isUnconfigured ? (
-                <div className="flex flex-col items-center text-center max-w-md">
-                  <h3 className="text-sm font-medium text-daintree-text/70 mb-1">
-                    Configure dev server
-                  </h3>
-                  <p className="text-xs text-daintree-text/50 mb-4 leading-relaxed">
-                    No dev server command is configured for this project.
-                    {allDetectedRunners &&
-                    findDevServerCandidate(
-                      allDetectedRunners,
-                      projectSettings?.turbopackEnabled ?? true
-                    )
-                      ? " We found a script in your package.json that looks like a dev server."
-                      : " Configure one to preview your application."}
-                  </p>
-                  <div className="flex flex-col items-center gap-2">
-                    {allDetectedRunners &&
-                      findDevServerCandidate(
-                        allDetectedRunners,
-                        projectSettings?.turbopackEnabled ?? true
-                      ) && (
-                        <Button
-                          onClick={handleAutoDetect}
-                          disabled={isAutoDetecting || isSettingsLoading}
-                          variant="ghost"
-                          size="sm"
-                          className="gap-1.5 px-2.5 py-1.5 group"
-                        >
-                          <WandSparkles className="h-3.5 w-3.5" />
-                          <span className="text-xs">
-                            {isAutoDetecting
-                              ? "Detecting..."
-                              : `Use \`${findDevServerCandidate(allDetectedRunners, projectSettings?.turbopackEnabled ?? true)?.command}\``}
-                          </span>
-                        </Button>
-                      )}
-                    <Button
-                      onClick={handleOpenSettings}
-                      variant="ghost"
-                      size="sm"
-                      className="gap-1.5 px-2.5 py-1.5 group text-daintree-text/50 hover:text-daintree-text/70"
-                    >
-                      <Settings className="h-3.5 w-3.5" />
-                      <span className="text-xs">Open Project Settings</span>
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center text-center max-w-md">
-                  <h3 className="text-sm font-medium text-daintree-text/70 mb-1">
-                    Waiting for dev server
-                  </h3>
-                  <p className="text-xs text-daintree-text/50 mb-4 leading-relaxed">
-                    The development server will appear here once it starts and a URL is detected.
-                  </p>
-                </div>
-              )}
+              <DevPreviewEmptyState
+                isUnconfigured={isUnconfigured}
+                detectedCandidate={detectedCandidate}
+                allDetectedRunners={allDetectedRunners}
+                isAutoDetecting={isAutoDetecting}
+                isSettingsLoading={isSettingsLoading}
+                isSavingManual={isSavingManual}
+                onAutoDetect={handleAutoDetect}
+                onSelectRunner={handleSelectRunner}
+                onManualSubmit={handleManualSubmit}
+                onOpenSettings={handleOpenSettings}
+              />
             </div>
           ) : !hasBeenVisible ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-daintree-bg text-daintree-text">
