@@ -1,9 +1,9 @@
 import type {
   GitHubRateLimitKind,
   GitHubRateLimitPayload,
-} from "../../../shared/types/ipc/github.js";
-import { logDebug, logInfo, logWarn } from "../../utils/logger.js";
-import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
+} from "../../../../shared/types/ipc/github.js";
+import { logDebug, logInfo, logWarn } from "../../../../electron/utils/logger.js";
+import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
 
 // Buffer applied to GitHub's `x-ratelimit-reset` to absorb clock skew between
 // the local host and api.github.com, and to avoid a poll slipping in a tick

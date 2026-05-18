@@ -1,6 +1,6 @@
 import { GitHubAuth, GITHUB_API_TIMEOUT_MS, captureAuthMetadata } from "./GitHubAuth.js";
 import { PRIMARY_RESET_BUFFER_MS } from "./GitHubRateLimitService.js";
-import type { GitHubRateLimitDetails } from "../../types/index.js";
+import type { GitHubRateLimitDetails } from "../../../../electron/types/index.js";
 
 export async function fetchRateLimitDetails(): Promise<GitHubRateLimitDetails | null> {
   const token = GitHubAuth.getToken();

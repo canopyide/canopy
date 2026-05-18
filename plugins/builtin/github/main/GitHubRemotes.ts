@@ -1,4 +1,4 @@
-import { GitService } from "../GitService.js";
+import { GitService } from "../../../../electron/services/GitService.js";
 import { parseGitHubRepoUrl } from "./GitHubRepoContext.js";
 
 export async function listGitHubRemotes(

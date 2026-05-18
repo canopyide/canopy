@@ -1,4 +1,4 @@
-import type { GitHubPRCIStatus, GitHubPRCISummary } from "../../../shared/types/github.js";
+import type { GitHubPRCIStatus, GitHubPRCISummary } from "../../../../shared/types/github.js";
 
 // Failing CheckRun conclusions per GitHub schema. STALE is included because a stale required
 // run has not resolved to a passing state and must not be silently treated as success.

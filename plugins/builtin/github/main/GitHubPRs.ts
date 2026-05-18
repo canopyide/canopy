@@ -20,7 +20,7 @@ import {
   truncateBody,
   type PRRequiredStatusEntry,
 } from "./GitHubCaches.js";
-import { GitHubStatsCache } from "../GitHubStatsCache.js";
+import { GitHubStatsCache } from "../../../../electron/services/GitHubStatsCache.js";
 import { deriveRequiredCIStatus, normalizeRawState } from "./prRequiredCIStatus.js";
 import type { RollupContextNode } from "./prRequiredCIStatus.js";
 import type {
@@ -28,7 +28,7 @@ import type {
   GitHubListOptions,
   GitHubListResponse,
   PRTooltipData,
-} from "../../../shared/types/github.js";
+} from "../../../../shared/types/github.js";
 import type { RepoContext, RepoStats } from "./types.js";
 
 export function buildListCacheKey(

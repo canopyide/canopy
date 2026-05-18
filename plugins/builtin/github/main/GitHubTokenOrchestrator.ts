@@ -5,7 +5,7 @@ import { gitHubTokenHealthService } from "./GitHubTokenHealthService.js";
 
 async function syncWorkspaceToken(token: string | null): Promise<void> {
   try {
-    const { getWorkspaceClient } = await import("../WorkspaceClient.js");
+    const { getWorkspaceClient } = await import("../../../../electron/services/WorkspaceClient.js");
     getWorkspaceClient().updateGitHubToken(token);
   } catch {
     // WorkspaceClient may not be initialized yet

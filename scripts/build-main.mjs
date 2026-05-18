@@ -69,6 +69,32 @@ function copyBuiltInWorkflows() {
   }
 }
 
+/**
+ * Copy each built-in plugin's `plugin.json` next to its compiled main entry so
+ * `PluginService.loadPlugin` can read the manifest from the same directory
+ * tree it scans at runtime. The compiled JS lands via esbuild; this step
+ * mirrors the static manifest alongside it.
+ */
+function copyBuiltInPluginManifests() {
+  const pluginsRoot = path.join(root, "plugins/builtin");
+  if (!fs.existsSync(pluginsRoot)) return;
+  const entries = fs.readdirSync(pluginsRoot, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const manifestSrc = path.join(pluginsRoot, entry.name, "plugin.json");
+    if (!fs.existsSync(manifestSrc)) continue;
+    const manifestDest = path.join(
+      root,
+      "dist-electron/plugins/builtin",
+      entry.name,
+      "plugin.json"
+    );
+    fs.mkdirSync(path.dirname(manifestDest), { recursive: true });
+    fs.copyFileSync(manifestSrc, manifestDest);
+    console.log(`[Build] Copied built-in plugin manifest: ${entry.name}`);
+  }
+}
+
 function createReadyMarkerPlugin() {
   return {
     name: "build-ready-marker",
@@ -93,7 +119,11 @@ async function run() {
     }
   }
 
-  // Config for ESM files (Main, Hosts)
+  // Config for ESM files (Main, Hosts, built-in plugins).
+  // Built-in plugins are bundled in the same esbuild run so `splitting: true`
+  // dedupes shared modules (e.g. the GitHub service singletons after #8060)
+  // into a single chunk referenced by both the electron main bundle's compat
+  // shims and the plugin entry that `PluginService` loads at runtime.
   const esmConfig = {
     ...common,
     entryPoints: [
@@ -105,11 +135,13 @@ async function run() {
       "electron/workspace-host-bootstrap.ts",
       "electron/watchdog-host.ts",
       "electron/watchdog-host-bootstrap.ts",
+      "plugins/builtin/github/main/index.ts",
     ],
-    outdir: "dist-electron/electron",
+    outdir: "dist-electron",
+    outbase: ".",
     format: "esm",
-    splitting: true, // Share chunks between main/hosts
-    chunkNames: "chunks/[name]-[hash]",
+    splitting: true, // Share chunks between main/hosts/plugins
+    chunkNames: "electron/chunks/[name]-[hash]",
     plugins: isWatch ? [createReadyMarkerPlugin()] : [],
     banner: {
       js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
@@ -133,10 +165,12 @@ async function run() {
 
       await Promise.all([ctxEsm.watch(), ctxCjs.watch()]);
       copyBuiltInWorkflows();
+      copyBuiltInPluginManifests();
       console.log("[Build] Watching for changes...");
     } else {
       await Promise.all([build(esmConfig), build(cjsConfig)]);
       copyBuiltInWorkflows();
+      copyBuiltInPluginManifests();
       writeBuildReadyMarker();
       console.log("[Build] Complete.");
     }

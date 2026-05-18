@@ -1,4 +1,4 @@
-import type { GitHubPRCIStatus, PRTooltipData } from "../../../shared/types/github.js";
+import type { GitHubPRCIStatus, PRTooltipData } from "../../../../shared/types/github.js";
 
 export interface RepoContext {
   owner: string;

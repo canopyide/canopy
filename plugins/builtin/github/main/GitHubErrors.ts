@@ -2,7 +2,7 @@ import { RequestError } from "@octokit/request-error";
 import { GraphqlResponseError } from "@octokit/graphql";
 import { gitHubRateLimitService, GitHubRateLimitError } from "./GitHubRateLimitService.js";
 import { getLastAuthMetadata, parseSsoKind } from "./GitHubAuth.js";
-import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
+import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
 
 export function rateLimitMessage(kind: "primary" | "secondary", resumeAt: number): string {
   const seconds = Math.max(0, Math.ceil((resumeAt - Date.now()) / 1000));

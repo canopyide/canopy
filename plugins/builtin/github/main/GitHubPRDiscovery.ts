@@ -12,7 +12,7 @@ import {
   truncateBody,
   getETagCacheVersion,
 } from "./GitHubCaches.js";
-import type { GitHubPRCIStatus, PRTooltipData } from "../../../shared/types/github.js";
+import type { GitHubPRCIStatus, PRTooltipData } from "../../../../shared/types/github.js";
 import type { PRCheckCandidate, PRCheckResult, BatchPRCheckResult, LinkedPR } from "./types.js";
 
 interface BatchPRTooltipFields {

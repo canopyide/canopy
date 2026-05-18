@@ -210,7 +210,11 @@ export class PluginService {
         return path.join(process.resourcesPath, "plugins", "builtin");
       }
       if (typeof app.getAppPath !== "function") return null;
-      return path.join(app.getAppPath(), "plugins", "builtin");
+      // In dev the compiled plugin output lives under `dist-electron/` next
+      // to the rest of the esbuild bundles. `electron-builder` strips the
+      // `dist-electron/` prefix when copying into the packaged Resources
+      // directory, so the packaged path resolves the same layout one level up.
+      return path.join(app.getAppPath(), "dist-electron", "plugins", "builtin");
     } catch (err) {
       console.warn("[PluginService] Failed to resolve built-in plugins directory:", err);
       return null;
