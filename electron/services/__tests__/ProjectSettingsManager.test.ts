@@ -204,6 +204,49 @@ describe("ProjectSettingsManager caching", () => {
     }
   );
 
+  it("round-trips forgeProviderOverride through save/load", async () => {
+    await manager.saveProjectSettings(projectId, {
+      runCommands: [],
+      forgeProviderOverride: "github",
+    });
+
+    const freshManager = new ProjectSettingsManager(tempDir, createMockStore());
+    const loaded = await freshManager.getProjectSettings(projectId);
+    expect(loaded.forgeProviderOverride).toBe("github");
+  });
+
+  it("treats missing forgeProviderOverride as undefined", async () => {
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    await fs.writeFile(settingsPath, JSON.stringify({ runCommands: [] }), "utf-8");
+
+    const loaded = await manager.getProjectSettings(projectId);
+    expect(loaded.forgeProviderOverride).toBeUndefined();
+  });
+
+  it("preserves null forgeProviderOverride from disk as null", async () => {
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    await fs.writeFile(
+      settingsPath,
+      JSON.stringify({ runCommands: [], forgeProviderOverride: null }),
+      "utf-8"
+    );
+
+    const loaded = await manager.getProjectSettings(projectId);
+    expect(loaded.forgeProviderOverride).toBeNull();
+  });
+
+  it("rejects non-string forgeProviderOverride values from disk", async () => {
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    await fs.writeFile(
+      settingsPath,
+      JSON.stringify({ runCommands: [], forgeProviderOverride: 42 }),
+      "utf-8"
+    );
+
+    const loaded = await manager.getProjectSettings(projectId);
+    expect(loaded.forgeProviderOverride).toBeUndefined();
+  });
+
   it("rejects unknown daintreeMcpTier values from disk", async () => {
     const settingsPath = path.join(tempDir, projectId, "settings.json");
     await fs.writeFile(

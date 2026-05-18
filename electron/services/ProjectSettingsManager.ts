@@ -208,6 +208,12 @@ export class ProjectSettingsManager {
           typeof parsed.worktreePathPattern === "string" && parsed.worktreePathPattern.trim()
             ? parsed.worktreePathPattern.trim()
             : undefined,
+        forgeProviderOverride:
+          typeof parsed.forgeProviderOverride === "string" && parsed.forgeProviderOverride.trim()
+            ? parsed.forgeProviderOverride.trim()
+            : parsed.forgeProviderOverride === null
+              ? null
+              : undefined,
         terminalSettings: parseTerminalSettings(parsed.terminalSettings),
         notificationOverrides: parseNotificationOverrides(parsed.notificationOverrides),
         fleetSavedScopes: parseFleetSavedScopes(parsed.fleetSavedScopes),
