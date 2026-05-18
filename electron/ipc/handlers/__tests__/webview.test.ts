@@ -602,8 +602,8 @@ describe("registerWebviewHandlers", () => {
       for (let i = 0; i < 7; i++) messageListener({}, "Log.entryAdded", evt);
 
       const logRows = mainWindowMock.webContents.send.mock.calls.filter(
-        ([ch, row]: [string, { cdpType?: string }]) =>
-          ch === "webview:console-message" && row.cdpType === "log-entry"
+        (call): call is [string, { cdpType?: string }] =>
+          call[0] === "webview:console-message" && (call[1] as any).cdpType === "log-entry"
       );
       expect(logRows).toHaveLength(5);
     });
@@ -655,8 +655,8 @@ describe("registerWebviewHandlers", () => {
       });
 
       const rows = mainWindowMock.webContents.send.mock.calls
-        .filter(([ch]: string[]) => ch === "webview:console-message")
-        .map(([, row]: [string, { paneId: string; cdpType: string }]) => row);
+        .filter((call): call is [string, any] => call[0] === "webview:console-message")
+        .map((call) => call[1] as { paneId: string; cdpType: string });
       const exceptionPanes = rows.filter((r) => r.cdpType === "error").map((r) => r.paneId);
       const logPanes = rows.filter((r) => r.cdpType === "log-entry").map((r) => r.paneId);
       expect(exceptionPanes.sort()).toEqual(["pane-1", "pane-2"]);
@@ -686,8 +686,8 @@ describe("registerWebviewHandlers", () => {
         };
         for (let i = 0; i < 6; i++) messageListener({}, "Log.entryAdded", evt);
         const countAfterFlood = mainWindowMock.webContents.send.mock.calls.filter(
-          ([ch, row]: [string, { cdpType?: string }]) =>
-            ch === "webview:console-message" && row.cdpType === "log-entry"
+          (call): call is [string, { cdpType?: string }] =>
+            call[0] === "webview:console-message" && (call[1] as any).cdpType === "log-entry"
         ).length;
         expect(countAfterFlood).toBe(5);
 
@@ -695,8 +695,8 @@ describe("registerWebviewHandlers", () => {
         messageListener({}, "Log.entryAdded", evt);
 
         const totalAfterReset = mainWindowMock.webContents.send.mock.calls.filter(
-          ([ch, row]: [string, { cdpType?: string }]) =>
-            ch === "webview:console-message" && row.cdpType === "log-entry"
+          (call): call is [string, { cdpType?: string }] =>
+            call[0] === "webview:console-message" && (call[1] as any).cdpType === "log-entry"
         ).length;
         expect(totalAfterReset).toBe(6);
       } finally {
