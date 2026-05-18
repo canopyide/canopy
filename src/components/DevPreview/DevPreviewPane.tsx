@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useBrowserActionListeners } from "@/hooks/useBrowserActionListeners";
 import {
   AlertTriangle,
   RotateCw,
@@ -145,7 +146,7 @@ function BlockedNavBanner({
           }}
           className="shrink-0 px-2 py-0.5 rounded text-xs bg-status-warning/20 hover:bg-status-warning/30 text-daintree-text/90 transition-colors"
         >
-          Sign in via Browser
+          Sign in via browser
         </button>
       ) : blockedNav.canOpenExternal ? (
         <button
@@ -158,7 +159,7 @@ function BlockedNavBanner({
           }}
           className="shrink-0 px-2 py-0.5 rounded text-xs bg-status-warning/20 hover:bg-status-warning/30 text-daintree-text/90 transition-colors"
         >
-          Open in External Browser
+          Open in external browser
         </button>
       ) : null}
       <button
@@ -465,6 +466,39 @@ export function DevPreviewPane({
     }
   }, [isWebviewReady, id]);
 
+  const handleCaptureScreenshot = useCallback(async () => {
+    const webview = webviewRef.current;
+    if (!webview || !isWebviewReady) return;
+    let url: string;
+    try {
+      url = webview.getURL();
+    } catch {
+      return;
+    }
+    if (!url || url === "about:blank") return;
+    try {
+      const image = await webview.capturePage();
+      const pngData = new Uint8Array(image.toPNG());
+      await window.electron.clipboard.writeImage(pngData);
+    } catch (err) {
+      logError("[DevPreviewPane] Screenshot capture failed", err);
+    }
+  }, [isWebviewReady]);
+
+  const handleToggleDevTools = useCallback(() => {
+    const webview = webviewRef.current;
+    if (!webview || !isWebviewReady) return;
+    if (webview.isDevToolsOpened()) {
+      webview.closeDevTools();
+    } else {
+      webview.openDevTools();
+    }
+  }, [isWebviewReady]);
+
+  const handleToggleConsole = useCallback(() => {
+    setDevPreviewConsoleOpen(id, !isConsoleOpen);
+  }, [id, isConsoleOpen, setDevPreviewConsoleOpen]);
+
   const handleOpenExternal = useCallback(() => {
     if (currentUrl) {
       safeFireAndForget(window.electron.system.openExternal(currentUrl), {
@@ -479,6 +513,18 @@ export function DevPreviewPane({
       webviewRef.current.setZoomFactor(newZoom);
     }
   }, []);
+
+  useBrowserActionListeners(id, {
+    onReload: handleReload,
+    onNavigate: handleNavigate,
+    onBack: handleBack,
+    onForward: handleForward,
+    onSetZoom: handleZoomChange,
+    onCaptureScreenshot: handleCaptureScreenshot,
+    onToggleDevTools: handleToggleDevTools,
+    onToggleConsole: handleToggleConsole,
+    onHardReload: handleHardReload,
+  });
 
   const handleRetry = useCallback(() => {
     start();
@@ -693,24 +739,6 @@ export function DevPreviewPane({
     return () => clearTimeout(timer);
   }, [blockedNav]);
 
-  // Listen for action-driven hard-reload events
-  useEffect(() => {
-    const handleHardReloadEvent = (e: Event) => {
-      if (!(e instanceof CustomEvent)) return;
-      const detail = e.detail as unknown;
-      if (!detail || typeof (detail as { id?: unknown }).id !== "string") return;
-      if ((detail as { id: string }).id === id) {
-        handleHardReload();
-      }
-    };
-
-    const controller = new AbortController();
-    window.addEventListener("daintree:hard-reload-browser", handleHardReloadEvent, {
-      signal: controller.signal,
-    });
-    return () => controller.abort();
-  }, [id, handleHardReload]);
-
   return (
     <ContentPanel
       id={id}
@@ -730,11 +758,14 @@ export function DevPreviewPane({
       <div className="flex flex-col h-full">
         <BrowserToolbar
           terminalId={id}
+          projectId={currentProjectId}
           url={currentUrl}
           canGoBack={canGoBack}
           canGoForward={canGoForward}
           isLoading={isLoading}
           zoomFactor={zoomFactor}
+          isWebviewReady={isWebviewReady}
+          isConsoleOpen={isConsoleOpen}
           viewportPreset={viewportPreset}
           onNavigate={handleNavigate}
           onBack={handleBack}
@@ -743,6 +774,9 @@ export function DevPreviewPane({
           onHardReload={handleHardReload}
           onOpenExternal={handleOpenExternal}
           onZoomChange={handleZoomChange}
+          onCaptureScreenshot={handleCaptureScreenshot}
+          onToggleDevTools={handleToggleDevTools}
+          onToggleConsole={handleToggleConsole}
           onViewportPresetChange={handleViewportPresetChange}
         />
 
