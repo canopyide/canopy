@@ -22,7 +22,6 @@ import {
   getUiTransitionDuration,
 } from "@/lib/animationUtils";
 import { X } from "lucide-react";
-import { Spinner } from "./Spinner";
 import { Button } from "./button";
 
 type DialogSize = "sm" | "md" | "lg" | "xl" | "2xl" | "4xl" | "6xl";
@@ -490,11 +489,10 @@ AppDialog.Footer = function AppDialogFooter({
             <Button
               variant={getPrimaryVariant()}
               onClick={primaryAction.onClick}
-              disabled={primaryAction.disabled || primaryAction.loading}
-              aria-busy={primaryAction.loading || undefined}
+              disabled={primaryAction.disabled}
+              loading={primaryAction.loading}
               data-confirm-role="confirm"
             >
-              {primaryAction.loading && <Spinner />}
               {primaryAction.label}
             </Button>
           )}

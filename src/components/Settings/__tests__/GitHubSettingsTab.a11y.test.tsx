@@ -61,7 +61,7 @@ describe("GitHubSettingsTab accessibility", () => {
     );
     const btn = screen.getByRole("button", { name: "Test token" });
     expect(btn).toBeTruthy();
-    expect(btn.getAttribute("aria-busy")).toBe("false");
+    expect(btn.hasAttribute("aria-busy")).toBe(false);
   });
 
   it("Save button has aria-label and aria-busy=false when idle", () => {
@@ -72,7 +72,7 @@ describe("GitHubSettingsTab accessibility", () => {
     );
     const btn = screen.getByRole("button", { name: "Save token" });
     expect(btn).toBeTruthy();
-    expect(btn.getAttribute("aria-busy")).toBe("false");
+    expect(btn.hasAttribute("aria-busy")).toBe(false);
   });
 
   it("decorative icons inside idle buttons have aria-hidden", () => {
