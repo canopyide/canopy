@@ -479,6 +479,9 @@ export function DevPreviewPane({
   }, [status, error, id, setDevPreviewConsoleOpen]);
 
   useEffect(() => {
+    if (status !== "starting" && status !== "installing") {
+      consoleAutoOpenedStallRef.current = false;
+    }
     if (
       (status !== "starting" && status !== "installing") ||
       url ||

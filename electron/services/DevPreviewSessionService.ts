@@ -129,6 +129,7 @@ export class DevPreviewSessionService {
     for (const session of this.sessions.values()) {
       this.clearStartupReplay(session);
       session.readinessAbort?.abort();
+      this.clearCompiling(session);
     }
     for (const terminalId of this.terminalToSession.keys()) {
       this.ptyClient.setIpcDataMirror(terminalId, false);
