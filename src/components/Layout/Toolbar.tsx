@@ -16,6 +16,7 @@ import {
   PinOff,
   Clipboard,
   Square,
+  Unplug,
   X,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
@@ -60,7 +61,11 @@ import { useProjectStore } from "@/store/projectStore";
 import { usePreferencesStore, useToolbarPreferencesStore, useVoiceRecordingStore } from "@/store";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
-import type { ToolbarButtonId, AnyToolbarButtonId } from "@/../../shared/types/toolbar";
+import type {
+  ToolbarButtonId,
+  AnyToolbarButtonId,
+  PluginToolbarButtonId,
+} from "@/../../shared/types/toolbar";
 import { usePluginToolbarButtons } from "@/hooks/usePluginToolbarButtons";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
@@ -132,35 +137,46 @@ export function PluginToolbarButton({
   config,
   "data-toolbar-item": dataToolbarItem,
 }: {
-  pluginId: string;
+  pluginId: PluginToolbarButtonId;
   config: NonNullable<ReturnType<ReturnType<typeof usePluginToolbarButtons>["configs"]["get"]>>;
   "data-toolbar-item"?: string;
 }) {
   const hover = useShortcutHintHover(config.actionId as string);
+  const toggleButtonVisibility = useToolbarPreferencesStore((s) => s.toggleButtonVisibility);
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          {...hover}
-          variant="ghost"
-          size="icon"
-          data-toolbar-item={dataToolbarItem}
-          onClick={() => {
-            void actionService.dispatch(
-              config.actionId as Parameters<typeof actionService.dispatch>[0],
-              undefined,
-              { source: "user" }
-            );
-          }}
-          className={toolbarIconButtonClass}
-          aria-label={config?.label ?? pluginId}
-        >
-          <McpServerIcon />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">{config?.label ?? pluginId}</TooltipContent>
-    </Tooltip>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              {...hover}
+              variant="ghost"
+              size="icon"
+              data-toolbar-item={dataToolbarItem}
+              onClick={() => {
+                void actionService.dispatch(
+                  config.actionId as Parameters<typeof actionService.dispatch>[0],
+                  undefined,
+                  { source: "user" }
+                );
+              }}
+              className={toolbarIconButtonClass}
+              aria-label={config?.label ?? pluginId}
+            >
+              <McpServerIcon />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{config?.label ?? pluginId}</TooltipContent>
+        </Tooltip>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="max-h-[var(--radix-context-menu-content-available-height)] overflow-y-auto">
+        <ContextMenuItem onSelect={() => toggleButtonVisibility(pluginId, "right")}>
+          <Unplug className="mr-2 h-3.5 w-3.5" />
+          Unpin from Toolbar
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -224,6 +240,9 @@ export function Toolbar({
   const showDeveloperTools = usePreferencesStore((state) => state.showDeveloperTools);
   const notificationsEnabled = useNotificationSettingsStore((s) => s.enabled);
   const toolbarLayout = useToolbarPreferencesStore((state) => state.layout);
+  const toggleButtonVisibility = useToolbarPreferencesStore(
+    (state) => state.toggleButtonVisibility
+  );
   // Live subscription so pin/unpin toggles from the AgentTrayButton immediately
   // update per-agent toolbar button visibility. The `agentSettings` prop is
   // sourced from `useAgentLauncher()`'s local useState which does not react to
@@ -554,26 +573,36 @@ export function Toolbar({
       "dev-server": {
         render: () =>
           currentProject ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  {...devServerHintHover}
-                  variant="ghost"
-                  size="icon"
-                  data-toolbar-item=""
-                  onClick={() =>
-                    actionService.dispatch("devServer.start", undefined, { source: "user" })
-                  }
-                  className={toolbarIconButtonClass}
-                  aria-label="Open Dev Preview"
-                >
-                  <MonitorPlay />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {createTooltipContent("Open Dev Preview", devServerShortcut)}
-              </TooltipContent>
-            </Tooltip>
+            <ContextMenu>
+              <ContextMenuTrigger asChild>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      {...devServerHintHover}
+                      variant="ghost"
+                      size="icon"
+                      data-toolbar-item=""
+                      onClick={() =>
+                        actionService.dispatch("devServer.start", undefined, { source: "user" })
+                      }
+                      className={toolbarIconButtonClass}
+                      aria-label="Open Dev Preview"
+                    >
+                      <MonitorPlay />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {createTooltipContent("Open Dev Preview", devServerShortcut)}
+                  </TooltipContent>
+                </Tooltip>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="max-h-[var(--radix-context-menu-content-available-height)] overflow-y-auto">
+                <ContextMenuItem onSelect={() => toggleButtonVisibility("dev-server", "left")}>
+                  <Unplug className="mr-2 h-3.5 w-3.5" />
+                  Unpin from Toolbar
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           ) : (
             <DevServerPlaceholder />
           ),
@@ -608,46 +637,58 @@ export function Toolbar({
       },
       "copy-tree": {
         render: () => (
-          <Tooltip open={treeCopied || undefined}>
-            <TooltipTrigger asChild>
-              <Button
-                {...copyTreeHintHover}
-                variant="ghost"
-                size="icon"
-                data-toolbar-item=""
-                onClick={handleCopyTreeClick}
-                aria-disabled={isCopyingTree || !activeWorktree || undefined}
-                className={cn(
-                  "toolbar-icon-button relative",
-                  treeCopied ? "text-status-success bg-status-success/10" : "text-daintree-text",
-                  isCopyingTree && "cursor-wait opacity-70",
-                  "aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
-                )}
-                aria-label={
-                  isCopyingTree ? "Copying…" : treeCopied ? "Context copied" : "Copy Context"
-                }
-                aria-keyshortcuts={copyTreeAriaShortcut}
-              >
-                {showCopyingSpinner ? <Spinner /> : treeCopied ? <Check /> : <Folders />}
-                {!treeCopied && !isCopyingTree && (
-                  <ShortcutRevealChip actionId="worktree.copyTree" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="font-medium">
-              {isCopyingTree ? (
-                "Copying…"
-              ) : treeCopied ? (
-                <span role="status" aria-live="polite">
-                  {copyFeedback}
-                </span>
-              ) : !activeWorktree ? (
-                "Open a worktree first"
-              ) : (
-                createTooltipContent("Copy Context", copyTreeShortcut)
-              )}
-            </TooltipContent>
-          </Tooltip>
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <Tooltip open={treeCopied || undefined}>
+                <TooltipTrigger asChild>
+                  <Button
+                    {...copyTreeHintHover}
+                    variant="ghost"
+                    size="icon"
+                    data-toolbar-item=""
+                    onClick={handleCopyTreeClick}
+                    aria-disabled={isCopyingTree || !activeWorktree || undefined}
+                    className={cn(
+                      "toolbar-icon-button relative",
+                      treeCopied
+                        ? "text-status-success bg-status-success/10"
+                        : "text-daintree-text",
+                      isCopyingTree && "cursor-wait opacity-70",
+                      "aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
+                    )}
+                    aria-label={
+                      isCopyingTree ? "Copying…" : treeCopied ? "Context copied" : "Copy Context"
+                    }
+                    aria-keyshortcuts={copyTreeAriaShortcut}
+                  >
+                    {showCopyingSpinner ? <Spinner /> : treeCopied ? <Check /> : <Folders />}
+                    {!treeCopied && !isCopyingTree && (
+                      <ShortcutRevealChip actionId="worktree.copyTree" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="font-medium">
+                  {isCopyingTree ? (
+                    "Copying…"
+                  ) : treeCopied ? (
+                    <span role="status" aria-live="polite">
+                      {copyFeedback}
+                    </span>
+                  ) : !activeWorktree ? (
+                    "Open a worktree first"
+                  ) : (
+                    createTooltipContent("Copy Context", copyTreeShortcut)
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            </ContextMenuTrigger>
+            <ContextMenuContent className="max-h-[var(--radix-context-menu-content-available-height)] overflow-y-auto">
+              <ContextMenuItem onSelect={() => toggleButtonVisibility("copy-tree", "right")}>
+                <Unplug className="mr-2 h-3.5 w-3.5" />
+                Unpin from Toolbar
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
         ),
         isAvailable: true,
       },
@@ -725,6 +766,7 @@ export function Toolbar({
       pluginConfigs,
       devServerShortcut,
       devServerHintHover,
+      toggleButtonVisibility,
     ]
   );
 

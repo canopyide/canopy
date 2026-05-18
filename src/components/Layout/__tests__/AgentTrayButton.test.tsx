@@ -188,6 +188,25 @@ vi.mock("@/lib/colorUtils", () => ({
   getBrandColorHex: (id: string) => `#brand-${id}`,
 }));
 
+vi.mock("@/components/ui/context-menu", () => ({
+  ContextMenu: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  ContextMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  ContextMenuContent: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="context-menu-content">{children}</div>
+  ),
+  ContextMenuItem: ({
+    children,
+    onSelect,
+  }: {
+    children: React.ReactNode;
+    onSelect?: (e: Event) => void;
+  }) => (
+    <div role="menuitem" onClick={(e) => onSelect?.(e as unknown as Event)}>
+      {children}
+    </div>
+  ),
+}));
+
 vi.mock("@/components/ui/dropdown-menu", () => ({
   DropdownMenu: ({
     children,
@@ -349,6 +368,7 @@ vi.mock("lucide-react", () => ({
   Settings2: () => <span data-testid="settings2-icon" />,
   ChevronRight: () => <span data-testid="chevron-right-icon" />,
   Keyboard: () => <span data-testid="keyboard-icon" />,
+  Unplug: () => <span data-testid="unplug-icon" />,
 }));
 
 import { AgentTrayButton } from "../AgentTrayButton";

@@ -1,11 +1,18 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { FixedDropdown } from "@/components/ui/fixed-dropdown";
-import { Bell, BellOff } from "lucide-react";
+import { Bell, BellOff, Unplug } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { NotificationCenter } from "@/components/Notifications/NotificationCenter";
 import { useNotificationHistoryStore } from "@/store/slices/notificationHistorySlice";
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
+import { useToolbarPreferencesStore } from "@/store/toolbarPreferencesStore";
 import { useUIStore } from "@/store/uiStore";
 import { useShallow } from "zustand/react/shallow";
 import { isScheduledQuietNow } from "@shared/utils/quietHours";
@@ -33,6 +40,7 @@ export function NotificationCenterToolbarButton({
   const notificationCenterButtonRef = useRef<HTMLButtonElement>(null);
   const notificationUnreadCount = useNotificationHistoryStore((s) => s.unreadCount);
   const evictedToInboxCount = useNotificationHistoryStore((s) => s.evictedToInboxCount);
+  const toggleButtonVisibility = useToolbarPreferencesStore((s) => s.toggleButtonVisibility);
   const {
     enabled: notificationsEnabled,
     quietUntil,
@@ -209,37 +217,47 @@ export function NotificationCenterToolbarButton({
 
   return (
     <div className="relative">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            ref={notificationCenterButtonRef}
-            variant="ghost"
-            size="icon"
-            data-toolbar-item={dataToolbarItem}
-            data-dnd-active={isDndActive ? "true" : undefined}
-            onClick={toggleNotificationCenter}
-            className={toolbarIconButtonClass}
-            aria-label={label}
-            aria-expanded={notificationCenterOpen}
-            aria-haspopup="dialog"
-          >
-            <span
-              data-testid="notification-bell-icon"
-              className={isBellBlipping ? "inline-flex animate-activity-blip" : "inline-flex"}
-              onAnimationEnd={handleBellAnimationEnd}
-            >
-              <Icon />
-            </span>
-            <span
-              data-testid="notification-unread-dot"
-              data-visible={notificationUnreadCount > 0}
-              data-dnd-active={isDndActive ? "true" : undefined}
-              className="toolbar-badge absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-daintree-text/50 ring-1 ring-daintree-bg/60"
-            />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">{label}</TooltipContent>
-      </Tooltip>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                ref={notificationCenterButtonRef}
+                variant="ghost"
+                size="icon"
+                data-toolbar-item={dataToolbarItem}
+                data-dnd-active={isDndActive ? "true" : undefined}
+                onClick={toggleNotificationCenter}
+                className={toolbarIconButtonClass}
+                aria-label={label}
+                aria-expanded={notificationCenterOpen}
+                aria-haspopup="dialog"
+              >
+                <span
+                  data-testid="notification-bell-icon"
+                  className={isBellBlipping ? "inline-flex animate-activity-blip" : "inline-flex"}
+                  onAnimationEnd={handleBellAnimationEnd}
+                >
+                  <Icon />
+                </span>
+                <span
+                  data-testid="notification-unread-dot"
+                  data-visible={notificationUnreadCount > 0}
+                  data-dnd-active={isDndActive ? "true" : undefined}
+                  className="toolbar-badge absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-daintree-text/50 ring-1 ring-daintree-bg/60"
+                />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{label}</TooltipContent>
+          </Tooltip>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="max-h-[var(--radix-context-menu-content-available-height)] overflow-y-auto">
+          <ContextMenuItem onSelect={() => toggleButtonVisibility("notification-center", "right")}>
+            <Unplug className="mr-2 h-3.5 w-3.5" />
+            Unpin from Toolbar
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
       <FixedDropdown
         open={notificationCenterOpen}
         onOpenChange={(open) => {

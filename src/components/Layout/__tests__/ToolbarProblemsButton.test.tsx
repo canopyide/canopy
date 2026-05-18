@@ -11,6 +11,25 @@ vi.mock("@/components/ui/tooltip", () => ({
   TooltipTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
+vi.mock("@/components/ui/context-menu", () => ({
+  ContextMenu: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  ContextMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  ContextMenuContent: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="context-menu-content">{children}</div>
+  ),
+  ContextMenuItem: ({
+    children,
+    onSelect,
+  }: {
+    children: React.ReactNode;
+    onSelect?: (e: Event) => void;
+  }) => (
+    <div role="menuitem" onClick={(e) => onSelect?.(e as unknown as Event)}>
+      {children}
+    </div>
+  ),
+}));
+
 vi.mock("@/components/ui/button", () => ({
   Button: ({
     children,
@@ -26,6 +45,7 @@ vi.mock("@/components/ui/ShortcutRevealChip", () => ({
 
 vi.mock("lucide-react", () => ({
   AlertCircle: () => <span data-testid="icon-alert" />,
+  Unplug: () => <span data-testid="icon-unplug" />,
 }));
 
 function getIconHostClassName(container: HTMLElement): string {
