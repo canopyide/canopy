@@ -1056,8 +1056,7 @@ export function DevPreviewPane({
       setCrashState("none");
       setCrashDetails(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- clear on URL change only
-  }, [currentUrl]);
+  }, [currentUrl, crashState]);
 
   // Listen for action-driven hard-reload events
   useEffect(() => {
