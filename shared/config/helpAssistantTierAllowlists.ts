@@ -112,7 +112,7 @@ export const SYSTEM_TIER_ADDONS: readonly string[] = [
   "git.snapshotRevert",
   "git.snapshotDelete",
 
-  "github.openIssue",
+  "forge.openIssue",
   "github.openPR",
 ];
 

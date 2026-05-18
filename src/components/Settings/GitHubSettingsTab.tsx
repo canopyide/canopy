@@ -121,7 +121,7 @@ export function GitHubSettingsTab() {
 
     try {
       const result = await actionService.dispatch<GitHubTokenValidation>(
-        "github.validateToken",
+        "forge.validateToken",
         { token: githubToken.trim() },
         { source: "user" }
       );

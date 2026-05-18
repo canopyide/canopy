@@ -218,7 +218,7 @@ const MCP_TOOL_ALLOWLIST: ReadonlySet<string> = new Set([
   "github.listIssues",
   "github.listPullRequests",
   "github.getIssueByNumber",
-  "github.openIssue",
+  "forge.openIssue",
   "github.openPR",
 
   "terminal.list",

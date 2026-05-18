@@ -1,9 +1,10 @@
 import type { ActionCallbacks, ActionRegistry } from "../actionTypes";
-import type { ActionContext } from "@shared/types/actions";
+import type { ActionContext, ActionId } from "@shared/types/actions";
 import { defineAction } from "../defineAction";
 import { z } from "zod";
 import { githubClient } from "@/clients";
 import { useProjectStore } from "@/store/projectStore";
+import { actionService } from "@/services/ActionService";
 
 const GitHubListOptionsSchema = z.object({
   cwd: z
@@ -18,12 +19,30 @@ const GitHubListOptionsSchema = z.object({
   cursor: z.string().optional().describe("Pagination cursor from previous response"),
 });
 
+// Forwards a deprecated alias to its forge.* counterpart and propagates failures
+// as thrown errors so callers using await def.run(...) see the same shape they
+// would from the primary. Used only by the one-release github.* aliases below.
+async function dispatchAlias<T = unknown>(targetId: ActionId, args: unknown): Promise<T> {
+  const result = await actionService.dispatch<T>(targetId, args);
+  if (!result.ok) throw new Error(result.error.message);
+  return result.result;
+}
+
 export function registerGithubActions(actions: ActionRegistry, _callbacks: ActionCallbacks): void {
-  actions.set("github.openIssues", () =>
+  // ---------------------------------------------------------------------------
+  // forge.* primaries — provider-routed action surface.
+  //
+  // With only the GitHub provider registered today, each forge.* calls the
+  // existing githubClient.* methods directly. When a second provider lands,
+  // the run() bodies switch to ForgeProviderRegistry routing without changing
+  // the public action shape.
+  // ---------------------------------------------------------------------------
+
+  actions.set("forge.openIssues", () =>
     defineAction({
-      id: "github.openIssues",
-      title: "Open GitHub Issues",
-      description: "Open the GitHub issues list for the current project",
+      id: "forge.openIssues",
+      title: "Open Issues",
+      description: "Open the forge issues list for the current project",
       category: "github",
       kind: "command",
       danger: "safe",
@@ -48,11 +67,11 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
     })
   );
 
-  actions.set("github.openPRs", () =>
+  actions.set("forge.openPRs", () =>
     defineAction({
-      id: "github.openPRs",
-      title: "Open GitHub Pull Requests",
-      description: "Open the GitHub pull requests list for the current project",
+      id: "forge.openPRs",
+      title: "Open Pull Requests",
+      description: "Open the forge pull requests list for the current project",
       category: "github",
       kind: "command",
       danger: "safe",
@@ -77,11 +96,11 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
     })
   );
 
-  actions.set("github.openCommits", () =>
+  actions.set("forge.openCommits", () =>
     defineAction({
-      id: "github.openCommits",
-      title: "Open GitHub Commits",
-      description: "Open the GitHub commits page for the current project",
+      id: "forge.openCommits",
+      title: "Open Commits",
+      description: "Open the forge commits page for the current project",
       category: "github",
       kind: "command",
       danger: "safe",
@@ -101,11 +120,11 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
     })
   );
 
-  actions.set("github.openIssue", () =>
+  actions.set("forge.openIssue", () =>
     defineAction({
-      id: "github.openIssue",
-      title: "Open GitHub Issue",
-      description: "Open a GitHub issue in the system browser",
+      id: "forge.openIssue",
+      title: "Open Issue",
+      description: "Open a forge issue in the system browser",
       category: "github",
       kind: "command",
       danger: "safe",
@@ -124,6 +143,153 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
       },
     })
   );
+
+  actions.set("forge.assignIssue", () =>
+    defineAction({
+      id: "forge.assignIssue",
+      title: "Assign Issue",
+      description: "Assign a forge issue to a user via the active provider",
+      category: "github",
+      kind: "command",
+      danger: "safe",
+      scope: "renderer",
+      argsSchema: z.object({
+        cwd: z
+          .string()
+          .optional()
+          .describe("Working directory of the git repo. Defaults to the active worktree path."),
+        issueNumber: z.number().int().positive(),
+        username: z.string().min(1).describe("Account to assign the issue to"),
+      }),
+      run: async ({ cwd, issueNumber, username }, ctx: ActionContext) => {
+        const resolvedCwd = cwd ?? ctx.activeWorktreePath;
+        if (!resolvedCwd) throw new Error("No active worktree");
+        await githubClient.assignIssue(resolvedCwd, issueNumber, username);
+      },
+    })
+  );
+
+  actions.set("forge.validateToken", () =>
+    defineAction({
+      id: "forge.validateToken",
+      title: "Validate Forge Token",
+      description: "Validate a forge access token without saving it",
+      category: "github",
+      kind: "query",
+      danger: "safe",
+      scope: "renderer",
+      argsSchema: z.object({ token: z.string() }),
+      run: async ({ token }) => {
+        return await githubClient.validateToken(token);
+      },
+    })
+  );
+
+  // ---------------------------------------------------------------------------
+  // github.* one-release aliases — forward to forge.* counterparts.
+  //
+  // Registered here in host code rather than via the GitHub built-in plugin
+  // because PluginService.registerPluginAction enforces `id.startsWith(pluginId + ".")`
+  // — plugin daintree.github cannot contribute bare `github.*` IDs without
+  // significant plugin-system surface changes. Aliases retire in the next
+  // release alongside the github.* IDs in BUILT_IN_ACTION_IDS.
+  // ---------------------------------------------------------------------------
+
+  actions.set("github.openIssues", () =>
+    defineAction({
+      id: "github.openIssues",
+      title: "Open GitHub Issues",
+      description: "Alias of forge.openIssues. Removed in the next release.",
+      category: "github",
+      kind: "command",
+      danger: "safe",
+      scope: "renderer",
+      run: async (args) => {
+        await dispatchAlias("forge.openIssues", args);
+      },
+    })
+  );
+
+  actions.set("github.openPRs", () =>
+    defineAction({
+      id: "github.openPRs",
+      title: "Open GitHub Pull Requests",
+      description: "Alias of forge.openPRs. Removed in the next release.",
+      category: "github",
+      kind: "command",
+      danger: "safe",
+      scope: "renderer",
+      run: async (args) => {
+        await dispatchAlias("forge.openPRs", args);
+      },
+    })
+  );
+
+  actions.set("github.openCommits", () =>
+    defineAction({
+      id: "github.openCommits",
+      title: "Open GitHub Commits",
+      description: "Alias of forge.openCommits. Removed in the next release.",
+      category: "github",
+      kind: "command",
+      danger: "safe",
+      scope: "renderer",
+      run: async (args) => {
+        await dispatchAlias("forge.openCommits", args);
+      },
+    })
+  );
+
+  actions.set("github.openIssue", () =>
+    defineAction({
+      id: "github.openIssue",
+      title: "Open GitHub Issue",
+      description: "Alias of forge.openIssue. Removed in the next release.",
+      category: "github",
+      kind: "command",
+      danger: "safe",
+      scope: "renderer",
+      run: async (args) => {
+        await dispatchAlias("forge.openIssue", args);
+      },
+    })
+  );
+
+  actions.set("github.assignIssue", () =>
+    defineAction({
+      id: "github.assignIssue",
+      title: "Assign GitHub Issue",
+      description: "Alias of forge.assignIssue. Removed in the next release.",
+      category: "github",
+      kind: "command",
+      danger: "safe",
+      scope: "renderer",
+      run: async (args) => {
+        await dispatchAlias("forge.assignIssue", args);
+      },
+    })
+  );
+
+  actions.set("github.validateToken", () =>
+    defineAction({
+      id: "github.validateToken",
+      title: "Validate GitHub Token",
+      description: "Alias of forge.validateToken. Removed in the next release.",
+      category: "github",
+      kind: "query",
+      danger: "safe",
+      scope: "renderer",
+      run: async (args) => {
+        return await dispatchAlias("forge.validateToken", args);
+      },
+    })
+  );
+
+  // ---------------------------------------------------------------------------
+  // github.* host actions that are NOT migrating to forge.* in this stage.
+  // These stay on the host since they are GitHub-specific (CLI checks, token
+  // storage, paginated listings) rather than provider-abstract operations.
+  // ---------------------------------------------------------------------------
 
   actions.set("github.openPR", () =>
     defineAction({
@@ -286,20 +452,4 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
       await githubClient.clearToken();
     },
   }));
-
-  actions.set("github.validateToken", () =>
-    defineAction({
-      id: "github.validateToken",
-      title: "Validate GitHub Token",
-      description: "Validate a GitHub token without saving it",
-      category: "github",
-      kind: "query",
-      danger: "safe",
-      scope: "renderer",
-      argsSchema: z.object({ token: z.string() }),
-      run: async ({ token }) => {
-        return await githubClient.validateToken(token);
-      },
-    })
-  );
 }
