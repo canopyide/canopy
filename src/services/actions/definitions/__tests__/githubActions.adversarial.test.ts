@@ -218,14 +218,17 @@ describe("github.* one-release aliases", () => {
   });
 });
 
-describe("github.* aliases must not be reachable from agent surfaces", () => {
+describe("github.* aliases must not be reachable from help assistant surfaces", () => {
   // dispatchAlias() in githubActions.ts intentionally does not preserve the
   // caller source — the inner dispatch defaults to source="user". That is safe
   // only because no agent-exposing allowlist contains a deprecated alias id.
-  // If a future edit adds one of the aliases below to MCP or the help
-  // assistant, an agent call could launder source="user" through the alias and
-  // populate ActionService.lastAction with the forge.* primary as if the user
-  // had invoked it. This guard pins that exclusion.
+  // If a future edit adds one of the aliases below to a help assistant tier,
+  // an agent call could launder source="user" through the alias and populate
+  // ActionService.lastAction with the forge.* primary as if the user had
+  // invoked it. The MCP-side counterpart lives at
+  // electron/services/mcp-server/__tests__/forgeAliasGuard.test.ts (kept on
+  // the electron side so the renderer typecheck graph doesn't pull in
+  // electron sources, which use looser tsconfig flags).
   const aliasIds = [
     "github.openIssues",
     "github.openPRs",
@@ -234,15 +237,6 @@ describe("github.* aliases must not be reachable from agent surfaces", () => {
     "github.assignIssue",
     "github.validateToken",
   ] as const;
-
-  it("none of the migrated github.* aliases appear in MCP TIER_ALLOWLISTS", async () => {
-    const { TIER_ALLOWLISTS } = await import("../../../../../electron/services/mcp-server/shared");
-    for (const tier of Object.values(TIER_ALLOWLISTS)) {
-      for (const aliasId of aliasIds) {
-        expect(tier.has(aliasId)).toBe(false);
-      }
-    }
-  });
 
   it("none of the migrated github.* aliases appear in help assistant tier tools/addons", async () => {
     const { WORKBENCH_TIER_TOOLS, ACTION_TIER_ADDONS, SYSTEM_TIER_ADDONS } =
