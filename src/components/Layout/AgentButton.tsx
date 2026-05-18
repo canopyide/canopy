@@ -153,6 +153,7 @@ export function AgentButton({
   const displayCombo = useKeybindingDisplay(`agent.${type}`);
   const ariaShortcut = useAriaKeyshortcuts(`agent.${type}`);
   const agentSettings = useAgentSettingsStore((s) => s.settings);
+  const setAgentPinned = useAgentSettingsStore((s) => s.setAgentPinned);
   const ccrPresets = useCcrPresetsStore((s) => s.ccrPresetsByAgent[type]);
   const projectPresets = useProjectPresetsStore((s) => s.presetsByAgent[type]);
 
@@ -319,7 +320,7 @@ export function AgentButton({
   };
 
   const handleUnpinFromToolbar = () => {
-    void useAgentSettingsStore.getState().setAgentPinned(type, false);
+    void setAgentPinned(type, false);
   };
 
   // Persist the toolbar pick to the worktree-scoped slot so repeated launches
