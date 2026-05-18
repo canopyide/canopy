@@ -193,6 +193,10 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
   // — plugin daintree.github cannot contribute bare `github.*` IDs without
   // significant plugin-system surface changes. Aliases retire in the next
   // release alongside the github.* IDs in BUILT_IN_ACTION_IDS.
+  //
+  // nonRepeatable: true — keeps deprecated alias IDs out of ActionService.lastAction
+  // so action.repeatLast and similar replays the underlying forge.* primary, not
+  // the alias ID that's scheduled for removal.
   // ---------------------------------------------------------------------------
 
   actions.set("github.openIssues", () =>
@@ -204,6 +208,7 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
       kind: "command",
       danger: "safe",
       scope: "renderer",
+      nonRepeatable: true,
       run: async (args) => {
         await dispatchAlias("forge.openIssues", args);
       },
@@ -219,6 +224,7 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
       kind: "command",
       danger: "safe",
       scope: "renderer",
+      nonRepeatable: true,
       run: async (args) => {
         await dispatchAlias("forge.openPRs", args);
       },
@@ -234,6 +240,7 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
       kind: "command",
       danger: "safe",
       scope: "renderer",
+      nonRepeatable: true,
       run: async (args) => {
         await dispatchAlias("forge.openCommits", args);
       },
@@ -249,6 +256,7 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
       kind: "command",
       danger: "safe",
       scope: "renderer",
+      nonRepeatable: true,
       run: async (args) => {
         await dispatchAlias("forge.openIssue", args);
       },
@@ -264,6 +272,7 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
       kind: "command",
       danger: "safe",
       scope: "renderer",
+      nonRepeatable: true,
       run: async (args) => {
         await dispatchAlias("forge.assignIssue", args);
       },
@@ -279,6 +288,7 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
       kind: "query",
       danger: "safe",
       scope: "renderer",
+      nonRepeatable: true,
       run: async (args) => {
         return await dispatchAlias("forge.validateToken", args);
       },

@@ -188,10 +188,17 @@ describe("github.* one-release aliases", () => {
     expect(result).toEqual(validation);
   });
 
-  it("aliases stay danger:safe so they remain eligible for action.repeatLast", () => {
+  it("aliases stay danger:safe (so dispatch is not gated on confirmation)", () => {
     for (const [aliasId] of aliasPairs) {
       const def = setupActions()(aliasId);
       expect(def.danger).toBe("safe");
+    }
+  });
+
+  it("aliases set nonRepeatable so action.repeatLast captures the forge.* primary, not the deprecated github.* id", () => {
+    for (const [aliasId] of aliasPairs) {
+      const def = setupActions()(aliasId);
+      expect(def.nonRepeatable).toBe(true);
     }
   });
 });
