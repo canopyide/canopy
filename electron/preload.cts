@@ -1850,6 +1850,8 @@ const api: ElectronAPI = {
     ): (() => void) => _typedOn(CHANNELS.WEBVIEW_CONSOLE_CONTEXT_CLEARED, callback),
     reloadIgnoringCache: (webContentsId: number, panelId: string): Promise<void> =>
       _unwrappingInvoke(CHANNELS.WEBVIEW_RELOAD_IGNORING_CACHE, webContentsId, panelId),
+    getScrollPosition: (webContentsId: number): Promise<number> =>
+      _unwrappingInvoke(CHANNELS.WEBVIEW_GET_SCROLL_POSITION, webContentsId),
   },
 
   // Hibernation API

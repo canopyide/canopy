@@ -1770,6 +1770,10 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
     args: [webContentsId: number, panelId: string];
     result: void;
   };
+  "webview:get-scroll-position": {
+    args: [webContentsId: number];
+    result: number;
+  };
 
   // Demo mode channels (dev-only, gated by --demo-mode flag)
   // Agent session history channels
