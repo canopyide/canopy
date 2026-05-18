@@ -219,7 +219,24 @@ describe("Toolbar layout — issue #2584 project switcher collision", () => {
     });
 
     it("uses scoped transition-[width] motion, not transition-all", () => {
-      expect(source).toMatch(/transition-\[width\]\s+duration-150/);
+      expect(source).toContain("transition-[width]");
+      expect(source).not.toContain("transition-all");
+    });
+
+    it("uses Tier 3 panel timing (200ms restore / 120ms collapse), not Tier 1", () => {
+      expect(source).toMatch(
+        /transition-\[width\]\s+duration-200\s+data-\[fullscreen=true\]:duration-\[120ms\]/
+      );
+      expect(source).not.toContain("duration-150");
+    });
+
+    it("drives the asymmetric collapse duration via a data-fullscreen attribute", () => {
+      expect(source).toMatch(/data-fullscreen=\{isFullscreen \? "true" : undefined\}/);
+    });
+
+    it("applies the Tier 3 timing to both the macOS and Windows spacers", () => {
+      const tier3 = /duration-200 data-\[fullscreen=true\]:duration-\[120ms\]/g;
+      expect((source.match(tier3) ?? []).length).toBeGreaterThanOrEqual(2);
     });
 
     it("spacer is decorative (aria-hidden) and not focusable as a toolbar item", () => {

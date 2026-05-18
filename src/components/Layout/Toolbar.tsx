@@ -975,8 +975,9 @@ export function Toolbar({
         >
           {isMac() && (
             <div
+              data-fullscreen={isFullscreen ? "true" : undefined}
               className={cn(
-                "shrink-0 transition-[width] duration-150",
+                "shrink-0 transition-[width] duration-200 data-[fullscreen=true]:duration-[120ms]",
                 isFullscreen ? "w-0" : "w-16"
               )}
             />
@@ -1103,7 +1104,11 @@ export function Toolbar({
           {isWindows() && (
             <div
               aria-hidden="true"
-              className={cn("shrink-0 transition-[width] duration-150", isFullscreen && "w-0")}
+              data-fullscreen={isFullscreen ? "true" : undefined}
+              className={cn(
+                "shrink-0 transition-[width] duration-200 data-[fullscreen=true]:duration-[120ms]",
+                isFullscreen && "w-0"
+              )}
               style={isFullscreen ? undefined : { width: "var(--win-caption-width, 138px)" }}
             />
           )}
