@@ -1265,15 +1265,12 @@ export function Toolbar({
                   <ContextMenuItem onSelect={handleOpenProjectSettings}>
                     Project settings
                   </ContextMenuItem>
-                  {activeSearchableProject &&
-                    activeSearchableProject.processCount > 0 && (
-                      <ContextMenuItem
-                        onSelect={() => handleStopProject(currentProject.id)}
-                      >
-                        <Square className="mr-2 h-3.5 w-3.5" />
-                        Stop all agents
-                      </ContextMenuItem>
-                    )}
+                  {activeSearchableProject && activeSearchableProject.processCount > 0 && (
+                    <ContextMenuItem onSelect={() => handleStopProject(currentProject.id)}>
+                      <Square className="mr-2 h-3.5 w-3.5" />
+                      Stop all agents
+                    </ContextMenuItem>
+                  )}
                   <ContextMenuItem
                     onSelect={() => handleCloseProject(currentProject.id)}
                     className="text-status-error focus:text-status-error"

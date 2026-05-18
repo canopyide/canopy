@@ -502,10 +502,7 @@ describe("useProjectSwitcherPalette", () => {
     }
 
     it("exposes the active project as a SearchableProject with enriched stats + pin state", async () => {
-      const projects = [
-        { ...makeProject(1), pinned: true },
-        makeProject(2),
-      ];
+      const projects = [{ ...makeProject(1), pinned: true }, makeProject(2)];
       projectState.projects = projects;
       projectState.currentProject = { id: "project-1" };
       projectStatsState.stats = {
