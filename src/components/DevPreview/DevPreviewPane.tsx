@@ -44,7 +44,6 @@ import { findDevServerCandidate } from "@/utils/devServerDetection";
 import { useProjectSettings } from "@/hooks/useProjectSettings";
 import { projectClient } from "@/clients";
 import { actionService } from "@/services/ActionService";
-import type { ActionId } from "@shared/types/actions";
 import { useWebviewThrottle } from "@/hooks/useWebviewThrottle";
 import { useHasBeenVisible } from "@/hooks/useHasBeenVisible";
 import { useWebviewEviction } from "@/hooks/useWebviewEviction";
@@ -774,9 +773,15 @@ export function DevPreviewPane({
     if (!tier || !currentProjectId) return;
 
     confirmRestartInFlightRef.current = true;
-    resetPreviewWebviewState();
 
-    const done = () => {
+    const onSuccess = () => {
+      resetPreviewWebviewState();
+      confirmRestartInFlightRef.current = false;
+      setPendingRestartTier(null);
+    };
+
+    const onError = (err: unknown) => {
+      console.warn("[DevPreviewPane] Restart confirm failed", err);
       confirmRestartInFlightRef.current = false;
       setPendingRestartTier(null);
     };
@@ -784,25 +789,21 @@ export function DevPreviewPane({
     if (tier === "restartAndClearCache") {
       window.electron.devPreview
         .restartAndClearCache({ panelId: id, projectId: currentProjectId })
-        .then(done, done);
+        .then(onSuccess, onError);
     } else {
       window.electron.devPreview
         .reinstallAndRestart({ panelId: id, projectId: currentProjectId })
-        .then(done, done);
+        .then(onSuccess, onError);
     }
   }, [pendingRestartTier, currentProjectId, id, resetPreviewWebviewState]);
 
-  const handleStuckRemedy = useCallback(
-    (actionId: string) => {
-      if (!currentProjectId) return;
-      void actionService.dispatch(
-        actionId as ActionId,
-        { panelId: id, projectId: currentProjectId },
-        { source: "user" }
-      );
-    },
-    [currentProjectId, id]
-  );
+  const handleStuckRemedy = useCallback((actionId: string) => {
+    if (actionId === "devPreview.restartAndClearCache") {
+      setPendingRestartTier("restartAndClearCache");
+    } else if (actionId === "devPreview.reinstallAndRestart") {
+      setPendingRestartTier("reinstallAndRestart");
+    }
+  }, []);
 
   const handleAutoDetect = useCallback(async () => {
     if (!currentProjectId || isAutoDetecting) return;
