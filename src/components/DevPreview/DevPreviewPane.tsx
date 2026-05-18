@@ -456,6 +456,8 @@ export function DevPreviewPane({
   const handleHardReload = useCallback(() => {
     const webview = webviewRef.current;
     if (!webview || !isWebviewReady) return;
+    setWebviewLoadError(null);
+    setIsSlowLoad(false);
     try {
       const wcId = (webview as unknown as { getWebContentsId(): number }).getWebContentsId();
       safeFireAndForget(window.electron.webview.reloadIgnoringCache(wcId, id), {
@@ -464,7 +466,7 @@ export function DevPreviewPane({
     } catch {
       webview.reload();
     }
-  }, [isWebviewReady, id]);
+  }, [isWebviewReady, id, setWebviewLoadError, setIsSlowLoad]);
 
   const handleCaptureScreenshot = useCallback(async () => {
     const webview = webviewRef.current;
@@ -508,9 +510,10 @@ export function DevPreviewPane({
   }, [currentUrl]);
 
   const handleZoomChange = useCallback((newZoom: number) => {
-    setZoomFactor(newZoom);
+    const clamped = Math.max(0.25, Math.min(2.0, newZoom));
+    setZoomFactor(clamped);
     if (webviewRef.current) {
-      webviewRef.current.setZoomFactor(newZoom);
+      webviewRef.current.setZoomFactor(clamped);
     }
   }, []);
 
@@ -820,7 +823,7 @@ export function DevPreviewPane({
                     className="gap-1.5 px-2.5 py-1.5 group text-daintree-text/50 hover:text-daintree-text/70"
                   >
                     <ExternalLink className="h-3.5 w-3.5" />
-                    <span className="text-xs">Open External</span>
+                    <span className="text-xs">Open external</span>
                   </Button>
                 )}
               </div>
@@ -959,7 +962,7 @@ export function DevPreviewPane({
                             className="gap-1.5 px-2.5 py-1.5 group text-daintree-text/50 hover:text-daintree-text/70"
                           >
                             <ExternalLink className="h-3.5 w-3.5" />
-                            <span className="text-xs">Open External</span>
+                            <span className="text-xs">Open external</span>
                           </Button>
                         )}
                       </div>
