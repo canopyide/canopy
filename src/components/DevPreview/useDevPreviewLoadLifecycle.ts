@@ -2,9 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { usePanelStore } from "@/store";
 import { useUrlHistoryStore } from "@/store/urlHistoryStore";
 import type { BrowserHistory } from "@shared/types/browser";
-import type { ViewportPresetId } from "@shared/types/panel";
-import { getViewportPreset } from "@/panels/dev-preview/viewportPresets";
-import { getDevPreviewWebContents, buildEmulationParams } from "./viewportEmulation";
+import { getDevPreviewWebContents } from "./viewportEmulation";
 import { pushBrowserHistory } from "../Browser/historyUtils";
 import { loadWebviewUrl } from "./loadWebviewUrl";
 import type { BlockedNavAction } from "./BlockedNavBanner";
@@ -38,9 +36,6 @@ interface UseDevPreviewLoadLifecycleParams {
   projectId?: string;
   loadTimeoutMs: number;
   zoomFactor: number;
-  viewportPreset: ViewportPresetId | undefined;
-  viewportRotated: boolean;
-  viewportDpr: number;
   evictingRef: React.RefObject<boolean>;
   lastSetUrlRef: React.MutableRefObject<string>;
   originalUaRef: React.MutableRefObject<string | null>;
@@ -68,9 +63,6 @@ export function useDevPreviewLoadLifecycle({
   projectId,
   loadTimeoutMs,
   zoomFactor,
-  viewportPreset,
-  viewportRotated,
-  viewportDpr,
   evictingRef,
   lastSetUrlRef,
   originalUaRef,
@@ -465,16 +457,8 @@ export function useDevPreviewLoadLifecycle({
       webview.setZoomFactor(zoomFactor);
       try {
         const wc = getDevPreviewWebContents(webview);
-        if (wc) {
-          if (originalUaRef.current === null) {
-            originalUaRef.current = wc.getUserAgent();
-          }
-          if (viewportPreset) {
-            wc.setUserAgent(getViewportPreset(viewportPreset).userAgent);
-            wc.enableDeviceEmulation(
-              buildEmulationParams(viewportPreset, viewportRotated, viewportDpr)!
-            );
-          }
+        if (wc && originalUaRef.current === null) {
+          originalUaRef.current = wc.getUserAgent();
         }
       } catch {
         // WebContents not available yet
@@ -512,16 +496,8 @@ export function useDevPreviewLoadLifecycle({
         webview.setZoomFactor(zoomFactor);
         try {
           const wc = getDevPreviewWebContents(webview);
-          if (wc) {
-            if (originalUaRef.current === null) {
-              originalUaRef.current = wc.getUserAgent();
-            }
-            if (viewportPreset) {
-              wc.setUserAgent(getViewportPreset(viewportPreset).userAgent);
-              wc.enableDeviceEmulation(
-                buildEmulationParams(viewportPreset, viewportRotated, viewportDpr)!
-              );
-            }
+          if (wc && originalUaRef.current === null) {
+            originalUaRef.current = wc.getUserAgent();
           }
         } catch {
           // WebContents not available
@@ -548,7 +524,7 @@ export function useDevPreviewLoadLifecycle({
     return () => {
       webview.removeEventListener("dom-ready", handleDomReady);
     };
-  }, [id, zoomFactor, webviewElement, viewportPreset, viewportRotated, viewportDpr, originalUaRef]);
+  }, [id, zoomFactor, webviewElement, originalUaRef]);
 
   useEffect(() => {
     return () => {

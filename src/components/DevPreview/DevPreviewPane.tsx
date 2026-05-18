@@ -397,9 +397,6 @@ export function DevPreviewPane({
     projectId: currentProjectId,
     loadTimeoutMs,
     zoomFactor,
-    viewportPreset,
-    viewportRotated,
-    viewportDpr,
     evictingRef,
     lastSetUrlRef,
     originalUaRef,
@@ -950,14 +947,12 @@ export function DevPreviewPane({
     const emulationKey = `${viewportPreset ?? "none"}-${viewportRotated}-${viewportDpr}`;
     if (prevEmulationKeyRef.current === emulationKey) return;
     const hadPrevious = hasAppliedEmulationRef.current;
-    prevEmulationKeyRef.current = emulationKey;
 
     const wc = getDevPreviewWebContents(webviewElement);
     if (!wc) return;
 
     try {
       if (viewportPreset) {
-        hasAppliedEmulationRef.current = true;
         if (originalUaRef.current === null) {
           originalUaRef.current = wc.getUserAgent();
         }
@@ -965,6 +960,8 @@ export function DevPreviewPane({
         wc.enableDeviceEmulation(
           buildEmulationParams(viewportPreset, viewportRotated, viewportDpr)!
         );
+        prevEmulationKeyRef.current = emulationKey;
+        hasAppliedEmulationRef.current = true;
       } else if (hadPrevious) {
         try {
           wc.disableDeviceEmulation();
@@ -974,6 +971,7 @@ export function DevPreviewPane({
         if (originalUaRef.current) {
           wc.setUserAgent(originalUaRef.current);
         }
+        prevEmulationKeyRef.current = emulationKey;
         hasAppliedEmulationRef.current = false;
       }
     } catch {
