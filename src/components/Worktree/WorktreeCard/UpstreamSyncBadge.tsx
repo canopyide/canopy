@@ -83,10 +83,12 @@ export function UpstreamSyncBadge({
           className={cn(
             "flex items-center text-[10px] font-mono tabular-nums",
             containerGapClass,
-            isFetchInFlight && showPulse && "animate-pulse-immediate"
+            isFetchInFlight && showPulse && "animate-pulse-immediate",
+            fetchNetworkFailed && "opacity-75"
           )}
           data-testid="upstream-sync-indicator"
           data-fetch-in-flight={isFetchInFlight ? "true" : undefined}
+          data-fetch-network-failed={fetchNetworkFailed ? "true" : undefined}
         >
           {hasAhead && <span className="text-status-success">↑{aheadCount}</span>}
           {hasBehind && <span className="text-status-warning">↓{behindCount}</span>}
