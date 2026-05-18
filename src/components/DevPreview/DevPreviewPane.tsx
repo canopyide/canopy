@@ -44,7 +44,11 @@ import { WebviewDialog } from "../Browser/WebviewDialog";
 import { FindBar } from "../Browser/FindBar";
 import { useFindInPage } from "@/hooks/useFindInPage";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
-import { getViewportPreset } from "@/panels/dev-preview/viewportPresets";
+import {
+  getViewportPreset,
+  getEffectiveViewportSize,
+  computeFitScale,
+} from "@/panels/dev-preview/viewportPresets";
 import type { ViewportPresetId } from "@shared/types/panel";
 import { logError } from "@/utils/logger";
 import { loadWebviewUrl } from "./loadWebviewUrl";
@@ -297,6 +301,9 @@ export function DevPreviewPane({
   const setBrowserZoom = usePanelStore((state) => state.setBrowserZoom);
   const setDevPreviewConsoleOpen = usePanelStore((state) => state.setDevPreviewConsoleOpen);
   const setViewportPreset = usePanelStore((state) => state.setViewportPreset);
+  const setViewportRotated = usePanelStore((state) => state.setViewportRotated);
+  const setViewportDpr = usePanelStore((state) => state.setViewportDpr);
+  const setViewportFit = usePanelStore((state) => state.setViewportFit);
   const setDevPreviewScrollPosition = usePanelStore((state) => state.setDevPreviewScrollPosition);
   const currentProjectId = useProjectStore((state) => state.currentProject?.id);
   const projectSettings = useProjectSettingsStore((state) => state.settings);
@@ -307,6 +314,12 @@ export function DevPreviewPane({
   const devCommand =
     terminal?.devCommand?.trim() || projectSettings?.devServerCommand?.trim() || "";
   const viewportPreset = terminal?.viewportPreset;
+  const viewportRotated = terminal?.viewportRotated ?? false;
+  const viewportDpr = terminal?.viewportDpr ?? 1;
+  const viewportFit = terminal?.viewportFit ?? false;
+  const effectiveViewport = viewportPreset
+    ? getEffectiveViewportSize(viewportPreset, viewportRotated)
+    : null;
 
   const { status, url, terminalId, error, start, restart, isRestarting, stuckTier } = useDevServer({
     panelId: id,
@@ -763,6 +776,55 @@ export function DevPreviewPane({
     [id, setViewportPreset]
   );
 
+  const handleViewportRotateToggle = useCallback(() => {
+    setViewportRotated(id, !viewportRotated);
+  }, [id, setViewportRotated, viewportRotated]);
+
+  const handleViewportDprChange = useCallback(
+    (dpr: 1 | 2 | 3) => {
+      setViewportDpr(id, dpr);
+      // TODO(#8278): once the enableDeviceEmulation IPC bridge lands, apply the
+      // deviceScaleFactor to the live webview here. Until then this only
+      // persists the preference so the toolbar shape is stable when #8278 ships.
+    },
+    [id, setViewportDpr]
+  );
+
+  const handleViewportFitToggle = useCallback(() => {
+    setViewportFit(id, !viewportFit);
+  }, [id, setViewportFit, viewportFit]);
+
+  // Measure the available preview area so zoom-to-fit can scale the device
+  // frame down to fit both pane dimensions. A static scale would break on
+  // pane resize, so this tracks the container via ResizeObserver.
+  const fitContainerRef = useRef<HTMLDivElement>(null);
+  const [fitContainerSize, setFitContainerSize] = useState<{ w: number; h: number }>({
+    w: 0,
+    h: 0,
+  });
+  useEffect(() => {
+    if (!viewportFit || !viewportPreset) return;
+    const el = fitContainerRef.current;
+    if (!el) return;
+    const measure = () => {
+      setFitContainerSize({ w: el.clientWidth, h: el.clientHeight });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [viewportFit, viewportPreset]);
+
+  const fitScale =
+    viewportFit && effectiveViewport
+      ? computeFitScale(
+          fitContainerSize.w,
+          fitContainerSize.h,
+          effectiveViewport.width,
+          effectiveViewport.height
+        )
+      : 1;
+
   useEffect(() => {
     if (isWebviewReady && currentUrl && currentUrl !== lastSetUrlRef.current) {
       lastSetUrlRef.current = currentUrl;
@@ -937,6 +999,9 @@ export function DevPreviewPane({
           isWebviewReady={isWebviewReady}
           isConsoleOpen={isConsoleOpen}
           viewportPreset={viewportPreset}
+          viewportRotated={viewportRotated}
+          viewportDpr={viewportDpr}
+          viewportFit={viewportFit}
           onNavigate={handleNavigate}
           onBack={handleBack}
           onForward={handleForward}
@@ -948,6 +1013,9 @@ export function DevPreviewPane({
           onToggleDevTools={handleToggleDevTools}
           onToggleConsole={handleToggleConsole}
           onViewportPresetChange={handleViewportPresetChange}
+          onViewportRotateToggle={handleViewportRotateToggle}
+          onViewportDprChange={handleViewportDprChange}
+          onViewportFitToggle={handleViewportFitToggle}
         />
 
         {stuckTier >= 2 && (
@@ -960,11 +1028,17 @@ export function DevPreviewPane({
           />
         )}
 
-        <div className="relative flex-1 min-h-0 bg-surface-canvas overflow-auto">
-          {viewportPreset && (
+        <div
+          className={cn(
+            "relative flex-1 min-h-0 bg-surface-canvas",
+            viewportPreset && viewportFit ? "overflow-hidden" : "overflow-auto"
+          )}
+        >
+          {viewportPreset && effectiveViewport && (
             <div className="absolute top-1 left-1/2 -translate-x-1/2 z-10 px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface/90 text-daintree-text/60 border border-overlay/50">
-              {getViewportPreset(viewportPreset).label} · {getViewportPreset(viewportPreset).width}×
-              {getViewportPreset(viewportPreset).height}
+              {getViewportPreset(viewportPreset).label} · {effectiveViewport.width}×
+              {effectiveViewport.height}
+              {viewportFit && fitScale < 1 && ` · ${Math.round(fitScale * 100)}%`}
             </div>
           )}
           {isRestarting || status === "starting" || status === "installing" ? (
@@ -1078,7 +1152,16 @@ export function DevPreviewPane({
               </p>
             </div>
           ) : (
-            <div className={cn("h-full", viewportPreset && "flex items-start justify-center pt-5")}>
+            <div
+              ref={fitContainerRef}
+              className={cn(
+                "h-full",
+                viewportPreset &&
+                  (viewportFit
+                    ? "flex items-center justify-center"
+                    : "flex items-start justify-center pt-5")
+              )}
+            >
               <div
                 className={cn(
                   "relative",
@@ -1087,116 +1170,138 @@ export function DevPreviewPane({
                     : "h-full"
                 )}
                 style={
-                  viewportPreset
-                    ? {
-                        maxWidth: getViewportPreset(viewportPreset).width,
-                        width: "100%",
-                        aspectRatio: `${getViewportPreset(viewportPreset).width} / ${getViewportPreset(viewportPreset).height}`,
-                      }
+                  viewportPreset && effectiveViewport
+                    ? viewportFit
+                      ? {
+                          width: effectiveViewport.width * fitScale,
+                          height: effectiveViewport.height * fitScale,
+                        }
+                      : {
+                          maxWidth: effectiveViewport.width,
+                          width: "100%",
+                          aspectRatio: `${effectiveViewport.width} / ${effectiveViewport.height}`,
+                        }
                     : undefined
                 }
               >
-                <>
-                  {webviewLoadError && (
-                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-daintree-bg text-daintree-text p-6">
-                      <AlertTriangle className="w-6 h-6 text-status-warning mb-3" />
-                      <h3 className="text-sm font-medium text-daintree-text/70 mb-1">
-                        {webviewLoadError.startsWith("Load timed out") ||
-                        webviewLoadError.startsWith("Connection to")
-                          ? "Page Load Timed Out"
-                          : webviewLoadError.startsWith("Load cancelled")
-                            ? "Load Cancelled"
-                            : "Dev Server Unreachable"}
-                      </h3>
-                      <p className="text-xs text-daintree-text/50 text-center mb-3 max-w-md">
-                        {webviewLoadError}
-                      </p>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          onClick={
-                            webviewLoadError.startsWith("Load cancelled") ||
-                            webviewLoadError.startsWith("Load timed out") ||
-                            webviewLoadError.startsWith("Connection to")
-                              ? handleRetryWebviewLoad
-                              : handleHardRestart
-                          }
-                          variant="ghost"
-                          size="sm"
-                          className="gap-1.5 px-2.5 py-1.5 group"
-                        >
-                          <RotateCw className="h-3.5 w-3.5" />
-                          <span className="text-xs">
-                            {webviewLoadError.startsWith("Load cancelled") ||
-                            webviewLoadError.startsWith("Load timed out") ||
-                            webviewLoadError.startsWith("Connection to")
-                              ? "Retry"
-                              : "Hard Restart"}
-                          </span>
-                        </Button>
-                        {currentUrl && (
+                <div
+                  className={
+                    viewportPreset && viewportFit
+                      ? "absolute top-0 left-0 origin-top-left"
+                      : "w-full h-full"
+                  }
+                  style={
+                    viewportPreset && viewportFit && effectiveViewport
+                      ? {
+                          width: effectiveViewport.width,
+                          height: effectiveViewport.height,
+                          transform: `scale(${fitScale})`,
+                        }
+                      : undefined
+                  }
+                >
+                  <>
+                    {webviewLoadError && (
+                      <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-daintree-bg text-daintree-text p-6">
+                        <AlertTriangle className="w-6 h-6 text-status-warning mb-3" />
+                        <h3 className="text-sm font-medium text-daintree-text/70 mb-1">
+                          {webviewLoadError.startsWith("Load timed out") ||
+                          webviewLoadError.startsWith("Connection to")
+                            ? "Page Load Timed Out"
+                            : webviewLoadError.startsWith("Load cancelled")
+                              ? "Load Cancelled"
+                              : "Dev Server Unreachable"}
+                        </h3>
+                        <p className="text-xs text-daintree-text/50 text-center mb-3 max-w-md">
+                          {webviewLoadError}
+                        </p>
+                        <div className="flex items-center gap-1">
                           <Button
-                            onClick={handleOpenExternal}
+                            onClick={
+                              webviewLoadError.startsWith("Load cancelled") ||
+                              webviewLoadError.startsWith("Load timed out") ||
+                              webviewLoadError.startsWith("Connection to")
+                                ? handleRetryWebviewLoad
+                                : handleHardRestart
+                            }
                             variant="ghost"
                             size="sm"
-                            className="gap-1.5 px-2.5 py-1.5 group text-daintree-text/50 hover:text-daintree-text/70"
+                            className="gap-1.5 px-2.5 py-1.5 group"
                           >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                            <span className="text-xs">Open external</span>
+                            <RotateCw className="h-3.5 w-3.5" />
+                            <span className="text-xs">
+                              {webviewLoadError.startsWith("Load cancelled") ||
+                              webviewLoadError.startsWith("Load timed out") ||
+                              webviewLoadError.startsWith("Connection to")
+                                ? "Retry"
+                                : "Hard Restart"}
+                            </span>
                           </Button>
+                          {currentUrl && (
+                            <Button
+                              onClick={handleOpenExternal}
+                              variant="ghost"
+                              size="sm"
+                              className="gap-1.5 px-2.5 py-1.5 group text-daintree-text/50 hover:text-daintree-text/70"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              <span className="text-xs">Open external</span>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {blockedNav && (
+                      <BlockedNavBanner
+                        blockedNav={blockedNav}
+                        panelId={id}
+                        webviewElement={webviewElement}
+                        onDismiss={() => setBlockedNav(null)}
+                      />
+                    )}
+                    {isLoading && (
+                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-daintree-bg gap-3">
+                        <Spinner size="2xl" className="text-status-info" />
+                        {isSlowLoad && (
+                          <>
+                            <p className="text-xs text-daintree-text/50">
+                              Taking longer than usual...
+                            </p>
+                            <Button
+                              onClick={handleCancelLoad}
+                              variant="ghost"
+                              size="sm"
+                              className="gap-1.5 px-2.5 py-1.5 group text-daintree-text/50 hover:text-daintree-text/70"
+                            >
+                              <Square className="h-3.5 w-3.5" />
+                              <span className="text-xs">Cancel</span>
+                            </Button>
+                          </>
                         )}
                       </div>
-                    </div>
-                  )}
-                  {blockedNav && (
-                    <BlockedNavBanner
-                      blockedNav={blockedNav}
-                      panelId={id}
-                      webviewElement={webviewElement}
-                      onDismiss={() => setBlockedNav(null)}
-                    />
-                  )}
-                  {isLoading && (
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-daintree-bg gap-3">
-                      <Spinner size="2xl" className="text-status-info" />
-                      {isSlowLoad && (
-                        <>
-                          <p className="text-xs text-daintree-text/50">
-                            Taking longer than usual...
-                          </p>
-                          <Button
-                            onClick={handleCancelLoad}
-                            variant="ghost"
-                            size="sm"
-                            className="gap-1.5 px-2.5 py-1.5 group text-daintree-text/50 hover:text-daintree-text/70"
-                          >
-                            <Square className="h-3.5 w-3.5" />
-                            <span className="text-xs">Cancel</span>
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  )}
-                  {showRecoverySpinner && !webviewLoadError && (
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-daintree-bg gap-3">
-                      <Spinner size="2xl" className="text-status-info" />
-                      <p className="text-xs text-daintree-text/50">Rehydrating preview...</p>
-                    </div>
-                  )}
-                  {isDragging && <div className="absolute inset-0 z-10 bg-transparent" />}
-                  {findInPage.isOpen && <FindBar find={findInPage} />}
-                  <webview
-                    ref={setWebviewNode}
-                    src={currentUrl}
-                    partition={webviewPartition}
-                    // @ts-expect-error React 19 requires "" to emit the attribute; boolean true is silently dropped
-                    allowpopups=""
-                    className={cn(
-                      "w-full h-full border-0",
-                      isDragging && "invisible pointer-events-none"
                     )}
-                  />
-                  <WebviewDialog dialog={currentDialog} onRespond={handleDialogRespond} />
-                </>
+                    {showRecoverySpinner && !webviewLoadError && (
+                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-daintree-bg gap-3">
+                        <Spinner size="2xl" className="text-status-info" />
+                        <p className="text-xs text-daintree-text/50">Rehydrating preview...</p>
+                      </div>
+                    )}
+                    {isDragging && <div className="absolute inset-0 z-10 bg-transparent" />}
+                    {findInPage.isOpen && <FindBar find={findInPage} />}
+                    <webview
+                      ref={setWebviewNode}
+                      src={currentUrl}
+                      partition={webviewPartition}
+                      // @ts-expect-error React 19 requires "" to emit the attribute; boolean true is silently dropped
+                      allowpopups=""
+                      className={cn(
+                        "w-full h-full border-0",
+                        isDragging && "invisible pointer-events-none"
+                      )}
+                    />
+                    <WebviewDialog dialog={currentDialog} onRespond={handleDialogRespond} />
+                  </>
+                </div>
               </div>
             </div>
           )}

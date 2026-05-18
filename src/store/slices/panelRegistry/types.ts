@@ -167,6 +167,9 @@ export interface PanelRegistrySlice {
     id: string,
     preset: import("@shared/types/panel.js").ViewportPresetId | undefined
   ) => void;
+  setViewportRotated: (id: string, rotated: boolean) => void;
+  setViewportDpr: (id: string, dpr: 1 | 2 | 3) => void;
+  setViewportFit: (id: string, fit: boolean) => void;
   setDevPreviewScrollPosition: (
     id: string,
     position: { url: string; scrollY: number } | undefined

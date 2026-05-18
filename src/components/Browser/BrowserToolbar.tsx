@@ -11,6 +11,7 @@ import {
   ZoomIn,
   ZoomOut,
   Camera,
+  Maximize2,
   SquareTerminal,
   Code,
   Smartphone,
@@ -48,6 +49,9 @@ interface BrowserToolbarProps {
   isConsoleOpen?: boolean;
   isWebviewReady?: boolean;
   viewportPreset?: ViewportPresetId;
+  viewportRotated?: boolean;
+  viewportDpr?: 1 | 2 | 3;
+  viewportFit?: boolean;
   onNavigate: (url: string) => void;
   onBack: () => void;
   onForward: () => void;
@@ -59,6 +63,9 @@ interface BrowserToolbarProps {
   onToggleConsole?: () => void;
   onToggleDevTools?: () => void;
   onViewportPresetChange?: (preset: ViewportPresetId | undefined) => void;
+  onViewportRotateToggle?: () => void;
+  onViewportDprChange?: (dpr: 1 | 2 | 3) => void;
+  onViewportFitToggle?: () => void;
 }
 
 export function BrowserToolbar({
@@ -72,6 +79,9 @@ export function BrowserToolbar({
   isConsoleOpen = false,
   isWebviewReady = false,
   viewportPreset,
+  viewportRotated = false,
+  viewportDpr = 1,
+  viewportFit = false,
   onNavigate,
   onBack,
   onForward,
@@ -83,6 +93,9 @@ export function BrowserToolbar({
   onToggleConsole,
   onToggleDevTools,
   onViewportPresetChange,
+  onViewportRotateToggle,
+  onViewportDprChange,
+  onViewportFitToggle,
 }: BrowserToolbarProps) {
   const [inputValue, setInputValue] = useState(getDisplayUrl(url));
   const [isEditing, setIsEditing] = useState(false);
@@ -538,6 +551,84 @@ export function BrowserToolbar({
                   </button>
                 );
               })}
+            </div>
+          )}
+          {viewportPreset && (
+            <div className="flex items-center ml-1 pl-1.5 border-l border-overlay">
+              {onViewportRotateToggle && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={onViewportRotateToggle}
+                      className={cn(
+                        buttonClass,
+                        viewportRotated && "bg-overlay-emphasis text-daintree-text"
+                      )}
+                      aria-label="Rotate viewport"
+                      aria-pressed={viewportRotated}
+                    >
+                      <RotateCw className="w-4 h-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {viewportRotated ? "Portrait" : "Landscape"}
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {onViewportDprChange && (
+                <div
+                  role="radiogroup"
+                  aria-label="Device pixel ratio"
+                  className="flex items-center ml-0.5"
+                >
+                  {([1, 2, 3] as const).map((dpr) => {
+                    const isSelected = viewportDpr === dpr;
+                    return (
+                      <button
+                        key={dpr}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        aria-label={`Device pixel ratio ${dpr}x`}
+                        onClick={() => {
+                          if (!isSelected) onViewportDprChange(dpr);
+                        }}
+                        className={cn(
+                          "px-1.5 py-1 rounded text-[10px] font-medium transition-colors",
+                          "hover:bg-overlay-medium",
+                          "focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2",
+                          isSelected
+                            ? "bg-overlay-emphasis text-daintree-text"
+                            : "text-daintree-text/50"
+                        )}
+                      >
+                        {dpr}×
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {onViewportFitToggle && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={onViewportFitToggle}
+                      className={cn(
+                        buttonClass,
+                        "ml-0.5",
+                        viewportFit && "bg-overlay-emphasis text-daintree-text"
+                      )}
+                      aria-label="Zoom to fit"
+                      aria-pressed={viewportFit}
+                    >
+                      <Maximize2 className="w-4 h-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Zoom to fit</TooltipContent>
+                </Tooltip>
+              )}
             </div>
           )}
         </div>

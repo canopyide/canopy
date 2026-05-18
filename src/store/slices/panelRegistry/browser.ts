@@ -23,6 +23,9 @@ export const createBrowserActions = (
   | "setBrowserConsoleOpen"
   | "setDevPreviewConsoleOpen"
   | "setViewportPreset"
+  | "setViewportRotated"
+  | "setViewportDpr"
+  | "setViewportFit"
   | "setDevPreviewScrollPosition"
   | "setDevServerState"
   | "setSpawnError"
@@ -111,6 +114,54 @@ export const createBrowserActions = (
       const newById = {
         ...state.panelsById,
         [id]: { ...terminal, viewportPreset: preset },
+      };
+      saveNormalized(newById, state.panelIds);
+      return { panelsById: newById };
+    });
+  },
+
+  setViewportRotated: (id, rotated) => {
+    set((state) => {
+      const terminal = state.panelsById[id];
+      if (!terminal) return state;
+      if (terminal.kind !== "dev-preview") return state;
+      if ((terminal.viewportRotated ?? false) === rotated) return state;
+
+      const newById = {
+        ...state.panelsById,
+        [id]: { ...terminal, viewportRotated: rotated },
+      };
+      saveNormalized(newById, state.panelIds);
+      return { panelsById: newById };
+    });
+  },
+
+  setViewportDpr: (id, dpr) => {
+    set((state) => {
+      const terminal = state.panelsById[id];
+      if (!terminal) return state;
+      if (terminal.kind !== "dev-preview") return state;
+      if ((terminal.viewportDpr ?? 1) === dpr) return state;
+
+      const newById = {
+        ...state.panelsById,
+        [id]: { ...terminal, viewportDpr: dpr },
+      };
+      saveNormalized(newById, state.panelIds);
+      return { panelsById: newById };
+    });
+  },
+
+  setViewportFit: (id, fit) => {
+    set((state) => {
+      const terminal = state.panelsById[id];
+      if (!terminal) return state;
+      if (terminal.kind !== "dev-preview") return state;
+      if ((terminal.viewportFit ?? false) === fit) return state;
+
+      const newById = {
+        ...state.panelsById,
+        [id]: { ...terminal, viewportFit: fit },
       };
       saveNormalized(newById, state.panelIds);
       return { panelsById: newById };

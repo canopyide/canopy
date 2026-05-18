@@ -20,6 +20,9 @@ export function serializeDevPreview(t: DevPreviewSerializeInput): Partial<PanelS
       devPreviewConsoleOpen: t.devPreviewConsoleOpen,
     }),
     ...(t.viewportPreset !== undefined && { viewportPreset: t.viewportPreset }),
+    ...(t.viewportRotated !== undefined && { viewportRotated: t.viewportRotated }),
+    ...(t.viewportDpr !== undefined && { viewportDpr: t.viewportDpr }),
+    ...(t.viewportFit !== undefined && { viewportFit: t.viewportFit }),
     ...(t.devPreviewScrollPosition !== undefined && {
       devPreviewScrollPosition: t.devPreviewScrollPosition,
     }),

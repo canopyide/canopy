@@ -37,6 +37,9 @@ export interface AddTerminalArgs extends AddPanelOptionsBase {
   devServerTerminalId?: string | null;
   devPreviewConsoleOpen?: boolean;
   viewportPreset?: string;
+  viewportRotated?: boolean;
+  viewportDpr?: 1 | 2 | 3;
+  viewportFit?: boolean;
   devPreviewScrollPosition?: { url: string; scrollY: number };
 }
 
@@ -62,6 +65,9 @@ export interface SavedTerminalData {
   devCommand?: string;
   devPreviewConsoleOpen?: boolean;
   viewportPreset?: string;
+  viewportRotated?: boolean;
+  viewportDpr?: 1 | 2 | 3;
+  viewportFit?: boolean;
   devPreviewScrollPosition?: { url: string; scrollY: number };
   exitBehavior?: PanelExitBehavior;
   agentSessionId?: string;
