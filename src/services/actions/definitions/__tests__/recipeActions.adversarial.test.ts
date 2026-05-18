@@ -76,6 +76,7 @@ function setRecipeState(state: {
   currentProjectId?: string | null;
   runRecipe?: ReturnType<typeof vi.fn>;
   saveToRepo?: ReturnType<typeof vi.fn>;
+  deleteRecipe?: ReturnType<typeof vi.fn>;
   generateRecipeFromActiveTerminals?: (id: string) => unknown[];
 }) {
   recipeStoreMock.getState.mockReturnValue({
@@ -84,6 +85,7 @@ function setRecipeState(state: {
     currentProjectId: "currentProjectId" in state ? state.currentProjectId : "proj-1",
     runRecipe: state.runRecipe ?? vi.fn().mockResolvedValue(undefined),
     saveToRepo: state.saveToRepo ?? vi.fn().mockResolvedValue(undefined),
+    deleteRecipe: state.deleteRecipe ?? vi.fn().mockResolvedValue(undefined),
     generateRecipeFromActiveTerminals: state.generateRecipeFromActiveTerminals ?? vi.fn(() => []),
   });
 }

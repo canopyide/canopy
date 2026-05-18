@@ -114,7 +114,7 @@ Columns:
 | `project.add` / `project.cloneRepo` / `project.openDialog` | safe | n/a | reversible | one project | D0 | Leave | — |
 | `project.switch` / `project.switcherPalette` | safe | n/a | reversible (switch back) | one project | D0 | Leave | — |
 | `project.update` / `project.saveSettings` | safe | n/a | reversible (re-edit) | one project | D0 | Leave | — |
-| `project.remove` | safe | depends on call site | local-irreversible (removed from list; worktrees on disk remain) | one project | D1 | Wire `ConfirmDialog` at every call site; promote definition to `danger:"confirm"` once call sites are updated | TBD |
+| `project.remove` | **confirm** (updated #8247) | yes (`confirmRemoveProject` in `useProjectSwitcherPalette.ts`; all four entry points funnel through it) | local-irreversible (removed from list; worktrees on disk remain) | one project | D1 | Done (#8247) | #8247 |
 | `project.close` / `project.closeActive` | safe | yes — `callbacks.onConfirmCloseActiveProject` routes through a confirm flow | local-irreversible (terminals killed) | one project | D1 | Leave — confirm flow already exists | — |
 | `window.close` | safe | OS-native warning when unsaved work present | local-irreversible (window state lost) | one window | D0 | Leave — OS provides confirm | — |
 | `window.forceReload` | safe | n/a | local-irreversible (in-flight UI state lost) | one window | D0 | Acceptable: developer affordance; would only escalate if discoverable from non-dev menus | — |
@@ -136,7 +136,7 @@ The current GitHub action set is read-only (`openIssues`, `listPullRequests`, et
 | `recipe.run` | safe | n/a | local-irreversible (spawns processes; not a content mutation) | one recipe → many terminals | D0 | Leave | — |
 | `recipe.editor.open` / `recipe.manager.open` | safe | n/a | reversible | UI | D0 | Leave | — |
 | `recipe.saveToRepo` (with `deleteOriginal: true`) | safe | yes (`RecipeManager.tsx` ConfirmDialog) | local-irreversible (original deleted) | one recipe | D1 | Leave — current pattern is correct | — |
-| Recipe delete (UI-level only, via `RecipeManager`) | n/a — not an action ID | yes (`ConfirmDialog`) | local-irreversible | one recipe | D1 | Leave; consider promoting to a `recipe.delete` action ID | TBD |
+| `recipe.delete` | **confirm** (added #8247) | yes (`ConfirmDialog` in `RecipeManager.tsx` + `RecipesTab.tsx`; both dispatch through the action) | local-irreversible | one recipe | D1 | Done (#8247) | #8247 |
 | Plugin install / uninstall (future) | n/a — not yet wired | n/a | shared-state (filesystem + plugin host restart) | one plugin | D1 | When wired, `danger:"confirm"` + show plugin metadata before install/uninstall | open as needed |
 
 ### Portal / browser
@@ -153,7 +153,7 @@ The current GitHub action set is read-only (`openIssues`, `listPullRequests`, et
 | Action / call site | Current | UI confirm | Reversibility | Blast | Tier | Recommendation | Follow-up |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `keybinding.setOverride` / `removeOverride` | safe | n/a | reversible (reset to default) | one binding | D0 | Leave | — |
-| `keybinding.resetAll` | safe | depends on call site | local-irreversible (all overrides lost) | every override | D1 | Wire `ConfirmDialog` at the Settings call site; promote definition to `danger:"confirm"` once wired | TBD |
+| `keybinding.resetAll` | **confirm** (updated #8247) | yes (`ConfirmDialog` at `KeyboardShortcutsTab.tsx:184`, dispatches with `confirmed:true`) | local-irreversible (all overrides lost) | every override | D1 | Done (#8247) | #8247 |
 
 ## Known bypasses
 

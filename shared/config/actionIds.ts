@@ -258,6 +258,7 @@ export const BUILT_IN_ACTION_IDS = [
   "recipe.editor.openFromLayout",
   "recipe.manager.open",
   "recipe.saveToRepo",
+  "recipe.delete",
 
   // -- agentActions --
   "agent.launch",

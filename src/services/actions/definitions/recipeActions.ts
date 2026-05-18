@@ -144,6 +144,22 @@ export function registerRecipeActions(actions: ActionRegistry, _callbacks: Actio
     })
   );
 
+  actions.set("recipe.delete", () =>
+    defineAction({
+      id: "recipe.delete",
+      title: "Delete Recipe",
+      description: "Delete a recipe permanently",
+      category: "recipes",
+      kind: "command",
+      danger: "confirm",
+      scope: "renderer",
+      argsSchema: z.object({ recipeId: z.string() }),
+      run: async ({ recipeId }) => {
+        await useRecipeStore.getState().deleteRecipe(recipeId);
+      },
+    })
+  );
+
   actions.set("recipe.editor.openFromLayout", () =>
     defineAction({
       id: "recipe.editor.openFromLayout",

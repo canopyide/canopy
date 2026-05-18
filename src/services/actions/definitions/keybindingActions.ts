@@ -58,7 +58,7 @@ export function registerKeybindingActions(
     description: "Reset all keybinding overrides",
     category: "settings",
     kind: "command",
-    danger: "safe",
+    danger: "confirm",
     scope: "renderer",
     keywords: ["shortcuts", "hotkeys", "defaults", "restore"],
     run: async () => {
