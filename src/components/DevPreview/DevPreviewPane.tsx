@@ -631,10 +631,7 @@ export function DevPreviewPane({
     }
   }, [currentUrl, setWebviewLoadError, setIsSlowLoad, setIsLoading]);
 
-  const handleHardReload = useCallback(() => {
-    setCrashState("none");
-    setCrashDetails(null);
-    crashTimestampsRef.current = [];
+  const performReload = useCallback(() => {
     const webview = webviewRef.current;
     if (!webview || !isWebviewReady) return;
     setWebviewLoadError(null);
@@ -682,11 +679,18 @@ export function DevPreviewPane({
     setDevPreviewConsoleOpen(id, !isConsoleOpen);
   }, [id, isConsoleOpen, setDevPreviewConsoleOpen]);
 
-  // Keep crashReloadRef in sync so onRenderProcessGone can call handleHardReload
+  const handleHardReload = useCallback(() => {
+    setCrashState("none");
+    setCrashDetails(null);
+    crashTimestampsRef.current = [];
+    performReload();
+  }, [performReload]);
+
+  // Keep crashReloadRef in sync so onRenderProcessGone can call performReload
   // before it exists in the lexical scope.
   useEffect(() => {
-    crashReloadRef.current = handleHardReload;
-  }, [handleHardReload]);
+    crashReloadRef.current = performReload;
+  }, [performReload]);
 
   const handleOpenExternal = useCallback(() => {
     if (currentUrl) {
