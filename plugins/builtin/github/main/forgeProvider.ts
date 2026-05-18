@@ -223,7 +223,7 @@ async function runQuery(
     gitHubRateLimitService.updateFromGraphQL(response);
     return response;
   } catch (error) {
-    throw new Error(parseGitHubError(error));
+    throw new Error(parseGitHubError(error), { cause: error });
   }
 }
 
