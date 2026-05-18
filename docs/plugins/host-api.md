@@ -196,10 +196,7 @@ Subscriptions registered during `activate` — before Daintree's worktree servic
 Binds a runtime `ForgeProviderImpl` to a descriptor declared in `contributes.forgeProviders`.
 
 ```ts
-const dispose = host.registerForgeProvider(
-  { id: "linear", label: "Linear" },
-  impl
-);
+const dispose = host.registerForgeProvider({ id: "linear", label: "Linear" }, impl);
 ```
 
 **Rules:**
