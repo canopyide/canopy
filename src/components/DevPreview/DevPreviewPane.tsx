@@ -61,6 +61,7 @@ import {
   getEffectiveViewportSize,
   computeFitScale,
 } from "@/panels/dev-preview/viewportPresets";
+import { applyViewportEmulation } from "./applyViewportEmulation";
 import type { ViewportPresetId } from "@shared/types/panel";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { logError } from "@/utils/logger";
@@ -940,8 +941,12 @@ export function DevPreviewPane({
 
   useWebviewThrottle(id, location, isEvicted ? null : webviewElement, isWebviewReady && !isEvicted);
 
-  // Apply UA override when viewport preset changes on an already-ready webview
-  // Initialize to undefined so restored presets trigger the effect on first render
+  // Apply UA + device emulation when the viewport preset changes on an
+  // already-ready webview. No reload: enableDeviceEmulation drives real
+  // layout (CSS media queries, window.innerWidth) without discarding page
+  // state, and the lifecycle hook re-applies both on did-finish-load for
+  // navigation. Initialize to undefined so restored presets trigger the
+  // effect on first render.
   const prevViewportPresetRef = useRef<ViewportPresetId | undefined>(undefined);
   useEffect(() => {
     if (!isWebviewReady || !webviewElement) return;
@@ -966,14 +971,11 @@ export function DevPreviewPane({
         // Only restore if we previously overrode (not first mount with no preset)
         wc.setUserAgent(originalUaRef.current!);
       }
-      // Reload so the page re-evaluates with the new UA
-      if (previousPreset !== undefined) {
-        webviewElement.reload();
-      }
     } catch {
       // WebContents not available (webview detached)
     }
-  }, [viewportPreset, isWebviewReady, webviewElement]);
+    applyViewportEmulation(webviewElement, id, viewportPreset);
+  }, [viewportPreset, isWebviewReady, webviewElement, id]);
   const { currentDialog, handleDialogRespond } = useWebviewDialog(
     id,
     isEvicted ? null : webviewElement,

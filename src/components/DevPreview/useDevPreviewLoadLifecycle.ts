@@ -4,6 +4,7 @@ import { useUrlHistoryStore } from "@/store/urlHistoryStore";
 import type { BrowserHistory } from "@shared/types/browser";
 import type { ViewportPresetId } from "@shared/types/panel";
 import { getViewportPreset } from "@/panels/dev-preview/viewportPresets";
+import { applyViewportEmulation } from "./applyViewportEmulation";
 import { pushBrowserHistory } from "../Browser/historyUtils";
 import { loadWebviewUrl } from "./loadWebviewUrl";
 import type { BlockedNavAction } from "./BlockedNavBanner";
@@ -88,6 +89,13 @@ export function useDevPreviewLoadLifecycle({
   const slowLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const failLoadRetryRef = useRef<NodeJS.Timeout | null>(null);
   const failLoadRetryCountRef = useRef<number>(0);
+
+  // Mirror the active preset into a ref so handleDidFinishLoad can re-apply
+  // overrides after cross-origin navigation without the load-listener effect
+  // depending on viewportPreset (which would tear down/rebuild load timers
+  // on every preset change).
+  const viewportPresetRef = useRef(viewportPreset);
+  viewportPresetRef.current = viewportPreset;
 
   const clearLoadTimers = useCallback(() => {
     if (slowLoadTimeoutRef.current) {
@@ -218,6 +226,30 @@ export function useDevPreviewLoadLifecycle({
         clearTimeout(failLoadRetryRef.current);
         failLoadRetryRef.current = null;
       }
+
+      // Device emulation and the UA override do NOT persist across
+      // cross-origin navigation (renderer process swap), so re-apply both
+      // here. Without this, navigating within the preview silently drops
+      // the emulated viewport and the spoofed user agent.
+      const activePreset = viewportPresetRef.current;
+      try {
+        const wc = (
+          webview as unknown as {
+            getWebContents(): { setUserAgent(ua: string): void; getUserAgent(): string };
+          }
+        ).getWebContents();
+        if (originalUaRef.current === null) {
+          originalUaRef.current = wc.getUserAgent();
+        }
+        if (activePreset) {
+          wc.setUserAgent(getViewportPreset(activePreset).userAgent);
+        } else if (originalUaRef.current !== null) {
+          wc.setUserAgent(originalUaRef.current);
+        }
+      } catch {
+        // WebContents not available (webview detached)
+      }
+      applyViewportEmulation(webview, id, activePreset);
     };
 
     const handleDidFailLoad = (e: Electron.DidFailLoadEvent) => {
@@ -394,7 +426,16 @@ export function useDevPreviewLoadLifecycle({
         loadTimeoutRef.current = null;
       }
     };
-  }, [webviewElement, loadTimeoutMs, evictingRef, lastSetUrlRef, setHistory, setBlockedNav]);
+  }, [
+    webviewElement,
+    loadTimeoutMs,
+    evictingRef,
+    lastSetUrlRef,
+    setHistory,
+    setBlockedNav,
+    id,
+    originalUaRef,
+  ]);
 
   useEffect(() => {
     const webview = webviewElement;
@@ -423,6 +464,7 @@ export function useDevPreviewLoadLifecycle({
       } catch {
         // WebContents not available yet
       }
+      applyViewportEmulation(webview, id, viewportPreset);
       if (slowLoadTimeoutRef.current) {
         clearTimeout(slowLoadTimeoutRef.current);
         slowLoadTimeoutRef.current = null;
@@ -469,6 +511,7 @@ export function useDevPreviewLoadLifecycle({
         } catch {
           // WebContents not available
         }
+        applyViewportEmulation(webview, id, viewportPreset);
         // dom-ready already fired before this listener attached. Run scroll
         // restore here so the position survives tab switches and other
         // re-renders that don't trigger another dom-ready.
