@@ -277,6 +277,9 @@ export function SettingsShortcutCapture({
         // Time-bound Undo (5s) — must surface even during quiet hours, otherwise
         // the user has no path to recover from an accidental unbind.
         urgent: true,
+        // One-shot confirmation; the shortcut table below is the persistent
+        // recovery surface, so no inbox row is needed once the 5s Undo lapses.
+        transient: true,
         action: {
           label: "Undo",
           onClick: async () => {

@@ -107,6 +107,18 @@ export interface NotifyPayload {
   supersedes?: string;
   /** When set, rapidly fired notifications with the same key coalesce into a single updating toast */
   coalesce?: CoalesceOptions;
+  /**
+   * Per-source rate-limit bucket key. When the same key fires more than
+   * RATE_LIMIT_MAX_TOKENS toasts within RATE_LIMIT_REFILL_MS × MAX_TOKENS,
+   * overflow is redirected to a single in-place summary inbox row instead of
+   * the toaster. Distinct from `coalesce.key`: coalesce collapses bursts into
+   * a single updating toast over a short window (~2s); `rateLimitKey` drops
+   * the would-be toast entirely and aggregates the missed signal into an
+   * inbox summary, catching slow-dripping noisy producers that sit outside
+   * the coalesce window. Falls back to `correlationId ?? context.projectId ??
+   * context.worktreeId ?? type` when omitted.
+   */
+  rateLimitKey?: string;
   /** When false, the history entry exists but does not increment the unread badge. Defaults to true. */
   countable?: boolean;
   /**
@@ -327,6 +339,128 @@ export function consumeEscalation(error: {
   }
 }
 
+// ── per-source rate-limit (token bucket) ────────────────────────────────────
+//
+// Catches slow-dripping noisy producers that sit outside `coalesce` (2s
+// window) and `shouldEscalateTransientError` (retryability: "auto" only).
+// A bucket holds up to RATE_LIMIT_MAX_TOKENS = 3 tokens and refills at
+// 1 token per RATE_LIMIT_REFILL_MS (10s) → 3-toast burst + ~3/30s long-run
+// average per source. On overflow, the would-be toast is suppressed and an
+// in-place `priority: "low"` summary inbox row tracks the count so the
+// signal still lands.
+//
+// Bypassed for: priority "low" (already inbox-only), transient: true (no
+// inbox fallback — would silently drop), placement "grid-bar" (renders
+// inline and is its own gate), and explicit `urgent: true` (caller has
+// declared the event critical enough to outrun even quiet hours).
+
+const RATE_LIMIT_MAX_TOKENS = 3;
+const RATE_LIMIT_REFILL_MS = 10_000;
+const RATE_LIMIT_MAX_BUCKETS = 200;
+
+interface RateLimitBucket {
+  tokens: number;
+  lastRefill: number;
+  /** id of the active summary inbox row, or null when no overflow is in flight */
+  overflowEntryId: string | null;
+  overflowCount: number;
+}
+
+const _rateLimitBuckets = new Map<string, RateLimitBucket>();
+
+export function _resetRateLimitBuckets(): void {
+  _rateLimitBuckets.clear();
+}
+
+function pruneRateLimitBuckets(): void {
+  if (_rateLimitBuckets.size <= RATE_LIMIT_MAX_BUCKETS) return;
+
+  const entries = Array.from(_rateLimitBuckets.entries());
+  entries.sort((a, b) => a[1].lastRefill - b[1].lastRefill);
+
+  const toRemove = entries.slice(0, entries.length - RATE_LIMIT_MAX_BUCKETS);
+  for (const [key] of toRemove) {
+    _rateLimitBuckets.delete(key);
+  }
+}
+
+function getRateLimitKey(payload: NotifyPayload): string {
+  return (
+    payload.rateLimitKey ??
+    payload.correlationId ??
+    payload.context?.projectId ??
+    payload.context?.worktreeId ??
+    payload.type
+  );
+}
+
+function buildOverflowSummary(source: string, count: number): string {
+  const eventsWord = count === 1 ? "event" : "events";
+  return `${source} reported ${count} more ${eventsWord} — open inbox`;
+}
+
+/**
+ * Returns true when the would-be toast should be suppressed and the caller
+ * must not write its own inbox entry. Refills tokens based on elapsed time,
+ * consumes one when available, otherwise writes (or updates) an in-place
+ * low-priority summary inbox row keyed by the bucket.
+ */
+function checkAndApplyRateLimit(payload: NotifyPayload): boolean {
+  const key = getRateLimitKey(payload);
+  const now = Date.now();
+  let bucket = _rateLimitBuckets.get(key);
+
+  if (!bucket) {
+    bucket = {
+      tokens: RATE_LIMIT_MAX_TOKENS,
+      lastRefill: now,
+      overflowEntryId: null,
+      overflowCount: 0,
+    };
+    _rateLimitBuckets.set(key, bucket);
+    pruneRateLimitBuckets();
+  } else {
+    const elapsed = now - bucket.lastRefill;
+    const refill = Math.floor(elapsed / RATE_LIMIT_REFILL_MS);
+    if (refill > 0) {
+      const newTokens = Math.min(RATE_LIMIT_MAX_TOKENS, bucket.tokens + refill);
+      const wasEmpty = bucket.tokens === 0;
+      bucket.tokens = newTokens;
+      bucket.lastRefill += refill * RATE_LIMIT_REFILL_MS;
+      // Recovered from overflow → next overflow starts a fresh summary row.
+      if (wasEmpty && newTokens > 0) {
+        bucket.overflowEntryId = null;
+        bucket.overflowCount = 0;
+      }
+    }
+  }
+
+  if (bucket.tokens > 0) {
+    bucket.tokens -= 1;
+    return false;
+  }
+
+  bucket.overflowCount += 1;
+  const summaryText = buildOverflowSummary(key, bucket.overflowCount);
+  const historyStore = useNotificationHistoryStore.getState();
+
+  if (bucket.overflowEntryId) {
+    historyStore.updateEntryMessage(bucket.overflowEntryId, summaryText);
+  } else {
+    bucket.overflowEntryId = historyStore.addEntry({
+      type: payload.type,
+      title: payload.title,
+      message: summaryText,
+      correlationId: payload.correlationId,
+      seenAsToast: false,
+      countable: payload.countable,
+      context: payload.context,
+    });
+  }
+
+  return true;
+}
+
 let _quietUntil = 0;
 
 export function setStartupQuietPeriod(durationMs: number): void {
@@ -516,6 +650,21 @@ export function notify(payload: NotifyPayload): string {
   }
 
   const isFocused = typeof document !== "undefined" ? document.hasFocus() : true;
+
+  // Per-source rate-limit gate. Runs before history-entry creation so
+  // overflowed events aren't double-recorded (original row + summary row).
+  // Skips priority "low" (already inbox-only), transient (no inbox fallback),
+  // urgent (explicit critical override), and coalesce (its own gate over a
+  // shorter window).
+  if (
+    priority !== "low" &&
+    !payload.transient &&
+    !payload.urgent &&
+    !payload.coalesce &&
+    checkAndApplyRateLimit(payload)
+  ) {
+    return "";
+  }
 
   const originVisible = priority === "high" && isFocused && isOriginSurfaceVisible(context);
   const shouldToast = priority === "watch" || (priority === "high" && isFocused && !originVisible);

@@ -395,6 +395,29 @@ export default tseslint.config(
             "Action-free error notification. Either wire an action: { label, onClick } (Title-Message-Action contract), or annotate with `// eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok` when the surrounding UI is itself the recovery surface. See #8097.",
         },
         {
+          // why: success toasts are the most over-used severity — they fire
+          // on routine in-place state changes the user can already see (form
+          // saves, panel docks, undo confirmations). Per CLAUDE.md's notify
+          // four-question gate, a success toast is justified only when at
+          // least one of three escape hatches is present: `transient: true`
+          // (one-shot, no inbox row written — fine for ambient confirmations
+          // whose recovery surface is the UI itself), `priority: "low"`
+          // (history-only, no toast — fine for background completions), or
+          // a `correlationId` (the success threads into an existing
+          // notification group — fine for stateful flows like update-check).
+          // If none apply, demote: either drop the notify entirely (the
+          // in-place UI change is the signal) or wire one of the three opts.
+          // Opt out with `// eslint-disable-next-line no-restricted-syntax
+          // -- notify-no-action: ok` when the call is deliberate. Direct-
+          // child combinator inside :has() prevents nested-sub-object false
+          // positives, matching the error-low and action-free-error rules
+          // above. See #8249.
+          selector:
+            "CallExpression:matches([callee.name=/^(notify|addNotification)$/], [callee.property.name=/^(notify|addNotification)$/]) > ObjectExpression:has(> Property[key.name='type'][value.value='success']):not(:has(> Property[key.name='transient'][value.value=true])):not(:has(> Property[key.name='priority'][value.value='low'])):not(:has(> Property[key.name='correlationId']))",
+          message:
+            'Unprotected success toast. Success is over-used — fires on routine in-place state changes users can already see. Add one of: `transient: true` (one-shot, no inbox row), `priority: "low"` (history-only), or a `correlationId` (threads into an existing notification group). Or annotate with `// eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok` when the call is deliberate. See #8249.',
+        },
+        {
           selector:
             "JSXAttribute[name.name='dangerouslySetInnerHTML'] > JSXExpressionContainer > ObjectExpression > Property[key.name='__html']:not(:has(CallExpression))",
           message:

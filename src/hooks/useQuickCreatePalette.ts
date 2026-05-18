@@ -181,6 +181,10 @@ export function useQuickCreatePalette(): UseQuickCreatePaletteReturn {
               inboxMessage: worktreeMsg,
               priority: "high",
               countable: false,
+              // Threads the success into a per-worktree group so subsequent
+              // worktree-lifecycle events (e.g. teardown) supersede this row
+              // cleanly instead of stacking unrelated entries.
+              correlationId: createdWorktreeId,
               action: {
                 label: "Undo",
                 onClick: () => {},

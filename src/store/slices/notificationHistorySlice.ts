@@ -75,6 +75,13 @@ interface NotificationHistoryState {
   evictedToInboxCount: number;
   addEntry: (entry: AddEntryInput) => string;
   /**
+   * Replaces the `message` text on an existing entry without bumping
+   * `timestamp` or any read/archived state. Used by the rate-limit overflow
+   * path to refresh an in-place summary row ("{N} more events") as more
+   * overflowed events arrive. No-op when the entry is missing or archived.
+   */
+  updateEntryMessage: (id: string, message: string) => void;
+  /**
    * Flips an entry's `seenAsToast` back to false (it's no longer visible as a
    * toast). Pass `silent: true` to skip the discoverability-cue increment
    * (`evictedToInboxCount`) — used when the notification center is already
@@ -153,6 +160,14 @@ export const useNotificationHistoryStore = create<NotificationHistoryState>((set
     });
     return newEntry.id;
   },
+  updateEntryMessage: (id, message) =>
+    set((state) => {
+      const entry = state.entries.find((e) => e.id === id);
+      if (!entry || entry.archivedAt) return state;
+      return {
+        entries: state.entries.map((e) => (e.id === id ? { ...e, message } : e)),
+      };
+    }),
   markUnseenAsToast: (id, options) =>
     set((state) => {
       const entry = state.entries.find((e) => e.id === id);

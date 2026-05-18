@@ -6,6 +6,7 @@ import {
   TOAST_DURATION,
   _resetCoalesceMap,
   _resetEscalationTrackers,
+  _resetRateLimitBuckets,
   shouldEscalateTransientError,
   consumeEscalation,
   _setQuietUntil,
@@ -51,6 +52,7 @@ describe("notify()", () => {
       quietHoursWeekdays: [],
     });
     _resetCoalesceMap();
+    _resetRateLimitBuckets();
     _setQuietUntil(0);
     mockShowNative.mockClear();
   });
@@ -838,12 +840,17 @@ describe("notify()", () => {
   });
 
   describe("toast cap — displaced notifications become unread in history", () => {
+    // The 4 notifications below carry distinct `rateLimitKey` values so the
+    // toaster-cap displacement path is exercised — same-source bursts are
+    // now caught by the per-source rate-limiter (#8249) before reaching the
+    // toaster cap.
+
     it("caps visible toasts at 3 when adding 4 focused high-priority notifications", () => {
       vi.spyOn(document, "hasFocus").mockReturnValue(true);
-      notify({ type: "info", message: "toast-1", priority: "high" });
-      notify({ type: "info", message: "toast-2", priority: "high" });
-      notify({ type: "info", message: "toast-3", priority: "high" });
-      notify({ type: "info", message: "toast-4", priority: "high" });
+      notify({ type: "info", message: "toast-1", priority: "high", rateLimitKey: "s1" });
+      notify({ type: "info", message: "toast-2", priority: "high", rateLimitKey: "s2" });
+      notify({ type: "info", message: "toast-3", priority: "high", rateLimitKey: "s3" });
+      notify({ type: "info", message: "toast-4", priority: "high", rateLimitKey: "s4" });
 
       const notifications = useNotificationStore.getState().notifications;
       const active = notifications.filter((n) => !n.dismissed);
@@ -852,14 +859,14 @@ describe("notify()", () => {
 
     it("marks displaced toast's history entry as unread", () => {
       vi.spyOn(document, "hasFocus").mockReturnValue(true);
-      notify({ type: "info", message: "toast-1", priority: "high" });
+      notify({ type: "info", message: "toast-1", priority: "high", rateLimitKey: "s1" });
 
       const firstEntry = useNotificationHistoryStore.getState().entries[0];
       expect(firstEntry!.seenAsToast).toBe(true);
 
-      notify({ type: "info", message: "toast-2", priority: "high" });
-      notify({ type: "info", message: "toast-3", priority: "high" });
-      notify({ type: "info", message: "toast-4", priority: "high" });
+      notify({ type: "info", message: "toast-2", priority: "high", rateLimitKey: "s2" });
+      notify({ type: "info", message: "toast-3", priority: "high", rateLimitKey: "s3" });
+      notify({ type: "info", message: "toast-4", priority: "high", rateLimitKey: "s4" });
 
       const updatedEntry = useNotificationHistoryStore
         .getState()
@@ -869,12 +876,12 @@ describe("notify()", () => {
 
     it("increments unreadCount when a toast is displaced", () => {
       vi.spyOn(document, "hasFocus").mockReturnValue(true);
-      notify({ type: "info", message: "toast-1", priority: "high" });
-      notify({ type: "info", message: "toast-2", priority: "high" });
-      notify({ type: "info", message: "toast-3", priority: "high" });
+      notify({ type: "info", message: "toast-1", priority: "high", rateLimitKey: "s1" });
+      notify({ type: "info", message: "toast-2", priority: "high", rateLimitKey: "s2" });
+      notify({ type: "info", message: "toast-3", priority: "high", rateLimitKey: "s3" });
       expect(useNotificationHistoryStore.getState().unreadCount).toBe(0);
 
-      notify({ type: "info", message: "toast-4", priority: "high" });
+      notify({ type: "info", message: "toast-4", priority: "high", rateLimitKey: "s4" });
       expect(useNotificationHistoryStore.getState().unreadCount).toBe(1);
     });
 
@@ -2181,5 +2188,267 @@ describe("shouldEscalateTransientError", () => {
     }
 
     Date.now = realDateNow;
+  });
+});
+
+describe("per-source rate-limit", () => {
+  beforeEach(() => {
+    useNotificationStore.setState({ notifications: [] });
+    useNotificationHistoryStore.setState({
+      entries: [],
+      unreadCount: 0,
+      evictedToInboxCount: 0,
+    });
+    useNotificationSettingsStore.setState({
+      enabled: true,
+      hydrated: true,
+      quietHoursEnabled: false,
+      quietHoursStartMin: 22 * 60,
+      quietHoursEndMin: 8 * 60,
+      quietHoursWeekdays: [],
+    });
+    _resetCoalesceMap();
+    _resetRateLimitBuckets();
+    _setQuietUntil(0);
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("allows the first 3 toasts and suppresses the 4th", () => {
+    for (let i = 0; i < 3; i++) {
+      notify({ type: "error", message: `Failure ${i}`, rateLimitKey: "noisy-source" });
+    }
+    expect(useNotificationStore.getState().notifications).toHaveLength(3);
+    expect(useNotificationHistoryStore.getState().entries).toHaveLength(3);
+
+    notify({ type: "error", message: "Failure 3", rateLimitKey: "noisy-source" });
+    expect(useNotificationStore.getState().notifications).toHaveLength(3);
+    const entries = useNotificationHistoryStore.getState().entries;
+    expect(entries).toHaveLength(4);
+    expect(entries[0]!.message).toBe("noisy-source reported 1 more event — open inbox");
+  });
+
+  it("updates the same summary row in place on subsequent overflows", () => {
+    for (let i = 0; i < 6; i++) {
+      notify({ type: "error", message: `Failure ${i}`, rateLimitKey: "noisy-source" });
+    }
+    const entries = useNotificationHistoryStore.getState().entries;
+    // 3 allowed + 1 summary row = 4 entries; the summary's message text carries the count
+    expect(entries).toHaveLength(4);
+    expect(entries[0]!.message).toBe("noisy-source reported 3 more events — open inbox");
+  });
+
+  it("does not bump timestamp when refreshing the summary row", () => {
+    notify({ type: "error", message: "1", rateLimitKey: "noisy" });
+    notify({ type: "error", message: "2", rateLimitKey: "noisy" });
+    notify({ type: "error", message: "3", rateLimitKey: "noisy" });
+    notify({ type: "error", message: "4", rateLimitKey: "noisy" });
+
+    const summaryId = useNotificationHistoryStore.getState().entries[0]!.id;
+    const firstTs = useNotificationHistoryStore.getState().entries[0]!.timestamp;
+
+    notify({ type: "error", message: "5", rateLimitKey: "noisy" });
+    const after = useNotificationHistoryStore.getState().entries.find((e) => e.id === summaryId);
+    expect(after).toBeDefined();
+    expect(after!.timestamp).toBe(firstTs);
+  });
+
+  it("refills one token per refill interval", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 0, 1, 12, 0, 0));
+
+    for (let i = 0; i < 4; i++) {
+      notify({ type: "error", message: `f${i}`, rateLimitKey: "drip" });
+    }
+    expect(useNotificationStore.getState().notifications).toHaveLength(3);
+
+    // Advance one refill interval — bucket gets 1 token back
+    vi.advanceTimersByTime(10_000);
+    notify({ type: "error", message: "after-drip", rateLimitKey: "drip" });
+    expect(useNotificationStore.getState().notifications).toHaveLength(4);
+
+    // Bucket is empty again — next call overflows
+    notify({ type: "error", message: "still-noisy", rateLimitKey: "drip" });
+    expect(useNotificationStore.getState().notifications).toHaveLength(4);
+
+    vi.useRealTimers();
+  });
+
+  it("starts a fresh summary row after the bucket recovers and re-overflows", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 0, 1, 12, 0, 0));
+
+    // First burst → summary row "Source reported 1 more event"
+    for (let i = 0; i < 5; i++) {
+      notify({ type: "error", message: `a${i}`, rateLimitKey: "noisy" });
+    }
+    const firstSummaryId = useNotificationHistoryStore.getState().entries[0]!.id;
+
+    // Refill fully (3 × 10s)
+    vi.advanceTimersByTime(30_000);
+
+    // Consume tokens and overflow again
+    for (let i = 0; i < 5; i++) {
+      notify({ type: "error", message: `b${i}`, rateLimitKey: "noisy" });
+    }
+    const secondSummary = useNotificationHistoryStore.getState().entries[0]!;
+    expect(secondSummary.id).not.toBe(firstSummaryId);
+    expect(secondSummary.message).toBe("noisy reported 2 more events — open inbox");
+
+    vi.useRealTimers();
+  });
+
+  it("priority 'low' bypasses the limiter", () => {
+    for (let i = 0; i < 10; i++) {
+      notify({
+        type: "info",
+        message: `bg ${i}`,
+        priority: "low",
+        rateLimitKey: "low-source",
+      });
+    }
+    expect(useNotificationStore.getState().notifications).toHaveLength(0);
+    // All 10 written to inbox normally — no summary row collapse
+    expect(useNotificationHistoryStore.getState().entries).toHaveLength(10);
+  });
+
+  it("transient: true bypasses the limiter", () => {
+    for (let i = 0; i < 6; i++) {
+      notify({ type: "success", message: `t ${i}`, transient: true, rateLimitKey: "ephemeral" });
+    }
+    expect(useNotificationStore.getState().notifications).toHaveLength(6);
+    expect(useNotificationHistoryStore.getState().entries).toHaveLength(0);
+  });
+
+  it("urgent: true bypasses the limiter", () => {
+    for (let i = 0; i < 5; i++) {
+      notify({ type: "error", message: `u ${i}`, urgent: true, rateLimitKey: "alarm" });
+    }
+    expect(useNotificationStore.getState().notifications).toHaveLength(5);
+  });
+
+  it("placement 'grid-bar' bypasses the limiter", () => {
+    for (let i = 0; i < 6; i++) {
+      notify({
+        type: "info",
+        message: `g ${i}`,
+        placement: "grid-bar",
+        rateLimitKey: "inline",
+      });
+    }
+    expect(useNotificationStore.getState().notifications).toHaveLength(6);
+  });
+
+  it("coalesce bypasses the limiter (own gate)", () => {
+    for (let i = 0; i < 8; i++) {
+      notify({
+        type: "info",
+        message: `c ${i}`,
+        coalesce: {
+          key: "burst",
+          buildMessage: (count) => `${count} events`,
+        },
+        rateLimitKey: "coalesce-bypass",
+      });
+    }
+    // All collapsed into a single coalesced toast (count grows via updateNotification)
+    expect(useNotificationStore.getState().notifications).toHaveLength(1);
+    // No overflow summary row was written
+    const entries = useNotificationHistoryStore.getState().entries;
+    expect(entries.every((e) => !e.message.includes("more event"))).toBe(true);
+  });
+
+  it("different rateLimitKey values are tracked independently", () => {
+    for (let i = 0; i < 4; i++) {
+      notify({ type: "error", message: `a${i}`, rateLimitKey: "source-a" });
+    }
+    for (let i = 0; i < 4; i++) {
+      notify({ type: "error", message: `b${i}`, rateLimitKey: "source-b" });
+    }
+    // Each source: 3 toasts allowed, 4th overflows → 6 toasts, 2 summary rows
+    expect(useNotificationStore.getState().notifications).toHaveLength(6);
+    const summaryRows = useNotificationHistoryStore
+      .getState()
+      .entries.filter((e) => e.message.includes("more event"));
+    expect(summaryRows).toHaveLength(2);
+  });
+
+  it("falls back to correlationId when rateLimitKey is omitted", () => {
+    for (let i = 0; i < 4; i++) {
+      notify({ type: "error", message: `c${i}`, correlationId: "thread-1" });
+    }
+    // Same correlationId triggers entity-collapse in the notification store,
+    // so toast count isn't a clean signal here. The bucket-fallback contract
+    // is verified by the summary row's source label.
+    const summary = useNotificationHistoryStore
+      .getState()
+      .entries.find((e) => e.message.includes("more event"));
+    expect(summary?.message).toBe("thread-1 reported 1 more event — open inbox");
+  });
+
+  it("falls back to context.projectId then context.worktreeId then type", () => {
+    // Falls back to projectId
+    for (let i = 0; i < 4; i++) {
+      notify({ type: "error", message: `p${i}`, context: { projectId: "proj-1" } });
+    }
+    expect(
+      useNotificationHistoryStore.getState().entries.find((e) => e.message.includes("more event"))
+        ?.message
+    ).toBe("proj-1 reported 1 more event — open inbox");
+
+    // Clear and check worktreeId path
+    useNotificationStore.setState({ notifications: [] });
+    useNotificationHistoryStore.setState({
+      entries: [],
+      unreadCount: 0,
+      evictedToInboxCount: 0,
+    });
+    _resetRateLimitBuckets();
+    for (let i = 0; i < 4; i++) {
+      notify({ type: "error", message: `w${i}`, context: { worktreeId: "wt-1" } });
+    }
+    expect(
+      useNotificationHistoryStore.getState().entries.find((e) => e.message.includes("more event"))
+        ?.message
+    ).toBe("wt-1 reported 1 more event — open inbox");
+
+    // Clear and check type fallback
+    useNotificationStore.setState({ notifications: [] });
+    useNotificationHistoryStore.setState({
+      entries: [],
+      unreadCount: 0,
+      evictedToInboxCount: 0,
+    });
+    _resetRateLimitBuckets();
+    for (let i = 0; i < 4; i++) {
+      notify({ type: "warning", message: `t${i}` });
+    }
+    expect(
+      useNotificationHistoryStore.getState().entries.find((e) => e.message.includes("more event"))
+        ?.message
+    ).toBe("warning reported 1 more event — open inbox");
+  });
+
+  it("does not double-record overflowed events (no original row + summary)", () => {
+    for (let i = 0; i < 5; i++) {
+      notify({ type: "error", message: `Original ${i}`, rateLimitKey: "noisy" });
+    }
+    // 3 original rows + 1 summary row = 4 total; the 4th and 5th overflowed
+    // events are aggregated into the summary, not recorded individually.
+    expect(useNotificationHistoryStore.getState().entries).toHaveLength(4);
+  });
+
+  it("prunes bucket map when over RATE_LIMIT_MAX_BUCKETS", () => {
+    // Create 201 unique buckets — should not throw and should be capped
+    for (let i = 0; i < 201; i++) {
+      expect(() =>
+        notify({ type: "info", message: `n${i}`, rateLimitKey: `source-${i}` })
+      ).not.toThrow();
+    }
+    // No assertion on exact map size (internal state), but no crash means
+    // the LRU pruner ran without indexing past the end.
   });
 });
