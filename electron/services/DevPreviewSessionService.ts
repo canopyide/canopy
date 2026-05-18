@@ -143,6 +143,7 @@ export class DevPreviewSessionService {
       worktreeId: request.worktreeId ?? null,
     });
     const key = createSessionKey(request.projectId, request.panelId);
+    let state: DevPreviewSessionState | undefined;
     await this.runLocked(key, async () => {
       if (this.disposed) return;
       const session = this.getOrCreateSession(request.projectId, request.panelId);
@@ -193,8 +194,9 @@ export class DevPreviewSessionService {
       }
 
       await this.ensureSessionTerminal(session);
+      state = this.getSessionState(request.projectId, request.panelId);
     });
-    return this.getSessionState(request.projectId, request.panelId);
+    return state ?? this.getSessionState(request.projectId, request.panelId);
   }
 
   async restart(request: DevPreviewSessionRequest): Promise<DevPreviewSessionState> {
@@ -205,6 +207,7 @@ export class DevPreviewSessionService {
       projectId: request.projectId,
     });
     const key = createSessionKey(request.projectId, request.panelId);
+    let state: DevPreviewSessionState | undefined;
     try {
       await this.runLocked(key, async () => {
         const session = this.sessions.get(key);
@@ -223,6 +226,7 @@ export class DevPreviewSessionService {
             terminalId: null,
             isRestarting: false,
           });
+          state = this.getSessionState(request.projectId, request.panelId);
           return;
         }
 
@@ -236,6 +240,7 @@ export class DevPreviewSessionService {
 
         await this.stopSessionTerminal(session, "restart");
         await this.spawnSessionTerminal(session);
+        state = this.getSessionState(request.projectId, request.panelId);
       });
     } finally {
       markPerformance(PERF_MARKS.DEVPREVIEW_RESTART_END, {
@@ -244,7 +249,7 @@ export class DevPreviewSessionService {
         durationMs: Date.now() - restartStartedAt,
       });
     }
-    return this.getSessionState(request.projectId, request.panelId);
+    return state ?? this.getSessionState(request.projectId, request.panelId);
   }
 
   async stop(request: DevPreviewSessionRequest): Promise<DevPreviewSessionState> {
