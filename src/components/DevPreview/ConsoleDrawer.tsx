@@ -175,10 +175,11 @@ export function ConsoleDrawer({
       if (!container) return;
 
       const tabButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
-      const focusedIndex = tabButtons.indexOf(document.activeElement as HTMLButtonElement);
+      const active = document.activeElement;
+      const focusedIndex = active instanceof HTMLButtonElement ? tabButtons.indexOf(active) : -1;
       if (focusedIndex === -1) return;
 
-      let nextIndex: number | null = null;
+      let nextIndex: number;
       switch (e.key) {
         case "ArrowRight":
           nextIndex = (focusedIndex + 1) % tabButtons.length;
@@ -200,8 +201,8 @@ export function ConsoleDrawer({
       const nextTab = tabButtons[nextIndex];
       if (!nextTab) return;
       nextTab.focus();
-      const tabId = nextTab.dataset.tab as ConsoleDrawerTab | undefined;
-      if (tabId) selectTab(tabId);
+      const tabId = nextTab.dataset.tab;
+      if (tabId === "output" || tabId === "console") selectTab(tabId);
     },
     [selectTab]
   );

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useConsoleCaptureStore } from "@/store/consoleCaptureStore";
 import { usePanelStore } from "@/store";
-import { logError } from "@/utils/logger";
+import { safeFireAndForget } from "@/utils/safeFireAndForget";
 
 /**
  * Wires the main-process CDP console-capture pipeline to the renderer
@@ -39,11 +39,8 @@ export function useDevPreviewConsoleCapture(
     // Chain stop after start settles so a fast ready→evict cycle can't let a
     // slow startConsoleCapture resolve after cleanup already fired, which
     // would leave a CDP session attached with nothing to detach it.
-    const started = window.electron.webview
-      .startConsoleCapture(webContentsId, paneId)
-      .catch((err) => {
-        logError("[DevPreviewConsoleCapture] startConsoleCapture failed", err);
-      });
+    const started = window.electron.webview.startConsoleCapture(webContentsId, paneId);
+    safeFireAndForget(started, { context: "Starting dev-preview console capture" });
 
     const store = useConsoleCaptureStore.getState();
 
@@ -62,11 +59,13 @@ export function useDevPreviewConsoleCapture(
     return () => {
       offMessage();
       offCleared();
-      void started.finally(() => {
-        void window.electron.webview.stopConsoleCapture(webContentsId, paneId).catch((err) => {
-          logError("[DevPreviewConsoleCapture] stopConsoleCapture failed", err);
-        });
-      });
+      const stopped = started
+        .catch(() => {
+          // Start failure is already reported above; swallow it here so the
+          // sequencing chain still reaches the stop call.
+        })
+        .then(() => window.electron.webview.stopConsoleCapture(webContentsId, paneId));
+      safeFireAndForget(stopped, { context: "Stopping dev-preview console capture" });
     };
   }, [paneId, webviewRef, isWebviewReady, isEvicted]);
 
