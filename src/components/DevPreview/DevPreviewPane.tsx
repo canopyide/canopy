@@ -1005,7 +1005,7 @@ export function DevPreviewPane({
                 </Button>
                 {error.type === "missing-dependencies" || error.type === "permission" ? (
                   <Button
-                    onClick={() => actionService.dispatch("panel.focus", { panelId: id })}
+                    onClick={() => setDevPreviewConsoleOpen(id, true)}
                     variant="ghost"
                     size="sm"
                     className="gap-1.5 px-2.5 py-1.5 group text-daintree-text/50 hover:text-daintree-text/70"
@@ -1121,11 +1121,7 @@ export function DevPreviewPane({
                   {reconnectAttempt > 0 && !webviewLoadError && (
                     <div className="absolute bottom-0 left-0 right-0 z-20 flex items-center justify-center gap-2 px-3 py-1.5 text-xs bg-status-info/10 border-t border-status-info/20 text-daintree-text/70">
                       <Spinner size="xs" className="text-status-info" />
-                      <span>
-                        Reconnecting
-                        {reconnectAttempt > 0 ? ` (attempt ${reconnectAttempt} of 5)` : ""}
-                        ...
-                      </span>
+                      <span>Reconnecting (attempt {reconnectAttempt} of 5)...</span>
                     </div>
                   )}
                   {webviewLoadError && (
