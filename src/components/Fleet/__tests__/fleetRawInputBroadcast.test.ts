@@ -345,11 +345,7 @@ describe("broadcastFleetRawInput", () => {
     // The actual write still goes out — adding the notifyEnterPressed call
     // must not gate or short-circuit the broadcast.
     expect(broadcastMock).toHaveBeenCalledWith(["t1", "t2", "t3"], "\r");
-    expect(notifyEnterPressedMock.mock.calls.map(([id]) => id).sort()).toEqual([
-      "t1",
-      "t2",
-      "t3",
-    ]);
+    expect(notifyEnterPressedMock.mock.calls.map(([id]) => id).sort()).toEqual(["t1", "t2", "t3"]);
   });
 });
 
