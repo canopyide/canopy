@@ -19,6 +19,7 @@ import { validatePathPattern, previewPathPattern } from "@shared/utils/pathPatte
 import type { RunCommand, TerminalRecipe } from "@/types";
 import type { Project, ResourceEnvironment } from "@shared/types/project";
 import { ResourceEnvironmentsSection } from "@/components/Settings/ResourceEnvironmentsSection";
+import { useSettingsTabValidation } from "@/components/Settings/SettingsValidationRegistry";
 
 interface AutomationTabProps {
   currentProject: Project | undefined;
@@ -83,6 +84,11 @@ export function AutomationTab({
   onDefaultWorktreeModeChange,
   isOpen,
 }: AutomationTabProps) {
+  const trimmedWorktreePathPattern = worktreePathPattern.trim();
+  const hasPathPatternError =
+    trimmedWorktreePathPattern.length > 0 && !validatePathPattern(trimmedWorktreePathPattern).valid;
+  useSettingsTabValidation("project:automation", hasPathPatternError);
+
   return (
     <>
       <div className="mb-6 pb-6 border-b border-daintree-border">
