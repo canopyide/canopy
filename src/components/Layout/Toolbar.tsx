@@ -61,7 +61,11 @@ import { useProjectStore } from "@/store/projectStore";
 import { usePreferencesStore, useToolbarPreferencesStore, useVoiceRecordingStore } from "@/store";
 import { useAgentSettingsStore } from "@/store/agentSettingsStore";
 import { useNotificationSettingsStore } from "@/store/notificationSettingsStore";
-import type { ToolbarButtonId, AnyToolbarButtonId } from "@/../../shared/types/toolbar";
+import type {
+  ToolbarButtonId,
+  AnyToolbarButtonId,
+  PluginToolbarButtonId,
+} from "@/../../shared/types/toolbar";
 import { usePluginToolbarButtons } from "@/hooks/usePluginToolbarButtons";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
@@ -133,7 +137,7 @@ export function PluginToolbarButton({
   config,
   "data-toolbar-item": dataToolbarItem,
 }: {
-  pluginId: string;
+  pluginId: PluginToolbarButtonId;
   config: NonNullable<ReturnType<ReturnType<typeof usePluginToolbarButtons>["configs"]["get"]>>;
   "data-toolbar-item"?: string;
 }) {
@@ -167,9 +171,7 @@ export function PluginToolbarButton({
         </Tooltip>
       </ContextMenuTrigger>
       <ContextMenuContent className="max-h-[var(--radix-context-menu-content-available-height)] overflow-y-auto">
-        <ContextMenuItem
-          onSelect={() => toggleButtonVisibility(pluginId as AnyToolbarButtonId, "right")}
-        >
+        <ContextMenuItem onSelect={() => toggleButtonVisibility(pluginId, "right")}>
           <Unplug className="mr-2 h-3.5 w-3.5" />
           Unpin from Toolbar
         </ContextMenuItem>
