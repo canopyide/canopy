@@ -318,7 +318,7 @@ describe("PullRequestService", () => {
     vi.doMock("../GitHubService.js", () => ({ clearPRCaches }));
 
     const mockImpl = mockForgeProviderResolved();
-    delete (mockImpl as Record<string, unknown>).getRateLimit;
+    delete (mockImpl as unknown as Record<string, unknown>).getRateLimit;
 
     const { pullRequestService } = await import("../PullRequestService.js");
     const { events } = await import("../events.js");
