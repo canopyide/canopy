@@ -54,7 +54,7 @@ export class WorkspaceHostEventRouter {
 
   updateForgeCredentials(
     providerId: string,
-    _credentials: import("../../../../shared/types/forge.js").Credentials | null
+    _credentials: import("../../../shared/types/forge.js").Credentials | null
   ): void {
     this.forgeCredentialChangeAt.set(providerId, Date.now());
   }
