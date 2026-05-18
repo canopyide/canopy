@@ -11,7 +11,6 @@ import { projectEnvSecureStorage } from "./ProjectEnvSecureStorage.js";
 import { getProjectStateDir, settingsFilePath, UTF8_BOM } from "./projectStorePaths.js";
 import { decode, encodeEnvelope } from "./projectSettingsCodec.js";
 import { Cache } from "../utils/cache.js";
-import { broadcastToRenderer } from "../ipc/utils.js";
 import { CHANNELS } from "../ipc/channels.js";
 
 export class ProjectSettingsManager {
@@ -75,7 +74,7 @@ export class ProjectSettingsManager {
       if (error instanceof SyntaxError) {
         console.error(`[ProjectSettingsManager] Failed to parse settings for ${projectId}:`, error);
         const quarantinedPath = await this.quarantine(filePath, "corrupted");
-        this.broadcastCorruption(quarantinedPath);
+        void this.broadcastCorruption(quarantinedPath);
       } else {
         const code =
           error && typeof error === "object" && "code" in error
@@ -98,7 +97,7 @@ export class ProjectSettingsManager {
         `[ProjectSettingsManager] settings.json for ${projectId} was written by a newer app (v${decoded.onDiskVersion} > current); quarantining`
       );
       const quarantinedPath = await this.quarantine(filePath, `future-v${decoded.onDiskVersion}`);
-      this.broadcastCorruption(quarantinedPath, "future-version");
+      void this.broadcastCorruption(quarantinedPath, "future-version");
       return { runCommands: [] };
     }
 
@@ -183,8 +182,19 @@ export class ProjectSettingsManager {
     }
   }
 
-  private broadcastCorruption(quarantinedPath: string | null, kind?: "future-version"): void {
+  private async broadcastCorruption(
+    quarantinedPath: string | null,
+    kind?: "future-version"
+  ): Promise<void> {
     try {
+      // Lazy import keeps the workspace-host bundle clean of `BrowserWindow`.
+      // `ipc/utils` transitively pulls in `webContentsRegistry`, which calls
+      // `BrowserWindow.getAllWindows()` — a main-process-only API. The
+      // workspace-host UtilityProcess hits this path via `forgeProviderResolver
+      // → ProjectStore → ProjectSettingsManager`; from there, settings
+      // corruption silently no-ops (the failed import is caught below), and
+      // the main process surfaces the toast on its next read.
+      const { broadcastToRenderer } = await import("../ipc/utils.js");
       const message = quarantinedPath
         ? `Project settings couldn't be read and have been preserved at ${quarantinedPath}. Defaults are in effect until you reload the project.`
         : "Project settings couldn't be read. Defaults are in effect until you reload the project.";

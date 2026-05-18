@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ForgeProviderEntry, ResolvedForgeProvider } from "../../../../shared/types/forge.js";
+import type { ResolveForgeProviderInputs } from "../../../services/forgeProviderResolver.js";
 
 const ipcMainMock = vi.hoisted(() => ({
   handle: vi.fn(),
@@ -28,12 +29,26 @@ const registryMock = vi.hoisted(() => ({
 vi.mock("../../../services/forgeProviderRegistry.js", () => registryMock);
 
 const resolverMock = vi.hoisted(() => ({
-  resolveForgeProvider: vi.fn<
-    (projectId: string, remoteUrl?: string) => Promise<ResolvedForgeProvider>
-  >(async () => ({ entry: null, resolvedVia: null })),
+  resolveForgeProvider: vi.fn<(inputs: ResolveForgeProviderInputs) => ResolvedForgeProvider>(
+    () => ({ entry: null, resolvedVia: null })
+  ),
 }));
 
 vi.mock("../../../services/forgeProviderResolver.js", () => resolverMock);
+
+const projectStoreMock = vi.hoisted(() => ({
+  getProjectById: vi.fn(),
+  getProjectSettings: vi.fn(),
+}));
+
+vi.mock("../../../services/ProjectStore.js", () => ({ projectStore: projectStoreMock }));
+
+const gitServiceMock = vi.hoisted(() => ({ getRemoteUrl: vi.fn() }));
+const gitServiceCacheMock = vi.hoisted(() => ({ getGitService: vi.fn(() => gitServiceMock) }));
+
+vi.mock("../../../services/GitServiceCache.js", () => ({
+  gitServiceCache: gitServiceCacheMock,
+}));
 
 import { registerForgeSettingsHandlers } from "../forgeSettings.js";
 
@@ -50,6 +65,13 @@ describe("registerForgeSettingsHandlers", () => {
       delete storeMock._data[key];
     }
     registryMock.getRegisteredForgeProviders.mockReturnValue([]);
+    projectStoreMock.getProjectById.mockReturnValue({
+      id: "project-1",
+      path: "/repo",
+      name: "repo",
+    });
+    projectStoreMock.getProjectSettings.mockResolvedValue({ runCommands: [] });
+    gitServiceMock.getRemoteUrl.mockResolvedValue("https://github.com/owner/repo.git");
   });
 
   it("registers four IPC handlers", () => {
@@ -158,44 +180,55 @@ describe("registerForgeSettingsHandlers", () => {
     expect(ipcMainMock.removeHandler).toHaveBeenCalledTimes(4);
   });
 
-  it("resolveProvider delegates to the resolver and forwards its return value", async () => {
+  it("resolveProvider gathers inputs and delegates to the resolver", async () => {
     const entry: ForgeProviderEntry = {
       pluginId: "builtin",
       contribution: { id: "github", name: "GitHub", matches: ["github.com"] },
     };
     const resolved: ResolvedForgeProvider = { entry, resolvedVia: "hostname" };
-    resolverMock.resolveForgeProvider.mockResolvedValueOnce(resolved);
+    resolverMock.resolveForgeProvider.mockReturnValueOnce(resolved);
     registerForgeSettingsHandlers();
     const resolveProvider = findHandler("forge:resolve-provider");
     await expect(resolveProvider(null, "project-1")).resolves.toEqual(resolved);
-    expect(resolverMock.resolveForgeProvider).toHaveBeenCalledWith("project-1", undefined);
+    expect(resolverMock.resolveForgeProvider).toHaveBeenCalledWith({
+      remoteUrl: "https://github.com/owner/repo.git",
+      forgeProviderOverride: null,
+      globalDefaultProviderId: null,
+    });
   });
 
-  it("resolveProvider forwards the optional remoteUrl when provided", async () => {
+  it("resolveProvider forwards the optional remoteUrl when provided (skips git lookup)", async () => {
     const entry: ForgeProviderEntry = {
       pluginId: "acme.gitea",
       contribution: { id: "gitea", name: "Gitea", matches: ["gitea.example.com"] },
     };
     const resolved: ResolvedForgeProvider = { entry, resolvedVia: "hostname" };
-    resolverMock.resolveForgeProvider.mockResolvedValueOnce(resolved);
+    resolverMock.resolveForgeProvider.mockReturnValueOnce(resolved);
     registerForgeSettingsHandlers();
     const resolveProvider = findHandler("forge:resolve-provider");
     await expect(
       resolveProvider(null, "project-1", "git@gitea.example.com:owner/repo.git")
     ).resolves.toEqual(resolved);
-    expect(resolverMock.resolveForgeProvider).toHaveBeenCalledWith(
-      "project-1",
-      "git@gitea.example.com:owner/repo.git"
-    );
+    expect(resolverMock.resolveForgeProvider).toHaveBeenCalledWith({
+      remoteUrl: "git@gitea.example.com:owner/repo.git",
+      forgeProviderOverride: null,
+      globalDefaultProviderId: null,
+    });
+    expect(gitServiceMock.getRemoteUrl).not.toHaveBeenCalled();
   });
 
-  it("resolveProvider treats a non-string remoteUrl as undefined", async () => {
+  it("resolveProvider treats a non-string remoteUrl as missing (falls back to git lookup)", async () => {
     const resolved: ResolvedForgeProvider = { entry: null, resolvedVia: null };
-    resolverMock.resolveForgeProvider.mockResolvedValueOnce(resolved);
+    resolverMock.resolveForgeProvider.mockReturnValueOnce(resolved);
     registerForgeSettingsHandlers();
     const resolveProvider = findHandler("forge:resolve-provider");
     await expect(resolveProvider(null, "project-1", 42)).resolves.toEqual(resolved);
-    expect(resolverMock.resolveForgeProvider).toHaveBeenCalledWith("project-1", undefined);
+    expect(gitServiceMock.getRemoteUrl).toHaveBeenCalledTimes(1);
+    expect(resolverMock.resolveForgeProvider).toHaveBeenCalledWith({
+      remoteUrl: "https://github.com/owner/repo.git",
+      forgeProviderOverride: null,
+      globalDefaultProviderId: null,
+    });
   });
 
   it("resolveProvider returns no-match for invalid projectId payloads without calling the resolver", async () => {
@@ -206,5 +239,41 @@ describe("registerForgeSettingsHandlers", () => {
     await expect(resolveProvider(null, 42)).resolves.toEqual(noMatch);
     await expect(resolveProvider(null, undefined)).resolves.toEqual(noMatch);
     expect(resolverMock.resolveForgeProvider).not.toHaveBeenCalled();
+  });
+
+  it("resolveProvider returns no-match when the project is not found", async () => {
+    projectStoreMock.getProjectById.mockReturnValue(null);
+    registerForgeSettingsHandlers();
+    const resolveProvider = findHandler("forge:resolve-provider");
+    await expect(resolveProvider(null, "missing")).resolves.toEqual({
+      entry: null,
+      resolvedVia: null,
+    });
+    expect(resolverMock.resolveForgeProvider).not.toHaveBeenCalled();
+  });
+
+  it("resolveProvider passes forgeProviderOverride from project settings to the resolver", async () => {
+    projectStoreMock.getProjectSettings.mockResolvedValue({
+      runCommands: [],
+      forgeProviderOverride: "acme.gitea",
+    });
+    resolverMock.resolveForgeProvider.mockReturnValueOnce({ entry: null, resolvedVia: null });
+    registerForgeSettingsHandlers();
+    const resolveProvider = findHandler("forge:resolve-provider");
+    await resolveProvider(null, "project-1");
+    expect(resolverMock.resolveForgeProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ forgeProviderOverride: "acme.gitea" })
+    );
+  });
+
+  it("resolveProvider passes globalDefaultProviderId from the store to the resolver", async () => {
+    storeMock._data["forgeDefaultProviderId"] = "builtin.github";
+    resolverMock.resolveForgeProvider.mockReturnValueOnce({ entry: null, resolvedVia: null });
+    registerForgeSettingsHandlers();
+    const resolveProvider = findHandler("forge:resolve-provider");
+    await resolveProvider(null, "project-1");
+    expect(resolverMock.resolveForgeProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ globalDefaultProviderId: "builtin.github" })
+    );
   });
 });

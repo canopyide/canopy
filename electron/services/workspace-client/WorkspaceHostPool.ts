@@ -6,6 +6,8 @@ import { CHANNELS } from "../../ipc/channels.js";
 import { isValidLogOverrideLevel } from "../../utils/logger.js";
 import { type ProcessEntry, sendToEntryWindows } from "./types.js";
 import type { WorkspaceClientConfig } from "../../../shared/types/workspace-host.js";
+import { projectStore } from "../ProjectStore.js";
+import { generateProjectId } from "../projectStorePaths.js";
 
 const CLEANUP_GRACE_MS = 180_000;
 const MAX_WARM_ENTRIES = 3;
@@ -15,6 +17,23 @@ const DEFAULT_CONFIG: Required<WorkspaceClientConfig> = {
   healthCheckIntervalMs: 10000,
   showCrashDialog: true,
 };
+
+async function readForgeSettingsForProject(projectPath: string): Promise<{
+  forgeProviderOverride: string | null;
+  forgeDefaultProviderId: string | null;
+}> {
+  let forgeProviderOverride: string | null = null;
+  try {
+    const projectId = generateProjectId(projectPath);
+    const settings = await projectStore.getProjectSettings(projectId).catch(() => null);
+    forgeProviderOverride = settings?.forgeProviderOverride ?? null;
+  } catch {
+    forgeProviderOverride = null;
+  }
+  const rawDefault = store.get("forgeDefaultProviderId");
+  const forgeDefaultProviderId = typeof rawDefault === "string" ? rawDefault : null;
+  return { forgeProviderOverride, forgeDefaultProviderId };
+}
 
 function readPersistedLogOverrides(): Record<string, string> {
   try {
@@ -169,12 +188,15 @@ export class WorkspaceHostPool {
     const initPromise = (async () => {
       await host.waitForReady();
       const requestId = host.generateRequestId();
+      const forgeSettings = await readForgeSettingsForProject(normalizedPath);
       await host.sendWithResponse({
         type: "load-project",
         requestId,
         rootPath: normalizedPath,
         globalEnvVars: store.get("globalEnvironmentVariables") ?? {},
         wslGitByWorktree: store.get("wslGitByWorktree") ?? {},
+        forgeProviderOverride: forgeSettings.forgeProviderOverride,
+        forgeDefaultProviderId: forgeSettings.forgeDefaultProviderId,
       });
     })();
 
@@ -223,12 +245,15 @@ export class WorkspaceHostPool {
     const initPromise = (async () => {
       await host.waitForReady();
       const requestId = host.generateRequestId();
+      const forgeSettings = await readForgeSettingsForProject(normalizedPath);
       await host.sendWithResponse({
         type: "load-project",
         requestId,
         rootPath: normalizedPath,
         globalEnvVars: store.get("globalEnvironmentVariables") ?? {},
         wslGitByWorktree: store.get("wslGitByWorktree") ?? {},
+        forgeProviderOverride: forgeSettings.forgeProviderOverride,
+        forgeDefaultProviderId: forgeSettings.forgeDefaultProviderId,
       });
     })();
 
@@ -386,12 +411,15 @@ export class WorkspaceHostPool {
     await host.waitForReady();
 
     const requestId = host.generateRequestId();
+    const forgeSettings = await readForgeSettingsForProject(entry.projectPath);
     await host.sendWithResponse({
       type: "load-project",
       requestId,
       rootPath: entry.projectPath,
       globalEnvVars: store.get("globalEnvironmentVariables") ?? {},
       wslGitByWorktree: store.get("wslGitByWorktree") ?? {},
+      forgeProviderOverride: forgeSettings.forgeProviderOverride,
+      forgeDefaultProviderId: forgeSettings.forgeDefaultProviderId,
     });
 
     for (const [wcId, wc] of entry.directPortViews) {

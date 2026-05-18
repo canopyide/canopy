@@ -118,6 +118,17 @@ vi.mock("../events.js", () => ({
   events: { emit: vi.fn() },
 }));
 
+// `WorkspaceHostPool` reads forge settings via `projectStore` to plumb them
+// into the `load-project` payload (#8316). Stub the store so importing the
+// pool doesn't trigger ProjectStore's `app.getPath("userData")` constructor.
+vi.mock("../ProjectStore.js", () => ({
+  projectStore: { getProjectSettings: vi.fn().mockResolvedValue({ runCommands: [] }) },
+}));
+
+vi.mock("../../store.js", () => ({
+  store: { get: vi.fn().mockReturnValue(null), set: vi.fn() },
+}));
+
 import path from "path";
 import { WorkspaceClient } from "../WorkspaceClient.js";
 

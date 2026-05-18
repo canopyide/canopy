@@ -316,8 +316,22 @@ port.on("message", async (rawMsg: any) => {
           request.requestId,
           request.rootPath,
           request.globalEnvVars,
-          request.wslGitByWorktree
+          request.wslGitByWorktree,
+          request.forgeProviderOverride !== undefined ||
+            request.forgeDefaultProviderId !== undefined
+            ? {
+                forgeProviderOverride: request.forgeProviderOverride ?? null,
+                forgeDefaultProviderId: request.forgeDefaultProviderId ?? null,
+              }
+            : undefined
         );
+        break;
+
+      case "update-forge-settings":
+        workspaceService.updateForgeSettings({
+          forgeProviderOverride: request.forgeProviderOverride,
+          forgeDefaultProviderId: request.forgeDefaultProviderId,
+        });
         break;
 
       case "set-wsl-opt-in":

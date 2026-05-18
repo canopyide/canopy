@@ -327,7 +327,11 @@ export class WorkspaceService {
     requestId: string,
     projectRootPath: string,
     globalEnvVars?: Record<string, string>,
-    wslGitByWorktree?: Record<string, { enabled: boolean; dismissed: boolean }>
+    wslGitByWorktree?: Record<string, { enabled: boolean; dismissed: boolean }>,
+    forgeSettings?: {
+      forgeProviderOverride: string | null;
+      forgeDefaultProviderId: string | null;
+    }
   ): Promise<void> {
     try {
       this.projectRootPath = projectRootPath;
@@ -336,6 +340,9 @@ export class WorkspaceService {
         // during this load-project's async work would otherwise be silently
         // overwritten. The most recent in-memory value wins on conflict.
         this.wslGitByWorktree = { ...wslGitByWorktree, ...this.wslGitByWorktree };
+      }
+      if (forgeSettings) {
+        pullRequestService.setForgeSettings(forgeSettings);
       }
       // Merge: global (lowest priority) < project-level < DAINTREE_* (set in buildEnv)
       const projectEnvVars = await this.loadProjectEnvVars(projectRootPath);
@@ -1902,6 +1909,14 @@ ${lines.map((l) => "+" + l).join("\n")}`;
   resetPRState(requestId: string): void {
     this.prService.resetPRState(this.projectRootPath);
     this.sendEvent({ type: "reset-pr-state-result", requestId, success: true });
+  }
+
+  updateForgeSettings(args: {
+    forgeProviderOverride: string | null;
+    forgeDefaultProviderId: string | null;
+  }): void {
+    pullRequestService.setForgeSettings(args);
+    void pullRequestService.refresh();
   }
 
   updateGitHubToken(token: string | null): void {

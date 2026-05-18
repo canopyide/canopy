@@ -58,7 +58,7 @@ function mockForgeProviderResolved(findPRByBranch?: () => Promise<ForgePR | null
   };
 
   vi.doMock("../forgeProviderResolver.js", () => ({
-    resolveForgeProvider: vi.fn().mockResolvedValue({
+    resolveForgeProvider: vi.fn().mockReturnValue({
       entry: {
         pluginId: "builtin",
         contribution: { id: "github", name: "GitHub", matches: ["github.com"] },
@@ -86,7 +86,7 @@ function mockForgeProviderResolved(findPRByBranch?: () => Promise<ForgePR | null
 
 function mockForgeProviderUnresolved() {
   vi.doMock("../forgeProviderResolver.js", () => ({
-    resolveForgeProvider: vi.fn().mockResolvedValue(null),
+    resolveForgeProvider: vi.fn().mockReturnValue({ entry: null, resolvedVia: null }),
   }));
   vi.doMock("../forgeProviderRegistry.js", () => ({
     getForgeProviderImpl: vi.fn().mockReturnValue(undefined),

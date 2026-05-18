@@ -143,6 +143,14 @@ class PullRequestService {
   private providerNamespacedId: string | null = null;
   private providerImpl: ForgeProviderImpl | null = null;
   private repoRef: RepoRef | null = null;
+  // Forge provider routing settings, pushed in from the main process. The
+  // workspace-host can't read `projectStore` or `electron-store` directly —
+  // those modules pull `BrowserWindow`/`app` into the bundle and crash the
+  // UtilityProcess (#8316). Main process plumbs these through
+  // `load-project` / `update-forge-settings` so the resolver stays a pure
+  // function here.
+  private forgeProviderOverride: string | null = null;
+  private globalDefaultProviderId: string | null = null;
   // In-flight dedup: keyed by branch name
   private inFlightBranchLookups = new Map<string, Promise<ForgePR | null>>();
 
@@ -308,10 +316,31 @@ class PullRequestService {
     logInfo("PullRequestService initialized", { cwd, projectId: this.projectId });
   }
 
+  public setForgeSettings(args: {
+    forgeProviderOverride: string | null;
+    forgeDefaultProviderId: string | null;
+  }): void {
+    this.forgeProviderOverride = args.forgeProviderOverride;
+    this.globalDefaultProviderId = args.forgeDefaultProviderId;
+    this.invalidateProvider();
+  }
+
   private async resolveProvider(): Promise<void> {
     if (!this.projectId) return;
     try {
-      const registered = await resolveForgeProvider(this.projectId);
+      const git = createHardenedGit(this.cwd);
+      // simple-git's typed `getConfig` returns a `ConfigGetResult` envelope,
+      // but daintree's wiring already resolves to the bare value string at
+      // runtime (and tests mock it the same way). Treat as `string | null`.
+      const rawUrl = (await git.getConfig("remote.origin.url").catch(() => null)) as string | null;
+      const remoteUrl =
+        typeof rawUrl === "string" && rawUrl.trim().length > 0 ? rawUrl.trim() : null;
+
+      const registered = resolveForgeProvider({
+        remoteUrl,
+        forgeProviderOverride: this.forgeProviderOverride,
+        globalDefaultProviderId: this.globalDefaultProviderId,
+      });
       if (!registered?.entry) {
         this.providerNamespacedId = null;
         this.providerImpl = null;
@@ -327,16 +356,13 @@ class PullRequestService {
         this.repoRef = null;
         return;
       }
-      const git = createHardenedGit(this.cwd);
-      const rawUrl = await git.getConfig("remote.origin.url").catch(() => null);
-      if (!rawUrl || typeof rawUrl !== "string") {
+      if (!remoteUrl) {
         this.providerNamespacedId = null;
         this.providerImpl = null;
         this.repoRef = null;
         return;
       }
-      const remoteUrl: string = rawUrl;
-      const repo = impl.parseRemote(remoteUrl.trim());
+      const repo = impl.parseRemote(remoteUrl);
       if (!repo) {
         this.providerNamespacedId = null;
         this.providerImpl = null;

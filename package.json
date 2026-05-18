@@ -104,7 +104,7 @@
     "@radix-ui/react-select": "^2.2.6",
     "@xterm/addon-webgl": "^0.19.0",
     "archiver": "^7.0.1",
-    "better-sqlite3": "^12.8.0",
+    "better-sqlite3": "^12.10.0",
     "copytree": "^0.14.2",
     "ipaddr.js": "^2.4.0",
     "js-yaml": "^4.1.1",
@@ -119,7 +119,6 @@
     "ffmpeg-static": "^5.2.0"
   },
   "overrides": {
-    "node-gyp": "^10.3.1",
     "eslint-plugin-react-hooks": "$eslint-plugin-react-hooks",
     "@tailwindcss/vite": {
       "vite": "^8.0.0"

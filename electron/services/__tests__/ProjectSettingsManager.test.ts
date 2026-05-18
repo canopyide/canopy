@@ -449,7 +449,10 @@ describe("ProjectSettingsManager caching", () => {
     const result = await manager.getProjectSettings(projectId);
     expect(result).toEqual({ runCommands: [] });
 
-    expect(broadcastSpy).toHaveBeenCalledTimes(1);
+    // `broadcastCorruption` is fire-and-forget via `void` and lazy-imports
+    // `broadcastToRenderer` on first hit, so the spy resolves on the next
+    // microtask after `getProjectSettings` returns.
+    await vi.waitFor(() => expect(broadcastSpy).toHaveBeenCalledTimes(1));
     const [channel, payload] = broadcastSpy.mock.calls[0];
     expect(channel).toBe("notification:show-toast");
     expect(payload).toMatchObject({ type: "error", title: "Project settings corrupted" });
@@ -495,7 +498,7 @@ describe("ProjectSettingsManager caching", () => {
     expect(dirEntries.some((name) => name.includes(".future-v"))).toBe(true);
     expect(dirEntries).not.toContain("settings.json");
 
-    expect(broadcastSpy).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(broadcastSpy).toHaveBeenCalledTimes(1));
     const [, payload] = broadcastSpy.mock.calls[0];
     expect(payload).toMatchObject({ type: "error", title: "Settings file too new" });
   });

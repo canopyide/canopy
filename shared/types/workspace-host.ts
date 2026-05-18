@@ -208,6 +208,24 @@ export type WorkspaceHostRequest =
        * decisions so the host can apply them when constructing monitors.
        */
       wslGitByWorktree?: Record<string, { enabled: boolean; dismissed: boolean }>;
+      /**
+       * Per-project `forgeProviderOverride` setting (#8111). The host can't
+       * read `projectStore` directly — its main-process bindings would crash
+       * the UtilityProcess (#8316). Plumbed through with the initial load so
+       * `PullRequestService` can resolve the right provider without
+       * importing `ProjectStore`.
+       */
+      forgeProviderOverride?: string | null;
+      /**
+       * Global `forgeDefaultProviderId` setting (#8110). Same rationale as
+       * `forgeProviderOverride` — `electron-store` is main-process-only.
+       */
+      forgeDefaultProviderId?: string | null;
+    }
+  | {
+      type: "update-forge-settings";
+      forgeProviderOverride: string | null;
+      forgeDefaultProviderId: string | null;
     }
   | {
       type: "sync";
