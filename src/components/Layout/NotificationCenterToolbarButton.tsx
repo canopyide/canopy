@@ -170,13 +170,37 @@ export function NotificationCenterToolbarButton({
     return () => clearTimeout(timer);
   }, [isBellBlipping]);
 
+  // Screen-reader announcement on DND start / end transitions. Initialize the
+  // ref to `isDndActive` so mounting while DND is already active does not
+  // synthesize a spurious "Notifications resumed" announcement.
+  const prevDndActiveRef = useRef(isDndActive);
+  const [dndAnnouncement, setDndAnnouncement] = useState("");
+  useEffect(() => {
+    const prev = prevDndActiveRef.current;
+    prevDndActiveRef.current = isDndActive;
+    if (!notificationsEnabled) {
+      // Bell is hidden; clear any prior announcement so it doesn't surface as
+      // stale text the next time notifications are re-enabled.
+      setDndAnnouncement("");
+      return;
+    }
+    if (prev === isDndActive) return;
+    if (isDndActive) {
+      // Mirror the aria-label priority: isSessionMuted wins when both sources
+      // overlap, so the live region and the button label agree on the reason.
+      setDndAnnouncement(isSessionMuted ? "Notifications paused" : "Quiet hours active");
+    } else {
+      setDndAnnouncement("Notifications resumed");
+    }
+  }, [isDndActive, isSessionMuted, notificationsEnabled]);
+
   if (!notificationsEnabled) return null;
 
   const label = (() => {
     if (isSessionMuted) {
-      return `Notifications — muted until ${timeFormatter.format(new Date(quietUntil))}`;
+      return `Notifications — paused until ${timeFormatter.format(new Date(quietUntil))}`;
     }
-    if (isScheduledMuted) return "Notifications — scheduled quiet hours";
+    if (isScheduledMuted) return "Notifications — quiet hours active";
     if (notificationUnreadCount > 0) return `Notifications — ${notificationUnreadCount} unread`;
     return "Notifications";
   })();
@@ -226,6 +250,15 @@ export function NotificationCenterToolbarButton({
       >
         <NotificationCenter open={notificationCenterOpen} onClose={closeNotificationCenter} />
       </FixedDropdown>
+      <span
+        data-testid="notification-dnd-announcement"
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {dndAnnouncement}
+      </span>
     </div>
   );
 }
