@@ -113,9 +113,14 @@ async function run() {
   removeBuildReadyMarker();
 
   if (isProd && !isWatch) {
-    const electronOutDir = path.join(root, "dist-electron/electron");
-    if (fs.existsSync(electronOutDir)) {
-      fs.rmSync(electronOutDir, { recursive: true, force: true });
+    // Clean both the electron host bundles and the built-in plugin outputs
+    // so a renamed source file or removed contribution does not survive
+    // between production builds and ship inside `dist-electron/**/*`.
+    for (const dir of ["dist-electron/electron", "dist-electron/plugins"]) {
+      const abs = path.join(root, dir);
+      if (fs.existsSync(abs)) {
+        fs.rmSync(abs, { recursive: true, force: true });
+      }
     }
   }
 

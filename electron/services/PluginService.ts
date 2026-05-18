@@ -206,14 +206,16 @@ export class PluginService {
    */
   private getBuiltinDir(): string | null {
     try {
-      if (app.isPackaged) {
-        return path.join(process.resourcesPath, "plugins", "builtin");
-      }
       if (typeof app.getAppPath !== "function") return null;
-      // In dev the compiled plugin output lives under `dist-electron/` next
-      // to the rest of the esbuild bundles. `electron-builder` strips the
-      // `dist-electron/` prefix when copying into the packaged Resources
-      // directory, so the packaged path resolves the same layout one level up.
+      // Plugins must live alongside the shared esbuild chunks at
+      // `dist-electron/electron/chunks/` so the relative `import` paths in
+      // their bundled output resolve. In dev this resolves to the repo's
+      // `dist-electron/` directory; in packaged builds it resolves inside
+      // `app.asar/dist-electron/`, which is on disk via Electron's fs patch.
+      // Using a single path for both modes keeps the chunk-relative imports
+      // honest — copying the plugins into `Resources/plugins/builtin/` would
+      // strand the relative chunk references and produce a silent registration
+      // gap (descriptor present, impl never bound).
       return path.join(app.getAppPath(), "dist-electron", "plugins", "builtin");
     } catch (err) {
       console.warn("[PluginService] Failed to resolve built-in plugins directory:", err);

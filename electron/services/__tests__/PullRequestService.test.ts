@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import type { WorktreeSnapshot } from "../../../shared/types/workspace-host.js";
 import type { DaintreeEventMap } from "../events.js";
-import type { PRCheckCandidate } from "../github/types.js";
+import type { PRCheckCandidate } from "../../../plugins/builtin/github/main/types.js";
 
 function makeWorktreeSnapshot(
   overrides: Partial<WorktreeSnapshot> & Pick<WorktreeSnapshot, "worktreeId">

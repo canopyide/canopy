@@ -31,7 +31,7 @@ import {
 } from "./GitHubQueries.js";
 import { gitHubRateLimitService } from "./GitHubRateLimitService.js";
 import { parseGitHubError } from "./GitHubErrors.js";
-import { deriveRequiredCIStatus, normalizeRawState } from "./prRequiredCIStatus.js";
+import { deriveRequiredCIStatus } from "./prRequiredCIStatus.js";
 import type { RollupContextNode } from "./prRequiredCIStatus.js";
 
 const REPO_METADATA_QUERY = `
@@ -312,7 +312,11 @@ async function getPRImpl(repo: RepoRef, number: number): Promise<PR | null> {
 }
 
 async function findPRByBranchImpl(repo: RepoRef, branchName: string): Promise<PR | null> {
-  const searchQuery = `repo:${repo.owner}/${repo.repo} is:pr head:${branchName} sort:created-desc`;
+  // Quote the branch name so refs containing spaces or characters that would
+  // otherwise be parsed as a separate search operator (`sort:`, `head:`,
+  // `is:`) don't override the intended search semantics.
+  const escapedBranch = branchName.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const searchQuery = `repo:${repo.owner}/${repo.repo} is:pr head:"${escapedBranch}" sort:created-desc`;
   const response = await runQuery(SEARCH_QUERY, {
     searchQuery,
     type: "ISSUE",

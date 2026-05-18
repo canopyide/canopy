@@ -137,9 +137,12 @@ export const LIST_ISSUES_QUERY = `
         nodes {
           number
           title
+          bodyText
           url
           state
+          createdAt
           updatedAt
+          closedAt
           author {
             login
             avatarUrl
@@ -206,11 +209,16 @@ export const LIST_PRS_QUERY = `
         nodes {
           number
           title
+          bodyText
           url
           state
           isDraft
+          createdAt
           updatedAt
+          closedAt
+          mergedAt
           merged
+          baseRefName
           headRefName
           headRepository {
             nameWithOwner
@@ -260,9 +268,12 @@ export const SEARCH_QUERY = `
         ... on Issue {
           number
           title
+          bodyText
           url
           state
+          createdAt
           updatedAt
+          closedAt
           author {
             login
             avatarUrl
@@ -286,11 +297,16 @@ export const SEARCH_QUERY = `
         ... on PullRequest {
           number
           title
+          bodyText
           url
           state
           isDraft
+          createdAt
           updatedAt
+          closedAt
+          mergedAt
           merged
+          baseRefName
           headRefName
           headRepository {
             nameWithOwner
@@ -339,6 +355,7 @@ export const GET_ISSUE_QUERY = `
         state
         createdAt
         updatedAt
+        closedAt
         author {
           login
           avatarUrl
@@ -430,6 +447,9 @@ export const GET_PR_QUERY = `
         merged
         createdAt
         updatedAt
+        closedAt
+        mergedAt
+        baseRefName
         headRefName
         headRepository {
           nameWithOwner
