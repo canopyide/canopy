@@ -12,6 +12,7 @@ type MockWebviewElement = HTMLElement & {
   getURL: ReturnType<typeof vi.fn>;
   isLoading: ReturnType<typeof vi.fn>;
   executeJavaScript: ReturnType<typeof vi.fn>;
+  getWebContentsId: ReturnType<typeof vi.fn>;
   setMockLoading: (value: boolean) => void;
 };
 
@@ -40,6 +41,7 @@ function decorateWebviewElement(element: HTMLElement): MockWebviewElement {
   });
   webview.isLoading = vi.fn(() => loading);
   webview.executeJavaScript = vi.fn().mockResolvedValue(0);
+  webview.getWebContentsId = vi.fn(() => 42);
   webview.setMockLoading = (value: boolean) => {
     loading = value;
   };
@@ -71,6 +73,7 @@ const {
     current: undefined,
   };
   const terminalStoreState = {
+    activeDockTerminalId: undefined as string | undefined,
     getTerminal: vi.fn(),
     setBrowserUrl: vi.fn(),
     setBrowserHistory: vi.fn(),
@@ -269,6 +272,7 @@ describe("DevPreviewPane webview lifecycle regression", () => {
       restart: vi.fn().mockResolvedValue(undefined),
       isRestarting: false,
     };
+    terminalStoreState.activeDockTerminalId = undefined;
     (window as unknown as { electron: Record<string, unknown> }).electron = {
       system: {
         openExternal: vi.fn(),
@@ -281,6 +285,8 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         onDialogRequest: vi.fn(() => vi.fn()),
         onFindShortcut: vi.fn(() => vi.fn()),
         onNavigationBlocked: vi.fn(() => vi.fn()),
+        setLifecycleState: vi.fn().mockResolvedValue(undefined),
+        getScrollPosition: vi.fn().mockResolvedValue(0),
       },
     };
   });
@@ -595,6 +601,140 @@ describe("DevPreviewPane webview lifecycle regression", () => {
     expect(webview.reload).not.toHaveBeenCalled();
 
     if (origSettings) useProjectSettingsStoreMock.mockImplementation(origSettings);
+  });
+
+  it("captures scroll position via CDP when memory-pressure eviction fires (#8281)", async () => {
+    // Eviction-path regression: useWebviewThrottle freezes hidden dock panels via
+    // CDP Page.setWebLifecycleState after 500ms. On a frozen page,
+    // executeJavaScript("window.scrollY") hangs indefinitely (WICG frozen-state
+    // spec suspends the JS task queue), so the previous capture path lost the
+    // scroll position. The fix reads scroll via main-process CDP getLayoutMetrics.
+    terminalStoreState.activeDockTerminalId = "dev-preview-panel-1";
+    let destroyHandler: ((payload: { tier: 1 | 2 }) => void) | undefined;
+    const onDestroyHiddenWebviews = vi.fn((handler: (payload: { tier: 1 | 2 }) => void) => {
+      destroyHandler = handler;
+      return vi.fn();
+    });
+    const getScrollPosition = vi.fn().mockResolvedValue(250);
+    (window as unknown as { electron: Record<string, unknown> }).electron = {
+      system: { openExternal: vi.fn() },
+      window: { onDestroyHiddenWebviews },
+      webview: {
+        registerPanel: vi.fn(() => Promise.resolve()),
+        onDialogRequest: vi.fn(() => vi.fn()),
+        onFindShortcut: vi.fn(() => vi.fn()),
+        onNavigationBlocked: vi.fn(() => vi.fn()),
+        setLifecycleState: vi.fn().mockResolvedValue(undefined),
+        getScrollPosition,
+      },
+    };
+
+    const { container, rerender } = render(<DevPreviewPane {...baseProps} location="dock" />);
+    const webview = getWebviewElement(container);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Panel is no longer the active dock panel — eviction is now valid.
+    terminalStoreState.activeDockTerminalId = "other-panel";
+    rerender(<DevPreviewPane {...baseProps} location="dock" />);
+
+    await act(async () => {
+      destroyHandler?.({ tier: 1 });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getScrollPosition).toHaveBeenCalledWith(42);
+    // Capture must run exactly once — the setWebviewNode(null) ref-cleanup and
+    // the eviction useEffect are not allowed to both fire and race with each
+    // other (the slower call could clobber the faster with scrollY=0 if the
+    // page has already committed to about:blank).
+    expect(getScrollPosition).toHaveBeenCalledTimes(1);
+    expect(terminalStoreState.setDevPreviewScrollPosition).toHaveBeenCalledWith(
+      "dev-preview-panel-1",
+      { url: "http://localhost:5173/", scrollY: 250 }
+    );
+    // The frozen-page path must NOT be used for the eviction capture.
+    expect(webview.executeJavaScript).not.toHaveBeenCalledWith("window.scrollY");
+  });
+
+  it("captures scroll position via CDP in setWebviewNode ref cleanup (#8281)", async () => {
+    // Ref-cleanup regression: when the <webview> JSX is unmounted (e.g. on
+    // panel unmount or eviction-driven branch switch), the React ref callback
+    // fires with null. Previously, this path also relied on
+    // executeJavaScript("window.scrollY"), which hangs on a frozen page. The
+    // fix routes both capture sites through the main-process CDP path.
+    const getScrollPosition = vi.fn().mockResolvedValue(310);
+    (window as unknown as { electron: Record<string, unknown> }).electron = {
+      system: { openExternal: vi.fn() },
+      window: { onDestroyHiddenWebviews: vi.fn(() => vi.fn()) },
+      webview: {
+        registerPanel: vi.fn(() => Promise.resolve()),
+        onDialogRequest: vi.fn(() => vi.fn()),
+        onFindShortcut: vi.fn(() => vi.fn()),
+        onNavigationBlocked: vi.fn(() => vi.fn()),
+        setLifecycleState: vi.fn().mockResolvedValue(undefined),
+        getScrollPosition,
+      },
+    };
+
+    const { container, unmount } = render(<DevPreviewPane {...baseProps} />);
+    const webview = getWebviewElement(container);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Unmount triggers ref-callback(null) → setWebviewNode cleanup path.
+    await act(async () => {
+      unmount();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getScrollPosition).toHaveBeenCalledWith(42);
+    expect(terminalStoreState.setDevPreviewScrollPosition).toHaveBeenCalledWith(
+      "dev-preview-panel-1",
+      { url: "http://localhost:5173/", scrollY: 310 }
+    );
+    // Frozen-page path must NOT be used for ref-cleanup capture.
+    expect(webview.executeJavaScript).not.toHaveBeenCalledWith("window.scrollY");
+  });
+
+  it("does not persist scrollY=0 from CDP (avoids clobbering prior position)", async () => {
+    // Defense: handleGetScrollPosition returns 0 on CDP error. If we persisted
+    // {scrollY: 0}, an earlier captured position could be silently overwritten.
+    // The renderer guard `> 0` keeps the prior value intact.
+    const getScrollPosition = vi.fn().mockResolvedValue(0);
+    (window as unknown as { electron: Record<string, unknown> }).electron = {
+      system: { openExternal: vi.fn() },
+      window: { onDestroyHiddenWebviews: vi.fn(() => vi.fn()) },
+      webview: {
+        registerPanel: vi.fn(() => Promise.resolve()),
+        onDialogRequest: vi.fn(() => vi.fn()),
+        onFindShortcut: vi.fn(() => vi.fn()),
+        onNavigationBlocked: vi.fn(() => vi.fn()),
+        setLifecycleState: vi.fn().mockResolvedValue(undefined),
+        getScrollPosition,
+      },
+    };
+
+    const { unmount } = render(<DevPreviewPane {...baseProps} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      unmount();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getScrollPosition).toHaveBeenCalled();
+    expect(terminalStoreState.setDevPreviewScrollPosition).not.toHaveBeenCalled();
   });
 
   it("captures scroll position when status transitions from running", async () => {

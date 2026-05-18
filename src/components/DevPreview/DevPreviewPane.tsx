@@ -450,11 +450,22 @@ export function DevPreviewPane({
           const currentWebviewUrl = prevWebview.getURL();
           if (currentWebviewUrl && currentWebviewUrl !== "about:blank") {
             const captureGeneration = scrollCaptureGenerationRef.current;
-            prevWebview
-              .executeJavaScript("window.scrollY")
+            // Use main-process CDP Page.getLayoutMetrics instead of
+            // executeJavaScript("window.scrollY"): hidden dock webviews are
+            // frozen by useWebviewThrottle (via Page.setWebLifecycleState) which
+            // suspends the JS task queue, so the executeJavaScript path hangs
+            // when memory-pressure eviction fires while the page is frozen.
+            const wcId = (
+              prevWebview as unknown as { getWebContentsId(): number }
+            ).getWebContentsId();
+            window.electron.webview
+              .getScrollPosition(wcId)
               .then((scrollY: number) => {
                 if (scrollCaptureGenerationRef.current !== captureGeneration) return;
-                if (typeof scrollY === "number" && Number.isFinite(scrollY)) {
+                // Guard `> 0`: a CDP error returns 0, and the user being at top
+                // of page has nothing worth restoring — both cases should leave
+                // any prior stored position untouched rather than clobber it.
+                if (typeof scrollY === "number" && Number.isFinite(scrollY) && scrollY > 0) {
                   setDevPreviewScrollPosition(id, { url: currentWebviewUrl, scrollY });
                 }
               })
@@ -665,7 +676,7 @@ export function DevPreviewPane({
   });
 
   const handleRetry = useCallback(() => {
-    start();
+    void start();
   }, [start]);
 
   const handleHardRestart = useCallback(() => {
@@ -774,15 +785,23 @@ export function DevPreviewPane({
   useEffect(() => {
     if (isEvicted && webviewRef.current) {
       try {
-        // Save scroll position before eviction
+        // Save scroll position before eviction. Use the main-process CDP
+        // Page.getLayoutMetrics path rather than executeJavaScript("window.scrollY"):
+        // useWebviewThrottle freezes hidden webviews after 500ms, and frozen pages
+        // suspend the JS task queue so executeJavaScript hangs indefinitely. CDP
+        // reads layout state directly from Blink, bypassing the freeze.
         const wv = webviewRef.current;
         const currentWebviewUrl = wv.getURL();
         if (currentWebviewUrl && currentWebviewUrl !== "about:blank") {
           const captureGeneration = scrollCaptureGenerationRef.current;
-          wv.executeJavaScript("window.scrollY")
+          const wcId = (wv as unknown as { getWebContentsId(): number }).getWebContentsId();
+          window.electron.webview
+            .getScrollPosition(wcId)
             .then((scrollY: number) => {
               if (scrollCaptureGenerationRef.current !== captureGeneration) return;
-              if (typeof scrollY === "number" && Number.isFinite(scrollY)) {
+              // See ref-cleanup path above: skip `0` so a CDP error can't
+              // clobber a previously captured position.
+              if (typeof scrollY === "number" && Number.isFinite(scrollY) && scrollY > 0) {
                 setDevPreviewScrollPosition(id, { url: currentWebviewUrl, scrollY });
               }
             })

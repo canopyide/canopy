@@ -886,6 +886,8 @@ export interface ElectronAPI {
     ): () => void;
     /** Reload a webview bypassing HTTP cache */
     reloadIgnoringCache(webContentsId: number, panelId: string): Promise<void>;
+    /** Read the current scroll position from Blink layout — works on frozen pages */
+    getScrollPosition(webContentsId: number): Promise<number>;
   };
   hibernation: {
     getConfig(): Promise<HibernationConfig>;

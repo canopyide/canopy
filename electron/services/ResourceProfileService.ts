@@ -502,8 +502,6 @@ export class ResourceProfileService {
     // so clamping to 1 on efficiency reclaims the largest memory chunk available.
     // NOTE: only reaches the primary window's PVM (single-window scope) — mirrors
     // the existing PtyClient/HibernationService ref pattern.
-    // TODO: memory-pressure eviction bypasses the browser/dev-preview state-capture
-    // flow used in project-switch-initiated eviction (see issue #5009).
     const pvm = this.deps.getProjectViewManager();
     if (pvm) {
       // Split try/catch per call: a throw from setCachedViewLimit (e.g. an

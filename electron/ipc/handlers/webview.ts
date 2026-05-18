@@ -980,6 +980,40 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
     wc.reloadIgnoringCache();
   };
 
+  const handleGetScrollPosition = async (webContentsId: unknown): Promise<number> => {
+    if (typeof webContentsId !== "number") {
+      throw new Error("Invalid arguments: webContentsId must be number");
+    }
+
+    if (!getWebviewDialogService().getPanelId(webContentsId)) return 0;
+
+    const wc = webContents.fromId(webContentsId);
+    if (!wc || wc.isDestroyed()) return 0;
+
+    try {
+      ensureAttached(wc);
+      // Reads scroll position directly from Blink's layout tree without
+      // touching the JS task queue — works on frozen pages where
+      // executeJavaScript("window.scrollY") would hang indefinitely.
+      const result = (await wc.debugger.sendCommand("Page.getLayoutMetrics")) as {
+        cssLayoutViewport?: { pageY?: number };
+      };
+      const pageY = result?.cssLayoutViewport?.pageY;
+      return typeof pageY === "number" ? Math.round(pageY) : 0;
+    } catch (err) {
+      const message = formatErrorMessage(err, "CDP getLayoutMetrics failed");
+      const isExpected =
+        message.includes("Target closed") ||
+        message.includes("Inspected target navigated") ||
+        message.includes("Cannot attach") ||
+        message.includes("debugger is already attached");
+      if (!isExpected) {
+        console.warn(`[webview] getScrollPosition failed for id=${webContentsId}:`, message);
+      }
+      return 0;
+    }
+  };
+
   const cleanups: Array<() => void> = [
     typedHandle(CHANNELS.WEBVIEW_SET_LIFECYCLE_STATE, handleSetLifecycleState),
     typedHandle(CHANNELS.WEBVIEW_REGISTER_PANEL, handleRegisterPanel),
@@ -991,6 +1025,7 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
     // @ts-expect-error: result type contains {success} | null — pending migration to throw AppError. See #6020.
     typedHandle(CHANNELS.WEBVIEW_OAUTH_LOOPBACK, handleOAuthLoopback),
     typedHandle(CHANNELS.WEBVIEW_RELOAD_IGNORING_CACHE, handleReloadIgnoringCache),
+    typedHandle(CHANNELS.WEBVIEW_GET_SCROLL_POSITION, handleGetScrollPosition),
   ];
 
   return () => {
