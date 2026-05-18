@@ -1237,6 +1237,12 @@ describe("matchesQuickStateFilter", () => {
     const meta = { ...createEmptyMeta(), chipState: "waiting" as const };
     expect(matchesQuickStateFilter("finished", meta)).toBe(false);
   });
+
+  it('"finished" does NOT match a merged worktree with an active agent (chipState null)', () => {
+    const meta = { ...createEmptyMeta(), hasWorkingAgent: true, chipState: null };
+    expect(matchesQuickStateFilter("finished", meta)).toBe(false);
+    expect(matchesQuickStateFilter("working", meta)).toBe(true);
+  });
 });
 
 describe("computeChipCounts", () => {
