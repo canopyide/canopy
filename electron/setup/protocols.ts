@@ -513,6 +513,26 @@ export function setupWebviewCSP(): void {
           });
         }
       });
+
+      // Forward renderer unresponsive/responsive events to the owning panel.
+      // Chromium emits "unresponsive" only after >5s main-thread hang — that
+      // is the debounce, so we forward immediately. Hide on "responsive".
+      contents.on("unresponsive", () => {
+        const panelId = getWebviewDialogService().getPanelId(contents.id);
+        if (!panelId) return;
+        const parentWindow = getWindowForWebContents(contents.hostWebContents ?? contents);
+        if (parentWindow && !parentWindow.isDestroyed()) {
+          getAppWebContents(parentWindow).send(CHANNELS.WEBVIEW_UNRESPONSIVE, { panelId });
+        }
+      });
+      contents.on("responsive", () => {
+        const panelId = getWebviewDialogService().getPanelId(contents.id);
+        if (!panelId) return;
+        const parentWindow = getWindowForWebContents(contents.hostWebContents ?? contents);
+        if (parentWindow && !parentWindow.isDestroyed()) {
+          getAppWebContents(parentWindow).send(CHANNELS.WEBVIEW_RESPONSIVE, { panelId });
+        }
+      });
     }
   });
 }

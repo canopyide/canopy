@@ -45,6 +45,11 @@ interface UseDevPreviewLoadLifecycleParams {
   onRenderProcessGone?: (details: { reason: string; exitCode: number }) => void;
 }
 
+export interface WebviewCrashInfo {
+  reason: string;
+  exitCode: number;
+}
+
 interface UseDevPreviewLoadLifecycleResult {
   isWebviewReady: boolean;
   setIsWebviewReady: React.Dispatch<React.SetStateAction<boolean>>;
@@ -54,6 +59,8 @@ interface UseDevPreviewLoadLifecycleResult {
   setIsSlowLoad: React.Dispatch<React.SetStateAction<boolean>>;
   webviewLoadError: WebviewLoadError | null;
   setWebviewLoadError: React.Dispatch<React.SetStateAction<WebviewLoadError | null>>;
+  webviewCrashed: WebviewCrashInfo | null;
+  setWebviewCrashed: React.Dispatch<React.SetStateAction<WebviewCrashInfo | null>>;
   reconnectAttempt: number;
   clearLoadTimers: () => void;
   clearRetryState: () => void;
@@ -76,6 +83,7 @@ export function useDevPreviewLoadLifecycle({
   const [isLoading, setIsLoading] = useState(false);
   const [isSlowLoad, setIsSlowLoad] = useState(false);
   const [webviewLoadError, setWebviewLoadError] = useState<WebviewLoadError | null>(null);
+  const [webviewCrashed, setWebviewCrashed] = useState<WebviewCrashInfo | null>(null);
   const [reconnectAttempt, setReconnectAttempt] = useState<number>(0);
 
   // Read projectId through a ref so a late project-hydration transition
@@ -156,9 +164,30 @@ export function useDevPreviewLoadLifecycle({
       }
     };
 
+    const handleRenderProcessGone = (e: Electron.RenderProcessGoneEvent) => {
+      const { reason, exitCode } = e.details;
+      setIsLoading(false);
+      setIsSlowLoad(false);
+      if (slowLoadTimeoutRef.current) {
+        clearTimeout(slowLoadTimeoutRef.current);
+        slowLoadTimeoutRef.current = null;
+      }
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current);
+        loadTimeoutRef.current = null;
+      }
+      if (failLoadRetryRef.current) {
+        clearTimeout(failLoadRetryRef.current);
+        failLoadRetryRef.current = null;
+      }
+      failLoadRetryCountRef.current = 0;
+      setWebviewCrashed({ reason, exitCode });
+    };
+
     const handleDidStartLoading = () => {
       setIsLoading(true);
       setWebviewLoadError(null);
+      setWebviewCrashed(null);
       setReconnectAttempt(0);
       setIsSlowLoad(false);
       if (slowLoadTimeoutRef.current) {
@@ -215,6 +244,7 @@ export function useDevPreviewLoadLifecycle({
     const handleDidFinishLoad = () => {
       setIsLoading(false);
       setWebviewLoadError(null);
+      setWebviewCrashed(null);
       setReconnectAttempt(0);
       setIsSlowLoad(false);
       if (slowLoadTimeoutRef.current) {
@@ -417,6 +447,10 @@ export function useDevPreviewLoadLifecycle({
     webview.addEventListener("did-stop-loading", handleDidStopLoading);
     webview.addEventListener("did-finish-load", handleDidFinishLoad);
     webview.addEventListener("did-fail-load", handleDidFailLoad as unknown as EventListener);
+    webview.addEventListener(
+      "render-process-gone",
+      handleRenderProcessGone as unknown as EventListener
+    );
     webview.addEventListener("did-navigate", handleDidNavigate as unknown as EventListener);
     webview.addEventListener(
       "did-navigate-in-page",
@@ -430,6 +464,10 @@ export function useDevPreviewLoadLifecycle({
       webview.removeEventListener("did-stop-loading", handleDidStopLoading);
       webview.removeEventListener("did-finish-load", handleDidFinishLoad);
       webview.removeEventListener("did-fail-load", handleDidFailLoad as unknown as EventListener);
+      webview.removeEventListener(
+        "render-process-gone",
+        handleRenderProcessGone as unknown as EventListener
+      );
       webview.removeEventListener("did-navigate", handleDidNavigate as unknown as EventListener);
       webview.removeEventListener(
         "did-navigate-in-page",
@@ -566,6 +604,8 @@ export function useDevPreviewLoadLifecycle({
     setIsSlowLoad,
     webviewLoadError,
     setWebviewLoadError,
+    webviewCrashed,
+    setWebviewCrashed,
     reconnectAttempt,
     clearLoadTimers,
     clearRetryState,
