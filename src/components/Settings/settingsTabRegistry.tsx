@@ -106,7 +106,7 @@ const importProjectAutomationTab = () => import("@/components/Project/Automation
 const importProjectRecipesTab = () => import("@/components/Project/RecipesTab");
 const importProjectCommandsTab = () => import("./CommandOverridesTab");
 const importProjectNotificationsTab = () => import("@/components/Project/ProjectNotificationsTab");
-const importProjectGitHubTab = () => import("@/components/Project/GitHubTab");
+const importProjectForgeProviderTab = () => import("@/components/Project/ForgeProviderTab");
 
 // ── Lazy components (module-level — React requires stable lazy() refs) ──
 
@@ -182,8 +182,8 @@ const LazyProjectCommandsTab = lazy(() =>
 const LazyProjectNotificationsTab = lazy(() =>
   importProjectNotificationsTab().then((m) => ({ default: m.ProjectNotificationsTab }))
 );
-const LazyProjectGitHubTab = lazy(() =>
-  importProjectGitHubTab().then((m) => ({ default: m.GitHubTab }))
+const LazyProjectForgeProviderTab = lazy(() =>
+  importProjectForgeProviderTab().then((m) => ({ default: m.ForgeProviderTab }))
 );
 
 // ── Voice requiresEnabled gates (referenced repeatedly) ─────────────────
@@ -1527,8 +1527,8 @@ export const SETTINGS_REGISTRY = [
     label: "GitHub",
     icon: <Github className="w-4 h-4" />,
     importKind: "lazy",
-    importer: importProjectGitHubTab,
-    LazyComponent: LazyProjectGitHubTab,
+    importer: importProjectForgeProviderTab,
+    LazyComponent: LazyProjectForgeProviderTab,
     needsProjectForm: true,
   } satisfies LazySettingsTabEntry,
 ] as const satisfies readonly AnySettingsTabEntry[];

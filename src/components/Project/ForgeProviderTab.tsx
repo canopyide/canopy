@@ -3,7 +3,7 @@ import { formatErrorMessage } from "@shared/utils/errorMessage";
 import type { RemoteInfo } from "@shared/types/ipc/github";
 import type { RegisteredForgeProvider } from "@shared/types/forge";
 
-interface GitHubTabProps {
+interface ForgeProviderTabProps {
   githubRemote: string | undefined;
   onGithubRemoteChange: (remote: string | undefined) => void;
   forgeProviderOverride: string | null;
@@ -11,13 +11,13 @@ interface GitHubTabProps {
   projectPath: string | undefined;
 }
 
-export function GitHubTab({
+export function ForgeProviderTab({
   githubRemote,
   onGithubRemoteChange,
   forgeProviderOverride,
   onForgeProviderOverrideChange,
   projectPath,
-}: GitHubTabProps) {
+}: ForgeProviderTabProps) {
   const [remotes, setRemotes] = useState<RemoteInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
