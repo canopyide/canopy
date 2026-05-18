@@ -1019,6 +1019,8 @@ function ProjectFormTabContent({
         <LazyComp
           githubRemote={projectForm.githubRemote}
           onGithubRemoteChange={projectForm.setGithubRemote}
+          forgeProviderOverride={projectForm.forgeProviderOverride}
+          onForgeProviderOverrideChange={projectForm.setForgeProviderOverride}
           projectPath={projectForm.currentProject?.path}
         />
       );

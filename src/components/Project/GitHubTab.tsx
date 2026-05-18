@@ -1,17 +1,30 @@
 import { useState, useEffect } from "react";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import type { RemoteInfo } from "@shared/types/ipc/github";
+import type { RegisteredForgeProvider } from "@shared/types/forge";
 
 interface GitHubTabProps {
   githubRemote: string | undefined;
   onGithubRemoteChange: (remote: string | undefined) => void;
+  forgeProviderOverride: string | null;
+  onForgeProviderOverrideChange: (providerId: string | null) => void;
   projectPath: string | undefined;
 }
 
-export function GitHubTab({ githubRemote, onGithubRemoteChange, projectPath }: GitHubTabProps) {
+export function GitHubTab({
+  githubRemote,
+  onGithubRemoteChange,
+  forgeProviderOverride,
+  onForgeProviderOverrideChange,
+  projectPath,
+}: GitHubTabProps) {
   const [remotes, setRemotes] = useState<RemoteInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [providers, setProviders] = useState<RegisteredForgeProvider[]>([]);
+  const [providersLoading, setProvidersLoading] = useState(false);
+  const [providersError, setProvidersError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!projectPath) return;
@@ -40,7 +53,36 @@ export function GitHubTab({ githubRemote, onGithubRemoteChange, projectPath }: G
     };
   }, [projectPath]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setProvidersLoading(true);
+    setProvidersError(null);
+
+    window.electron.plugin
+      .getForgeProviders()
+      .then((result) => {
+        if (!cancelled) {
+          setProviders(result);
+          setProvidersLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setProvidersError(formatErrorMessage(err, "Failed to load forge providers"));
+          setProvidersLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   if (!projectPath) return null;
+
+  const savedProviderKnown =
+    forgeProviderOverride === null ||
+    providers.some((p) => p.contribution.id === forgeProviderOverride);
 
   return (
     <div className="space-y-6">
@@ -66,6 +108,36 @@ export function GitHubTab({ githubRemote, onGithubRemoteChange, projectPath }: G
                 {r.parsedRepo ? ` — ${r.parsedRepo.owner}/${r.parsedRepo.repo}` : ""}
               </option>
             ))}
+          </select>
+        )}
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-daintree-text mb-1">Forge provider</label>
+        <p className="text-xs text-daintree-text/60 mb-2">
+          Pin this project to a specific forge provider, overriding hostname auto-detection.
+        </p>
+        {providersLoading ? (
+          <div className="text-sm text-daintree-text/60">Loading providers...</div>
+        ) : providersError ? (
+          <div className="text-sm text-status-error">{providersError}</div>
+        ) : (
+          <select
+            value={forgeProviderOverride ?? ""}
+            onChange={(e) =>
+              onForgeProviderOverrideChange(e.target.value === "" ? null : e.target.value)
+            }
+            className="w-full px-3 py-2 bg-daintree-bg border border-daintree-border rounded-[var(--radius-md)] text-sm text-daintree-text focus:outline-hidden focus:ring-2 focus:ring-daintree-accent"
+          >
+            <option value="">Auto-detect</option>
+            {providers.map((p) => (
+              <option key={`${p.pluginId}:${p.contribution.id}`} value={p.contribution.id}>
+                {p.contribution.name}
+              </option>
+            ))}
+            {!savedProviderKnown && forgeProviderOverride !== null ? (
+              <option value={forgeProviderOverride}>{forgeProviderOverride} (unavailable)</option>
+            ) : null}
           </select>
         )}
       </div>

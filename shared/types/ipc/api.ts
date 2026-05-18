@@ -1428,6 +1428,8 @@ export interface ElectronAPI {
     ): () => void;
     /** Pull the current set of plugin-contributed panel kinds. */
     getPanelKinds(): Promise<import("../../config/panelKindRegistry.js").PanelKindConfig[]>;
+    /** Pull the current set of registered forge providers (pluginId + manifest contribution). */
+    getForgeProviders(): Promise<import("../forge.js").RegisteredForgeProvider[]>;
     /** Subscribe to plugin panel kind registry changes. Returns a cleanup. */
     onPanelKindsChanged(
       callback: (payload: {

@@ -215,6 +215,10 @@ export interface GeneratedIpcInvokeMap {
     args: [pluginId: string, actionId: string];
     result: void;
   };
+  "plugin:forge-providers-get": {
+    args: [];
+    result: import("../forge.js").RegisteredForgeProvider[];
+  };
   "plugin:list": {
     args: [];
     result: import("../plugin.js").LoadedPluginInfo[];

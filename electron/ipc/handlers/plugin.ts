@@ -12,6 +12,10 @@ import {
   type PanelKindConfig,
 } from "../../../shared/config/panelKindRegistry.js";
 import { getPluginMenuItems } from "../../services/pluginMenuRegistry.js";
+import {
+  getRegisteredForgeProviders,
+  type RegisteredForgeProvider,
+} from "../../services/forgeProviderRegistry.js";
 import { isTrustedRendererUrl } from "../../../shared/utils/trustedRenderer.js";
 import type {
   LoadedPluginInfo,
@@ -96,6 +100,10 @@ async function handlePanelKindsGet(): Promise<PanelKindConfig[]> {
   return getPluginPanelKinds();
 }
 
+async function handleForgeProvidersGet(): Promise<RegisteredForgeProvider[]> {
+  return getRegisteredForgeProviders();
+}
+
 export const pluginNamespace = defineIpcNamespace({
   name: "plugin",
   ops: {
@@ -107,6 +115,7 @@ export const pluginNamespace = defineIpcNamespace({
     registerAction: op(PLUGIN_METHOD_CHANNELS.registerAction, handleActionsRegister),
     unregisterAction: op(PLUGIN_METHOD_CHANNELS.unregisterAction, handleActionsUnregister),
     getPanelKinds: op(PLUGIN_METHOD_CHANNELS.getPanelKinds, handlePanelKindsGet),
+    getForgeProviders: op(PLUGIN_METHOD_CHANNELS.getForgeProviders, handleForgeProvidersGet),
   },
 });
 

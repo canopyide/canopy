@@ -14,6 +14,7 @@ export const PLUGIN_METHOD_CHANNELS = {
   registerAction: "plugin:actions-register",
   unregisterAction: "plugin:actions-unregister",
   getPanelKinds: "plugin:panel-kinds-get",
+  getForgeProviders: "plugin:forge-providers-get",
 } as const satisfies Record<string, keyof IpcInvokeMap>;
 
 type Methods = typeof PLUGIN_METHOD_CHANNELS;

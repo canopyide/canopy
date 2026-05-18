@@ -1,9 +1,11 @@
 import type {
   ForgeProviderContribution,
-  ForgeProviderEntry,
   ForgeProviderImpl,
+  RegisteredForgeProvider,
   RepoRef,
 } from "../../shared/types/forge.js";
+
+export type { RegisteredForgeProvider } from "../../shared/types/forge.js";
 
 /**
  * Host-side registry of `forgeProviders` contributions, keyed by pluginId.
@@ -29,9 +31,6 @@ const PLUGIN_FORGE_PROVIDERS = new Map<string, ForgeProviderContribution[]>();
  * impl not yet bound" by treating an `undefined` result as absent.
  */
 const PLUGIN_FORGE_PROVIDER_IMPLS = new Map<string, ForgeProviderImpl>();
-
-/** @deprecated Use {@link ForgeProviderEntry} from `shared/types/forge`. */
-export type RegisteredForgeProvider = ForgeProviderEntry;
 
 export function registerForgeProviders(
   pluginId: string,
