@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/Spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useKeybindingDisplay } from "@/hooks/useKeybinding";
-import { useProjectSwitcherPalette } from "@/hooks";
+import { useProjectSwitcherPalette, useDeferredLoading } from "@/hooks";
+import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
 import { actionService } from "@/services/ActionService";
 import { ProjectSwitcherPalette } from "./ProjectSwitcherPalette";
 import type { SearchableProject } from "@/hooks/useProjectSwitcherPalette";
@@ -33,6 +34,7 @@ export function ProjectSwitcher() {
   const projects = useProjectStore((state) => state.projects);
   const currentProject = useProjectStore((state) => state.currentProject);
   const isLoading = useProjectStore((state) => state.isLoading);
+  const showLoadingSpinner = useDeferredLoading(isLoading, UI_DOHERTY_THRESHOLD);
   const projectSwitcher = useProjectSwitcherPalette();
   const projectSwitcherShortcut = useKeybindingDisplay("project.switcherPalette");
   const isDropdownOpen = projectSwitcher.isOpen && projectSwitcher.mode === "dropdown";
@@ -168,7 +170,7 @@ export function ProjectSwitcher() {
               onClick={() => projectSwitcher.open("dropdown")}
             >
               <span>Select Project...</span>
-              {isLoading ? (
+              {showLoadingSpinner ? (
                 <Spinner size="md" className="shrink-0" />
               ) : (
                 <ChevronsUpDown className="opacity-50" />
@@ -252,7 +254,7 @@ export function ProjectSwitcher() {
                   </span>
                 </div>
               </div>
-              {isLoading ? (
+              {showLoadingSpinner ? (
                 <Spinner size="md" className="shrink-0 text-text-muted" />
               ) : (
                 <ChevronsUpDown className="shrink-0 text-text-muted transition-colors group-hover:text-text-secondary" />

@@ -62,9 +62,9 @@ describe("Avatar", () => {
   });
 
   it("sets loaded=true when cached image is detected at mount", () => {
-    // Simulate a cached image by overriding complete/naturalWidth before the
-    // useEffect fires. In jsdom the effect fires synchronously in a microtask
-    // after render, so we need to patch the prototype.
+    // Simulate a cached image by overriding complete/naturalWidth before
+    // render. The lazy useState initializer calls probeCache(), which creates
+    // a fresh Image() — patching the prototype makes that probe report cached.
     const origComplete = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "complete");
     const origNaturalWidth = Object.getOwnPropertyDescriptor(
       HTMLImageElement.prototype,
@@ -155,7 +155,8 @@ describe("Avatar", () => {
       expect(container.querySelector("img")!.style.opacity).toBe("1");
 
       rerender(<Avatar src="b.jpg" alt="B" />);
-      // Src change resets state and effect re-probes the reused img node
+      // Src change re-probes the cache via probeCache() in the effect, so a
+      // cached second image stays loaded with no placeholder flash.
       expect(container.querySelector("img")!.style.opacity).toBe("1");
       expect(container.querySelector(".animate-pulse-delayed")).toBeFalsy();
       expect(container.querySelector(".animate-pulse")).toBeFalsy();
