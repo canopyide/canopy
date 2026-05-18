@@ -35,12 +35,12 @@ export async function resolveForgeProvider(
     const project = projectStore.getProjectById(projectId);
     if (!project) return null;
 
-    const gitService = gitServiceCache.getGitService(project.path);
-    const remoteUrl = await gitService.getRemoteUrl(project.path).catch(() => null);
-
     // 1. Per-project override — searches the full registry, not just remote
     //    candidates. A user who names a provider overrides hostname matching
     //    entirely. Override-set-but-unregistered returns null (no fallthrough).
+    //
+    //    Read settings before the git remote lookup so the override path
+    //    short-circuits without awaiting I/O it doesn't need.
     const settings = await projectStore.getProjectSettings(projectId).catch(() => null);
     const override = settings?.forgeProviderOverride;
     if (typeof override === "string" && override.length > 0) {
@@ -48,6 +48,8 @@ export async function resolveForgeProvider(
       return findById(all, override) ?? null;
     }
 
+    const gitService = gitServiceCache.getGitService(project.path);
+    const remoteUrl = await gitService.getRemoteUrl(project.path).catch(() => null);
     if (!remoteUrl) return null;
     const candidates = listMatchingProviders(remoteUrl);
 

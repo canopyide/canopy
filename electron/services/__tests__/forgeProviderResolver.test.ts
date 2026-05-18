@@ -105,16 +105,18 @@ describe("resolveForgeProvider", () => {
     expect(await resolveForgeProvider("project-1")).toEqual(gitea);
   });
 
-  it("returns null when forgeProviderOverride names an unregistered provider", async () => {
+  it("returns null when forgeProviderOverride names an unregistered provider (no fallthrough)", async () => {
     const github = makeProvider("builtin", "github", ["github.com"]);
     registryMock.getRegisteredForgeProviders.mockReturnValue([github]);
     registryMock.listMatchingProviders.mockReturnValue([github]);
+    // Both lower tiers would otherwise resolve to `github` — proving they are
+    // not consulted when an override names an unregistered provider.
+    storeMock._data["forgeDefaultProviderId"] = "github";
     projectStoreMock.getProjectSettings.mockResolvedValue({
       runCommands: [],
       forgeProviderOverride: "gone.away",
     });
 
-    // No fallthrough to global default or first hostname match.
     expect(await resolveForgeProvider("project-1")).toBeNull();
     expect(registryMock.listMatchingProviders).not.toHaveBeenCalled();
   });
@@ -149,11 +151,22 @@ describe("resolveForgeProvider", () => {
 
   it("returns null when the global default is not a hostname match for the remote", async () => {
     const github = makeProvider("builtin", "github", ["github.com"]);
+    const gitea = makeProvider("acme.gitea", "gitea", ["gitea.example.com"]);
+    // The default IS registered globally — but not for this remote's hostname.
+    // Rule 2 must filter through listMatchingProviders, not the full registry.
+    registryMock.getRegisteredForgeProviders.mockReturnValue([github, gitea]);
     registryMock.listMatchingProviders.mockReturnValue([github]);
     storeMock._data["forgeDefaultProviderId"] = "gitea";
 
-    // No fallthrough to first match.
     expect(await resolveForgeProvider("project-1")).toBeNull();
+  });
+
+  it("accepts namespaced ids for the global default", async () => {
+    const github = makeProvider("builtin", "github", ["github.com"]);
+    registryMock.listMatchingProviders.mockReturnValue([github]);
+    storeMock._data["forgeDefaultProviderId"] = "builtin.github";
+
+    expect(await resolveForgeProvider("project-1")).toEqual(github);
   });
 
   it("returns the first hostname match when no override or default is set", async () => {
@@ -195,12 +208,14 @@ describe("resolveForgeProvider", () => {
     expect(await resolveForgeProvider("project-1")).toBeNull();
   });
 
-  it("returns null when getProjectSettings rejects", async () => {
+  it("falls through to hostname match when getProjectSettings rejects", async () => {
+    // Documented contract: settings read failure is treated as "no override",
+    // not "no resolution". The conservative degradation path keeps PR linkage
+    // working when machine-local settings are momentarily unreadable.
     projectStoreMock.getProjectSettings.mockRejectedValue(new Error("read failed"));
     const github = makeProvider("builtin", "github", ["github.com"]);
     registryMock.listMatchingProviders.mockReturnValue([github]);
 
-    // Settings unreadable → no override; falls through to hostname match.
     expect(await resolveForgeProvider("project-1")).toEqual(github);
   });
 
@@ -212,7 +227,7 @@ describe("resolveForgeProvider", () => {
     expect(await resolveForgeProvider("project-1")).toBeNull();
   });
 
-  it("does no caching — settings/store are re-read on each call", async () => {
+  it("does no caching — settings, store, remote, and registry are re-read on each call", async () => {
     const github = makeProvider("builtin", "github", ["github.com"]);
     registryMock.listMatchingProviders.mockReturnValue([github]);
 
@@ -220,6 +235,8 @@ describe("resolveForgeProvider", () => {
     await resolveForgeProvider("project-1");
 
     expect(projectStoreMock.getProjectSettings).toHaveBeenCalledTimes(2);
+    expect(gitServiceMock.getRemoteUrl).toHaveBeenCalledTimes(2);
+    expect(registryMock.listMatchingProviders).toHaveBeenCalledTimes(2);
     expect(storeMock.get).toHaveBeenCalledWith("forgeDefaultProviderId");
   });
 });
