@@ -57,6 +57,16 @@ describe("Toolbar responsive design — issue #4133", () => {
       expect(css).toContain("toolbar-project-chip-label");
       expect(css).toContain("display: none");
     });
+
+    it("CSS has a second container-query tier that hides the entire chip at narrower widths — issue #8174", () => {
+      // Below the second breakpoint the vestigial GitBranch icon shifts visual
+      // weight without conveying anything (the branch label has already
+      // dropped); hide the whole chip so the pill stays clean. The tooltip
+      // remains the recovery surface for the branch name.
+      expect(css).toMatch(
+        /@container toolbar \(max-width:\s*560px\)[\s\S]*?\.toolbar-project-chip[^-][\s\S]*?display:\s*none/
+      );
+    });
   });
 
   describe("container query setup", () => {

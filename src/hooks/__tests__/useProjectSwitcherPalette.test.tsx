@@ -487,6 +487,115 @@ describe("useProjectSwitcherPalette", () => {
     });
   });
 
+  describe("activeProject decoupling — issue #8174", () => {
+    function makeProject(i: number) {
+      return {
+        id: `project-${i}`,
+        name: `Project ${i}`,
+        path: `/repo/p${i}`,
+        emoji: "🌲",
+        color: "#00aa00",
+        lastOpened: 1000 - i,
+        frecencyScore: 1.0,
+        status: "active" as const,
+      };
+    }
+
+    it("exposes the active project as a SearchableProject with enriched stats + pin state", async () => {
+      const projects = [{ ...makeProject(1), pinned: true }, makeProject(2)];
+      projectState.projects = projects;
+      projectState.currentProject = { id: "project-1" };
+      projectStatsState.stats = {
+        "project-1": { processCount: 3, activeAgentCount: 1, waitingAgentCount: 0 },
+      };
+      getBulkStatsMock.mockResolvedValue(emptyBulkStats(["project-1", "project-2"]));
+
+      const { result } = renderHook(() => useProjectSwitcherPalette());
+
+      await waitFor(() => {
+        expect(result.current.activeProject).not.toBeNull();
+      });
+
+      expect(result.current.activeProject?.id).toBe("project-1");
+      expect(result.current.activeProject?.isActive).toBe(true);
+      // Conditional context-menu items on the toolbar pill depend on these
+      // enriched fields, so assert them explicitly rather than relying on id
+      // equality to imply they're populated.
+      expect(result.current.activeProject?.isPinned).toBe(true);
+      expect(result.current.activeProject?.processCount).toBe(3);
+      expect(result.current.activeProject?.path).toBe("/repo/p1");
+    });
+
+    it("keeps activeProject populated even when the active project sits outside the 15-item results cap", async () => {
+      // Build 20 projects with the active project at the back of the MRU list
+      // (lowest lastOpened). With MAX_RESULTS=15, the active project should
+      // NOT appear in results, but activeProject must still expose it.
+      const projects = Array.from({ length: 20 }, (_, i) => makeProject(i + 1));
+      // Make project-20 the most-stale entry so it falls outside the 15 window.
+      projects[19] = { ...projects[19]!, lastOpened: 0 };
+      projectState.projects = projects;
+      projectState.currentProject = { id: "project-20" };
+      getBulkStatsMock.mockResolvedValue(emptyBulkStats(projects.map((p) => p.id)));
+
+      const { result } = renderHook(() => useProjectSwitcherPalette());
+
+      await waitFor(() => {
+        expect(result.current.activeProject?.id).toBe("project-20");
+      });
+
+      const idsInResults = result.current.results.map((p) => p.id);
+      expect(idsInResults).not.toContain("project-20");
+      expect(result.current.results).toHaveLength(15);
+      expect(result.current.activeProject?.isActive).toBe(true);
+      // Fields the pill context-menu reads must remain populated even when
+      // the active project sits outside the results window.
+      expect(result.current.activeProject?.path).toBe("/repo/p20");
+      expect(result.current.activeProject?.processCount).toBe(0);
+    });
+
+    it("keeps activeProject populated even when the current query filters out the active project", async () => {
+      const projects = [
+        { ...makeProject(1), name: "alpha-service" },
+        { ...makeProject(2), name: "beta-app" },
+      ];
+      projectState.projects = projects;
+      projectState.currentProject = { id: "project-1" };
+      getBulkStatsMock.mockResolvedValue(emptyBulkStats(["project-1", "project-2"]));
+
+      const { result } = renderHook(() => useProjectSwitcherPalette());
+
+      await waitFor(() => {
+        expect(result.current.activeProject?.id).toBe("project-1");
+      });
+
+      act(() => {
+        result.current.setQuery("beta");
+      });
+
+      // The active project is filtered out by the query, but activeProject still resolves.
+      const idsInResults = result.current.results.map((p) => p.id);
+      expect(idsInResults).not.toContain("project-1");
+      expect(result.current.activeProject?.id).toBe("project-1");
+    });
+
+    it("returns null when no project is currently active", async () => {
+      projectState.projects = [makeProject(1)];
+      projectState.currentProject = null;
+      getBulkStatsMock.mockResolvedValue(emptyBulkStats(["project-1"]));
+
+      const { result } = renderHook(() => useProjectSwitcherPalette());
+
+      // Wait for searchableProjects to populate so the activeProject memo has
+      // genuinely run with a non-empty list, otherwise the `null` assertion
+      // could resolve trivially before any project data is present.
+      await waitFor(() => {
+        expect(result.current.results).toHaveLength(1);
+      });
+
+      expect(result.current.activeProject).toBeNull();
+    });
+  });
+
   describe("search behavior", () => {
     const searchProjects = [
       {

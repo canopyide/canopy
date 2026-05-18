@@ -157,6 +157,16 @@
   }
 }
 
+/* Below 560px the chip itself becomes noise — keeping the vestigial GitBranch
+ * icon while hiding the branch name shifts visual weight without conveying
+ * anything. The full project + branch is still available in the pill tooltip,
+ * which is the recovery surface once the chip drops out. */
+@container toolbar (max-width: 560px) {
+  .toolbar-project-chip {
+    display: none;
+  }
+}
+
 .shortcut-reveal-chip {
   position: absolute;
   bottom: 1px;
