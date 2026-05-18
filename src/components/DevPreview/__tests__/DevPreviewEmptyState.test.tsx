@@ -94,6 +94,52 @@ describe("DevPreviewEmptyState", () => {
       expect(onAutoDetect).toHaveBeenCalledTimes(1);
     });
 
+    it("isAutoDetecting disables the primary CTA and blocks onAutoDetect", () => {
+      const onAutoDetect = vi.fn();
+      render(
+        <DevPreviewEmptyState
+          {...baseProps}
+          detectedCandidate={devRunner()}
+          allDetectedRunners={[devRunner()]}
+          isAutoDetecting={true}
+          onAutoDetect={onAutoDetect}
+        />
+      );
+      const cta = screen.getByRole("button", { name: /Starting/ });
+      expect(cta.hasAttribute("disabled")).toBe(true);
+      fireEvent.click(cta);
+      expect(onAutoDetect).not.toHaveBeenCalled();
+    });
+
+    it("isUnconfigured=false wins over detectedCandidate (waiting branch only)", () => {
+      render(
+        <DevPreviewEmptyState
+          {...baseProps}
+          isUnconfigured={false}
+          detectedCandidate={devRunner()}
+          allDetectedRunners={[devRunner(), startRunner()]}
+        />
+      );
+      expect(screen.getByText("Waiting for dev server")).toBeDefined();
+      expect(screen.queryByText("Start the dev server")).toBeNull();
+      expect(screen.queryByText("Use a different script…")).toBeNull();
+    });
+
+    it("hides picker when allDetectedRunners is undefined but CTA still works", () => {
+      const onAutoDetect = vi.fn();
+      render(
+        <DevPreviewEmptyState
+          {...baseProps}
+          detectedCandidate={devRunner()}
+          allDetectedRunners={undefined}
+          onAutoDetect={onAutoDetect}
+        />
+      );
+      expect(screen.queryByText("Use a different script…")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: /Start the dev server/ }));
+      expect(onAutoDetect).toHaveBeenCalledTimes(1);
+    });
+
     it("renders candidate branch for devcontainer fallback", () => {
       render(
         <DevPreviewEmptyState
@@ -152,14 +198,29 @@ describe("DevPreviewEmptyState", () => {
       expect(screen.getByText("Start server").closest("button")?.disabled).toBe(true);
     });
 
-    it("disables the submit button for shell-control input", () => {
+    it("allows compound shell commands (matches backend contract)", () => {
       const onManualSubmit = vi.fn();
       render(<DevPreviewEmptyState {...baseProps} onManualSubmit={onManualSubmit} />);
       const input = screen.getByLabelText("Dev server command");
-      fireEvent.change(input, { target: { value: "npm run dev; rm -rf /" } });
+      fireEvent.change(input, { target: { value: "cd apps/web && npm run dev" } });
       const button = screen.getByText("Start server").closest("button");
-      expect(button?.disabled).toBe(true);
+      expect(button?.disabled).toBe(false);
       fireEvent.click(button!);
+      expect(onManualSubmit).toHaveBeenCalledWith("cd apps/web && npm run dev");
+    });
+
+    it("blocks Enter submission while isSavingManual", () => {
+      const onManualSubmit = vi.fn();
+      render(
+        <DevPreviewEmptyState
+          {...baseProps}
+          isSavingManual={true}
+          onManualSubmit={onManualSubmit}
+        />
+      );
+      const input = screen.getByLabelText("Dev server command");
+      fireEvent.change(input, { target: { value: "npm run dev" } });
+      fireEvent.keyDown(input, { key: "Enter" });
       expect(onManualSubmit).not.toHaveBeenCalled();
     });
 

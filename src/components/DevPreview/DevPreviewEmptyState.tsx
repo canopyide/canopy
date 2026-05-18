@@ -2,8 +2,17 @@ import { useState, useCallback, type KeyboardEvent } from "react";
 import { Settings, WandSparkles, ChevronDown, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
-import { SHELL_CONTROL_RE } from "@/utils/devServerDetection";
 import type { RunCommand } from "@shared/types";
+
+// Mirrors the backend enforcement contract in
+// electron/services/DevPreviewCommandNormalizer.ts (getInvalidCommandMessage):
+// only blank and multi-line commands are rejected. Compound shell commands
+// (e.g. `cd apps/web && npm run dev`) are valid and run fine — the manual
+// input must not be stricter than the canonical Project Settings input.
+function isManualCommandInvalid(command: string): boolean {
+  const trimmed = command.trim();
+  return trimmed.length === 0 || /[\n\r]/.test(trimmed);
+}
 
 interface DevPreviewEmptyStateProps {
   /** True when the project has no dev command configured (first-run). */
@@ -39,9 +48,7 @@ export function DevPreviewEmptyState({
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [manualCommand, setManualCommand] = useState("");
 
-  const trimmedManual = manualCommand.trim();
-  const isManualInvalid =
-    trimmedManual.length === 0 || SHELL_CONTROL_RE.test(trimmedManual) || isSavingManual;
+  const isManualInvalid = isManualCommandInvalid(manualCommand) || isSavingManual;
 
   const handleSelect = useCallback(
     (runner: RunCommand) => {
@@ -52,11 +59,11 @@ export function DevPreviewEmptyState({
   );
 
   const submitManual = useCallback(() => {
-    if (trimmedManual.length === 0 || SHELL_CONTROL_RE.test(trimmedManual) || isSavingManual) {
+    if (isManualCommandInvalid(manualCommand) || isSavingManual) {
       return;
     }
-    onManualSubmit(trimmedManual);
-  }, [trimmedManual, isSavingManual, onManualSubmit]);
+    onManualSubmit(manualCommand.trim());
+  }, [manualCommand, isSavingManual, onManualSubmit]);
 
   const handleManualKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
@@ -177,11 +184,6 @@ export function DevPreviewEmptyState({
           disabled={isManualInvalid}
           size="sm"
           className="gap-1.5 shrink-0"
-          title={
-            trimmedManual.length > 0 && SHELL_CONTROL_RE.test(trimmedManual)
-              ? "Command contains shell control characters"
-              : undefined
-          }
         >
           <Play className="h-3.5 w-3.5" />
           <span className="text-xs">{isSavingManual ? "Starting…" : "Start server"}</span>

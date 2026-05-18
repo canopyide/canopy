@@ -785,6 +785,10 @@ export function DevPreviewPane({
         freshRunners?.find((r) => r.id === "devcontainer-poststart");
 
       if (!candidate) {
+        logError(
+          "Dev server auto-detect produced no candidate",
+          new Error("No dev script or devcontainer-poststart runner found on re-detection")
+        );
         return;
       }
 
