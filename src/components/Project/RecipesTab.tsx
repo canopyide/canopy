@@ -195,20 +195,20 @@ export function RecipesTab({
           commands and settings.
         </p>
 
-        <div className="space-y-2">
+        <div id="project-default-recipe" className="space-y-2">
           {!recipesLoading &&
             defaultWorktreeRecipeId &&
-            !recipes.find((r) => r.id === defaultWorktreeRecipeId) && (
+            !recipes.find((r) => r.id === defaultWorktreeRecipeId && !r.worktreeId) && (
               <div
                 className="flex items-start gap-2 p-3 rounded-[var(--radius-md)] bg-status-warning/10 border border-status-warning/20"
                 role="alert"
               >
                 <AlertTriangle className="h-4 w-4 text-status-warning mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-sm text-status-warning">Default recipe no longer exists</p>
+                  <p className="text-sm text-status-warning">Default recipe unavailable</p>
                   <p className="text-xs text-daintree-text/60 mt-1">
-                    The previously pinned recipe was deleted. Pin another recipe or clear the
-                    default below.
+                    The previously pinned recipe was deleted or is no longer eligible. Pin another
+                    recipe or clear the default below.
                   </p>
                   <Button
                     variant="ghost"

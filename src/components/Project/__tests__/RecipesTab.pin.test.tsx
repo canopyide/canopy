@@ -165,7 +165,7 @@ describe("RecipesTab — default pin", () => {
       />
     );
 
-    expect(screen.getByText(/default recipe no longer exists/i)).toBeTruthy();
+    expect(screen.getByText(/default recipe unavailable/i)).toBeTruthy();
   });
 
   it("clears the default when the banner action button is clicked", async () => {
@@ -199,7 +199,7 @@ describe("RecipesTab — default pin", () => {
       />
     );
 
-    expect(screen.queryByText(/default recipe no longer exists/i)).toBeNull();
+    expect(screen.queryByText(/default recipe unavailable/i)).toBeNull();
   });
 
   it("does not render the dangling-default banner when the pinned recipe exists", () => {
@@ -214,6 +214,37 @@ describe("RecipesTab — default pin", () => {
       />
     );
 
-    expect(screen.queryByText(/default recipe no longer exists/i)).toBeNull();
+    expect(screen.queryByText(/default recipe unavailable/i)).toBeNull();
+  });
+
+  it("renders the dangling-default banner when the pinned recipe is a worktree-scoped recipe that no longer qualifies", () => {
+    mockRecipes.value = [makeRecipe({ id: "wt-1", name: "Worktree Recipe", worktreeId: "wt-abc" })];
+    render(
+      <RecipesTab
+        projectId="proj-1"
+        defaultWorktreeRecipeId="wt-1"
+        onDefaultWorktreeRecipeIdChange={vi.fn()}
+        worktreeMap={new Map()}
+        isOpen={true}
+      />
+    );
+
+    expect(screen.getByText(/default recipe unavailable/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /clear default/i })).toBeTruthy();
+  });
+
+  it("exposes the project-default-recipe DOM anchor for settings deep-links", () => {
+    mockRecipes.value = [];
+    const { container } = render(
+      <RecipesTab
+        projectId="proj-1"
+        defaultWorktreeRecipeId={undefined}
+        onDefaultWorktreeRecipeIdChange={vi.fn()}
+        worktreeMap={new Map()}
+        isOpen={true}
+      />
+    );
+
+    expect(container.querySelector("#project-default-recipe")).not.toBeNull();
   });
 });
