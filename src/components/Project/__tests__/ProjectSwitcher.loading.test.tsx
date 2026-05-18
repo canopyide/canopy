@@ -273,4 +273,61 @@ describe("ProjectSwitcher loading affordance", () => {
     expect(trigger.querySelector(".animate-spin")).toBeNull();
     expect(trigger.querySelector(".lucide-chevrons-up-down")).not.toBeNull();
   });
+
+  it("trigger disabled tracks the deferred gate, not raw isLoading", () => {
+    setStore({
+      projects: [makeProject()],
+      currentProject: makeProject(),
+      isLoading: true,
+    });
+    const { getByRole } = render(<ProjectSwitcher />);
+    // No dim flash: button stays interactive below the threshold.
+    expect((getByRole("button") as HTMLButtonElement).disabled).toBe(false);
+
+    act(() => {
+      vi.advanceTimersByTime(DEFER_MS - 1);
+    });
+    expect((getByRole("button") as HTMLButtonElement).disabled).toBe(false);
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect((getByRole("button") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("'Open Project…' button disables immediately on isLoading (no spinner alternative)", () => {
+    setStore({
+      projects: [],
+      currentProject: null,
+      isLoading: true,
+    });
+    const { getByRole } = render(<ProjectSwitcher />);
+    const trigger = getByRole("button", { name: /Open Project/ }) as HTMLButtonElement;
+    // No spinner here, so disabling immediately can't be confused with a
+    // warm-cache flash — keep the instant interaction guard.
+    expect(trigger.disabled).toBe(true);
+  });
+
+  it("never flashes the spinner when isLoading resolves before the threshold", () => {
+    setStore({
+      projects: [makeProject()],
+      currentProject: makeProject(),
+      isLoading: true,
+    });
+    const { rerender, getByRole } = render(<ProjectSwitcher />);
+    expect(getByRole("button").querySelector(".animate-spin")).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    setStore({ isLoading: false });
+    rerender(<ProjectSwitcher />);
+
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    const trigger = getByRole("button");
+    expect(trigger.querySelector(".animate-spin")).toBeNull();
+    expect(trigger.querySelector(".lucide-chevrons-up-down")).not.toBeNull();
+  });
 });

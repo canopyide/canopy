@@ -166,7 +166,7 @@ export function ProjectSwitcher() {
             <Button
               variant="outline"
               className="w-full justify-between text-muted-foreground border-dashed h-12 active:scale-100"
-              disabled={isLoading}
+              disabled={showLoadingSpinner}
               onClick={() => projectSwitcher.open("dropdown")}
             >
               <span>Select Project...</span>
@@ -239,7 +239,7 @@ export function ProjectSwitcher() {
                 "hover:bg-surface-panel-elevated transition-colors",
                 "active:scale-100"
               )}
-              disabled={isLoading}
+              disabled={showLoadingSpinner}
               onClick={() => projectSwitcher.open("dropdown")}
             >
               <div className="flex items-center gap-3 text-left min-w-0">

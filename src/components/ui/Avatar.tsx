@@ -25,6 +25,9 @@ export function Avatar({ src, alt, title, className }: AvatarProps) {
   const [error, setError] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
 
+  // On src change the lazy initializer above does not re-run, so re-probe
+  // here: cached → stay loaded (no placeholder flash on avatar swaps),
+  // otherwise reset to false and let the img's onLoad drive the cold path.
   useEffect(() => {
     setError(false);
     setLoaded(probeCache(src));
