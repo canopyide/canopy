@@ -292,7 +292,7 @@ describe("broadcastFleetRawInput", () => {
     expect(enterFleetScopeMock).not.toHaveBeenCalled();
   });
 
-  it("treats panels with undefined worktreeId as same-worktree (no scope entry)", () => {
+  it("treats panels with undefined worktreeId as no-affiliation (no scope entry on their own)", () => {
     const t1 = makeTerminal("t1", { worktreeId: "wt-1" });
     const t2 = makeTerminal("t2");
     // Strip the worktreeId so the lookup returns undefined.
@@ -304,6 +304,52 @@ describe("broadcastFleetRawInput", () => {
 
     broadcastFleetRawInput("t1", "ls\r");
     expect(enterFleetScopeMock).not.toHaveBeenCalled();
+  });
+
+  it("still enters fleet scope when an undefined-worktreeId target sits alongside a real cross-worktree target", () => {
+    const t1 = makeTerminal("t1", { worktreeId: "wt-1" });
+    const t2 = makeTerminal("t2");
+    delete (t2 as { worktreeId?: string }).worktreeId;
+    const t3 = makeTerminal("t3", { worktreeId: "wt-2" });
+    seedPanels([t1, t2, t3]);
+    useFleetArmingStore.getState().armIds(["t1", "t2", "t3"]);
+    useFleetScopeFlagStore.setState({ mode: "scoped", isHydrated: true });
+    worktreeSelectionStateRef.current.activeWorktreeId = "wt-1";
+
+    broadcastFleetRawInput("t1", "ls\r");
+    expect(enterFleetScopeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("enters fleet scope regardless of payload — non-Enter cross-worktree still promotes visibility", () => {
+    seedPanels([
+      makeTerminal("t1", { worktreeId: "wt-1" }),
+      makeTerminal("t2", { worktreeId: "wt-2" }),
+    ]);
+    useFleetArmingStore.getState().armIds(["t1", "t2"]);
+    useFleetScopeFlagStore.setState({ mode: "scoped", isHydrated: true });
+    worktreeSelectionStateRef.current.activeWorktreeId = "wt-1";
+
+    // ESC+CR soft-newline (alt-Enter) — not a submit but still keystroke input.
+    expect(broadcastFleetRawInput("t1", "\x1b\r")).toBe(true);
+    expect(enterFleetScopeMock).toHaveBeenCalledTimes(1);
+    // notifyEnterPressed must NOT fire for the soft-newline payload.
+    expect(notifyEnterPressedMock).not.toHaveBeenCalled();
+  });
+
+  it("performs the raw broadcast alongside notifyEnterPressed for plain Enter", () => {
+    seedPanels([makeTerminal("t1"), makeTerminal("t2"), makeTerminal("t3")]);
+    useFleetArmingStore.getState().armIds(["t1", "t2", "t3"]);
+
+    expect(broadcastFleetRawInput("t1", "\r")).toBe(true);
+
+    // The actual write still goes out — adding the notifyEnterPressed call
+    // must not gate or short-circuit the broadcast.
+    expect(broadcastMock).toHaveBeenCalledWith(["t1", "t2", "t3"], "\r");
+    expect(notifyEnterPressedMock.mock.calls.map(([id]) => id).sort()).toEqual([
+      "t1",
+      "t2",
+      "t3",
+    ]);
   });
 });
 

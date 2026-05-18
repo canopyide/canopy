@@ -56,6 +56,10 @@ export function broadcastFleetRawInput(originId: string, data: string): boolean 
     let hasCrossWorktreeTarget = false;
     for (const id of targets) {
       const targetWorktreeId = panelsById[id]?.worktreeId;
+      // `undefined` is treated as "no worktree affiliation" — global/unowned
+      // terminals don't drive scope entry on their own. A real cross-worktree
+      // target (a non-undefined id that differs from the active worktree) is
+      // still detected when present alongside such a terminal.
       if (targetWorktreeId !== undefined && targetWorktreeId !== activeWorktreeId) {
         hasCrossWorktreeTarget = true;
         break;
@@ -76,11 +80,15 @@ export function broadcastFleetRawInput(originId: string, data: string): boolean 
     terminalInstanceService.notifyUserInput(id, data);
   }
   // Plain Enter is a submit. Mirror the structured-submit pattern from
-  // `fleetExecution.ts`: optimistically close `directing → working` for
+  // `fleetExecution.ts`: optimistically advance `directing → working` for
   // every target (origin included — its own xterm onKey path is bypassed
-  // when broadcast intercepts the raw input). The async
-  // `broadcast-write-result` handler still calls `clearDirectingState` for
-  // permanent failures, which overrides this optimistic state.
+  // when broadcast intercepts the raw input). Permanent failures fall
+  // through to `applyFleetBroadcastResult`, which also disarms the target;
+  // its `clearDirectingState` call is a no-op once we've already advanced
+  // to `working` (TerminalAgentStateController guards on `agentState ===
+  // "directing"`), so a dead-pipe target briefly reads as `working` until
+  // the PTY's own exit signal drives the state machine forward. Disarm +
+  // exit are the load-bearing recovery paths.
   // Match `\r` exactly — `\n` is Codex soft-newline, `\x1b\r` is legacy
   // ESC+CR, neither is a submit.
   if (data === "\r") {
