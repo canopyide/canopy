@@ -56,6 +56,15 @@ export const UI_DOHERTY_THRESHOLD = 400;
  *  Not an animation token — a perceptual floor, same family as Doherty. */
 export const UI_SKELETON_GATE_MS = 200;
 
+/** Feedback-hint window for direct user actions (e.g. `Button`'s `loading`
+ *  state). Distinct in role from the skeleton/Doherty gates: those *delay*
+ *  showing a placeholder to avoid flicker on background work, whereas a
+ *  user-initiated action gets *immediate* feedback. This documents the timing
+ *  tier for the opacity/transition feel of in-progress affordances; it is not
+ *  used as a visibility gate. Shares the 200ms value with the skeleton gate by
+ *  coincidence, not by coupling. */
+export const UI_FEEDBACK_HINT_MS = 200;
+
 /** How long an action success-label swap dwells visible before the toast
  *  auto-dismisses. Covers saccade (~200ms), lexical recognition (~300ms), and
  *  a comprehension buffer so sighted and screen-reader users can process the

@@ -17,7 +17,6 @@ import {
   FileSearch,
   RotateCcw,
 } from "lucide-react";
-import { Spinner } from "@/components/ui/Spinner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { SettingsSection } from "./SettingsSection";
@@ -469,12 +468,13 @@ function ApiKeyRow({
         </div>
         <Button
           onClick={() => void handleSave()}
-          disabled={validation === "testing" || !keyInput.trim()}
+          disabled={!keyInput.trim()}
+          loading={validation === "testing"}
           size="sm"
           variant="outline"
           className="text-daintree-text border-daintree-border hover:bg-daintree-border"
         >
-          {validation === "testing" ? <Spinner size="sm" /> : "Save"}
+          Save
         </Button>
         {value && (
           <Button
@@ -587,17 +587,11 @@ function MicPermissionRow({
                   size="sm"
                   variant="outline"
                   onClick={onRequest}
-                  disabled={isRequesting}
+                  loading={isRequesting}
                   className="text-daintree-text border-daintree-border hover:bg-daintree-border"
                 >
-                  {isRequesting ? (
-                    <Spinner size="sm" />
-                  ) : (
-                    <>
-                      <Mic className="w-3.5 h-3.5" />
-                      Request
-                    </>
-                  )}
+                  <Mic className="w-3.5 h-3.5" />
+                  Request
                 </Button>
               )}
             </div>

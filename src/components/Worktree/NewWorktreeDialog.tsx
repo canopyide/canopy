@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useMemo, useCallback, useTransition } from
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/AppDialog";
 import { FolderGit2, Check, AlertCircle, ChevronDown } from "lucide-react";
-import { Spinner } from "@/components/ui/Spinner";
 import { Skeleton, SkeletonBone } from "@/components/ui/Skeleton";
 import type { BranchInfo, CreateWorktreeOptions } from "@/types/electron";
 import type { GitHubIssue, GitHubPR } from "@shared/types/github";
@@ -926,8 +925,8 @@ export function NewWorktreeDialog({
             </Button>
             <Button
               onClick={handleCreate}
+              loading={isPending}
               disabled={
-                isPending ||
                 loading ||
                 isCheckingBranch ||
                 isGeneratingPath ||
@@ -937,12 +936,7 @@ export function NewWorktreeDialog({
               className="min-w-[100px]"
               data-testid="create-worktree-button"
             >
-              {isPending ? (
-                <>
-                  <Spinner />
-                  Creating...
-                </>
-              ) : errors.creationError ? (
+              {errors.creationError ? (
                 <>
                   <Check />
                   Retry create

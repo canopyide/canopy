@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Key, Check, AlertCircle, FlaskConical, ExternalLink, Github } from "lucide-react";
-import { Spinner } from "@/components/ui/Spinner";
 import { useGitHubConfigStore } from "@/store";
 import { actionService } from "@/services/ActionService";
 import type { GitHubTokenConfig, GitHubTokenValidation } from "@/types";
@@ -223,31 +222,25 @@ export function GitHubSettingsTab() {
             />
             <Button
               onClick={handleTestToken}
-              disabled={isTesting || isValidating || !githubToken.trim()}
+              disabled={isValidating || !githubToken.trim()}
+              loading={isTesting}
               variant="outline"
               size="sm"
               aria-label="Test token"
-              aria-busy={isTesting}
               className="min-w-[70px] text-daintree-text border-daintree-border hover:bg-daintree-border"
             >
-              {isTesting ? (
-                <Spinner />
-              ) : (
-                <>
-                  <FlaskConical aria-hidden="true" />
-                  Test
-                </>
-              )}
+              <FlaskConical aria-hidden="true" />
+              Test
             </Button>
             <Button
               onClick={handleSaveToken}
-              disabled={isValidating || isTesting || !githubToken.trim()}
+              disabled={isTesting || !githubToken.trim()}
+              loading={isValidating}
               size="sm"
               aria-label="Save token"
-              aria-busy={isValidating}
               className="min-w-[70px]"
             >
-              {isValidating ? <Spinner /> : "Save"}
+              Save
             </Button>
             {githubConfig?.hasToken && (
               <Button

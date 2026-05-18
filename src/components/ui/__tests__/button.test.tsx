@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { buttonVariants } from "../button";
+// @vitest-environment jsdom
+import { render, fireEvent } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
+import { Button, buttonVariants } from "../button";
 
 describe("buttonVariants", () => {
   it("includes cursor-pointer in the base classes", () => {
@@ -23,6 +26,10 @@ describe("buttonVariants", () => {
     expect(classes).toContain("duration-150");
   });
 
+  it("positions relative so the loading overlay can absolutely center", () => {
+    expect(buttonVariants()).toContain("relative");
+  });
+
   it("includes cursor-pointer across all variants", () => {
     const variants = [
       "default",
@@ -44,5 +51,94 @@ describe("buttonVariants", () => {
     for (const variant of variants) {
       expect(buttonVariants({ variant })).toContain("cursor-pointer");
     }
+  });
+});
+
+describe("Button loading state", () => {
+  it("does not render the spinner overlay or dim content when not loading", () => {
+    const { container } = render(<Button>Save</Button>);
+    const button = container.querySelector("button")!;
+    expect(button.hasAttribute("aria-busy")).toBe(false);
+    expect(button.hasAttribute("aria-disabled")).toBe(false);
+    expect(button.hasAttribute("data-loading")).toBe(false);
+    expect(container.querySelector('[data-slot="button-spinner"]')).toBeNull();
+    const content = container.querySelector('[data-slot="button-content"]')!;
+    expect(content.className).not.toContain("opacity-30");
+  });
+
+  it("renders an aria-hidden spinner overlay and sets ARIA state when loading", () => {
+    const { container } = render(<Button loading>Save</Button>);
+    const button = container.querySelector("button")!;
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    expect(button.getAttribute("data-loading")).toBe("true");
+    // Native disabled must NOT be set — it would drop focus.
+    expect(button.hasAttribute("disabled")).toBe(false);
+    expect(button.className).toContain("pointer-events-none");
+
+    const spinner = container.querySelector('[data-slot="button-spinner"]')!;
+    expect(spinner).toBeTruthy();
+    expect(spinner.getAttribute("aria-hidden")).toBe("true");
+    expect(spinner.className).toContain("pointer-events-none");
+    expect(spinner.querySelector("svg")).toBeTruthy();
+
+    const content = container.querySelector('[data-slot="button-content"]')!;
+    expect(content.className).toContain("opacity-30");
+    expect(content.textContent).toBe("Save");
+  });
+
+  it("blocks onClick while loading and fires it otherwise", () => {
+    const onClick = vi.fn();
+    const { container, rerender } = render(
+      <Button loading onClick={onClick}>
+        Save
+      </Button>
+    );
+    const button = container.querySelector("button")!;
+    fireEvent.click(button);
+    expect(onClick).not.toHaveBeenCalled();
+
+    rerender(<Button onClick={onClick}>Save</Button>);
+    fireEvent.click(container.querySelector("button")!);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("still honors an explicit disabled prop alongside aria-disabled", () => {
+    const { container } = render(<Button disabled>Save</Button>);
+    const button = container.querySelector("button")!;
+    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("scales the spinner with the button size variant", () => {
+    const sm = render(
+      <Button loading size="sm">
+        Save
+      </Button>
+    );
+    expect(
+      sm.container.querySelector('[data-slot="button-spinner"] svg')!.getAttribute("class")
+    ).toContain("w-3.5");
+
+    const xs = render(
+      <Button loading size="xs">
+        Save
+      </Button>
+    );
+    expect(
+      xs.container.querySelector('[data-slot="button-spinner"] svg')!.getAttribute("class")
+    ).toContain("w-3");
+  });
+
+  it("merges into the slotted child when asChild without breaking", () => {
+    const { container } = render(
+      <Button asChild loading>
+        <a href="/x">Link</a>
+      </Button>
+    );
+    const anchor = container.querySelector("a")!;
+    expect(anchor).toBeTruthy();
+    expect(anchor.getAttribute("aria-busy")).toBe("true");
+    expect(container.querySelector('[data-slot="button-spinner"]')).toBeTruthy();
   });
 });

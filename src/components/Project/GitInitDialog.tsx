@@ -304,16 +304,10 @@ export function GitInitDialog({ isOpen, directoryPath, onSuccess, onCancel }: Gi
             </Button>
             <Button
               onClick={() => void startInitialization()}
-              disabled={isInitializing || !canStart}
+              disabled={!canStart}
+              loading={isInitializing}
             >
-              {isInitializing ? (
-                <>
-                  <Spinner size="md" />
-                  Initializing...
-                </>
-              ) : (
-                "Initialize repository"
-              )}
+              Initialize repository
             </Button>
           </>
         )}

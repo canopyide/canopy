@@ -351,15 +351,8 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
               >
                 {isCloning ? "Stop clone" : "Cancel"}
               </Button>
-              <Button onClick={() => void startClone()} disabled={!canClone || isCloning}>
-                {isCloning ? (
-                  <>
-                    <Spinner size="md" />
-                    Cloning...
-                  </>
-                ) : (
-                  "Clone"
-                )}
+              <Button onClick={() => void startClone()} disabled={!canClone} loading={isCloning}>
+                Clone
               </Button>
             </>
           )}
