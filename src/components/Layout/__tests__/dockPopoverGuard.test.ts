@@ -21,7 +21,26 @@ describe("handleDockInteractOutside", () => {
     container.remove();
   });
 
-  it("prevents dismissal when target is inside a Radix popper wrapper", () => {
+  it("prevents dismissal when target is inside a dock-popover-child element", () => {
+    const wrapper = document.createElement("div");
+    wrapper.setAttribute("data-dock-popover-child", "");
+    const menuItem = document.createElement("div");
+    wrapper.appendChild(menuItem);
+    document.body.appendChild(wrapper);
+
+    const event = makeEvent(menuItem);
+    handleDockInteractOutside(event, null);
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    wrapper.remove();
+  });
+
+  it("allows dismissal when target is on an unrelated Radix popper wrapper", () => {
+    // Regression for #8161: the previous Guard 2 selector matched any
+    // [data-radix-popper-content-wrapper] in the document, blocking dismissal
+    // even when the click originated in an unrelated Radix overlay. The
+    // project-owned data-dock-popover-child attribute must NOT match such
+    // wrappers — only Radix content rendered inside a DockPopoverChildProvider.
     const wrapper = document.createElement("div");
     wrapper.setAttribute("data-radix-popper-content-wrapper", "");
     const menuItem = document.createElement("div");
@@ -31,7 +50,7 @@ describe("handleDockInteractOutside", () => {
     const event = makeEvent(menuItem);
     handleDockInteractOutside(event, null);
 
-    expect(event.preventDefault).toHaveBeenCalled();
+    expect(event.preventDefault).not.toHaveBeenCalled();
     wrapper.remove();
   });
 
@@ -57,12 +76,31 @@ describe("handleDockInteractOutside", () => {
 
   it("handles null portal container gracefully", () => {
     const wrapper = document.createElement("div");
-    wrapper.setAttribute("data-radix-popper-content-wrapper", "");
+    wrapper.setAttribute("data-dock-popover-child", "");
     const child = document.createElement("span");
     wrapper.appendChild(child);
     document.body.appendChild(wrapper);
 
     const event = makeEvent(child);
+    handleDockInteractOutside(event, null);
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    wrapper.remove();
+  });
+
+  it("matches when the data-dock-popover-child attribute is on an ancestor", () => {
+    // Radix content nodes stamp the attribute on themselves; clicks frequently
+    // land on a descendant (a menu item, an inner span). `closest` should walk
+    // up the tree and find the stamped ancestor.
+    const wrapper = document.createElement("div");
+    wrapper.setAttribute("data-dock-popover-child", "");
+    const middle = document.createElement("div");
+    const leaf = document.createElement("span");
+    middle.appendChild(leaf);
+    wrapper.appendChild(middle);
+    document.body.appendChild(wrapper);
+
+    const event = makeEvent(leaf);
     handleDockInteractOutside(event, null);
 
     expect(event.preventDefault).toHaveBeenCalled();

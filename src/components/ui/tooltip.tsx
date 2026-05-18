@@ -4,6 +4,7 @@ import { Slot } from "@radix-ui/react-slot";
 import { cn } from "@/lib/utils";
 import { primeOnEvent, useRadixPrimitives } from "./radix-loader";
 import { FixedDropdownVisibleContext } from "./fixed-dropdown";
+import { useIsDockPopoverChild } from "./DockPopoverChildContext";
 
 type TooltipProviderProps = React.ComponentProps<typeof TooltipPrimitiveType.Provider>;
 
@@ -160,6 +161,7 @@ const TooltipContent = React.forwardRef<
     ref
   ) => {
     const radix = useRadixPrimitives();
+    const isDockPopoverChild = useIsDockPopoverChild();
     if (!radix) return null;
     const Portal = radix.TooltipPrimitive.Portal;
     const Content = radix.TooltipPrimitive.Content;
@@ -178,6 +180,7 @@ const TooltipContent = React.forwardRef<
             className
           )}
           {...props}
+          data-dock-popover-child={isDockPopoverChild ? "" : undefined}
         />
       </Portal>
     );

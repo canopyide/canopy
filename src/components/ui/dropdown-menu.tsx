@@ -5,6 +5,7 @@ import { Check, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useScrollShadowOverlays } from "@/components/ui/ScrollShadow";
 import { primeOnEvent, useRadixPrimitives } from "./radix-loader";
+import { useIsDockPopoverChild } from "./DockPopoverChildContext";
 
 const DropdownMenuIntentContext = React.createContext<((next: boolean) => void) | null>(null);
 
@@ -215,6 +216,7 @@ const DropdownMenuSubContent = React.forwardRef<
 >(({ className, sideOffset = 4, collisionPadding = 8, children, style, ...props }, ref) => {
   const radix = useRadixPrimitives();
   const { ref: shadowRef, topShadow, bottomShadow } = useScrollShadowOverlays(ref);
+  const isDockPopoverChild = useIsDockPopoverChild();
   if (!radix) return null;
   const Portal = radix.DropdownMenuPrimitive.Portal;
   const SubContent = radix.DropdownMenuPrimitive.SubContent;
@@ -231,6 +233,7 @@ const DropdownMenuSubContent = React.forwardRef<
           className
         )}
         {...props}
+        data-dock-popover-child={isDockPopoverChild ? "" : undefined}
       >
         {topShadow}
         {children}
@@ -251,6 +254,7 @@ const DropdownMenuContent = React.forwardRef<
 >(({ className, sideOffset = 4, children, style, ...props }, ref) => {
   const radix = useRadixPrimitives();
   const { ref: shadowRef, topShadow, bottomShadow } = useScrollShadowOverlays(ref);
+  const isDockPopoverChild = useIsDockPopoverChild();
   if (!radix) return null;
   const Portal = radix.DropdownMenuPrimitive.Portal;
   const Content = radix.DropdownMenuPrimitive.Content;
@@ -266,6 +270,7 @@ const DropdownMenuContent = React.forwardRef<
           className
         )}
         {...props}
+        data-dock-popover-child={isDockPopoverChild ? "" : undefined}
       >
         {topShadow}
         {children}
