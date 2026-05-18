@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveNextMajorVersion } from "../utils/resolveNextVersion.js";
-export { getInvalidCommandMessage } from "@shared/utils/devCommandValidation";
+export { getInvalidCommandMessage } from "../../shared/utils/devCommandValidation.js";
 
 export const NEXT_DEV_DIRECT_RE = /\bnext\s+dev\b/;
 export const TURBOPACK_FLAG_RE = /--turbo(?:pack)?\b/;
