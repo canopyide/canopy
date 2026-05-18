@@ -433,6 +433,180 @@ describe("registerWebviewHandlers", () => {
       );
       expect(sendToRenderer).not.toHaveBeenCalled();
     });
+
+    it("enables Log domain on startConsoleCapture", async () => {
+      cleanup = registerWebviewHandlers(deps);
+      const handler = getHandler("webview:start-console-capture");
+      await handler(null, 42, "pane-1");
+
+      expect(debuggerMock.sendCommand).toHaveBeenCalledWith("Log.enable");
+    });
+
+    it("enables Runtime and Log only once across multiple panes", async () => {
+      cleanup = registerWebviewHandlers(deps);
+      const handler = getHandler("webview:start-console-capture");
+      await handler(null, 42, "pane-1");
+      await handler(null, 42, "pane-2");
+
+      const runtimeEnableCalls = debuggerMock.sendCommand.mock.calls.filter(
+        ([cmd]: string[]) => cmd === "Runtime.enable"
+      );
+      const logEnableCalls = debuggerMock.sendCommand.mock.calls.filter(
+        ([cmd]: string[]) => cmd === "Log.enable"
+      );
+      expect(runtimeEnableCalls).toHaveLength(1);
+      expect(logEnableCalls).toHaveLength(1);
+    });
+
+    it("disables Log domain when the last pane stops", async () => {
+      cleanup = registerWebviewHandlers(deps);
+      const startHandler = getHandler("webview:start-console-capture");
+      const stopHandler = getHandler("webview:stop-console-capture");
+      await startHandler(null, 42, "pane-1");
+      await startHandler(null, 42, "pane-2");
+
+      await stopHandler(null, 42, "pane-1");
+      expect(debuggerMock.sendCommand).not.toHaveBeenCalledWith("Log.disable");
+
+      await stopHandler(null, 42, "pane-2");
+      expect(debuggerMock.sendCommand).toHaveBeenCalledWith("Log.disable");
+      expect(debuggerMock.sendCommand).toHaveBeenCalledWith("Runtime.disable");
+    });
+
+    it("forwards Runtime.exceptionThrown as an error row", async () => {
+      cleanup = registerWebviewHandlers(deps);
+      const handler = getHandler("webview:start-console-capture");
+      await handler(null, 42, "pane-1");
+
+      const messageListener = debuggerMock.on.mock.calls.find(
+        ([event]: string[]) => event === "message"
+      )![1];
+
+      messageListener({}, "Runtime.exceptionThrown", {
+        timestamp: 5000,
+        exceptionDetails: {
+          text: "Uncaught",
+          exception: { type: "object", description: "TypeError: boom\n  at foo (a.js:1:1)" },
+          stackTrace: {
+            callFrames: [{ functionName: "foo", url: "a.js", lineNumber: 0, columnNumber: 0 }],
+          },
+        },
+      });
+
+      expect(mainWindowMock.webContents.send).toHaveBeenCalledWith(
+        "webview:console-message",
+        expect.objectContaining({
+          paneId: "pane-1",
+          level: "error",
+          cdpType: "error",
+          summaryText: "TypeError: boom\n  at foo (a.js:1:1)",
+          stackTrace: { callFrames: [expect.objectContaining({ functionName: "foo" })] },
+        })
+      );
+    });
+
+    it("falls back to exceptionDetails.text when description is absent", async () => {
+      cleanup = registerWebviewHandlers(deps);
+      const handler = getHandler("webview:start-console-capture");
+      await handler(null, 42, "pane-1");
+
+      const messageListener = debuggerMock.on.mock.calls.find(
+        ([event]: string[]) => event === "message"
+      )![1];
+
+      messageListener({}, "Runtime.exceptionThrown", {
+        timestamp: 5000,
+        exceptionDetails: { text: "Uncaught (in promise) plain string" },
+      });
+
+      expect(mainWindowMock.webContents.send).toHaveBeenCalledWith(
+        "webview:console-message",
+        expect.objectContaining({
+          level: "error",
+          cdpType: "error",
+          summaryText: "Uncaught (in promise) plain string",
+        })
+      );
+    });
+
+    it("maps Log.entryAdded level and source onto the row", async () => {
+      cleanup = registerWebviewHandlers(deps);
+      const handler = getHandler("webview:start-console-capture");
+      await handler(null, 42, "pane-1");
+
+      const messageListener = debuggerMock.on.mock.calls.find(
+        ([event]: string[]) => event === "message"
+      )![1];
+
+      messageListener({}, "Log.entryAdded", {
+        entry: {
+          source: "security",
+          level: "error",
+          text: "Refused to load script (CSP)",
+          timestamp: 6000,
+          url: "https://example.com",
+          lineNumber: 12,
+        },
+      });
+
+      expect(mainWindowMock.webContents.send).toHaveBeenCalledWith(
+        "webview:console-message",
+        expect.objectContaining({
+          paneId: "pane-1",
+          level: "error",
+          cdpType: "log-entry",
+          category: "security",
+          summaryText: "Refused to load script (CSP)",
+        })
+      );
+    });
+
+    it("maps verbose Log.entryAdded level to log and unknown source to other", async () => {
+      cleanup = registerWebviewHandlers(deps);
+      const handler = getHandler("webview:start-console-capture");
+      await handler(null, 42, "pane-1");
+
+      const messageListener = debuggerMock.on.mock.calls.find(
+        ([event]: string[]) => event === "message"
+      )![1];
+
+      messageListener({}, "Log.entryAdded", {
+        entry: { source: "appcache", level: "verbose", text: "v", timestamp: 1 },
+      });
+
+      expect(mainWindowMock.webContents.send).toHaveBeenCalledWith(
+        "webview:console-message",
+        expect.objectContaining({ level: "log", cdpType: "log-entry", category: "other" })
+      );
+    });
+
+    it("rate-limits identical Log.entryAdded events to 5 per window", async () => {
+      cleanup = registerWebviewHandlers(deps);
+      const handler = getHandler("webview:start-console-capture");
+      await handler(null, 42, "pane-1");
+
+      const messageListener = debuggerMock.on.mock.calls.find(
+        ([event]: string[]) => event === "message"
+      )![1];
+
+      const evt = {
+        entry: {
+          source: "network",
+          level: "warning",
+          text: "Slow request",
+          timestamp: 1,
+          url: "https://x.test/a",
+          lineNumber: 3,
+        },
+      };
+      for (let i = 0; i < 7; i++) messageListener({}, "Log.entryAdded", evt);
+
+      const logRows = mainWindowMock.webContents.send.mock.calls.filter(
+        ([ch, row]: [string, { cdpType?: string }]) =>
+          ch === "webview:console-message" && row.cdpType === "log-entry"
+      );
+      expect(logRows).toHaveLength(5);
+    });
   });
 
   describe("ownership validation", () => {

@@ -9,6 +9,7 @@ import type {
   CdpRemoteArg,
   CdpStackTrace,
   CdpConsoleType,
+  CdpLogEntrySource,
   SerializedConsoleRow,
   CdpPropertyDescriptor,
 } from "../../../shared/types/ipc/webviewConsole.js";
@@ -19,10 +20,14 @@ import { freezeWebContents, unfreezeWebContents } from "../../utils/webContentsL
 
 interface CdpSession {
   runtimeEnabled: boolean;
+  logEnabled: boolean;
   paneIds: Set<string>;
   navigationGeneration: number;
   groupDepthByPane: Map<string, number>;
   objectIdsByPane: Map<string, Set<string>>;
+  // Per-session throttle for `Log.entryAdded` — browser-emitted entries
+  // (CSP, network, deprecation) can flood. Keyed by source:level:url:line.
+  logRateLimit: Map<string, { count: number; resetAt: number }>;
   ownerWindow: BrowserWindow | null;
   messageListener: ((event: Electron.Event, method: string, params: unknown) => void) | null;
   detachListener: ((event: Electron.Event, reason: string) => void) | null;
@@ -31,15 +36,69 @@ interface CdpSession {
 const sessions = new Map<number, CdpSession>();
 let _nextMessageId = 0;
 
+// Keep in sync with rendererConsoleCapture.ts (RATE_WINDOW_MS / RATE_MAX_PER_WINDOW).
+// Same throttle algorithm; the rate state lives on CdpSession (keyed by wcId)
+// rather than a WeakMap<WebContents>, so the helper is not shared.
+const LOG_RATE_WINDOW_MS = 5_000;
+const LOG_RATE_MAX_PER_WINDOW = 5;
+
+const LOG_ENTRY_SOURCES: ReadonlySet<string> = new Set<CdpLogEntrySource>([
+  "javascript",
+  "network",
+  "deprecation",
+  "security",
+  "violation",
+  "intervention",
+  "recommendation",
+  "worker",
+  "other",
+]);
+
+function normalizeLogEntrySource(source: unknown): CdpLogEntrySource {
+  return typeof source === "string" && LOG_ENTRY_SOURCES.has(source)
+    ? (source as CdpLogEntrySource)
+    : "other";
+}
+
+function logEntryLevelToLevel(level: unknown): "log" | "info" | "warning" | "error" {
+  switch (level) {
+    case "error":
+      return "error";
+    case "warning":
+      return "warning";
+    case "info":
+      return "info";
+    // "verbose" and anything unexpected collapse to "log"
+    default:
+      return "log";
+  }
+}
+
+function shouldAllowLogEntry(session: CdpSession, key: string): boolean {
+  const now = Date.now();
+  const entry = session.logRateLimit.get(key);
+  if (!entry || now >= entry.resetAt) {
+    session.logRateLimit.set(key, { count: 1, resetAt: now + LOG_RATE_WINDOW_MS });
+    return true;
+  }
+  if (entry.count < LOG_RATE_MAX_PER_WINDOW) {
+    entry.count++;
+    return true;
+  }
+  return false;
+}
+
 function getOrCreateSession(wcId: number): CdpSession {
   let session = sessions.get(wcId);
   if (!session) {
     session = {
       runtimeEnabled: false,
+      logEnabled: false,
       paneIds: new Set(),
       navigationGeneration: 0,
       groupDepthByPane: new Map(),
       objectIdsByPane: new Map(),
+      logRateLimit: new Map(),
       ownerWindow: null,
       messageListener: null,
       detachListener: null,
@@ -270,11 +329,22 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
         session.runtimeEnabled = true;
       }
 
+      // Log domain surfaces browser-emitted entries (CSP violations, network
+      // failures, deprecations) that never reach Runtime.consoleAPICalled.
+      if (!session.logEnabled) {
+        await wc.debugger.sendCommand("Log.enable");
+        session.logEnabled = true;
+      }
+
       // Bind CDP message listener once per webContents
       if (!session.messageListener) {
         const listener = (_event: Electron.Event, method: string, params: unknown) => {
           if (method === "Runtime.consoleAPICalled") {
             handleConsoleApiCalled(webContentsId, session, params);
+          } else if (method === "Runtime.exceptionThrown") {
+            handleExceptionThrown(session, params);
+          } else if (method === "Log.entryAdded") {
+            handleLogEntryAdded(session, params);
           } else if (method === "Runtime.executionContextsCleared") {
             session.navigationGeneration++;
             // Reset group depth and clear stale objectIds for all panes
@@ -304,6 +374,7 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
       if (!session.detachListener) {
         const detachListener = (_event: Electron.Event, _reason: string) => {
           session.runtimeEnabled = false;
+          session.logEnabled = false;
           // Debugger detach automatically removes all listeners, so just null our refs
           session.messageListener = null;
           session.detachListener = null;
@@ -398,6 +469,75 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
     }
   }
 
+  function emitConsoleRow(session: CdpSession, row: SerializedConsoleRow): void {
+    if (session.ownerWindow && !session.ownerWindow.isDestroyed()) {
+      sendToRenderer(session.ownerWindow, CHANNELS.WEBVIEW_CONSOLE_MESSAGE, row);
+    } else {
+      broadcastToRenderer(CHANNELS.WEBVIEW_CONSOLE_MESSAGE, row);
+    }
+  }
+
+  function handleExceptionThrown(session: CdpSession, params: unknown): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const p = params as any;
+    const details = p?.exceptionDetails;
+    if (!details) return;
+
+    const summaryText: string =
+      details.exception?.description ?? details.text ?? "Uncaught (unknown exception)";
+    const stackTrace = normalizeStackTrace(details.stackTrace);
+    const timestamp = typeof p.timestamp === "number" ? Math.floor(p.timestamp) : Date.now();
+
+    for (const paneId of session.paneIds) {
+      const row: SerializedConsoleRow = {
+        id: _nextMessageId++,
+        paneId,
+        level: "error",
+        cdpType: "error",
+        args: [],
+        summaryText,
+        stackTrace,
+        groupDepth: session.groupDepthByPane.get(paneId) ?? 0,
+        timestamp,
+        navigationGeneration: session.navigationGeneration,
+      };
+      emitConsoleRow(session, row);
+    }
+  }
+
+  function handleLogEntryAdded(session: CdpSession, params: unknown): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entry = (params as any)?.entry;
+    if (!entry) return;
+
+    const source = normalizeLogEntrySource(entry.source);
+    const level = logEntryLevelToLevel(entry.level);
+    const rateKey = `${source}:${level}:${entry.url ?? ""}:${entry.lineNumber ?? 0}`;
+    if (!shouldAllowLogEntry(session, rateKey)) return;
+
+    const summaryText: string = typeof entry.text === "string" ? entry.text : "";
+    const stackTrace = normalizeStackTrace(entry.stackTrace);
+    const timestamp =
+      typeof entry.timestamp === "number" ? Math.floor(entry.timestamp) : Date.now();
+
+    for (const paneId of session.paneIds) {
+      const row: SerializedConsoleRow = {
+        id: _nextMessageId++,
+        paneId,
+        level,
+        cdpType: "log-entry",
+        args: [],
+        summaryText,
+        stackTrace,
+        groupDepth: session.groupDepthByPane.get(paneId) ?? 0,
+        timestamp,
+        navigationGeneration: session.navigationGeneration,
+        category: source,
+      };
+      emitConsoleRow(session, row);
+    }
+  }
+
   const handleStopConsoleCapture = async (
     webContentsId: unknown,
     paneId: unknown
@@ -423,6 +563,13 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
       if (wc && !wc.isDestroyed() && session.runtimeEnabled) {
         try {
           await wc.debugger.sendCommand("Runtime.disable");
+        } catch {
+          // Ignore
+        }
+      }
+      if (wc && !wc.isDestroyed() && session.logEnabled) {
+        try {
+          await wc.debugger.sendCommand("Log.disable");
         } catch {
           // Ignore
         }
