@@ -70,6 +70,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     {}
   );
   const [githubRemote, setGithubRemote] = useState<string | undefined>(undefined);
+  const [forgeProviderOverride, setForgeProviderOverride] = useState<string | null>(null);
   const [resourceEnvironments, setResourceEnvironments] = useState<
     Record<string, ResourceEnvironment> | undefined
   >(undefined);
@@ -140,7 +141,8 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
       activeResourceEnvironment,
       defaultWorktreeMode,
       turbopackEnabled,
-      daintreeMcpTier
+      daintreeMcpTier,
+      forgeProviderOverride
     );
   }, [
     projectName,
@@ -167,6 +169,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     defaultWorktreeMode,
     turbopackEnabled,
     daintreeMcpTier,
+    forgeProviderOverride,
   ]);
   useEffect(() => {
     currentProjectSnapshotRef.current = currentProjectSnapshot;
@@ -203,6 +206,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
       setTerminalScrollback("");
       setNotificationOverrides({});
       setGithubRemote(undefined);
+      setForgeProviderOverride(null);
       setResourceEnvironments(undefined);
       setActiveResourceEnvironment(undefined);
       setDefaultWorktreeMode(undefined);
@@ -235,6 +239,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     const initialTerminalSettings = projectSettings.terminalSettings;
     const initialNotificationOverrides = projectSettings.notificationOverrides ?? {};
     const initialGithubRemote = projectSettings.githubRemote;
+    const initialForgeProviderOverride = projectSettings.forgeProviderOverride ?? null;
     // Migration: convert old singular resourceEnvironment to resourceEnvironments
     let initialResourceEnvironments: Record<string, ResourceEnvironment> | undefined;
     let initialActiveResourceEnvironment: string | undefined;
@@ -282,6 +287,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     );
     setNotificationOverrides(initialNotificationOverrides);
     setGithubRemote(initialGithubRemote);
+    setForgeProviderOverride(initialForgeProviderOverride);
     setResourceEnvironments(initialResourceEnvironments);
     setActiveResourceEnvironment(initialActiveResourceEnvironment);
     setDefaultWorktreeMode(initialDefaultWorktreeMode);
@@ -309,7 +315,8 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
       initialActiveResourceEnvironment,
       initialDefaultWorktreeMode,
       initialTurbopackEnabled,
-      initialDaintreeMcpTier
+      initialDaintreeMcpTier,
+      initialForgeProviderOverride
     );
     setProjectIsInitialized(true);
   }, [projectSettings, isOpen, projectIsInitialized, currentProject, projectIsLoading, projectId]);
@@ -403,6 +410,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
         branchPrefixCustom:
           effectivePrefixMode === "custom" ? sanitizedBranchPrefixCustom : undefined,
         githubRemote: githubRemote || undefined,
+        forgeProviderOverride: forgeProviderOverride ?? undefined,
         worktreePathPattern: sanitizedWorktreePathPattern,
         terminalSettings: currentTerminalSettings,
         notificationOverrides:
@@ -498,6 +506,8 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     setNotificationOverrides,
     githubRemote,
     setGithubRemote,
+    forgeProviderOverride,
+    setForgeProviderOverride,
     resourceEnvironments,
     setResourceEnvironments,
     activeResourceEnvironment,

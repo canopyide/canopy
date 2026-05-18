@@ -330,6 +330,16 @@ export type ForgeCapabilityHint =
   | (string & {});
 
 /**
+ * Registered forge provider — pairs a manifest contribution with its owning
+ * pluginId. Returned by the host registry's listing functions and exposed to
+ * the renderer via `window.electron.plugin.getForgeProviders()`.
+ */
+export interface RegisteredForgeProvider {
+  pluginId: string;
+  contribution: ForgeProviderContribution;
+}
+
+/**
  * `forgeProviders` manifest entry. Eager (manifest-driven) registration
  * populates the Preferences UI and remote-routing table before any plugin
  * code runs; the implementation handler binds lazily on first use.

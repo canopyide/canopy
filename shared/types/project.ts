@@ -378,6 +378,13 @@ export interface ProjectSettings {
 
   /** Git remote name to use for GitHub integration (defaults to "origin") */
   githubRemote?: string;
+  /**
+   * Pinned forge provider for this project (machine-local). When set, overrides hostname auto-detection
+   * for forge integrations. `null` (or absent) = auto-detect. Stores the bare `contribution.id` of a
+   * provider registered via the forge provider registry. Never written to `.daintree/settings.json` —
+   * machine-local because provider availability depends on installed plugins.
+   */
+  forgeProviderOverride?: string | null;
   /** Per-project worktree path pattern override (uses global default when unset) */
   worktreePathPattern?: string;
   /** Saved fleet scopes for quick arm/recall */
