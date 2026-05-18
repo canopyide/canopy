@@ -21,6 +21,7 @@ export function applyViewportEmulation(
   if (!webview) return;
   let wcId: number;
   try {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     wcId = (webview as unknown as { getWebContentsId(): number }).getWebContentsId();
   } catch {
     return; // webview detached
