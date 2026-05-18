@@ -154,27 +154,27 @@ export class WorkspaceService {
         // Populate provider-agnostic linked projection alongside legacy fields.
         // Preserve any existing linked.issue so that an earlier issue-detected
         // event isn't wiped when the PR is resolved afterwards.
-        if (data.providerId) {
-          const existingLinked = monitor.getSnapshot().linked;
-          const existingIssue = existingLinked?.issue;
-          const issueData =
-            data.issueNumber && data.issueTitle
-              ? {
-                  issue: {
-                    ref: {
-                      providerId: data.providerId,
-                      owner: "",
-                      repo: "",
-                      number: data.issueNumber,
-                      rawData: null,
-                    },
-                    title: data.issueTitle,
+        const existingLinked = monitor.getSnapshot().linked;
+        const existingIssue = existingLinked?.issue;
+        const issueData =
+          data.issueNumber && data.issueTitle
+            ? {
+                issue: {
+                  ref: {
+                    providerId: data.providerId!,
+                    owner: "",
+                    repo: "",
+                    number: data.issueNumber,
+                    rawData: null,
                   },
-                }
-              : existingIssue
-                ? { issue: existingIssue }
-                : {};
+                  title: data.issueTitle,
+                },
+              }
+            : existingIssue
+              ? { issue: existingIssue }
+              : {};
 
+        if (data.providerId) {
           monitor.setLinked({
             providerId: data.providerId,
             pr: {
