@@ -551,9 +551,7 @@ export class PluginService {
           );
         }
         if (!impl || typeof impl !== "object") {
-          throw new Error(
-            `Plugin "${pluginId}" registerForgeProvider: impl must be an object`
-          );
+          throw new Error(`Plugin "${pluginId}" registerForgeProvider: impl must be an object`);
         }
         // The impl is keyed by the same `{pluginId}.{descriptor.id}` namespace
         // used by the eager descriptor table. Binding an impl whose id wasn't

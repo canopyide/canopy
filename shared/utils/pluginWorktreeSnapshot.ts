@@ -50,7 +50,11 @@ function buildLinkedProjection(snapshot: WorktreeSnapshot): PluginWorktreeLinked
   if (!hasPR && !hasIssue) return null;
 
   const providerId = "github";
-  const linked: { providerId: string; issue?: PluginWorktreeLinkedIssue; pr?: PluginWorktreeLinkedPR } = {
+  const linked: {
+    providerId: string;
+    issue?: PluginWorktreeLinkedIssue;
+    pr?: PluginWorktreeLinkedPR;
+  } = {
     providerId,
   };
 

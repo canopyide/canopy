@@ -1539,7 +1539,10 @@ describe("createHost (plugin activation API)", () => {
 });
 
 describe("createHost — registerForgeProvider", () => {
-  function forgeManifest(name: string, providerIds: string[] = ["github"]): Record<string, unknown> {
+  function forgeManifest(
+    name: string,
+    providerIds: string[] = ["github"]
+  ): Record<string, unknown> {
     return {
       name,
       version: "1.0.0",
@@ -1583,11 +1586,7 @@ describe("createHost — registerForgeProvider", () => {
     dispose();
     dispose(); // idempotent — only the first call should propagate
     expect(unregisterForgeProviderImpl).toHaveBeenCalledTimes(1);
-    expect(unregisterForgeProviderImpl).toHaveBeenCalledWith(
-      "acme.forge-dispose",
-      "github",
-      impl
-    );
+    expect(unregisterForgeProviderImpl).toHaveBeenCalledWith("acme.forge-dispose", "github", impl);
   });
 
   it("rejects a descriptor missing an id", async () => {
@@ -1654,11 +1653,7 @@ describe("createHost — registerForgeProvider", () => {
     // of this guard is covered in forgeProviderRegistry.test.ts; here we
     // only assert the disposer carries the right identity into the call.
     dispose1();
-    expect(unregisterForgeProviderImpl).toHaveBeenCalledWith(
-      "acme.forge-rebind",
-      "github",
-      impl1
-    );
+    expect(unregisterForgeProviderImpl).toHaveBeenCalledWith("acme.forge-rebind", "github", impl1);
   });
 
   it("unloadPlugin fires unregisterForgeProviderImpls alongside unregisterForgeProviders", async () => {
@@ -1691,11 +1686,7 @@ describe("createHost — registerForgeProvider", () => {
     // The per-provider disposer fires through the pluginEventCleanups flush
     // path during unloadPlugin — independent from the bulk unregisterForgeProviderImpls
     // belt-and-suspenders call.
-    expect(unregisterForgeProviderImpl).toHaveBeenCalledWith(
-      "acme.forge-flush",
-      "github",
-      impl
-    );
+    expect(unregisterForgeProviderImpl).toHaveBeenCalledWith("acme.forge-flush", "github", impl);
   });
 });
 
