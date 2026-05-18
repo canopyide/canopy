@@ -186,7 +186,7 @@ describe("Toolbar layout — issue #2584 project switcher collision", () => {
     });
   });
 
-  describe("Windows caption control spacer — issue #7951", () => {
+  describe("Windows caption control spacer — issues #7951 / #8167", () => {
     it("imports isWindows from the platform helper", () => {
       expect(source).toMatch(/import\s*{[^}]*\bisWindows\b[^}]*}\s*from\s*"@\/lib\/platform"/);
     });
@@ -199,8 +199,9 @@ describe("Toolbar layout — issue #2584 project switcher collision", () => {
       expect(source).toMatch(/isWindows\(\)\s*&&\s*\(/);
     });
 
-    it("reserves space via the --win-caption-width CSS variable", () => {
-      expect(source).toContain("var(--win-caption-width, 138px)");
+    it("derives spacer width from the WCO env(titlebar-area-width) expression", () => {
+      expect(source).toContain("calc(100vw - env(titlebar-area-width, calc(100vw - 138px)))");
+      expect(source).not.toContain("var(--win-caption-width");
     });
 
     it("collapses the spacer to zero width when entering fullscreen", () => {
@@ -209,7 +210,7 @@ describe("Toolbar layout — issue #2584 project switcher collision", () => {
 
     it("places the spacer inside the right toolbar group, after the portal toggle", () => {
       const rightGroupIndex = source.indexOf('aria-label="Tools and settings"');
-      const spacerIndex = source.indexOf("var(--win-caption-width, 138px)");
+      const spacerIndex = source.indexOf("env(titlebar-area-width");
       const portalToggleIndex = source.indexOf('buttonRegistry["portal-toggle"]');
       expect(rightGroupIndex).toBeGreaterThan(-1);
       expect(spacerIndex).toBeGreaterThan(-1);
@@ -242,7 +243,7 @@ describe("Toolbar layout — issue #2584 project switcher collision", () => {
     it("spacer is decorative (aria-hidden) and not focusable as a toolbar item", () => {
       const spacerBlock = source.slice(
         source.indexOf("isWindows() &&"),
-        source.indexOf("var(--win-caption-width, 138px)") + 200
+        source.indexOf("env(titlebar-area-width") + 200
       );
       expect(spacerBlock).toContain('aria-hidden="true"');
       expect(spacerBlock).not.toContain("data-toolbar-item");
