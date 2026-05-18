@@ -11,6 +11,8 @@ import { actionService } from "@/services/ActionService";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import { isBrowserPanel, isDevPreviewPanel, isReviewPanel } from "@shared/types/panel";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { terminalHasRunningAgentSession } from "@/utils/destructiveSessionConfirm";
 import {
   ArrowDownFromLine,
   Bell,
@@ -98,6 +100,16 @@ export function TerminalContextMenu({
   const [hasSelection, setHasSelection] = useState(false);
   const [hoveredUrl, setHoveredUrl] = useState<string | null>(null);
   const suppressNextCloseAutoFocusRef = useRef(false);
+  // Local confirm dialog for single-terminal kill/restart when an agent
+  // session is mid-work. Bare PTY terminals skip this gate and run
+  // immediately (matches the action's run-body gate at
+  // `terminalLifecycleActions.ts`).
+  const [destructiveConfirm, setDestructiveConfirm] = useState<{
+    kind: "kill" | "restart";
+    title: string;
+    description: string;
+    confirmLabel: string;
+  } | null>(null);
 
   const handleContextMenu = useCallback(
     (_e: React.MouseEvent) => {
@@ -205,6 +217,16 @@ export function TerminalContextMenu({
           );
           break;
         case "restart":
+          if (terminalHasRunningAgentSession(terminal)) {
+            setDestructiveConfirm({
+              kind: "restart",
+              title: "Restart terminal with running agent?",
+              description:
+                "An agent is mid-work in this terminal. Restarting respawns the process and discards its scrollback. The current agent session will be interrupted.",
+              confirmLabel: "Restart terminal",
+            });
+            return;
+          }
           void actionService.dispatch(
             "terminal.restart",
             { terminalId },
@@ -261,6 +283,16 @@ export function TerminalContextMenu({
           void actionService.dispatch("terminal.trash", { terminalId }, { source: "context-menu" });
           break;
         case "kill":
+          if (terminalHasRunningAgentSession(terminal)) {
+            setDestructiveConfirm({
+              kind: "kill",
+              title: "Kill terminal with running agent?",
+              description:
+                "An agent is mid-work in this terminal. Killing it stops the agent and discards its scrollback. The PTY process and any unsaved output will be lost.",
+              confirmLabel: "Kill terminal",
+            });
+            return;
+          }
           void actionService.dispatch("terminal.kill", { terminalId }, { source: "context-menu" });
           break;
         case "reload-browser":
@@ -294,6 +326,33 @@ export function TerminalContextMenu({
     suppressNextCloseAutoFocusRef.current = false;
     event.preventDefault();
   }, []);
+
+  const handleDestructiveConfirm = useCallback(() => {
+    if (!destructiveConfirm) return;
+    const actionId = destructiveConfirm.kind === "kill" ? "terminal.kill" : "terminal.restart";
+    void actionService.dispatch(
+      actionId,
+      { terminalId, confirmed: true },
+      { source: "context-menu" }
+    );
+    setDestructiveConfirm(null);
+  }, [destructiveConfirm, terminalId]);
+
+  const closeDestructiveConfirm = useCallback(() => {
+    setDestructiveConfirm(null);
+  }, []);
+
+  const destructiveConfirmDialog = destructiveConfirm ? (
+    <ConfirmDialog
+      isOpen
+      onClose={closeDestructiveConfirm}
+      title={destructiveConfirm.title}
+      description={destructiveConfirm.description}
+      confirmLabel={destructiveConfirm.confirmLabel}
+      variant="destructive"
+      onConfirm={handleDestructiveConfirm}
+    />
+  ) : null;
 
   if (!terminal) {
     return <div className="contents">{children}</div>;
@@ -509,142 +568,145 @@ export function TerminalContextMenu({
   }
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <div
-          className="contents"
-          data-context-trigger={terminalId}
-          onContextMenu={handleContextMenu}
-        >
-          {children}
-        </div>
-      </ContextMenuTrigger>
-      <ContextMenuContent onCloseAutoFocus={handleCloseAutoFocus}>
-        {hasPty && (
-          <>
-            <ContextMenuItem disabled={!hasSelection} onSelect={() => handleAction("copy")}>
-              <Copy className={ICON_CLASS} aria-hidden="true" />
-              Copy
-              <ContextMenuShortcut>{modifierKey}C</ContextMenuShortcut>
-            </ContextMenuItem>
-            <ContextMenuItem onSelect={() => handleAction("paste")}>
-              <Clipboard className={ICON_CLASS} aria-hidden="true" />
-              Paste
-              <ContextMenuShortcut>{mac ? `${modifierKey}V` : "Ctrl+⇧V"}</ContextMenuShortcut>
-            </ContextMenuItem>
-            <ContextMenuItem
-              disabled={!hasSelection}
-              onSelect={() =>
-                void actionService.dispatch(
-                  "terminal.sendToAgent",
-                  { terminalId },
-                  { source: "context-menu" }
-                )
-              }
-            >
-              <Send className={ICON_CLASS} aria-hidden="true" />
-              Send to Agent
-              <ContextMenuShortcut>{mac ? "⌘⇧E" : "Ctrl+⇧E"}</ContextMenuShortcut>
-            </ContextMenuItem>
-            {hoveredUrl && (
-              <>
-                <ContextMenuSeparator />
-                <ContextMenuItem onSelect={() => handleAction("open-link")}>
-                  <ExternalLink className={ICON_CLASS} aria-hidden="true" />
-                  Open Link
-                </ContextMenuItem>
-                <ContextMenuItem onSelect={() => handleAction(`copy-link:${hoveredUrl}`)}>
-                  <Link className={ICON_CLASS} aria-hidden="true" />
-                  Copy Link Address
-                </ContextMenuItem>
-              </>
-            )}
-            <ContextMenuSeparator />
-          </>
-        )}
-        {fleetEligible && (
-          <>
-            <ContextMenuItem onSelect={() => handleAction("fleet-toggle")}>
-              {isArmed ? (
-                <Radio className={ICON_CLASS} aria-hidden="true" />
-              ) : (
-                <RadioTower className={ICON_CLASS} aria-hidden="true" />
-              )}
-              {isArmed ? "Remove from Fleet" : "Add to Fleet"}
-            </ContextMenuItem>
-            <ContextMenuItem onSelect={() => handleAction("fleet-arm-worktree")}>
-              <RadioTower className={ICON_CLASS} aria-hidden="true" />
-              Arm All in This Worktree
-            </ContextMenuItem>
-            {isArmed && fleetSize >= 2 && (
-              <ContextMenuItem destructive onSelect={() => handleAction("fleet-clear")}>
-                <Radio className={ICON_CLASS} aria-hidden="true" />
-                Clear Fleet
+    <>
+      {destructiveConfirmDialog}
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div
+            className="contents"
+            data-context-trigger={terminalId}
+            onContextMenu={handleContextMenu}
+          >
+            {children}
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent onCloseAutoFocus={handleCloseAutoFocus}>
+          {hasPty && (
+            <>
+              <ContextMenuItem disabled={!hasSelection} onSelect={() => handleAction("copy")}>
+                <Copy className={ICON_CLASS} aria-hidden="true" />
+                Copy
+                <ContextMenuShortcut>{modifierKey}C</ContextMenuShortcut>
               </ContextMenuItem>
-            )}
-            <ContextMenuSeparator />
-          </>
-        )}
-        {layoutSection}
-        <ContextMenuSeparator />
-        {hasPty && (
-          <ContextMenuItem onSelect={() => handleAction("restart")}>
-            <RotateCcw className={ICON_CLASS} aria-hidden="true" />
-            Restart Terminal
-          </ContextMenuItem>
-        )}
-        {isPaused && (
-          <ContextMenuItem onSelect={() => handleAction("force-resume")}>
-            <Play className={ICON_CLASS} aria-hidden="true" />
-            Force Resume (Paused)
-          </ContextMenuItem>
-        )}
-        <ContextMenuItem onSelect={() => handleAction("toggle-input-lock")}>
-          {terminal.isInputLocked ? (
-            <Unlock className={ICON_CLASS} aria-hidden="true" />
-          ) : (
-            <Lock className={ICON_CLASS} aria-hidden="true" />
+              <ContextMenuItem onSelect={() => handleAction("paste")}>
+                <Clipboard className={ICON_CLASS} aria-hidden="true" />
+                Paste
+                <ContextMenuShortcut>{mac ? `${modifierKey}V` : "Ctrl+⇧V"}</ContextMenuShortcut>
+              </ContextMenuItem>
+              <ContextMenuItem
+                disabled={!hasSelection}
+                onSelect={() =>
+                  void actionService.dispatch(
+                    "terminal.sendToAgent",
+                    { terminalId },
+                    { source: "context-menu" }
+                  )
+                }
+              >
+                <Send className={ICON_CLASS} aria-hidden="true" />
+                Send to Agent
+                <ContextMenuShortcut>{mac ? "⌘⇧E" : "Ctrl+⇧E"}</ContextMenuShortcut>
+              </ContextMenuItem>
+              {hoveredUrl && (
+                <>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem onSelect={() => handleAction("open-link")}>
+                    <ExternalLink className={ICON_CLASS} aria-hidden="true" />
+                    Open Link
+                  </ContextMenuItem>
+                  <ContextMenuItem onSelect={() => handleAction(`copy-link:${hoveredUrl}`)}>
+                    <Link className={ICON_CLASS} aria-hidden="true" />
+                    Copy Link Address
+                  </ContextMenuItem>
+                </>
+              )}
+              <ContextMenuSeparator />
+            </>
           )}
-          {terminal.isInputLocked ? "Unlock Input" : "Lock Input"}
-        </ContextMenuItem>
-        {terminal.detectedAgentId && (
-          <ContextMenuItem onSelect={() => handleAction("toggle-watch")}>
-            {isWatched ? (
-              <BellOff className={ICON_CLASS} aria-hidden="true" />
+          {fleetEligible && (
+            <>
+              <ContextMenuItem onSelect={() => handleAction("fleet-toggle")}>
+                {isArmed ? (
+                  <Radio className={ICON_CLASS} aria-hidden="true" />
+                ) : (
+                  <RadioTower className={ICON_CLASS} aria-hidden="true" />
+                )}
+                {isArmed ? "Remove from Fleet" : "Add to Fleet"}
+              </ContextMenuItem>
+              <ContextMenuItem onSelect={() => handleAction("fleet-arm-worktree")}>
+                <RadioTower className={ICON_CLASS} aria-hidden="true" />
+                Arm All in This Worktree
+              </ContextMenuItem>
+              {isArmed && fleetSize >= 2 && (
+                <ContextMenuItem destructive onSelect={() => handleAction("fleet-clear")}>
+                  <Radio className={ICON_CLASS} aria-hidden="true" />
+                  Clear Fleet
+                </ContextMenuItem>
+              )}
+              <ContextMenuSeparator />
+            </>
+          )}
+          {layoutSection}
+          <ContextMenuSeparator />
+          {hasPty && (
+            <ContextMenuItem onSelect={() => handleAction("restart")}>
+              <RotateCcw className={ICON_CLASS} aria-hidden="true" />
+              Restart Terminal
+            </ContextMenuItem>
+          )}
+          {isPaused && (
+            <ContextMenuItem onSelect={() => handleAction("force-resume")}>
+              <Play className={ICON_CLASS} aria-hidden="true" />
+              Force Resume (Paused)
+            </ContextMenuItem>
+          )}
+          <ContextMenuItem onSelect={() => handleAction("toggle-input-lock")}>
+            {terminal.isInputLocked ? (
+              <Unlock className={ICON_CLASS} aria-hidden="true" />
             ) : (
-              <Bell className={ICON_CLASS} aria-hidden="true" />
+              <Lock className={ICON_CLASS} aria-hidden="true" />
             )}
-            {isWatched ? "Cancel Watch" : "Watch Terminal"}
-            <ContextMenuShortcut>{mac ? "⌘⇧W" : "Ctrl+⇧W"}</ContextMenuShortcut>
+            {terminal.isInputLocked ? "Unlock Input" : "Lock Input"}
           </ContextMenuItem>
-        )}
-        <ContextMenuSeparator />
-        <ContextMenuItem onSelect={() => handleAction("duplicate")}>
-          <CopyPlus className={ICON_CLASS} aria-hidden="true" />
-          Duplicate Terminal
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={() => handleAction("rename")}>
-          <Pencil className={ICON_CLASS} aria-hidden="true" />
-          Rename Terminal
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={() => handleAction("view-info")}>
-          <Info className={ICON_CLASS} aria-hidden="true" />
-          View Terminal Info
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem onSelect={() => handleAction("background")}>
-          <ArrowDownFromLine className={ICON_CLASS} aria-hidden="true" />
-          Send to Background
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={() => handleAction("trash")}>
-          <Trash2 className={ICON_CLASS} aria-hidden="true" />
-          Trash Terminal
-        </ContextMenuItem>
-        <ContextMenuItem destructive onSelect={() => handleAction("kill")}>
-          <OctagonX className={ICON_CLASS} aria-hidden="true" />
-          Kill Terminal
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
+          {terminal.detectedAgentId && (
+            <ContextMenuItem onSelect={() => handleAction("toggle-watch")}>
+              {isWatched ? (
+                <BellOff className={ICON_CLASS} aria-hidden="true" />
+              ) : (
+                <Bell className={ICON_CLASS} aria-hidden="true" />
+              )}
+              {isWatched ? "Cancel Watch" : "Watch Terminal"}
+              <ContextMenuShortcut>{mac ? "⌘⇧W" : "Ctrl+⇧W"}</ContextMenuShortcut>
+            </ContextMenuItem>
+          )}
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => handleAction("duplicate")}>
+            <CopyPlus className={ICON_CLASS} aria-hidden="true" />
+            Duplicate Terminal
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => handleAction("rename")}>
+            <Pencil className={ICON_CLASS} aria-hidden="true" />
+            Rename Terminal
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => handleAction("view-info")}>
+            <Info className={ICON_CLASS} aria-hidden="true" />
+            View Terminal Info
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => handleAction("background")}>
+            <ArrowDownFromLine className={ICON_CLASS} aria-hidden="true" />
+            Send to Background
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => handleAction("trash")}>
+            <Trash2 className={ICON_CLASS} aria-hidden="true" />
+            Trash Terminal
+          </ContextMenuItem>
+          <ContextMenuItem destructive onSelect={() => handleAction("kill")}>
+            <OctagonX className={ICON_CLASS} aria-hidden="true" />
+            Kill Terminal
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+    </>
   );
 }

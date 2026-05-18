@@ -4,6 +4,26 @@ import { terminalClient } from "@/clients";
 import { terminalInstanceService } from "@/services/terminal/TerminalInstanceService";
 import { fireWatchNotification } from "@/lib/watchNotification";
 import { usePanelStore } from "@/store/panelStore";
+import {
+  useTerminalPendingDestructiveActionStore,
+  type TerminalPendingDestructiveActionKind,
+} from "@/store/terminalPendingDestructiveActionStore";
+import {
+  collectRunningAgentTerminals,
+  terminalHasRunningAgentSession,
+} from "@/utils/destructiveSessionConfirm";
+
+function parseConfirmed(args: unknown): boolean {
+  if (!args || typeof args !== "object") return false;
+  return (args as { confirmed?: unknown }).confirmed === true;
+}
+
+function clearPendingIf(kind: TerminalPendingDestructiveActionKind): void {
+  const pending = useTerminalPendingDestructiveActionStore.getState().pending;
+  if (pending && pending.kind === kind) {
+    useTerminalPendingDestructiveActionStore.getState().clear();
+  }
+}
 export function registerTerminalLifecycleActions(
   actions: ActionRegistry,
   callbacks: ActionCallbacks
@@ -85,17 +105,33 @@ export function registerTerminalLifecycleActions(
     description: "Permanently kill and remove terminal",
     category: "terminal",
     kind: "command",
-    danger: "safe",
+    danger: "confirm",
     scope: "renderer",
     keywords: ["terminate", "stop", "remove", "delete"],
-    argsSchema: z.object({ terminalId: z.string().optional() }),
+    argsSchema: z.object({
+      terminalId: z.string().optional(),
+      confirmed: z.boolean().optional(),
+    }),
     run: async (args: unknown) => {
       const { terminalId } = args as { terminalId?: string };
       const state = usePanelStore.getState();
       const targetId = terminalId ?? state.focusedId;
-      if (targetId) {
-        state.removePanel(targetId);
+      if (!targetId) return;
+      const terminal = state.panelsById[targetId];
+      // Bare PTY stays D0 — only confirm when an agent session would lose
+      // in-flight work. Mid-work is "working"; "waiting"/"directing" are
+      // paused states where stopping is non-disruptive.
+      if (!parseConfirmed(args) && terminalHasRunningAgentSession(terminal)) {
+        useTerminalPendingDestructiveActionStore.getState().request({
+          kind: "kill",
+          targetCount: 1,
+          runningAgentCount: 1,
+          terminalId: targetId,
+        });
+        return;
       }
+      clearPendingIf("kill");
+      state.removePanel(targetId);
     },
   }));
 
@@ -105,17 +141,30 @@ export function registerTerminalLifecycleActions(
     description: "Restart the terminal process",
     category: "terminal",
     kind: "command",
-    danger: "safe",
+    danger: "confirm",
     scope: "renderer",
     keywords: ["relaunch", "reset", "rerun", "process"],
-    argsSchema: z.object({ terminalId: z.string().optional() }),
+    argsSchema: z.object({
+      terminalId: z.string().optional(),
+      confirmed: z.boolean().optional(),
+    }),
     run: async (args: unknown) => {
       const { terminalId } = args as { terminalId?: string };
       const state = usePanelStore.getState();
       const targetId = terminalId ?? state.focusedId;
-      if (targetId) {
-        state.restartTerminal(targetId);
+      if (!targetId) return;
+      const terminal = state.panelsById[targetId];
+      if (!parseConfirmed(args) && terminalHasRunningAgentSession(terminal)) {
+        useTerminalPendingDestructiveActionStore.getState().request({
+          kind: "restart",
+          targetCount: 1,
+          runningAgentCount: 1,
+          terminalId: targetId,
+        });
+        return;
       }
+      clearPendingIf("restart");
+      state.restartTerminal(targetId);
     },
   }));
 
@@ -309,19 +358,30 @@ export function registerTerminalLifecycleActions(
     description: "Permanently remove all terminals (cannot be undone)",
     category: "terminal",
     kind: "command",
-    danger: "safe",
+    danger: "confirm",
     scope: "renderer",
     keywords: ["terminate", "stop", "remove", "delete"],
-    run: async () => {
+    argsSchema: z.object({ confirmed: z.boolean().optional() }).optional(),
+    run: async (args: unknown) => {
       // Don't reuse bulkCloseAll() — it indiscriminately removes every panel,
       // including the ephemeral assistant terminal. Filter ephemerals out
       // before issuing per-panel removes.
       const state = usePanelStore.getState();
-      const idsToKill = state.panelIds.filter((id) => {
-        const t = state.panelsById[id];
-        return t && t.ephemeral !== true;
-      });
-      idsToKill.forEach((id) => state.removePanel(id));
+      const targets = state.panelIds
+        .map((id) => state.panelsById[id])
+        .filter((t): t is NonNullable<typeof t> => t != null && t.ephemeral !== true);
+      if (targets.length === 0) return;
+      const runningAgents = collectRunningAgentTerminals(targets);
+      if (!parseConfirmed(args) && runningAgents.length > 0) {
+        useTerminalPendingDestructiveActionStore.getState().request({
+          kind: "killAll",
+          targetCount: targets.length,
+          runningAgentCount: runningAgents.length,
+        });
+        return;
+      }
+      clearPendingIf("killAll");
+      targets.forEach((t) => state.removePanel(t.id));
     },
   }));
 
@@ -331,11 +391,27 @@ export function registerTerminalLifecycleActions(
     description: "Restart all terminals in the active worktree",
     category: "terminal",
     kind: "command",
-    danger: "safe",
+    danger: "confirm",
     scope: "renderer",
     keywords: ["relaunch", "reset", "rerun", "processes"],
-    run: async () => {
-      usePanelStore.getState().bulkRestartAll();
+    argsSchema: z.object({ confirmed: z.boolean().optional() }).optional(),
+    run: async (args: unknown) => {
+      const state = usePanelStore.getState();
+      const targets = state.panelIds
+        .map((id) => state.panelsById[id])
+        .filter((t): t is NonNullable<typeof t> => t != null && t.location !== "trash");
+      if (targets.length === 0) return;
+      const runningAgents = collectRunningAgentTerminals(targets);
+      if (!parseConfirmed(args) && runningAgents.length > 0) {
+        useTerminalPendingDestructiveActionStore.getState().request({
+          kind: "restartAll",
+          targetCount: targets.length,
+          runningAgentCount: runningAgents.length,
+        });
+        return;
+      }
+      clearPendingIf("restartAll");
+      await state.bulkRestartAll();
     },
   }));
 

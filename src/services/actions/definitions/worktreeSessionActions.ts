@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ActionContext } from "@shared/types/actions";
 import { terminalInstanceService } from "@/services/terminal/TerminalInstanceService";
 import { usePanelStore } from "@/store/panelStore";
+import { useTerminalPendingDestructiveActionStore } from "@/store/terminalPendingDestructiveActionStore";
+import { collectRunningAgentTerminals } from "@/utils/destructiveSessionConfirm";
 
 export function registerWorktreeSessionActions(
   actions: ActionRegistry,
@@ -49,14 +51,42 @@ export function registerWorktreeSessionActions(
     description: "Restart all sessions for a worktree",
     category: "worktree",
     kind: "command",
-    danger: "safe",
+    danger: "confirm",
     scope: "renderer",
-    argsSchema: z.object({ worktreeId: z.string().optional() }),
+    argsSchema: z.object({
+      worktreeId: z.string().optional(),
+      confirmed: z.boolean().optional(),
+    }),
     run: async (args: unknown, ctx: ActionContext) => {
-      const { worktreeId } = args as { worktreeId?: string };
+      const { worktreeId, confirmed } = args as {
+        worktreeId?: string;
+        confirmed?: boolean;
+      };
       const targetWorktreeId = worktreeId ?? ctx.activeWorktreeId;
       if (!targetWorktreeId) return;
-      await usePanelStore.getState().bulkRestartByWorktree(targetWorktreeId);
+      const state = usePanelStore.getState();
+      const targets = state.panelIds
+        .map((id) => state.panelsById[id])
+        .filter(
+          (t): t is NonNullable<typeof t> =>
+            t != null && t.worktreeId === targetWorktreeId && t.location !== "trash"
+        );
+      if (targets.length === 0) return;
+      const runningAgents = collectRunningAgentTerminals(targets);
+      if (confirmed !== true && runningAgents.length > 0) {
+        useTerminalPendingDestructiveActionStore.getState().request({
+          kind: "worktreeRestartAll",
+          targetCount: targets.length,
+          runningAgentCount: runningAgents.length,
+          worktreeId: targetWorktreeId,
+        });
+        return;
+      }
+      const pending = useTerminalPendingDestructiveActionStore.getState().pending;
+      if (pending && pending.kind === "worktreeRestartAll") {
+        useTerminalPendingDestructiveActionStore.getState().clear();
+      }
+      await state.bulkRestartByWorktree(targetWorktreeId);
     },
   }));
 
