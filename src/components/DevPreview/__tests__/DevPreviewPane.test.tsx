@@ -79,6 +79,7 @@ const statusConfig: Record<DevPreviewStatus, { label: string; color: string }> =
   starting: { label: "Starting", color: "text-blue-400" },
   installing: { label: "Installing", color: "text-yellow-400" },
   running: { label: "Running", color: "text-green-400" },
+  stopping: { label: "Stopping", color: "text-blue-400" },
   error: { label: "Error", color: "text-red-400" },
   stopped: { label: "Stopped", color: "text-gray-400" },
 };

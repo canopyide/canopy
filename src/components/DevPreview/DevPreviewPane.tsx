@@ -7,6 +7,7 @@ import {
   Settings,
   Square,
   WandSparkles,
+  OctagonAlert,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ import {
 } from "../Browser/historyUtils";
 import { useDevServer, type UseDevServerReturn } from "@/hooks/useDevServer";
 import { ConsoleDrawer } from "./ConsoleDrawer";
+import { InlineStatusBanner } from "@/components/Terminal/InlineStatusBanner";
 import { useIsDragging } from "@/components/DragDrop";
 import { cn } from "@/lib/utils";
 import { computeDevServerUrl } from "./urlSync";
@@ -308,7 +310,18 @@ export function DevPreviewPane({
     terminal?.devCommand?.trim() || projectSettings?.devServerCommand?.trim() || "";
   const viewportPreset = terminal?.viewportPreset;
 
-  const { status, url, terminalId, error, start, restart, isRestarting, stuckTier } = useDevServer({
+  const {
+    status,
+    url,
+    terminalId,
+    error,
+    start,
+    stop,
+    restart,
+    isRestarting,
+    stuckTier,
+    forceKilled,
+  } = useDevServer({
     panelId: id,
     devCommand,
     cwd,
@@ -323,6 +336,14 @@ export function DevPreviewPane({
     const panelToken = sanitizePartitionToken(id);
     return `persist:dev-preview-${projectToken}-${worktreeToken}-${panelToken}`;
   }, [currentProjectId, worktreeId, id]);
+
+  const [forceKillBannerDismissed, setForceKillBannerDismissed] = useState(false);
+
+  useEffect(() => {
+    if (forceKilled) {
+      setForceKillBannerDismissed(false);
+    }
+  }, [forceKilled]);
 
   const [history, setHistory] = useState<BrowserHistory>(() => {
     const saved = terminal?.browserHistory;
@@ -1202,6 +1223,16 @@ export function DevPreviewPane({
           )}
         </div>
 
+        {forceKilled && status === "stopped" && !forceKillBannerDismissed && (
+          <InlineStatusBanner
+            icon={OctagonAlert}
+            title="Dev server was force-quit"
+            description="The server did not exit within 5 seconds and was terminated."
+            severity="warning"
+            onClose={() => setForceKillBannerDismissed(true)}
+            actions={[]}
+          />
+        )}
         {consoleTerminalId && (
           <ConsoleDrawer
             terminalId={consoleTerminalId}
@@ -1210,6 +1241,7 @@ export function DevPreviewPane({
             onOpenChange={(nextOpen) => setDevPreviewConsoleOpen(id, nextOpen)}
             isRestarting={isRestarting}
             onHardRestart={handleHardRestart}
+            onStop={stop}
           />
         )}
       </div>

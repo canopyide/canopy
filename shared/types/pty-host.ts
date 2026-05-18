@@ -68,7 +68,7 @@ export type PtyHostRequest =
   | { type: "broadcast-write"; ids: string[]; data: string }
   | { type: "submit"; id: string; text: string }
   | { type: "batch-double-escape"; ids: string[] }
-  | { type: "kill"; id: string; reason?: string }
+  | { type: "kill"; id: string; reason?: string; escalationDelayMs?: number }
   | { type: "trash"; id: string }
   | { type: "restore"; id: string }
   | { type: "set-activity-tier"; id: string; tier: PtyHostActivityTier }

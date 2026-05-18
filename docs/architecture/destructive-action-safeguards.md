@@ -92,6 +92,12 @@ Columns:
 | `terminal.restartAll` | **confirm** (updated #8245) | yes (`TerminalDestructiveActionConfirmDialog`) — fires when any non-trash terminal has a running agent | local-irreversible | many terminals | D1 | Done (#8245) | — |
 | `terminal.restartService` | safe | n/a | local-irreversible (all PTY processes restart) | every terminal in the window | D1 | Action is gated on `backendStatus === "disconnected"`; the gate already implies an error state, so leave as-is | — |
 
+### Dev preview
+
+| Action / call site | Current | UI confirm | Reversibility | Blast | Tier | Recommendation | Follow-up |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `devPreview.stop` | safe | n/a | local-undo (re-start) | one dev server | D0 | Leave | — |
+
 ### Fleet operations
 
 | Action / call site | Current | UI confirm | Reversibility | Blast | Tier | Recommendation | Follow-up |

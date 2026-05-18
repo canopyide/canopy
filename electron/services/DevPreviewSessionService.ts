@@ -46,6 +46,7 @@ interface DevPreviewSession extends DevPreviewSessionState {
   installAttemptedGeneration: number | null;
   startupReplayTimer: ReturnType<typeof setTimeout> | null;
   updatedAtPerformanceMs: number;
+  forceKilled?: boolean;
 }
 
 const RUNNING_STATES: ReadonlySet<DevPreviewSessionStatus> = new Set([
@@ -55,6 +56,7 @@ const RUNNING_STATES: ReadonlySet<DevPreviewSessionStatus> = new Set([
 ]);
 
 const DEFAULT_TIMEOUT_MS = 8000;
+const DEV_PREVIEW_STOP_ESCALATION_MS = 5000;
 const STALE_START_RECOVERY_MS = 10000;
 const STARTUP_REPLAY_DELAY_MS = 1500;
 const REPLAY_HISTORY_MAX_LINES = 300;
@@ -229,6 +231,7 @@ export class DevPreviewSessionService {
           url: null,
           error: null,
           isRestarting: true,
+          forceKilled: undefined,
         });
 
         await this.stopSessionTerminal(session, "restart");
@@ -251,15 +254,30 @@ export class DevPreviewSessionService {
       const session = this.sessions.get(key);
       if (!session) return;
 
-      await this.stopSessionTerminal(session, "stop");
-      this.updateSession(session, {
-        status: "stopped",
-        url: null,
-        assignedUrl: null,
-        error: null,
-        terminalId: null,
-        isRestarting: false,
-      });
+      if (session.terminalId) {
+        this.updateSession(session, { status: "stopping", isRestarting: false });
+        const stopStartedAt = performance.now();
+        await this.stopSessionTerminal(session, "stop", DEV_PREVIEW_STOP_ESCALATION_MS);
+        const forceKilled = performance.now() - stopStartedAt >= DEV_PREVIEW_STOP_ESCALATION_MS;
+        this.updateSession(session, {
+          status: "stopped",
+          url: null,
+          assignedUrl: null,
+          error: null,
+          terminalId: null,
+          isRestarting: false,
+          forceKilled,
+        });
+      } else {
+        this.updateSession(session, {
+          status: "stopped",
+          url: null,
+          assignedUrl: null,
+          error: null,
+          terminalId: null,
+          isRestarting: false,
+        });
+      }
     });
     return this.getSessionState(request.projectId, request.panelId);
   }
@@ -399,6 +417,7 @@ export class DevPreviewSessionService {
         isRestarting: false,
         generation: 0,
         updatedAt: Date.now(),
+        forceKilled: undefined,
       };
     }
     return this.toPublicState(session);
@@ -417,6 +436,7 @@ export class DevPreviewSessionService {
       isRestarting: session.isRestarting,
       generation: session.generation,
       updatedAt: session.updatedAt,
+      forceKilled: session.forceKilled,
     };
   }
 
@@ -433,6 +453,7 @@ export class DevPreviewSessionService {
         | "isRestarting"
         | "worktreeId"
         | "generation"
+        | "forceKilled"
       >
     >
   ): void {
@@ -445,6 +466,7 @@ export class DevPreviewSessionService {
     if (updates.isRestarting !== undefined) session.isRestarting = updates.isRestarting;
     if (updates.worktreeId !== undefined) session.worktreeId = updates.worktreeId;
     if (updates.generation !== undefined) session.generation = updates.generation;
+    if (updates.forceKilled !== undefined) session.forceKilled = updates.forceKilled;
     session.updatedAt = Date.now();
     session.updatedAtPerformanceMs = performance.now();
     this.onStateChanged(this.toPublicState(session));
@@ -471,7 +493,12 @@ export class DevPreviewSessionService {
         const terminalId = session.terminalId;
         this.attachTerminal(session, terminalId);
         if (!RUNNING_STATES.has(session.status)) {
-          this.updateSession(session, { status: "starting", error: null, url: null });
+          this.updateSession(session, {
+            status: "starting",
+            error: null,
+            url: null,
+            forceKilled: undefined,
+          });
         }
 
         if ((session.status === "starting" || session.status === "installing") && !session.url) {
@@ -542,6 +569,7 @@ export class DevPreviewSessionService {
       assignedUrl,
       error: null,
       generation: nextGeneration,
+      forceKilled: undefined,
     });
 
     try {
@@ -654,7 +682,11 @@ export class DevPreviewSessionService {
     session.terminalId = null;
   }
 
-  private async stopSessionTerminal(session: DevPreviewSession, context: string): Promise<void> {
+  private async stopSessionTerminal(
+    session: DevPreviewSession,
+    context: string,
+    escalationDelayMs?: number
+  ): Promise<void> {
     this.clearStartupReplay(session);
     session.readinessAbort?.abort();
     session.readinessAbort = null;
@@ -671,7 +703,7 @@ export class DevPreviewSessionService {
     session.lastErrorKey = null;
 
     try {
-      this.ptyClient.kill(terminalId, `dev-preview:${context}`);
+      this.ptyClient.kill(terminalId, `dev-preview:${context}`, { escalationDelayMs });
     } catch (err) {
       const message = formatErrorMessage(err, "Failed to kill dev preview terminal");
       if (!this.isBenignMissingTerminalError(message)) {

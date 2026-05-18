@@ -49,7 +49,7 @@ export function createLifecycleHandlers(ctx: HostContext): HandlerMap {
     kill: (msg) => {
       const termInfo = ptyManager.getTerminal(msg.id);
       const killedPid = termInfo?.ptyProcess.pid;
-      ptyManager.kill(msg.id, msg.reason);
+      ptyManager.kill(msg.id, msg.reason, { escalationDelayMs: msg.escalationDelayMs });
       if (killedPid !== undefined) {
         resourceGovernor.trackKilledPid(killedPid);
       }
