@@ -423,16 +423,16 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
       })
     );
 
-    // Snapshot-on-wake: when a cached view is reactivated (addChildView),
-    // Chromium fires visibilitychange. Request a fresh worktree snapshot to
-    // rehydrate state that may have changed while the view was backgrounded,
-    // then fan out per-terminal wake to pull the missed range from the
-    // pty-host's headless mirror into each visible xterm buffer (#7999).
+    // Visibility flips drive per-terminal wake fan-out only: pulls the
+    // missed range from the pty-host's headless mirror into each visible
+    // xterm buffer (#7999). The worktree-state refresh path that used to
+    // run alongside this fan-out was removed in #8066 — system sleep-wake
+    // is now consolidated onto `useSystemWakeStore.wakeEpoch`, which the
+    // workspace host's `refreshOnWake` already mirrors via `worktree-update`
+    // push events. Re-entering this handler for short alt-tabs no longer
+    // triggers redundant `get-all-states` fetches.
     function handleVisibilityChange() {
       if (document.visibilityState !== "visible") return;
-      if (worktreePort.isReady()) {
-        fetchInitialState();
-      }
       wakeActiveWorktreeTerminals();
     }
     document.addEventListener("visibilitychange", handleVisibilityChange);

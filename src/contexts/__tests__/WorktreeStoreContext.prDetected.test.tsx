@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useContext } from "react";
 
@@ -1042,5 +1042,38 @@ describe("WorktreeStoreProvider manual issue associations (#8079)", () => {
     });
 
     expect(store.getState().worktrees.get("wt-1")?.issueNumber).toBeUndefined();
+  });
+});
+
+describe("WorktreeStoreProvider visibilitychange (#8066 consolidation)", () => {
+  it("does not call worktreePort.request on visibilitychange after migration", async () => {
+    const requestMock = vi.fn(() => Promise.resolve({ states: [] as WorktreeSnapshot[] }));
+    const electron = (globalThis as unknown as { window: Window }).window.electron as unknown as {
+      worktreePort: { request: (name: string) => Promise<unknown> };
+    };
+    electron.worktreePort.request = requestMock;
+
+    await renderProvider();
+
+    // Mount fetch: `get-all-states` request fires once during provider setup.
+    const initialCallCount = requestMock.mock.calls.length;
+    expect(initialCallCount).toBeGreaterThanOrEqual(1);
+
+    // A visibilitychange must NOT trigger another `get-all-states` request —
+    // sleep-wake refresh is now coordinated via `useSystemWakeStore.wakeEpoch`
+    // and the workspace host's `refreshOnWake` push events.
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "visible",
+    });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(requestMock.mock.calls.length).toBe(initialCallCount);
   });
 });

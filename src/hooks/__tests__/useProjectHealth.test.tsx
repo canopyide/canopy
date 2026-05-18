@@ -21,6 +21,7 @@ vi.mock("@/clients", () => ({
 
 import { useProjectHealth } from "../useProjectHealth";
 import { _resetPollingLifecycleForTests } from "../usePollingLifecycle";
+import { useSystemWakeStore } from "@/store/systemWakeStore";
 
 function makeHealth(overrides: Partial<ProjectHealthData> = {}): ProjectHealthData {
   return {
@@ -43,6 +44,11 @@ describe("useProjectHealth", () => {
     vi.clearAllMocks();
     _resetPollingLifecycleForTests();
     onSwitchMock.mockReturnValue(() => {});
+    useSystemWakeStore.setState({
+      wakeEpoch: 0,
+      lastSleepDuration: 0,
+      isWakeRevalidating: false,
+    });
   });
 
   it("fetches health on mount and exposes the result", async () => {
@@ -231,5 +237,126 @@ describe("useProjectHealth", () => {
 
     expect(getProjectHealthMock).toHaveBeenCalledTimes(2);
     expect(getProjectHealthMock.mock.calls[1]?.[1]).toBe(true);
+  });
+
+  describe("wake-coordinator subscription", () => {
+    it("refreshes when wakeEpoch increments past the value seen at mount", async () => {
+      getCurrentMock.mockResolvedValue({ id: "p", path: "/repo/a" });
+      getProjectHealthMock.mockResolvedValue(makeHealth());
+
+      renderHook(() => useProjectHealth());
+
+      await waitFor(() => {
+        expect(getProjectHealthMock).toHaveBeenCalledTimes(1);
+      });
+
+      await act(async () => {
+        useSystemWakeStore.setState((s) => ({ wakeEpoch: s.wakeEpoch + 1 }));
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(getProjectHealthMock).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    it("does not refresh for a wakeEpoch that was already current at mount", async () => {
+      useSystemWakeStore.setState({
+        wakeEpoch: 5,
+        lastSleepDuration: 0,
+        isWakeRevalidating: false,
+      });
+
+      getCurrentMock.mockResolvedValue({ id: "p", path: "/repo/a" });
+      getProjectHealthMock.mockResolvedValue(makeHealth());
+
+      renderHook(() => useProjectHealth());
+
+      await waitFor(() => {
+        expect(getProjectHealthMock).toHaveBeenCalledTimes(1);
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(getProjectHealthMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("loading vs isValidating split", () => {
+    it("keeps loading true only during the cold first fetch", async () => {
+      getCurrentMock.mockResolvedValue({ id: "p", path: "/repo/a" });
+
+      let resolveFirst: ((v: ProjectHealthData) => void) | undefined;
+      getProjectHealthMock.mockImplementationOnce(
+        () =>
+          new Promise<ProjectHealthData>((resolve) => {
+            resolveFirst = resolve;
+          })
+      );
+
+      const { result } = renderHook(() => useProjectHealth());
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(true);
+        expect(result.current.isValidating).toBe(true);
+      });
+
+      await act(async () => {
+        resolveFirst?.(makeHealth());
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+        expect(result.current.isValidating).toBe(false);
+        expect(result.current.health).not.toBeNull();
+      });
+    });
+
+    it("flips isValidating without flipping loading on a wake-triggered refetch", async () => {
+      getCurrentMock.mockResolvedValue({ id: "p", path: "/repo/a" });
+
+      let resolveSecond: ((v: ProjectHealthData) => void) | undefined;
+      getProjectHealthMock
+        .mockResolvedValueOnce(makeHealth({ issueCount: 1 }))
+        .mockImplementationOnce(
+          () =>
+            new Promise<ProjectHealthData>((resolve) => {
+              resolveSecond = resolve;
+            })
+        );
+
+      const { result } = renderHook(() => useProjectHealth());
+
+      await waitFor(() => {
+        expect(result.current.health?.issueCount).toBe(1);
+        expect(result.current.loading).toBe(false);
+        expect(result.current.isValidating).toBe(false);
+      });
+
+      await act(async () => {
+        useSystemWakeStore.setState((s) => ({ wakeEpoch: s.wakeEpoch + 1 }));
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(result.current.isValidating).toBe(true);
+      });
+      expect(result.current.loading).toBe(false);
+      expect(result.current.health?.issueCount).toBe(1);
+
+      await act(async () => {
+        resolveSecond?.(makeHealth({ issueCount: 9 }));
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(result.current.isValidating).toBe(false);
+        expect(result.current.health?.issueCount).toBe(9);
+      });
+    });
   });
 });
