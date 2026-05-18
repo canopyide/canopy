@@ -634,6 +634,9 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         onNavigationBlocked: vi.fn(() => vi.fn()),
         setLifecycleState: vi.fn().mockResolvedValue(undefined),
         getScrollPosition,
+        onOAuthLoopbackStatus: vi.fn(() => vi.fn()),
+        startOAuthLoopback: vi.fn(() => Promise.resolve({ success: true })),
+        cancelOAuthLoopback: vi.fn(() => Promise.resolve()),
       },
     };
 
@@ -685,6 +688,9 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         onNavigationBlocked: vi.fn(() => vi.fn()),
         setLifecycleState: vi.fn().mockResolvedValue(undefined),
         getScrollPosition,
+        onOAuthLoopbackStatus: vi.fn(() => vi.fn()),
+        startOAuthLoopback: vi.fn(() => Promise.resolve({ success: true })),
+        cancelOAuthLoopback: vi.fn(() => Promise.resolve()),
       },
     };
 
@@ -726,6 +732,9 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         onNavigationBlocked: vi.fn(() => vi.fn()),
         setLifecycleState: vi.fn().mockResolvedValue(undefined),
         getScrollPosition,
+        onOAuthLoopbackStatus: vi.fn(() => vi.fn()),
+        startOAuthLoopback: vi.fn(() => Promise.resolve({ success: true })),
+        cancelOAuthLoopback: vi.fn(() => Promise.resolve()),
       },
     };
 
