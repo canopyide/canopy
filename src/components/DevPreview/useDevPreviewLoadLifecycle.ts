@@ -42,6 +42,7 @@ interface UseDevPreviewLoadLifecycleParams {
   originalUaRef: React.MutableRefObject<string | null>;
   setHistory: React.Dispatch<React.SetStateAction<BrowserHistory>>;
   setBlockedNav: React.Dispatch<React.SetStateAction<DevPreviewBlockedNav | null>>;
+  onRenderProcessGone?: (details: { reason: string; exitCode: number }) => void;
 }
 
 interface UseDevPreviewLoadLifecycleResult {
@@ -70,6 +71,7 @@ export function useDevPreviewLoadLifecycle({
   originalUaRef,
   setHistory,
   setBlockedNav,
+  onRenderProcessGone,
 }: UseDevPreviewLoadLifecycleParams): UseDevPreviewLoadLifecycleResult {
   const [isWebviewReady, setIsWebviewReady] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -358,6 +360,15 @@ export function useDevPreviewLoadLifecycle({
       recordVisit(navigatedUrl);
     };
 
+    const handleRenderProcessGone = (e: Event) => {
+      const detail = (e as unknown as { detail?: { reason?: string; exitCode?: number } }).detail;
+      if (!detail || detail.reason === "clean-exit") return;
+      onRenderProcessGone?.({
+        reason: detail.reason ?? "unknown",
+        exitCode: detail.exitCode ?? -1,
+      });
+    };
+
     webview.addEventListener("did-start-loading", handleDidStartLoading);
     webview.addEventListener("did-stop-loading", handleDidStopLoading);
     webview.addEventListener("did-finish-load", handleDidFinishLoad);
@@ -368,6 +379,7 @@ export function useDevPreviewLoadLifecycle({
       handleDidNavigateInPage as unknown as EventListener
     );
     webview.addEventListener("page-title-updated", handlePageTitleUpdated);
+    webview.addEventListener("render-process-gone", handleRenderProcessGone);
 
     return () => {
       webview.removeEventListener("did-start-loading", handleDidStartLoading);
@@ -380,6 +392,7 @@ export function useDevPreviewLoadLifecycle({
         handleDidNavigateInPage as unknown as EventListener
       );
       webview.removeEventListener("page-title-updated", handlePageTitleUpdated);
+      webview.removeEventListener("render-process-gone", handleRenderProcessGone);
       if (failLoadRetryRef.current) {
         clearTimeout(failLoadRetryRef.current);
         failLoadRetryRef.current = null;
@@ -393,7 +406,15 @@ export function useDevPreviewLoadLifecycle({
         loadTimeoutRef.current = null;
       }
     };
-  }, [webviewElement, loadTimeoutMs, evictingRef, lastSetUrlRef, setHistory, setBlockedNav]);
+  }, [
+    webviewElement,
+    loadTimeoutMs,
+    evictingRef,
+    lastSetUrlRef,
+    setHistory,
+    setBlockedNav,
+    onRenderProcessGone,
+  ]);
 
   useEffect(() => {
     const webview = webviewElement;

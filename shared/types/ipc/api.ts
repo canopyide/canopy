@@ -860,6 +860,10 @@ export interface ElectronAPI {
     onNavigationBlocked(
       callback: (payload: { panelId: string; url: string; canOpenExternal: boolean }) => void
     ): () => void;
+    /** Subscribe to unresponsive events from webview guest render processes */
+    onUnresponsive(callback: (payload: { panelId: string }) => void): () => void;
+    /** Subscribe to responsive (recovery) events from webview guest render processes */
+    onResponsive(callback: (payload: { panelId: string }) => void): () => void;
     /** Start OAuth loopback flow: system browser for IdP, ephemeral server for callback, CDP for token exchange */
     startOAuthLoopback(
       authUrl: string,

@@ -8,6 +8,7 @@ import {
   Square,
   WandSparkles,
   OctagonAlert,
+  XCircle,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { Button } from "@/components/ui/button";
@@ -368,6 +369,13 @@ export function DevPreviewPane({
   });
 
   const [blockedNav, setBlockedNav] = useState<DevPreviewBlockedNav | null>(null);
+  const [crashState, setCrashState] = useState<"none" | "crashed" | "unresponsive">("none");
+  const [crashDetails, setCrashDetails] = useState<{
+    reason: string;
+    exitCode: number;
+  } | null>(null);
+  const crashTimestampsRef = useRef<number[]>([]);
+  const crashReloadRef = useRef<() => void>(() => {});
   const blockedNavTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastSetUrlRef = useRef<string>("");
   const [consoleTerminalId, setConsoleTerminalId] = useState<string | null>(terminalId);
@@ -441,6 +449,20 @@ export function DevPreviewPane({
     };
   }, [isRecoveringFromEviction, webviewElement]);
 
+  const handleRenderProcessGone = useCallback((details: { reason: string; exitCode: number }) => {
+    const now = Date.now();
+    const timestamps = crashTimestampsRef.current.filter((ts) => now - ts < 60_000);
+    timestamps.push(now);
+    crashTimestampsRef.current = timestamps;
+
+    setCrashDetails(details);
+    setCrashState("crashed");
+
+    if (timestamps.length < 2) {
+      crashReloadRef.current();
+    }
+  }, []);
+
   const {
     isWebviewReady,
     setIsWebviewReady,
@@ -465,6 +487,7 @@ export function DevPreviewPane({
     originalUaRef,
     setHistory,
     setBlockedNav,
+    onRenderProcessGone: handleRenderProcessGone,
   });
 
   useEffect(() => {
@@ -634,6 +657,9 @@ export function DevPreviewPane({
   }, [currentUrl, setWebviewLoadError, setIsSlowLoad, setIsLoading]);
 
   const handleHardReload = useCallback(() => {
+    setCrashState("none");
+    setCrashDetails(null);
+    crashTimestampsRef.current = [];
     const webview = webviewRef.current;
     if (!webview || !isWebviewReady) return;
     setWebviewLoadError(null);
@@ -681,6 +707,12 @@ export function DevPreviewPane({
     setDevPreviewConsoleOpen(id, !isConsoleOpen);
   }, [id, isConsoleOpen, setDevPreviewConsoleOpen]);
 
+  // Keep crashReloadRef in sync so onRenderProcessGone can call handleHardReload
+  // before it exists in the lexical scope.
+  useEffect(() => {
+    crashReloadRef.current = handleHardReload;
+  }, [handleHardReload]);
+
   const handleOpenExternal = useCallback(() => {
     if (currentUrl) {
       safeFireAndForget(window.electron.system.openExternal(currentUrl), {
@@ -726,6 +758,9 @@ export function DevPreviewPane({
     setIsSlowLoad(false);
     setIsWebviewReady(false);
     setWebviewLoadError(null);
+    setCrashState("none");
+    setCrashDetails(null);
+    crashTimestampsRef.current = [];
     void restart();
   }, [
     id,
@@ -993,6 +1028,50 @@ export function DevPreviewPane({
     const timer = setTimeout(() => setBlockedNav(null), 10_000);
     return () => clearTimeout(timer);
   }, [blockedNav]);
+
+  // Listen for webview unresponsive/responsive events from the main process
+  useEffect(() => {
+    const cleanupUnresponsive = window.electron.webview.onUnresponsive((data) => {
+      if (data.panelId !== id) return;
+      setCrashState((prev) => (prev === "crashed" ? prev : "unresponsive"));
+    });
+    const cleanupResponsive = window.electron.webview.onResponsive((data) => {
+      if (data.panelId !== id) return;
+      setCrashState((prev) => (prev === "unresponsive" ? "none" : prev));
+    });
+    return () => {
+      cleanupUnresponsive();
+      cleanupResponsive();
+    };
+  }, [id]);
+
+  // Clear crash state on successful navigation
+  useEffect(() => {
+    if (crashState === "none") return;
+    if (currentUrl && currentUrl !== "about:blank") {
+      setCrashState("none");
+      setCrashDetails(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- clear on URL change only
+  }, [currentUrl]);
+
+  // Listen for action-driven hard-reload events
+  useEffect(() => {
+    const handleHardReloadEvent = (e: Event) => {
+      if (!(e instanceof CustomEvent)) return;
+      const detail = e.detail as unknown;
+      if (!detail || typeof (detail as { id?: unknown }).id !== "string") return;
+      if ((detail as { id: string }).id === id) {
+        handleHardReload();
+      }
+    };
+
+    const controller = new AbortController();
+    window.addEventListener("daintree:hard-reload-browser", handleHardReloadEvent, {
+      signal: controller.signal,
+    });
+    return () => controller.abort();
+  }, [id, handleHardReload]);
 
   return (
     <ContentPanel
@@ -1292,6 +1371,62 @@ export function DevPreviewPane({
                       panelId={id}
                       webviewElement={webviewElement}
                       onDismiss={() => setBlockedNav(null)}
+                    />
+                  )}
+                  {crashState === "crashed" && (
+                    <InlineStatusBanner
+                      icon={XCircle}
+                      title="Preview process crashed"
+                      description={
+                        crashDetails
+                          ? `Reason: ${crashDetails.reason} (exit code ${crashDetails.exitCode})`
+                          : "The renderer process terminated unexpectedly."
+                      }
+                      severity="error"
+                      animated={false}
+                      actions={[
+                        {
+                          id: "reload",
+                          label: "Reload",
+                          icon: RotateCw,
+                          variant: "dangerFilled",
+                          onClick: handleHardReload,
+                          ariaLabel: "Reload preview page",
+                        },
+                        {
+                          id: "hard-restart",
+                          label: "Hard restart",
+                          icon: RotateCw,
+                          variant: "danger",
+                          onClick: handleHardRestart,
+                          ariaLabel: "Hard restart preview",
+                        },
+                      ]}
+                      onClose={() => {
+                        setCrashState("none");
+                        setCrashDetails(null);
+                        crashTimestampsRef.current = [];
+                      }}
+                    />
+                  )}
+                  {crashState === "unresponsive" && (
+                    <InlineStatusBanner
+                      icon={AlertTriangle}
+                      title="Preview is not responding"
+                      description="The page may be stuck in a long-running operation."
+                      severity="warning"
+                      animated={false}
+                      actions={[
+                        {
+                          id: "hard-restart",
+                          label: "Hard restart",
+                          icon: RotateCw,
+                          variant: "danger",
+                          onClick: handleHardRestart,
+                          ariaLabel: "Hard restart preview",
+                        },
+                      ]}
+                      onClose={() => setCrashState("none")}
                     />
                   )}
                   {isLoading && (

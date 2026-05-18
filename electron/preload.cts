@@ -1821,6 +1821,10 @@ const api: ElectronAPI = {
     onNavigationBlocked: (
       callback: (payload: { panelId: string; url: string; canOpenExternal: boolean }) => void
     ): (() => void) => _typedOn(CHANNELS.WEBVIEW_NAVIGATION_BLOCKED, callback),
+    onUnresponsive: (callback: (payload: { panelId: string }) => void): (() => void) =>
+      _typedOn(CHANNELS.WEBVIEW_UNRESPONSIVE, callback),
+    onResponsive: (callback: (payload: { panelId: string }) => void): (() => void) =>
+      _typedOn(CHANNELS.WEBVIEW_RESPONSIVE, callback),
     startOAuthLoopback: (
       authUrl: string,
       panelId: string,

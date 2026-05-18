@@ -292,6 +292,8 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         onNavigationBlocked: vi.fn(() => vi.fn()),
         setLifecycleState: vi.fn().mockResolvedValue(undefined),
         getScrollPosition: vi.fn().mockResolvedValue(0),
+        onUnresponsive: vi.fn(() => vi.fn()),
+        onResponsive: vi.fn(() => vi.fn()),
       },
     };
   });
@@ -631,6 +633,8 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         onNavigationBlocked: vi.fn(() => vi.fn()),
         setLifecycleState: vi.fn().mockResolvedValue(undefined),
         getScrollPosition,
+        onUnresponsive: vi.fn(() => vi.fn()),
+        onResponsive: vi.fn(() => vi.fn()),
       },
     };
 
@@ -682,6 +686,8 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         onNavigationBlocked: vi.fn(() => vi.fn()),
         setLifecycleState: vi.fn().mockResolvedValue(undefined),
         getScrollPosition,
+        onUnresponsive: vi.fn(() => vi.fn()),
+        onResponsive: vi.fn(() => vi.fn()),
       },
     };
 
@@ -723,6 +729,8 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         onNavigationBlocked: vi.fn(() => vi.fn()),
         setLifecycleState: vi.fn().mockResolvedValue(undefined),
         getScrollPosition,
+        onUnresponsive: vi.fn(() => vi.fn()),
+        onResponsive: vi.fn(() => vi.fn()),
       },
     };
 
