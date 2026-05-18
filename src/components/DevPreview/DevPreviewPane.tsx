@@ -1257,7 +1257,7 @@ export function DevPreviewPane({
                         setBlockedNav(null);
                       }}
                       onStartOAuth={() => {
-                        startOAuth(
+                        void startOAuth(
                           blockedNav.url,
                           webviewElement,
                           blockedNav.sessionStorageSnapshot
@@ -1265,7 +1265,7 @@ export function DevPreviewPane({
                       }}
                       onCancelOAuth={cancelOAuth}
                       onRetryOAuth={() => {
-                        startOAuth(
+                        void startOAuth(
                           blockedNav.url,
                           webviewElement,
                           blockedNav.sessionStorageSnapshot

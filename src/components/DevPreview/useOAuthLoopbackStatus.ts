@@ -17,8 +17,8 @@ export function useOAuthLoopbackStatus(panelId: string) {
       if (payload.generation < generationRef.current) return;
 
       generationRef.current = payload.generation;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- push channel payload shape matches OAuthPhase discriminants
       setState({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- push channel payload shape matches OAuthPhase discriminants
         phase: payload as OAuthPhase,
         generation: payload.generation,
       });
