@@ -24,6 +24,14 @@ const worktree = {
   branch: "feature/test",
   prNumber: 42,
   prState: "open",
+  linked: {
+    providerId: "github",
+    pr: {
+      ref: { providerId: "github", owner: "test", repo: "test", number: 42, rawData: {} },
+      state: "open",
+      url: "https://github.com/test/repo/pull/42",
+    },
+  },
 } as unknown as WorktreeState;
 
 function renderRow() {

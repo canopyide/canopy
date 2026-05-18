@@ -55,6 +55,8 @@ function makeAgent(id: string, overrides: Partial<TerminalInstance> = {}): Termi
 }
 
 function makeWorktree(id: string, overrides: Partial<WorktreeSnapshot> = {}): WorktreeSnapshot {
+  const overridesObj = overrides as Record<string, unknown>;
+  const num = (overridesObj.prNumber as number) ?? 101;
   return {
     id,
     worktreeId: id,
@@ -64,7 +66,15 @@ function makeWorktree(id: string, overrides: Partial<WorktreeSnapshot> = {}): Wo
     isCurrent: false,
     issueNumber: 42,
     prNumber: 101,
-    ...(overrides as object),
+    linked: {
+      providerId: "github",
+      pr: {
+        ref: { providerId: "github", owner: "test", repo: "test", number: num, rawData: {} },
+        state: "open",
+        url: `https://github.com/test/repo/pull/${num}`,
+      },
+    },
+    ...(overridesObj as object),
   } as WorktreeSnapshot;
 }
 

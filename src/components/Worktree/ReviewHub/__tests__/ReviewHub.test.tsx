@@ -974,7 +974,50 @@ describe("ReviewHub", () => {
       prCiStatus?: "SUCCESS" | "FAILURE" | "ERROR" | "PENDING" | "EXPECTED";
     }) {
       const existing = worktreeStoreData.current.get("main-wt")!;
-      worktreeStoreData.current.set("main-wt", { ...existing, ...prData });
+      const mappedState =
+        prData.prState === "closed"
+          ? ("closed" as const)
+          : prData.prState === "merged"
+            ? ("merged" as const)
+            : ("open" as const);
+      const ciState =
+        prData.prCiStatus === "SUCCESS"
+          ? ("success" as const)
+          : prData.prCiStatus === "FAILURE" || prData.prCiStatus === "ERROR"
+            ? ("failure" as const)
+            : prData.prCiStatus === "PENDING" || prData.prCiStatus === "EXPECTED"
+              ? ("pending" as const)
+              : undefined;
+      worktreeStoreData.current.set("main-wt", {
+        ...existing,
+        ...prData,
+        linked: {
+          providerId: "github",
+          pr: {
+            ref: {
+              providerId: "github",
+              owner: "test",
+              repo: "test",
+              number: prData.prNumber,
+              rawData: {},
+            },
+            state: mappedState,
+            url: prData.prUrl,
+            ...(ciState
+              ? {
+                  ciStatus: {
+                    state: ciState,
+                    total: 0,
+                    passed: 0,
+                    failed: 0,
+                    pending: 0,
+                    rawData: null,
+                  },
+                }
+              : {}),
+          },
+        },
+      });
     }
 
     it("shows PR badge with number and state when worktree has a PR", async () => {
