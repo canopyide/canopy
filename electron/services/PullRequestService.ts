@@ -8,12 +8,7 @@ import { resolveForgeProvider } from "./forgeProviderResolver.js";
 import { getForgeProviderImpl } from "./forgeProviderRegistry.js";
 import { generateProjectId } from "./projectStorePaths.js";
 import { createHardenedGit } from "../utils/hardenedGit.js";
-import type {
-  ForgeProviderImpl,
-  RepoRef,
-  PR as ForgePR,
-  Issue as ForgeIssue,
-} from "../../shared/types/forge.js";
+import type { ForgeProviderImpl, RepoRef, PR as ForgePR } from "../../shared/types/forge.js";
 
 // Focus-aware polling cadence: faster when any Daintree window is focused so
 // users see PR transitions promptly, slower when fully blurred to conserve the
@@ -332,13 +327,14 @@ class PullRequestService {
         return;
       }
       const git = createHardenedGit(this.cwd);
-      const remoteUrl = await git.getConfig("remote.origin.url").catch(() => null);
-      if (!remoteUrl || typeof remoteUrl !== "string") {
+      const rawUrl = await git.getConfig("remote.origin.url").catch(() => null);
+      if (!rawUrl || typeof rawUrl !== "string") {
         this.providerNamespacedId = null;
         this.providerImpl = null;
         this.repoRef = null;
         return;
       }
+      const remoteUrl: string = rawUrl;
       const repo = impl.parseRemote(remoteUrl.trim());
       if (!repo) {
         this.providerNamespacedId = null;
@@ -755,8 +751,8 @@ class PullRequestService {
 
     try {
       // Revalidate each known PR by number via provider.getPR.
-      // Use a sentinel so transient errors (network, 5xx) don't clear valid PR state.
-      const NOT_FOUND = Symbol("not-found");
+      // Transient errors (network, 5xx) are captured as `error: true` and
+      // skipped so a flaky API call doesn't clear valid PR state.
       const prNumbers = [...uniquePRNumbers];
       const results = await mapWithConcurrencyLimit(prNumbers, 5, async (prNumber) => {
         try {

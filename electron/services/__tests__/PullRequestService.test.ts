@@ -34,6 +34,7 @@ function makeMockForgePR(overrides?: Partial<ForgePR>): ForgePR {
     headRef: "feature/test",
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    rawData: null,
     ...overrides,
   };
 }
@@ -57,12 +58,10 @@ function mockForgeProviderResolved(findPRByBranch?: () => Promise<ForgePR | null
   };
 
   vi.doMock("../forgeProviderResolver.js", () => ({
-    resolveForgeProvider: vi
-      .fn()
-      .mockResolvedValue({
-        pluginId: "builtin",
-        contribution: { id: "github", name: "GitHub", matches: ["github.com"] },
-      }),
+    resolveForgeProvider: vi.fn().mockResolvedValue({
+      pluginId: "builtin",
+      contribution: { id: "github", name: "GitHub", matches: ["github.com"] },
+    }),
   }));
   vi.doMock("../forgeProviderRegistry.js", () => ({
     getForgeProviderImpl: vi.fn().mockReturnValue(mockImpl),
