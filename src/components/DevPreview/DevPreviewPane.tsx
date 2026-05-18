@@ -34,6 +34,8 @@ import { actionService } from "@/services/ActionService";
 import { useWebviewThrottle } from "@/hooks/useWebviewThrottle";
 import { useHasBeenVisible } from "@/hooks/useHasBeenVisible";
 import { useWebviewEviction } from "@/hooks/useWebviewEviction";
+import { useDeferredLoading } from "@/hooks/useDeferredLoading";
+import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
 import { useWebviewDialog } from "@/hooks/useWebviewDialog";
 import { WebviewDialog } from "../Browser/WebviewDialog";
 import { FindBar } from "../Browser/FindBar";
@@ -273,6 +275,50 @@ export function DevPreviewPane({
     Boolean(currentProjectId) && !isSettingsLoading && projectSettings !== null && !devCommand;
 
   const { isEvicted, evictingRef } = useWebviewEviction(id, location);
+
+  const [isRecoveringFromEviction, setIsRecoveringFromEviction] = useState(false);
+  const previousIsEvictedRef = useRef(false);
+
+  useEffect(() => {
+    if (previousIsEvictedRef.current && !isEvicted && hasBeenVisible) {
+      setIsRecoveringFromEviction(true);
+    }
+    if (isEvicted) {
+      setIsRecoveringFromEviction(false);
+    }
+    previousIsEvictedRef.current = isEvicted;
+  }, [isEvicted, hasBeenVisible]);
+
+  const showRecoverySpinner = useDeferredLoading(isRecoveringFromEviction, UI_DOHERTY_THRESHOLD);
+
+  useEffect(() => {
+    const webview = webviewElement;
+    if (!webview || !isRecoveringFromEviction) return;
+
+    const handleRecoveryFinishLoad = () => {
+      try {
+        if (webview.getURL() !== "about:blank") {
+          setIsRecoveringFromEviction(false);
+        }
+      } catch {
+        // Webview detached
+      }
+    };
+
+    webview.addEventListener("did-finish-load", handleRecoveryFinishLoad);
+
+    try {
+      if (webview.getURL() !== "about:blank" && !webview.isLoading()) {
+        setIsRecoveringFromEviction(false);
+      }
+    } catch {
+      // Webview not ready
+    }
+
+    return () => {
+      webview.removeEventListener("did-finish-load", handleRecoveryFinishLoad);
+    };
+  }, [isRecoveringFromEviction, webviewElement]);
 
   const {
     isWebviewReady,
@@ -859,7 +905,9 @@ export function DevPreviewPane({
             </div>
           ) : isEvicted ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-daintree-bg text-daintree-text p-6">
-              <p className="text-xs text-daintree-text/50">Reclaimed for memory</p>
+              <p className="text-xs text-daintree-text/50">
+                Preview paused to save memory — will reload when opened
+              </p>
             </div>
           ) : (
             <div className={cn("h-full", viewportPreset && "flex items-start justify-center pt-5")}>
@@ -958,6 +1006,12 @@ export function DevPreviewPane({
                           </Button>
                         </>
                       )}
+                    </div>
+                  )}
+                  {showRecoverySpinner && !webviewLoadError && (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-daintree-bg gap-3">
+                      <Spinner size="2xl" className="text-status-info" />
+                      <p className="text-xs text-daintree-text/50">Rehydrating preview...</p>
                     </div>
                   )}
                   {isDragging && <div className="absolute inset-0 z-10 bg-transparent" />}
