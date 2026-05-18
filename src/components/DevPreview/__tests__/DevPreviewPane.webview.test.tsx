@@ -292,6 +292,9 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         onNavigationBlocked: vi.fn(() => vi.fn()),
         setLifecycleState: vi.fn().mockResolvedValue(undefined),
         getScrollPosition: vi.fn().mockResolvedValue(0),
+        onOAuthLoopbackStatus: vi.fn(() => vi.fn()),
+        startOAuthLoopback: vi.fn(() => Promise.resolve({ success: true })),
+        cancelOAuthLoopback: vi.fn(() => Promise.resolve()),
       },
     };
   });
