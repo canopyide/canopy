@@ -4,7 +4,7 @@ import { useUrlHistoryStore } from "@/store/urlHistoryStore";
 import type { BrowserHistory } from "@shared/types/browser";
 import type { ViewportPresetId } from "@shared/types/panel";
 import { getViewportPreset } from "@/panels/dev-preview/viewportPresets";
-import { applyViewportEmulation } from "./applyViewportEmulation";
+import { getDevPreviewWebContents, buildEmulationParams } from "./viewportEmulation";
 import { pushBrowserHistory } from "../Browser/historyUtils";
 import { loadWebviewUrl } from "./loadWebviewUrl";
 import type { BlockedNavAction } from "./BlockedNavBanner";
@@ -39,6 +39,8 @@ interface UseDevPreviewLoadLifecycleParams {
   loadTimeoutMs: number;
   zoomFactor: number;
   viewportPreset: ViewportPresetId | undefined;
+  viewportRotated: boolean;
+  viewportDpr: number;
   evictingRef: React.RefObject<boolean>;
   lastSetUrlRef: React.MutableRefObject<string>;
   originalUaRef: React.MutableRefObject<string | null>;
@@ -67,6 +69,8 @@ export function useDevPreviewLoadLifecycle({
   loadTimeoutMs,
   zoomFactor,
   viewportPreset,
+  viewportRotated,
+  viewportDpr,
   evictingRef,
   lastSetUrlRef,
   originalUaRef,
@@ -90,12 +94,16 @@ export function useDevPreviewLoadLifecycle({
   const failLoadRetryRef = useRef<NodeJS.Timeout | null>(null);
   const failLoadRetryCountRef = useRef<number>(0);
 
-  // Mirror the active preset into a ref so handleDidFinishLoad can re-apply
-  // overrides after cross-origin navigation without the load-listener effect
-  // depending on viewportPreset (which would tear down/rebuild load timers
-  // on every preset change).
+  // Mirror the active preset/rotation/DPR into refs so handleDidFinishLoad can
+  // re-apply overrides after cross-origin navigation without the load-listener
+  // effect depending on these values (which would tear down/rebuild load timers
+  // on every change).
   const viewportPresetRef = useRef(viewportPreset);
   viewportPresetRef.current = viewportPreset;
+  const viewportRotatedRef = useRef(viewportRotated);
+  viewportRotatedRef.current = viewportRotated;
+  const viewportDprRef = useRef(viewportDpr);
+  viewportDprRef.current = viewportDpr;
 
   const clearLoadTimers = useCallback(() => {
     if (slowLoadTimeoutRef.current) {
@@ -232,24 +240,32 @@ export function useDevPreviewLoadLifecycle({
       // here. Without this, navigating within the preview silently drops
       // the emulated viewport and the spoofed user agent.
       const activePreset = viewportPresetRef.current;
+      const activeRotated = viewportRotatedRef.current;
+      const activeDpr = viewportDprRef.current;
       try {
-        const wc = (
-          webview as unknown as {
-            getWebContents(): { setUserAgent(ua: string): void; getUserAgent(): string };
+        const wc = getDevPreviewWebContents(webview);
+        if (wc) {
+          if (originalUaRef.current === null) {
+            originalUaRef.current = wc.getUserAgent();
           }
-        ).getWebContents();
-        if (originalUaRef.current === null) {
-          originalUaRef.current = wc.getUserAgent();
-        }
-        if (activePreset) {
-          wc.setUserAgent(getViewportPreset(activePreset).userAgent);
-        } else if (originalUaRef.current !== null) {
-          wc.setUserAgent(originalUaRef.current);
+          if (activePreset) {
+            wc.setUserAgent(getViewportPreset(activePreset).userAgent);
+            const params = buildEmulationParams(activePreset, activeRotated, activeDpr);
+            if (params) {
+              wc.enableDeviceEmulation(params);
+            }
+          } else if (originalUaRef.current !== null) {
+            wc.setUserAgent(originalUaRef.current);
+            try {
+              wc.disableDeviceEmulation();
+            } catch {
+              // disableDeviceEmulation may throw if emulation was never enabled
+            }
+          }
         }
       } catch {
         // WebContents not available (webview detached)
       }
-      applyViewportEmulation(webview, id, activePreset);
     };
 
     const handleDidFailLoad = (e: Electron.DidFailLoadEvent) => {
@@ -447,19 +463,18 @@ export function useDevPreviewLoadLifecycle({
     const handleDomReady = () => {
       setIsWebviewReady(true);
       webview.setZoomFactor(zoomFactor);
-      // Capture original UA before any override
       try {
-        const wc = (
-          webview as unknown as {
-            getWebContents(): { setUserAgent(ua: string): void; getUserAgent(): string };
+        const wc = getDevPreviewWebContents(webview);
+        if (wc) {
+          if (originalUaRef.current === null) {
+            originalUaRef.current = wc.getUserAgent();
           }
-        ).getWebContents();
-        if (originalUaRef.current === null) {
-          originalUaRef.current = wc.getUserAgent();
-        }
-        // Apply preset UA if active
-        if (viewportPreset) {
-          wc.setUserAgent(getViewportPreset(viewportPreset).userAgent);
+          if (viewportPreset) {
+            wc.setUserAgent(getViewportPreset(viewportPreset).userAgent);
+            wc.enableDeviceEmulation(
+              buildEmulationParams(viewportPreset, viewportRotated, viewportDpr)!
+            );
+          }
         }
       } catch {
         // WebContents not available yet
@@ -496,16 +511,17 @@ export function useDevPreviewLoadLifecycle({
         setIsWebviewReady(true);
         webview.setZoomFactor(zoomFactor);
         try {
-          const wc = (
-            webview as unknown as {
-              getWebContents(): { setUserAgent(ua: string): void; getUserAgent(): string };
+          const wc = getDevPreviewWebContents(webview);
+          if (wc) {
+            if (originalUaRef.current === null) {
+              originalUaRef.current = wc.getUserAgent();
             }
-          ).getWebContents();
-          if (originalUaRef.current === null) {
-            originalUaRef.current = wc.getUserAgent();
-          }
-          if (viewportPreset) {
-            wc.setUserAgent(getViewportPreset(viewportPreset).userAgent);
+            if (viewportPreset) {
+              wc.setUserAgent(getViewportPreset(viewportPreset).userAgent);
+              wc.enableDeviceEmulation(
+                buildEmulationParams(viewportPreset, viewportRotated, viewportDpr)!
+              );
+            }
           }
         } catch {
           // WebContents not available
@@ -532,7 +548,7 @@ export function useDevPreviewLoadLifecycle({
     return () => {
       webview.removeEventListener("dom-ready", handleDomReady);
     };
-  }, [id, zoomFactor, webviewElement, viewportPreset, originalUaRef]);
+  }, [id, zoomFactor, webviewElement, viewportPreset, viewportRotated, viewportDpr, originalUaRef]);
 
   useEffect(() => {
     return () => {
