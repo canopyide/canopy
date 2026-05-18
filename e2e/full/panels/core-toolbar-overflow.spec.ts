@@ -167,7 +167,9 @@ test.describe.serial("Core: Toolbar Overflow", () => {
 
       const overflowSet = new Set<string>();
       let currentWidth = totalWidth;
-      const targetWidth = containerWidth - 36 - 8; // trigger + hysteresis
+      // Removal target no longer carries a hysteresis buffer — the asymmetric
+      // restore gate in computeGuardedOverflow holds the buffer instead.
+      const targetWidth = containerWidth;
 
       for (const item of sorted) {
         if (currentWidth <= targetWidth) break;
@@ -191,6 +193,86 @@ test.describe.serial("Core: Toolbar Overflow", () => {
       // Priority 1 items should remain visible
       expect(overflowResult.visible).toContain("sidebar-toggle");
     }
+  });
+
+  test("overflow set is stable across 1px boundary jitter", async () => {
+    // Regression for #8157. The guarded hook must not flip-flop when the
+    // container width oscillates by a pixel at a boundary — once an item is
+    // in overflow, the restore threshold sits above prevWidth + smallest
+    // overflowed item width + RESTORE_HYSTERESIS_BUFFER.
+    const stability = await ctx.window.evaluate(() => {
+      type GuardedFn = (
+        containerWidth: number,
+        itemWidths: Map<string, number>,
+        orderedIds: string[],
+        priorities: Record<string, number>,
+        previousWidth: number,
+        previousResult: { visibleIds: string[]; overflowIds: string[] } | null
+      ) => { visibleIds: string[]; overflowIds: string[] };
+
+      const PRIORITIES: Record<string, number> = {
+        terminal: 3,
+        browser: 3,
+        "github-stats": 1,
+        settings: 5,
+        "copy-tree": 5,
+      };
+      const ids = ["terminal", "browser", "github-stats", "settings", "copy-tree"];
+      const widths = new Map(ids.map((id) => [id, 36] as const));
+
+      const RESTORE_BUFFER = 16;
+      const guarded: GuardedFn = (cw, iw, ordered, prios, prevW, prev) => {
+        const total = ordered.reduce((s, id) => s + (iw.get(id) ?? 36), 0);
+        const sorted = ordered
+          .map((id, index) => ({ id, index, priority: prios[id] ?? 3 }))
+          .sort((a, b) =>
+            b.priority !== a.priority ? b.priority - a.priority : b.index - a.index
+          );
+        const overflowSet = new Set<string>();
+        let current = total;
+        for (const item of sorted) {
+          if (current <= cw) break;
+          overflowSet.add(item.id);
+          current -= iw.get(item.id) ?? 36;
+        }
+        const fresh = {
+          visibleIds: ordered.filter((id) => !overflowSet.has(id)),
+          overflowIds: ordered.filter((id) => overflowSet.has(id)),
+        };
+        if (!prev || prev.overflowIds.length === 0 || cw <= prevW) return fresh;
+        const smallest = prev.overflowIds.reduce(
+          (m, id) => Math.min(m, iw.get(id) ?? 36),
+          Number.POSITIVE_INFINITY
+        );
+        return cw >= prevW + smallest + RESTORE_BUFFER ? fresh : prev;
+      };
+
+      // Drive 12 ticks of ±1px jitter around the 179/180 boundary.
+      const widthsSeq = [179, 180, 179, 180, 179, 180, 179, 180, 179, 180, 179, 180];
+      const observed: string[][] = [];
+      let prevW = 0;
+      let prev: { visibleIds: string[]; overflowIds: string[] } | null = null;
+
+      for (const w of widthsSeq) {
+        const result = guarded(w, widths, ids, PRIORITIES, prevW, prev);
+        observed.push([...result.overflowIds]);
+        if (
+          result.overflowIds.length !== (prev?.overflowIds.length ?? -1) ||
+          result.overflowIds.some((id, i) => prev?.overflowIds[i] !== id)
+        ) {
+          prevW = w;
+        }
+        prev = result;
+      }
+
+      // Every tick after the first must report the same overflow set.
+      const distinct = new Set(observed.map((arr) => arr.join("|")));
+      return { observedCount: observed.length, distinctSets: [...distinct] };
+    });
+
+    expect(stability.observedCount).toBe(12);
+    expect(stability.distinctSets).toHaveLength(1);
+    expect(stability.distinctSets[0]).toBe("copy-tree");
   });
 
   test("restore full size and verify toolbar is complete", async () => {
