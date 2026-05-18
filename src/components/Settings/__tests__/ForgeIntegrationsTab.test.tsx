@@ -287,14 +287,23 @@ describe("ForgeIntegrationsTab source guards", () => {
   });
 
   it("reads remotes through a ref in reresolveRemotes to avoid stale closures on project switch", () => {
-    // Ref mirror present
+    // Ref mirrors for both remotes and the active project id
     expect(source).toMatch(/remotesRef\s*=\s*useRef<RemoteRouting\[\]>\(\[\]\)/);
-    // Ref kept in sync with state
+    expect(source).toMatch(
+      /activeProjectIdRef\s*=\s*useRef<string \| undefined>\(activeProjectId\)/
+    );
+    // Refs kept in sync with their source state via effects
     expect(source).toMatch(/remotesRef\.current\s*=\s*remotes/);
-    // reresolveRemotes reads from the ref, not from closed-over remotes state
+    expect(source).toMatch(/activeProjectIdRef\.current\s*=\s*activeProjectId/);
+    // reresolveRemotes reads project id + remotes from refs, not from closures
+    expect(source).toMatch(/const\s+currentProjectId\s*=\s*activeProjectIdRef\.current/);
     expect(source).toMatch(/const\s+currentRemotes\s*=\s*remotesRef\.current\.map/);
     expect(source).not.toMatch(/const\s+currentRemotes\s*=\s*remotes\.map/);
-    // reresolveRemotes deps no longer include `remotes` (only activeProjectId)
-    expect(source).toMatch(/}\s*,\s*\[activeProjectId\]\s*\)\s*;?\s*\n\s*\n\s*const handleChange/);
+    // Resolver is called with the ref-captured projectId, never the closure-bound activeProjectId
+    expect(source).toMatch(/resolveProvider\(currentProjectId,\s*remote\.fetchUrl\)/);
+    // Bail-out guard after the awaited resolutions if the project switched
+    expect(source).toMatch(
+      /if\s*\(\s*activeProjectIdRef\.current\s*!==\s*currentProjectId\s*\)\s*return\s*;?/
+    );
   });
 });

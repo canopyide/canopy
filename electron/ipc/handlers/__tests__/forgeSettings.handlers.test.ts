@@ -114,6 +114,27 @@ describe("registerForgeSettingsHandlers", () => {
     expect(storeMock.set).toHaveBeenCalledWith("forgeDefaultProviderId", null);
   });
 
+  it("setDefaultProvider treats whitespace-only strings as null", () => {
+    registerForgeSettingsHandlers();
+    const setDefault = findHandler("forge:set-default-provider");
+    expect(setDefault(null, "   ")).toEqual({ defaultProviderId: null });
+    expect(storeMock.set).toHaveBeenCalledWith("forgeDefaultProviderId", null);
+  });
+
+  it("setDefaultProvider trims surrounding whitespace from the persisted id", () => {
+    registerForgeSettingsHandlers();
+    const setDefault = findHandler("forge:set-default-provider");
+    expect(setDefault(null, "  acme.gitea  ")).toEqual({ defaultProviderId: "acme.gitea" });
+    expect(storeMock.set).toHaveBeenCalledWith("forgeDefaultProviderId", "acme.gitea");
+  });
+
+  it("getSettings treats whitespace-only stored values as null", () => {
+    storeMock._data["forgeDefaultProviderId"] = "   ";
+    registerForgeSettingsHandlers();
+    const getSettings = findHandler("forge:get-settings");
+    expect(getSettings(null)).toEqual({ defaultProviderId: null });
+  });
+
   it("getProviders returns the live registry contents", () => {
     const entries: ForgeProviderEntry[] = [
       {

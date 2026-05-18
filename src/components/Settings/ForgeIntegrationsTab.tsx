@@ -58,9 +58,15 @@ export function ForgeIntegrationsTab() {
   const [remotes, setRemotes] = useState<RemoteRouting[]>([]);
   const [remotesLoading, setRemotesLoading] = useState(false);
   const [remotesError, setRemotesError] = useState<string | null>(null);
-  // Mirror `remotes` into a ref so `reresolveRemotes` can read the latest value
-  // without closing over the state (which would risk re-resolving stale remotes
-  // when the active project changes between the settings write and its reply).
+  // Mirror project id + remotes into refs so a `reresolveRemotes` call that was
+  // dispatched on project A doesn't run with A's id against B's remotes after
+  // an active-project switch lands between the settings write and its reply.
+  // `reresolveRemotes` reads both refs and is itself stable, so the callback
+  // captured by `handleChange` always picks up the current values.
+  const activeProjectIdRef = useRef<string | undefined>(activeProjectId);
+  useEffect(() => {
+    activeProjectIdRef.current = activeProjectId;
+  }, [activeProjectId]);
   const remotesRef = useRef<RemoteRouting[]>([]);
   useEffect(() => {
     remotesRef.current = remotes;
@@ -182,14 +188,19 @@ export function ForgeIntegrationsTab() {
   // global default can shift the `resolvedVia` badge for remotes whose origin
   // currently resolves via "hostname" — the default tier now wins.
   const reresolveRemotes = useCallback(async () => {
-    if (!activeProjectId) return;
+    const currentProjectId = activeProjectIdRef.current;
+    if (!currentProjectId) return;
     const currentRemotes = remotesRef.current.map((r) => r.remote);
     if (currentRemotes.length === 0) return;
     const resolutions = await Promise.allSettled(
       currentRemotes.map((remote) =>
-        window.electron.forge.resolveProvider(activeProjectId, remote.fetchUrl)
+        window.electron.forge.resolveProvider(currentProjectId, remote.fetchUrl)
       )
     );
+    // Bail if the active project switched mid-flight — the project-change
+    // effect already re-resolves remotes for the new project, so applying
+    // these results would overwrite the correct ones.
+    if (activeProjectIdRef.current !== currentProjectId) return;
     setRemotes(
       currentRemotes.map((remote, idx) => {
         const result = resolutions[idx];
@@ -199,7 +210,7 @@ export function ForgeIntegrationsTab() {
         return { remote, resolved: { entry: null, resolvedVia: null } };
       })
     );
-  }, [activeProjectId]);
+  }, []);
 
   const handleChange = useCallback(
     async (value: string) => {
