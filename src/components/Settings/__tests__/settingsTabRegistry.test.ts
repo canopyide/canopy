@@ -129,11 +129,11 @@ describe("SETTINGS_REGISTRY", () => {
     }
   });
 
-  it("project:automation declares needsOnNavigateToTab", () => {
+  it("project:automation does not require onNavigateToTab", () => {
     const automation = allEntries.find((e) => e.id === "project:automation");
     expect(automation).toBeDefined();
     if (automation && automation.importKind === "lazy") {
-      expect((automation as LazySettingsTabEntry).needsOnNavigateToTab).toBe(true);
+      expect((automation as LazySettingsTabEntry).needsOnNavigateToTab).toBeFalsy();
     }
   });
 
