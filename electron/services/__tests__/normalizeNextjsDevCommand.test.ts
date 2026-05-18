@@ -339,4 +339,24 @@ describe("extractPort", () => {
   it("returns Remix default port 3000", async () => {
     expect(await extractPort("remix dev", CWD)).toBe(3000);
   });
+
+  it("returns null when Remix command is not a dev invocation", async () => {
+    expect(await extractPort("remix routes", CWD)).toBeNull();
+  });
+
+  it("returns null for SUPPORT=8080 (PORT= substring in longer env var)", async () => {
+    expect(await extractPort("SUPPORT=8080 node server.js", CWD)).toBeNull();
+  });
+
+  it("returns null for --port 3000abc (partial digit extraction)", async () => {
+    expect(await extractPort("next dev --port 3000abc", CWD)).toBeNull();
+  });
+
+  it("returns null for --port 3000.5 (partial float extraction)", async () => {
+    expect(await extractPort("next dev --port 3000.5", CWD)).toBeNull();
+  });
+
+  it("returns null for --port with non-numeric value", async () => {
+    expect(await extractPort("next dev --port abc", CWD)).toBeNull();
+  });
 });

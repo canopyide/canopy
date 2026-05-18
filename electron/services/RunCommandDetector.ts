@@ -324,6 +324,11 @@ export class RunCommandDetector {
         const run = taskDef.run;
         if (!run) continue;
         if (typeof run !== "string" && !Array.isArray(run)) continue;
+        if (
+          Array.isArray(run) &&
+          (run.length === 0 || !run.every((v): v is string => typeof v === "string"))
+        )
+          continue;
 
         const desc = typeof taskDef.description === "string" ? taskDef.description : undefined;
 

@@ -19,11 +19,14 @@ export const PKG_SCRIPT_RE =
 // --turbopack to `next dev && echo done` attaches the flag to echo, not next.
 export const SHELL_CONTROL_RE = /[;&|#`]|<|>|\$\(/;
 
-export const PORT_FLAG_RE = /(?:--port(?:=|\s+)|-p\s+|PORT=)(["']?)(?:\$\{PORT:-)?(\d+)\}?\1/i;
+export const PORT_FLAG_RE =
+  /(?:--port(?:=|\s+)|-p\s+|\bPORT=)(["']?)(?:\$\{PORT:-)?(\d+)(?![.\w])\}?\1/i;
+
+export const PORT_FLAG_PRESENT_RE = /(?:--port(?:=|\s+)|-p\s+|\bPORT=)/i;
 
 export const FRAMEWORK_DEFAULT_PORTS: Array<[RegExp, number]> = [
   [/\bnext\s+dev\b/, 3000],
-  [/\bremix\b/, 3000],
+  [/\bremix\s+(?:dev|run|start|watch)\b/, 3000],
   [/\bvite\b/, 5173],
   [/\bsvelte-kit\s+dev\b/, 5173],
   [/\bastro\s+dev\b/, 4321],
@@ -60,6 +63,8 @@ export async function extractPort(command: string, cwd: string): Promise<number 
     if (port >= 1 && port <= 65535) return port;
     return null;
   }
+
+  if (PORT_FLAG_PRESENT_RE.test(resolved)) return null;
 
   for (const [re, defaultPort] of FRAMEWORK_DEFAULT_PORTS) {
     if (re.test(resolved)) return defaultPort;

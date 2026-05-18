@@ -804,6 +804,32 @@ describe("RunCommandDetector", () => {
         }),
       ]);
     });
+
+    it("skips task with empty array run", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "mise.toml"),
+        ["[tasks.empty]", "run = []", "", "[tasks.build]", 'run = "npm run build"'].join("\n"),
+        "utf-8"
+      );
+
+      const commands = await detector.detect(tempDir);
+      const miseCommands = commands.filter((cmd) => cmd.id.startsWith("mise-"));
+
+      expect(miseCommands.map((cmd) => cmd.id)).toEqual(["mise-build"]);
+    });
+
+    it("skips task with non-string array run elements", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "mise.toml"),
+        ["[tasks.bad]", "run = [1, 2]", "", "[tasks.build]", 'run = "npm run build"'].join("\n"),
+        "utf-8"
+      );
+
+      const commands = await detector.detect(tempDir);
+      const miseCommands = commands.filter((cmd) => cmd.id.startsWith("mise-"));
+
+      expect(miseCommands.map((cmd) => cmd.id)).toEqual(["mise-build"]);
+    });
   });
 
   describe("devcontainer detection", () => {
