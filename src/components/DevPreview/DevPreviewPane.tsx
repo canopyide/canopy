@@ -188,6 +188,8 @@ const STUCK_REMEDY_LABELS: Record<string, string> = {
 interface DevPreviewStuckBannerProps {
   tier: 2 | 3;
   error: UseDevServerReturn["error"];
+  /** Disables the banner actions while a restart is already in flight. */
+  isRestarting: boolean;
   onRestart: () => void;
   onRemedy: (actionId: string) => void;
 }
@@ -199,12 +201,19 @@ interface DevPreviewStuckBannerProps {
  * dev server emitted a recognised error, offers a variant-specific remedy
  * (`error.recommendedActionId`) alongside a plain restart.
  */
-function DevPreviewStuckBanner({ tier, error, onRestart, onRemedy }: DevPreviewStuckBannerProps) {
+function DevPreviewStuckBanner({
+  tier,
+  error,
+  isRestarting,
+  onRestart,
+  onRemedy,
+}: DevPreviewStuckBannerProps) {
   const restartAction: BannerAction = {
     id: "dev-preview-stuck-restart",
     label: "Restart dev server",
     icon: RotateCw,
     variant: "primary",
+    disabled: isRestarting,
     onClick: onRestart,
   };
 
@@ -232,6 +241,7 @@ function DevPreviewStuckBanner({ tier, error, onRestart, onRemedy }: DevPreviewS
             label: remedyLabel,
             icon: RotateCw,
             variant: "primary",
+            disabled: isRestarting,
             onClick: () => onRemedy(remedyId),
           },
           restartAction,
@@ -840,6 +850,7 @@ export function DevPreviewPane({
           <DevPreviewStuckBanner
             tier={stuckTier >= 3 ? 3 : 2}
             error={error}
+            isRestarting={isRestarting}
             onRestart={handleHardRestart}
             onRemedy={handleStuckRemedy}
           />

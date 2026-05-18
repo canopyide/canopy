@@ -675,6 +675,149 @@ describe("useDevServer adversarial races", () => {
     }
   });
 
+  it("cancels pending stuck timers when the server recovers (#8276)", async () => {
+    vi.useFakeTimers();
+    try {
+      ensureMock.mockImplementation((request: { projectId: string }) =>
+        Promise.resolve(
+          buildState({
+            panelId: "panel-1",
+            projectId: request.projectId,
+            status: "starting",
+            terminalId: `term-${request.projectId}`,
+          })
+        )
+      );
+      getStateMock.mockImplementation((request: { projectId: string }) =>
+        Promise.resolve(
+          buildState({
+            panelId: "panel-1",
+            projectId: request.projectId,
+            status: "starting",
+            terminalId: `term-${request.projectId}`,
+          })
+        )
+      );
+      let stateChangedHandler: ((payload: { state: DevPreviewSessionState }) => void) | null = null;
+      onStateChangedMock.mockImplementation(
+        (cb: (payload: { state: DevPreviewSessionState }) => void) => {
+          stateChangedHandler = cb;
+          return vi.fn();
+        }
+      );
+
+      const { result } = renderHook(() =>
+        useDevServer({
+          panelId: "panel-1",
+          devCommand: "npm run dev",
+          cwd: "/repo",
+        })
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        vi.advanceTimersByTime(8000);
+        await Promise.resolve();
+      });
+      expect(result.current.stuckTier).toBe(1);
+
+      // Server reports a URL — the stuck timer effect must tear down its
+      // pending tier-2/tier-3 timers and reset the tier.
+      await act(async () => {
+        stateChangedHandler?.({
+          state: buildState({
+            panelId: "panel-1",
+            projectId: "project-1",
+            status: "running",
+            terminalId: "term-project-1",
+            url: "http://localhost:3000/",
+          }),
+        });
+        await Promise.resolve();
+      });
+
+      expect(result.current.status).toBe("running");
+      expect(result.current.stuckTier).toBe(0);
+
+      await act(async () => {
+        vi.advanceTimersByTime(30000);
+        await Promise.resolve();
+      });
+
+      expect(result.current.stuckTier).toBe(0);
+      expect(restartMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("advances stuckTier exactly on the 6s/12s/25s boundaries (#8276)", async () => {
+    vi.useFakeTimers();
+    try {
+      ensureMock.mockImplementation((request: { projectId: string }) =>
+        Promise.resolve(
+          buildState({
+            panelId: "panel-1",
+            projectId: request.projectId,
+            status: "starting",
+            terminalId: `term-${request.projectId}`,
+          })
+        )
+      );
+      getStateMock.mockImplementation((request: { projectId: string }) =>
+        Promise.resolve(
+          buildState({
+            panelId: "panel-1",
+            projectId: request.projectId,
+            status: "starting",
+            terminalId: `term-${request.projectId}`,
+          })
+        )
+      );
+
+      const { result } = renderHook(() =>
+        useDevServer({
+          panelId: "panel-1",
+          devCommand: "npm run dev",
+          cwd: "/repo",
+        })
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      const tick = async (ms: number) => {
+        await act(async () => {
+          vi.advanceTimersByTime(ms);
+          await Promise.resolve();
+        });
+      };
+
+      await tick(5999);
+      expect(result.current.stuckTier).toBe(0);
+      await tick(1); // 6000
+      expect(result.current.stuckTier).toBe(1);
+      await tick(5999); // 11999
+      expect(result.current.stuckTier).toBe(1);
+      await tick(1); // 12000
+      expect(result.current.stuckTier).toBe(2);
+      await tick(12999); // 24999
+      expect(result.current.stuckTier).toBe(2);
+      await tick(1); // 25000
+      expect(result.current.stuckTier).toBe(3);
+
+      expect(restartMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not auto-restart a stuck installing session (backend handles install lifecycle)", async () => {
     vi.useFakeTimers();
     try {
