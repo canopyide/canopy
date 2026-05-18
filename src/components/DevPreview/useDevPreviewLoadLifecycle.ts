@@ -182,6 +182,7 @@ export function useDevPreviewLoadLifecycle({
       }
       failLoadRetryCountRef.current = 0;
       setWebviewCrashed({ reason, exitCode });
+      setWebviewLoadError(null);
     };
 
     const handleDidStartLoading = () => {
