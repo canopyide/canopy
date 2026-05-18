@@ -759,12 +759,7 @@ export class DevPreviewSessionService {
     // mid-cycle (sleeping between HEAD attempts), abort it and re-probe now to
     // skip the remaining poll interval. The poll itself stays the fallback for
     // unrecognized frameworks, so no marker means no behavior change.
-    if (
-      result.readyMarker &&
-      !session.markerSeen &&
-      !urlJustStarted &&
-      session.pendingUrl
-    ) {
+    if (result.readyMarker && !session.markerSeen && !urlJustStarted && session.pendingUrl) {
       session.markerSeen = true;
       session.readinessAbort?.abort();
       const abort = new AbortController();
