@@ -33,6 +33,7 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { useMenuActionSource } from "@/components/ui/menu-source";
 import { ChevronDown, PanelBottom, Unplug } from "lucide-react";
 import type { BuiltInAgentId } from "@shared/config/agentIds";
 import type { AgentAvailabilityState, AgentState } from "@shared/types";
@@ -96,6 +97,7 @@ interface WorktreeMenuItemsProps {
 // treating the icon press as the row's primary selection event.
 function WorktreeMenuItems({ agentType, worktrees }: WorktreeMenuItemsProps) {
   const dockClickedRef = useRef(false);
+  const source = useMenuActionSource();
   return (
     <>
       {worktrees.map((wt) => {
@@ -113,7 +115,7 @@ function WorktreeMenuItems({ agentType, worktrees }: WorktreeMenuItemsProps) {
               void actionService.dispatch(
                 "agent.launch",
                 { agentId: agentType, worktreeId: wt.id, location: "grid" },
-                { source: "context-menu" }
+                { source }
               );
             }}
           >
@@ -130,7 +132,7 @@ function WorktreeMenuItems({ agentType, worktrees }: WorktreeMenuItemsProps) {
                 void actionService.dispatch(
                   "agent.launch",
                   { agentId: agentType, worktreeId: wt.id, location: "dock" },
-                  { source: "context-menu" }
+                  { source }
                 );
               }}
               className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-sm text-daintree-text/50 opacity-0 transition-opacity hover:bg-overlay-emphasis hover:text-daintree-text group-data-[highlighted]/wt-row:opacity-100"
@@ -158,6 +160,7 @@ export function AgentButton({
   const projectPresets = useProjectPresetsStore((s) => s.presetsByAgent[type]);
 
   const activeWorktreeId = useWorktreeSelectionStore((s) => s.activeWorktreeId);
+  const source = useMenuActionSource();
 
   // Radix Tooltip reopens on focus restoration. When the chevron's
   // DropdownMenu closes, Radix returns focus to the chevron trigger and the
@@ -389,11 +392,7 @@ export function AgentButton({
           <ContextMenuItem
             disabled={!isLaunchable}
             onSelect={() =>
-              void actionService.dispatch(
-                "agent.launch",
-                { agentId: type },
-                { source: "context-menu" }
-              )
+              void actionService.dispatch("agent.launch", { agentId: type }, { source })
             }
           >
             Launch {config.name}
@@ -404,7 +403,7 @@ export function AgentButton({
               void actionService.dispatch(
                 "agent.launch",
                 { agentId: type, location: "dock" },
-                { source: "context-menu" }
+                { source }
               )
             }
           >
@@ -430,7 +429,7 @@ export function AgentButton({
               void actionService.dispatch(
                 "app.settings.openTab",
                 { tab: "agents", subtab: type, sectionId: "agents-presets" },
-                { source: "context-menu" }
+                { source }
               )
             }
           >
@@ -441,7 +440,7 @@ export function AgentButton({
               void actionService.dispatch(
                 "app.settings.openTab",
                 { tab: "agents", subtab: type },
-                { source: "context-menu" }
+                { source }
               )
             }
           >
@@ -645,11 +644,7 @@ export function AgentButton({
         <ContextMenuItem
           disabled={!isLaunchable}
           onSelect={() =>
-            void actionService.dispatch(
-              "agent.launch",
-              { agentId: type },
-              { source: "context-menu" }
-            )
+            void actionService.dispatch("agent.launch", { agentId: type }, { source })
           }
         >
           Launch {config.name}
@@ -660,7 +655,7 @@ export function AgentButton({
             void actionService.dispatch(
               "agent.launch",
               { agentId: type, location: "dock" },
-              { source: "context-menu" }
+              { source }
             )
           }
         >
@@ -686,7 +681,7 @@ export function AgentButton({
                     void actionService.dispatch(
                       "agent.launch",
                       { agentId: type, presetId: null },
-                      { source: "context-menu" }
+                      { source }
                     );
                   }}
                 >
@@ -701,7 +696,7 @@ export function AgentButton({
                       void actionService.dispatch(
                         "agent.launch",
                         { agentId: type, presetId: preset.id },
-                        { source: "context-menu" }
+                        { source }
                       );
                     }}
                   >
@@ -732,7 +727,7 @@ export function AgentButton({
             void actionService.dispatch(
               "app.settings.openTab",
               { tab: "agents", subtab: type, sectionId: "agents-presets" },
-              { source: "context-menu" }
+              { source }
             )
           }
         >
@@ -743,7 +738,7 @@ export function AgentButton({
             void actionService.dispatch(
               "app.settings.openTab",
               { tab: "agents", subtab: type },
-              { source: "context-menu" }
+              { source }
             )
           }
         >

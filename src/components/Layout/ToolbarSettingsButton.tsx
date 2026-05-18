@@ -9,6 +9,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { useMenuActionSource } from "@/components/ui/menu-source";
 import { createTooltipContent } from "@/lib/tooltipShortcut";
 import { useAriaKeyshortcuts, useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
 import { actionService } from "@/services/ActionService";
@@ -40,6 +41,7 @@ export function ToolbarSettingsButton({
   const settingsAriaShortcut = useAriaKeyshortcuts("app.settings");
   const settingsHover = useShortcutHintHover("app.settings");
   const toggleButtonVisibility = useToolbarPreferencesStore((s) => s.toggleButtonVisibility);
+  const source = useMenuActionSource();
 
   return (
     <ContextMenu>
@@ -77,11 +79,7 @@ export function ToolbarSettingsButton({
           <ContextMenuItem
             key={tab}
             onSelect={() =>
-              void actionService.dispatch(
-                "app.settings.openTab",
-                { tab },
-                { source: "context-menu" }
-              )
+              void actionService.dispatch("app.settings.openTab", { tab }, { source })
             }
           >
             {label}
@@ -90,11 +88,7 @@ export function ToolbarSettingsButton({
         <ContextMenuSeparator />
         <ContextMenuItem
           onSelect={() =>
-            void actionService.dispatch(
-              "app.settings.openTab",
-              { tab: "toolbar" },
-              { source: "context-menu" }
-            )
+            void actionService.dispatch("app.settings.openTab", { tab: "toolbar" }, { source })
           }
         >
           Customize Toolbar…
@@ -104,7 +98,7 @@ export function ToolbarSettingsButton({
             void actionService.dispatch(
               "app.settings.openTab",
               { tab: "troubleshooting" },
-              { source: "context-menu" }
+              { source }
             )
           }
         >

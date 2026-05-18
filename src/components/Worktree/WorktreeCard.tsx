@@ -42,6 +42,7 @@ import { useWorktreeActions } from "./WorktreeCard/hooks/useWorktreeActions";
 import { copyContextWithFeedback } from "@/hooks/useWorktreeActions";
 import { useCopyWithFeedback } from "@/hooks/useCopyWithFeedback";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { useMenuActionSource } from "@/components/ui/menu-source";
 import { CONTEXT_COMPONENTS, WorktreeMenuItems } from "./WorktreeMenuItems";
 import { isAgentFleetActionEligible, isFleetArmEligible } from "@/store/fleetArmingStore";
 import { useWorktreeStatus } from "./WorktreeCard/hooks/useWorktreeStatus";
@@ -122,6 +123,7 @@ export function WorktreeCard({
     (state) => state.settings?.notificationOverrides
   );
   const isProjectNotificationsMuted = areProjectNotificationsMuted(notificationOverrides);
+  const source = useMenuActionSource();
 
   const environmentIcon =
     worktree.worktreeMode && worktree.worktreeMode !== "local"
@@ -338,23 +340,19 @@ export function WorktreeCard({
     void actionService.dispatch(
       "worktree.resource.resume",
       { worktreeId: worktree.id },
-      { source: "context-menu" }
+      { source }
     );
   };
 
   const handleResourcePause = () => {
-    void actionService.dispatch(
-      "worktree.resource.pause",
-      { worktreeId: worktree.id },
-      { source: "context-menu" }
-    );
+    void actionService.dispatch("worktree.resource.pause", { worktreeId: worktree.id }, { source });
   };
 
   const handleResourceConnect = () => {
     void actionService.dispatch(
       "worktree.resource.connect",
       { worktreeId: worktree.id },
-      { source: "context-menu" }
+      { source }
     );
   };
 
@@ -368,7 +366,7 @@ export function WorktreeCard({
     void actionService.dispatch(
       "worktree.resource.provision",
       { worktreeId: worktree.id },
-      { source: "context-menu" }
+      { source }
     );
   };
 
@@ -376,16 +374,16 @@ export function WorktreeCard({
     void actionService.dispatch(
       "worktree.resource.status",
       { worktreeId: worktree.id },
-      { source: "context-menu" }
+      { source }
     );
   };
 
   const handleCopyContextFull = () => {
-    void copyContextWithFeedback(worktree.id);
+    void copyContextWithFeedback(worktree.id, source);
   };
 
   const handleCopyContextModified = () => {
-    void copyContextWithFeedback(worktree.id, { modified: true });
+    void copyContextWithFeedback(worktree.id, source, { modified: true });
   };
 
   const { copy: copyWorktreePath } = useCopyWithFeedback();
@@ -552,7 +550,7 @@ export function WorktreeCard({
 
   const handleOpenPanelPalette = () => {
     useWorktreeSelectionStore.getState().setActiveWorktree(worktree.id);
-    void actionService.dispatch("panel.palette", undefined, { source: "context-menu" });
+    void actionService.dispatch("panel.palette", undefined, { source });
   };
 
   const cardContent = (
@@ -746,7 +744,7 @@ export function WorktreeCard({
                   onOpenPanelPalette: () => {
                     useWorktreeSelectionStore.getState().setActiveWorktree(worktree.id);
                     void actionService.dispatch("panel.palette", undefined, {
-                      source: "context-menu",
+                      source,
                     });
                   },
                   onDockAll: handleDockAll,

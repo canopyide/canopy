@@ -43,6 +43,7 @@ import {
   ContextMenuSubContent,
   ContextMenuSubTrigger,
 } from "@/components/ui/context-menu";
+import { useMenuActionSource } from "@/components/ui/menu-source";
 import { buildPanelDuplicateOptions } from "@/services/terminal/panelDuplicationService";
 import { getEffectiveAgentIds, getEffectiveAgentConfig } from "@shared/config/agentRegistry";
 import { getMaximizedGroupFocusTarget } from "./contentGridFocus";
@@ -170,6 +171,7 @@ export function useContentGridContext({
   const showProjectPulse = usePreferencesStore((state) => state.showProjectPulse);
   const currentProject = useProjectStore((state) => state.currentProject);
   const isAvailabilityInitialized = useCliAvailabilityStore((s) => s.isInitialized);
+  const source = useMenuActionSource();
 
   const gridSelectedAgentIds = useMemo(
     () =>
@@ -501,7 +503,7 @@ export function useContentGridContext({
       void actionService.dispatch(
         "agent.launch",
         { agentId, location: "grid", cwd: defaultCwd || undefined },
-        { source: "context-menu" }
+        { source }
       );
     },
     [defaultCwd]
@@ -509,11 +511,7 @@ export function useContentGridContext({
 
   const handleGridLayoutChange = useCallback(
     (strategy: "automatic" | "fixed-columns" | "fixed-rows") => {
-      void actionService.dispatch(
-        "panel.gridLayout.setStrategy",
-        { strategy },
-        { source: "context-menu" }
-      );
+      void actionService.dispatch("panel.gridLayout.setStrategy", { strategy }, { source });
     },
     []
   );
@@ -784,11 +782,7 @@ export function useContentGridContext({
       <ContextMenuSeparator />
       <ContextMenuItem
         onSelect={() =>
-          void actionService.dispatch(
-            "app.settings.openTab",
-            { tab: "terminal" },
-            { source: "context-menu" }
-          )
+          void actionService.dispatch("app.settings.openTab", { tab: "terminal" }, { source })
         }
       >
         Terminal Settings...

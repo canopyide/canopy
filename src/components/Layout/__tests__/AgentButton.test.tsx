@@ -19,6 +19,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent } from "@testing-library/react";
 import type { AgentSettings, CliAvailability } from "@shared/types";
+import { MenuActionSourceContext } from "@/components/ui/menu-source";
 
 const dispatchMock = vi.fn();
 const updateWorktreePresetMock = vi.fn();
@@ -28,6 +29,12 @@ let dropdownPointerDownOutsideSpy: (() => void) | null = null;
 
 let mockSettings: AgentSettings | null = null;
 let mockActiveWorktreeId: string | null = null;
+
+const WithMenuSource = ({ children }: { children: React.ReactNode }) => (
+  <MenuActionSourceContext.Provider value="context-menu">
+    {children}
+  </MenuActionSourceContext.Provider>
+);
 let mockCcrPresetsByAgent: Record<string, Array<{ id: string; name: string }>> = {};
 let mockMergedPresetsFn: (
   agentId: string
@@ -768,7 +775,7 @@ describe("AgentButton preset UX", () => {
       expect(dispatchMock).toHaveBeenCalledWith(
         "agent.launch",
         { agentId: "claude", presetId: "user-blue" },
-        { source: "context-menu" }
+        { source: "user" }
       );
     });
 
@@ -795,7 +802,7 @@ describe("AgentButton preset UX", () => {
       expect(dispatchMock).toHaveBeenCalledWith(
         "agent.launch",
         { agentId: "claude", presetId: null },
-        { source: "context-menu" }
+        { source: "user" }
       );
     });
   });
@@ -920,7 +927,7 @@ describe("AgentButton preset UX", () => {
       expect(dispatchMock).toHaveBeenCalledWith(
         "app.settings.openTab",
         { tab: "agents", subtab: "claude", sectionId: "agents-presets" },
-        { source: "context-menu" }
+        { source: "user" }
       );
     });
 
@@ -936,7 +943,7 @@ describe("AgentButton preset UX", () => {
       expect(dispatchMock).toHaveBeenCalledWith(
         "app.settings.openTab",
         { tab: "agents", subtab: "claude", sectionId: "agents-presets" },
-        { source: "context-menu" }
+        { source: "user" }
       );
     });
 
@@ -964,7 +971,9 @@ describe("AgentButton preset UX", () => {
       mockWorktrees = [{ id: "wt-1", name: "Main", isMainWorktree: true }];
 
       const { getByTestId } = render(
-        <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
+        <WithMenuSource>
+          <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
+        </WithMenuSource>
       );
       fireEvent.click(getByTestId("agent-context-worktree-wt-1"));
 
@@ -981,7 +990,9 @@ describe("AgentButton preset UX", () => {
       mockWorktrees = [{ id: "wt-1", name: "Main", isMainWorktree: true }];
 
       const { getByTestId } = render(
-        <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
+        <WithMenuSource>
+          <AgentButton type="claude" availability={"ready" as unknown as CliAvailability[string]} />
+        </WithMenuSource>
       );
       fireEvent.click(getByTestId("agent-context-worktree-dock-wt-1"));
 
@@ -1069,7 +1080,11 @@ describe("AgentButton preset UX", () => {
       // never show, so we expose aria-disabled and guard the handler.
       mockMergedPresetsFn = () => [];
 
-      const { getByRole } = render(<AgentButton type="claude" availability={undefined} />);
+      const { getByRole } = render(
+        <WithMenuSource>
+          <AgentButton type="claude" availability={undefined} />
+        </WithMenuSource>
+      );
 
       const button = getByRole("button");
       expect(button.getAttribute("aria-disabled")).toBe("true");

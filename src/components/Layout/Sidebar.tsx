@@ -12,6 +12,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { useMenuActionSource } from "@/components/ui/menu-source";
 import {
   FolderOpen,
   GitBranchPlus,
@@ -59,6 +60,7 @@ export function Sidebar({
   const sidebarRef = useRef<HTMLElement>(null);
   const currentProject = useProjectStore((state) => state.currentProject);
   const isMacroFocused = useMacroFocusStore((state) => state.focusedRegion === "sidebar");
+  const source = useMenuActionSource();
 
   useEffect(() => {
     useMacroFocusStore.getState().setRegionRef("sidebar", sidebarRef.current);
@@ -207,7 +209,7 @@ export function Sidebar({
         <ContextMenuItem
           onSelect={() =>
             void actionService.dispatch("worktree.createDialog.open", undefined, {
-              source: "context-menu",
+              source,
             })
           }
         >
@@ -215,9 +217,7 @@ export function Sidebar({
           New Worktree...
         </ContextMenuItem>
         <ContextMenuItem
-          onSelect={() =>
-            void actionService.dispatch("worktree.refresh", undefined, { source: "context-menu" })
-          }
+          onSelect={() => void actionService.dispatch("worktree.refresh", undefined, { source })}
         >
           <RefreshCw className={ICON_CLASS} />
           Refresh Sidebar
@@ -230,7 +230,7 @@ export function Sidebar({
               void actionService.dispatch(
                 "system.openPath",
                 { path: currentProject.path },
-                { source: "context-menu" }
+                { source }
               );
             }
           }}
@@ -242,7 +242,7 @@ export function Sidebar({
           disabled={!currentProject}
           onSelect={() =>
             void actionService.dispatch("project.settings.open", undefined, {
-              source: "context-menu",
+              source,
             })
           }
         >
@@ -253,7 +253,7 @@ export function Sidebar({
         <ContextMenuItem
           onSelect={() =>
             void actionService.dispatch("ui.sidebar.resetWidth", undefined, {
-              source: "context-menu",
+              source,
             })
           }
         >
@@ -262,11 +262,7 @@ export function Sidebar({
         </ContextMenuItem>
         <ContextMenuItem
           onSelect={() =>
-            void actionService.dispatch(
-              "app.settings.openTab",
-              { tab: "worktree" },
-              { source: "context-menu" }
-            )
+            void actionService.dispatch("app.settings.openTab", { tab: "worktree" }, { source })
           }
         >
           <SlidersHorizontal className={ICON_CLASS} />

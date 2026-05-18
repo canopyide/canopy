@@ -52,6 +52,7 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { useMenuActionSource } from "@/components/ui/menu-source";
 
 const ICON_CLASS = "w-3.5 h-3.5 mr-2 shrink-0";
 
@@ -96,6 +97,7 @@ export function TerminalContextMenu({
   // don't get the option, matching the gesture-level rules in
   // `multiSelectGestures`.
   const fleetEligible = isFleetArmEligible(terminal);
+  const source = useMenuActionSource();
 
   const [hasSelection, setHasSelection] = useState(false);
   const [hoveredUrl, setHoveredUrl] = useState<string | null>(null);
@@ -146,7 +148,7 @@ export function TerminalContextMenu({
 
       if (actionId.startsWith("copy-link:")) {
         const url = actionId.slice("copy-link:".length);
-        void actionService.dispatch("terminal.copyLink", { url }, { source: "context-menu" });
+        void actionService.dispatch("terminal.copyLink", { url }, { source });
         return;
       }
 
@@ -155,7 +157,7 @@ export function TerminalContextMenu({
         void actionService.dispatch(
           "terminal.moveToWorktree",
           { terminalId, worktreeId },
-          { source: "context-menu" }
+          { source }
         );
         return;
       }
@@ -181,40 +183,28 @@ export function TerminalContextMenu({
           break;
         case "fleet-arm-worktree":
           void actionService.dispatch("terminal.bulkCommand", undefined, {
-            source: "context-menu",
+            source,
           });
           break;
         case "fleet-clear":
           void actionService.dispatch("terminal.disarmAll", undefined, {
-            source: "context-menu",
+            source,
           });
           break;
         case "copy":
-          void actionService.dispatch("terminal.copy", { terminalId }, { source: "context-menu" });
+          void actionService.dispatch("terminal.copy", { terminalId }, { source });
           break;
         case "paste":
-          void actionService.dispatch("terminal.paste", { terminalId }, { source: "context-menu" });
+          void actionService.dispatch("terminal.paste", { terminalId }, { source });
           break;
         case "move-to-dock":
-          void actionService.dispatch(
-            "terminal.moveToDock",
-            { terminalId },
-            { source: "context-menu" }
-          );
+          void actionService.dispatch("terminal.moveToDock", { terminalId }, { source });
           break;
         case "move-to-grid":
-          void actionService.dispatch(
-            "terminal.moveToGrid",
-            { terminalId },
-            { source: "context-menu" }
-          );
+          void actionService.dispatch("terminal.moveToGrid", { terminalId }, { source });
           break;
         case "toggle-maximize":
-          void actionService.dispatch(
-            "terminal.toggleMaximize",
-            { terminalId },
-            { source: "context-menu" }
-          );
+          void actionService.dispatch("terminal.toggleMaximize", { terminalId }, { source });
           break;
         case "restart":
           if (terminalHasRunningAgentSession(terminal)) {
@@ -227,60 +217,32 @@ export function TerminalContextMenu({
             });
             return;
           }
-          void actionService.dispatch(
-            "terminal.restart",
-            { terminalId },
-            { source: "context-menu" }
-          );
+          void actionService.dispatch("terminal.restart", { terminalId }, { source });
           break;
         case "force-resume":
-          void actionService.dispatch(
-            "terminal.forceResume",
-            { terminalId },
-            { source: "context-menu" }
-          );
+          void actionService.dispatch("terminal.forceResume", { terminalId }, { source });
           break;
         case "toggle-input-lock":
-          void actionService.dispatch(
-            "terminal.toggleInputLock",
-            { terminalId },
-            { source: "context-menu" }
-          );
+          void actionService.dispatch("terminal.toggleInputLock", { terminalId }, { source });
           break;
         case "toggle-watch":
-          void actionService.dispatch("terminal.watch", { terminalId }, { source: "context-menu" });
+          void actionService.dispatch("terminal.watch", { terminalId }, { source });
           break;
         case "duplicate":
-          void actionService.dispatch(
-            "terminal.duplicate",
-            { terminalId },
-            { source: "context-menu" }
-          );
+          void actionService.dispatch("terminal.duplicate", { terminalId }, { source });
           break;
         case "rename":
           suppressNextCloseAutoFocusRef.current = true;
-          void actionService.dispatch(
-            "terminal.rename",
-            { terminalId },
-            { source: "context-menu" }
-          );
+          void actionService.dispatch("terminal.rename", { terminalId }, { source });
           break;
         case "view-info":
-          void actionService.dispatch(
-            "terminal.viewInfo",
-            { terminalId },
-            { source: "context-menu" }
-          );
+          void actionService.dispatch("terminal.viewInfo", { terminalId }, { source });
           break;
         case "background":
-          void actionService.dispatch(
-            "terminal.background",
-            { terminalId },
-            { source: "context-menu" }
-          );
+          void actionService.dispatch("terminal.background", { terminalId }, { source });
           break;
         case "trash":
-          void actionService.dispatch("terminal.trash", { terminalId }, { source: "context-menu" });
+          void actionService.dispatch("terminal.trash", { terminalId }, { source });
           break;
         case "kill":
           if (terminalHasRunningAgentSession(terminal)) {
@@ -293,17 +255,17 @@ export function TerminalContextMenu({
             });
             return;
           }
-          void actionService.dispatch("terminal.kill", { terminalId }, { source: "context-menu" });
+          void actionService.dispatch("terminal.kill", { terminalId }, { source });
           break;
         case "reload-browser":
-          void actionService.dispatch("browser.reload", { terminalId }, { source: "context-menu" });
+          void actionService.dispatch("browser.reload", { terminalId }, { source });
           break;
         case "open-external":
           if (terminal.browserUrl && isValidBrowserUrl(terminal.browserUrl)) {
             void actionService.dispatch(
               "browser.openExternal",
               { url: terminal.browserUrl },
-              { source: "context-menu" }
+              { source }
             );
           }
           break;
@@ -312,7 +274,7 @@ export function TerminalContextMenu({
             void actionService.dispatch(
               "browser.copyUrl",
               { url: terminal.browserUrl },
-              { source: "context-menu" }
+              { source }
             );
           }
           break;
@@ -330,11 +292,7 @@ export function TerminalContextMenu({
   const handleDestructiveConfirm = useCallback(() => {
     if (!destructiveConfirm) return;
     const actionId = destructiveConfirm.kind === "kill" ? "terminal.kill" : "terminal.restart";
-    void actionService.dispatch(
-      actionId,
-      { terminalId, confirmed: true },
-      { source: "context-menu" }
-    );
+    void actionService.dispatch(actionId, { terminalId, confirmed: true }, { source });
     setDestructiveConfirm(null);
   }, [destructiveConfirm, terminalId]);
 
@@ -393,11 +351,7 @@ export function TerminalContextMenu({
       {terminal.launchAgentId && (
         <ContextMenuItem
           onSelect={() =>
-            void actionService.dispatch(
-              "terminal.moveToNewWorktree",
-              { terminalId },
-              { source: "context-menu" }
-            )
+            void actionService.dispatch("terminal.moveToNewWorktree", { terminalId }, { source })
           }
         >
           <FolderGit2 className={ICON_CLASS} />
@@ -596,11 +550,7 @@ export function TerminalContextMenu({
               <ContextMenuItem
                 disabled={!hasSelection}
                 onSelect={() =>
-                  void actionService.dispatch(
-                    "terminal.sendToAgent",
-                    { terminalId },
-                    { source: "context-menu" }
-                  )
+                  void actionService.dispatch("terminal.sendToAgent", { terminalId }, { source })
                 }
               >
                 <Send className={ICON_CLASS} aria-hidden="true" />

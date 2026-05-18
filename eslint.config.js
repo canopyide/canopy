@@ -452,6 +452,12 @@ export default tseslint.config(
           message:
             "Don't compare panel.kind against string literals. Use registry helpers (panelKindHasPty, panelKindCanRestart) or sanctioned type guards (isPtyPanel, isBrowserPanel, isDevPreviewPanel) from @shared/types/panel. See #7672.",
         },
+        {
+          selector:
+            "CallExpression[callee.object.name='actionService'][callee.property.name='dispatch'] Property[key.name='source'][value.value='context-menu']",
+          message:
+            'Don\'t hardcode source:"context-menu" in actionService.dispatch calls. Derive it from React Context via useMenuActionSource() from @/components/ui/menu-source. Suppress with // eslint-disable-next-line no-restricted-syntax -- context-menu-source: ok when the dispatch lives outside a ContextMenu/DropdownMenu Root. See #8322.',
+        },
       ],
     },
   },

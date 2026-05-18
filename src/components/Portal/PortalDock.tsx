@@ -22,6 +22,7 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { useMenuActionSource } from "@/components/ui/menu-source";
 import { getElementBoundsAsDip } from "@/lib/portalBounds";
 import { debounce } from "@/utils/debounce";
 
@@ -42,6 +43,7 @@ export function PortalDock() {
   const [isResizing, setIsResizing] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const source = useMenuActionSource();
 
   useKeybindingScope("portal", isFocused);
 
@@ -225,11 +227,7 @@ export function PortalDock() {
   const handleDuplicateTab = useCallback(
     async (tabId: string) => {
       if (isSwitching) return;
-      const result = await actionService.dispatch(
-        "portal.duplicateTab",
-        { tabId },
-        { source: "context-menu" }
-      );
+      const result = await actionService.dispatch("portal.duplicateTab", { tabId }, { source });
       if (!result.ok) {
         logError("Failed to duplicate tab", undefined, { error: result.error });
       }
@@ -240,11 +238,7 @@ export function PortalDock() {
   const handleCloseOthers = useCallback(
     async (tabId: string) => {
       if (isSwitching) return;
-      const result = await actionService.dispatch(
-        "portal.closeOthers",
-        { tabId },
-        { source: "context-menu" }
-      );
+      const result = await actionService.dispatch("portal.closeOthers", { tabId }, { source });
       if (!result.ok) {
         logError("Failed to close other tabs", undefined, { error: result.error });
       }
@@ -255,11 +249,7 @@ export function PortalDock() {
   const handleCloseToRight = useCallback(
     async (tabId: string) => {
       if (isSwitching) return;
-      const result = await actionService.dispatch(
-        "portal.closeToRight",
-        { tabId },
-        { source: "context-menu" }
-      );
+      const result = await actionService.dispatch("portal.closeToRight", { tabId }, { source });
       if (!result.ok) {
         logError("Failed to close tabs to the right", undefined, { error: result.error });
       }
@@ -268,33 +258,21 @@ export function PortalDock() {
   );
 
   const handleCopyTabUrl = useCallback(async (tabId: string) => {
-    const result = await actionService.dispatch(
-      "portal.copyTabUrl",
-      { tabId },
-      { source: "context-menu" }
-    );
+    const result = await actionService.dispatch("portal.copyTabUrl", { tabId }, { source });
     if (!result.ok) {
       logError("Failed to copy tab URL", undefined, { error: result.error });
     }
   }, []);
 
   const handleOpenTabExternal = useCallback(async (tabId: string) => {
-    const result = await actionService.dispatch(
-      "portal.openTabExternal",
-      { tabId },
-      { source: "context-menu" }
-    );
+    const result = await actionService.dispatch("portal.openTabExternal", { tabId }, { source });
     if (!result.ok) {
       logError("Failed to open tab externally", undefined, { error: result.error });
     }
   }, []);
 
   const handleReloadTab = useCallback(async (tabId: string) => {
-    const result = await actionService.dispatch(
-      "portal.reloadTab",
-      { tabId },
-      { source: "context-menu" }
-    );
+    const result = await actionService.dispatch("portal.reloadTab", { tabId }, { source });
     if (!result.ok) {
       logError("Failed to reload tab", undefined, { error: result.error });
     }
@@ -457,18 +435,14 @@ export function PortalDock() {
       </ContextMenuTrigger>
       <ContextMenuContent>
         <ContextMenuItem
-          onSelect={() =>
-            void actionService.dispatch("portal.newTab", undefined, { source: "context-menu" })
-          }
+          onSelect={() => void actionService.dispatch("portal.newTab", undefined, { source })}
         >
           New Tab
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem
           disabled={activeTabId === null}
-          onSelect={() =>
-            void actionService.dispatch("portal.closeTab", undefined, { source: "context-menu" })
-          }
+          onSelect={() => void actionService.dispatch("portal.closeTab", undefined, { source })}
         >
           Close Tab
         </ContextMenuItem>
@@ -476,7 +450,7 @@ export function PortalDock() {
           disabled={tabs.length === 0}
           onSelect={() =>
             void actionService.dispatch("portal.closeAllTabs", undefined, {
-              source: "context-menu",
+              source,
             })
           }
         >
@@ -484,9 +458,7 @@ export function PortalDock() {
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem
-          onSelect={() =>
-            void actionService.dispatch("portal.resetWidth", undefined, { source: "context-menu" })
-          }
+          onSelect={() => void actionService.dispatch("portal.resetWidth", undefined, { source })}
         >
           Reset Width
         </ContextMenuItem>
@@ -497,11 +469,7 @@ export function PortalDock() {
             <ContextMenuCheckboxItem
               checked={defaultNewTabUrl === null}
               onSelect={() =>
-                void actionService.dispatch(
-                  "portal.setDefaultNewTab",
-                  { url: null },
-                  { source: "context-menu" }
-                )
+                void actionService.dispatch("portal.setDefaultNewTab", { url: null }, { source })
               }
             >
               Launchpad
@@ -515,7 +483,7 @@ export function PortalDock() {
                   void actionService.dispatch(
                     "portal.setDefaultNewTab",
                     { url: link.url },
-                    { source: "context-menu" }
+                    { source }
                   )
                 }
               >
@@ -527,11 +495,7 @@ export function PortalDock() {
         <ContextMenuSeparator />
         <ContextMenuItem
           onSelect={() =>
-            void actionService.dispatch(
-              "app.settings.openTab",
-              { tab: "portal" },
-              { source: "context-menu" }
-            )
+            void actionService.dispatch("app.settings.openTab", { tab: "portal" }, { source })
           }
         >
           Portal Settings...

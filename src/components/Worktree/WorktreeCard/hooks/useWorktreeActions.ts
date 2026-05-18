@@ -2,6 +2,7 @@ import { createElement, useCallback, useEffect, useState, type ReactNode } from 
 import type { WorktreeState } from "@/types";
 import { logError } from "@/utils/logger";
 import { actionService } from "@/services/ActionService";
+import { useMenuActionSource } from "@/components/ui/menu-source";
 import { useRecipeStore } from "@/store/recipeStore";
 import { useFleetArmingStore } from "@/store/fleetArmingStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
@@ -63,6 +64,7 @@ export function useWorktreeActions({
   });
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const source = useMenuActionSource();
 
   const closeConfirmDialog = useCallback(() => {
     setConfirmDialog({ isOpen: false });
@@ -267,7 +269,7 @@ export function useWorktreeActions({
         void actionService.dispatch(
           "worktree.resource.teardown",
           { worktreeId: worktree.id },
-          { source: "context-menu" }
+          { source }
         );
         setConfirmDialog({ isOpen: false });
       },
