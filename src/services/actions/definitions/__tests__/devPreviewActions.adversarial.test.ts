@@ -137,6 +137,26 @@ describe("devPreviewActions adversarial", () => {
     expect(def("devPreview.reinstallAndRestart").danger).toBe("confirm");
   });
 
+  it("propagates IPC rejection from restartAndClearCache through run()", async () => {
+    panelStoreMock.getState.mockReturnValue({ focusedId: "panel-1" });
+    restartAndClearCacheMock.mockRejectedValueOnce(new Error("ipc boom"));
+    const { run } = setupActions();
+
+    await expect(
+      run("devPreview.restartAndClearCache", undefined, { projectId: "proj-1" })
+    ).rejects.toThrow(/ipc boom/);
+  });
+
+  it("propagates IPC rejection from reinstallAndRestart through run()", async () => {
+    panelStoreMock.getState.mockReturnValue({ focusedId: "panel-1" });
+    reinstallAndRestartMock.mockRejectedValueOnce(new Error("ipc boom"));
+    const { run } = setupActions();
+
+    await expect(
+      run("devPreview.reinstallAndRestart", undefined, { projectId: "proj-1" })
+    ).rejects.toThrow(/ipc boom/);
+  });
+
   it("reloadPreview and restart are danger:safe", () => {
     const { def } = setupActions();
     expect(def("devPreview.reloadPreview").danger).toBe("safe");

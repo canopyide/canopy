@@ -115,6 +115,9 @@ describe("DevPreviewSessionService — tiered restart", () => {
         mkdirSync(full, { recursive: true });
         writeFileSync(path.join(full, "stale"), "x");
       }
+      // A non-cache marker directly under node_modules — must survive so an
+      // accidental widening of CACHE_DIRS to all of node_modules is caught.
+      writeFileSync(path.join(tmpDir, "node_modules", "package.json"), "{}");
 
       const started = await service.ensure(ensureRequest());
       expect(started.terminalId).toBeTruthy();
@@ -129,6 +132,7 @@ describe("DevPreviewSessionService — tiered restart", () => {
       expect(existsSync(path.join(tmpDir, ".vite"))).toBe(false);
       expect(existsSync(path.join(tmpDir, ".turbo"))).toBe(false);
       expect(existsSync(path.join(tmpDir, "node_modules", ".vite"))).toBe(false);
+      expect(existsSync(path.join(tmpDir, "node_modules", "package.json"))).toBe(true);
       expect(result.status).toBe("starting");
       expect(result.terminalId).not.toBe(started.terminalId);
       expect(ptyClient.spawn).toHaveBeenCalledTimes(2);
@@ -155,16 +159,22 @@ describe("DevPreviewSessionService — tiered restart", () => {
       expect(ptyClient.spawn).toHaveBeenCalledTimes(1);
     });
 
-    it("deletes caches only after the terminal kill is issued", async () => {
+    it("deletes caches only after the terminal is confirmed gone", async () => {
       mkdirSync(path.join(tmpDir, ".next"), { recursive: true });
       const started = await service.ensure(ensureRequest());
+      ptyClient.getTerminalAsync.mockClear();
       const rmSpy = vi.spyOn(fsPromises, "rm");
 
       await service.restartAndClearCache(request());
 
+      // kill must precede deletion, and the liveness poll
+      // (getTerminalAsync via waitForTerminalGone) must run between them —
+      // proving rm waits for the PTY to be confirmed dead, not just signalled.
       const killOrder = ptyClient.kill.mock.invocationCallOrder.at(-1)!;
+      const pollOrder = ptyClient.getTerminalAsync.mock.invocationCallOrder[0];
       const rmOrder = rmSpy.mock.invocationCallOrder[0];
-      expect(rmOrder).toBeGreaterThan(killOrder);
+      expect(pollOrder).toBeGreaterThan(killOrder);
+      expect(rmOrder).toBeGreaterThan(pollOrder);
       expect(started.terminalId).toBeTruthy();
     });
   });
@@ -219,9 +229,10 @@ describe("DevPreviewSessionService — tiered restart", () => {
       expect(ptyClient.spawn).toHaveBeenCalledTimes(1);
     });
 
-    it("detects bun from bun.lock (text lockfile) before bun.lockb", async () => {
+    it("detects bun from bun.lock (text lockfile) when bun.lockb also present", async () => {
       mkdirSync(path.join(tmpDir, "node_modules"), { recursive: true });
       writeFileSync(path.join(tmpDir, "bun.lock"), "");
+      writeFileSync(path.join(tmpDir, "bun.lockb"), "");
 
       await service.ensure(ensureRequest());
       const result = await service.reinstallAndRestart(request());
@@ -229,6 +240,24 @@ describe("DevPreviewSessionService — tiered restart", () => {
       await vi.waitFor(() => {
         expect(ptyClient.submit).toHaveBeenCalledWith(result.terminalId, "bun install");
       });
+    });
+
+    it("does not respawn the dev server when the install exits nonzero", async () => {
+      mkdirSync(path.join(tmpDir, "node_modules"), { recursive: true });
+      writeFileSync(path.join(tmpDir, "bun.lock"), "");
+
+      await service.ensure(ensureRequest());
+      const result = await service.reinstallAndRestart(request());
+      expect(result.status).toBe("installing");
+
+      const installTerminalId = result.terminalId!;
+      ptyClient.emitExit(installTerminalId, 1);
+
+      const state = service.getState(request());
+      expect(state.status).toBe("error");
+      expect(state.error?.type).toBe("missing-dependencies");
+      // initial dev spawn + install spawn only — no dev-server respawn.
+      expect(ptyClient.spawn).toHaveBeenCalledTimes(2);
     });
   });
 });

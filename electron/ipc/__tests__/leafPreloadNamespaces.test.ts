@@ -86,6 +86,12 @@ describe("leaf preload namespace bindings", () => {
     it("devPreview matches", () => {
       expect(DEV_PREVIEW_METHOD_CHANNELS.ensure).toBe(CHANNELS.DEV_PREVIEW_ENSURE);
       expect(DEV_PREVIEW_METHOD_CHANNELS.restart).toBe(CHANNELS.DEV_PREVIEW_RESTART);
+      expect(DEV_PREVIEW_METHOD_CHANNELS.restartAndClearCache).toBe(
+        CHANNELS.DEV_PREVIEW_RESTART_AND_CLEAR_CACHE
+      );
+      expect(DEV_PREVIEW_METHOD_CHANNELS.reinstallAndRestart).toBe(
+        CHANNELS.DEV_PREVIEW_REINSTALL_AND_RESTART
+      );
       expect(DEV_PREVIEW_METHOD_CHANNELS.stop).toBe(CHANNELS.DEV_PREVIEW_STOP);
       expect(DEV_PREVIEW_METHOD_CHANNELS.stopByPanel).toBe(CHANNELS.DEV_PREVIEW_STOP_BY_PANEL);
       expect(DEV_PREVIEW_METHOD_CHANNELS.getState).toBe(CHANNELS.DEV_PREVIEW_GET_STATE);
