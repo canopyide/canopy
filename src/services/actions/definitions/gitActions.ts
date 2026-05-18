@@ -2,6 +2,7 @@ import type { ActionCallbacks, ActionRegistry } from "../actionTypes";
 import type { ActionContext } from "@shared/types/actions";
 import { GitStatusSchema, PulseRangeDaysSchema } from "./schemas";
 import { useGitPushConfirmStore } from "@/store/gitPushConfirmStore";
+import { useGitPullRebaseConfirmStore } from "@/store/gitPullRebaseConfirmStore";
 import { z } from "zod";
 
 export function registerGitActions(actions: ActionRegistry, _callbacks: ActionCallbacks): void {
@@ -241,6 +242,15 @@ export function registerGitActions(actions: ActionRegistry, _callbacks: ActionCa
       const { cwd } = (args ?? {}) as { cwd?: string };
       const resolvedCwd = cwd ?? ctx.activeWorktreePath;
       if (!resolvedCwd) throw new Error("No active worktree");
+      // Agent sources are gated by ActionService before run(); palette,
+      // keybinding, and the terminal push-error recovery banner reach here
+      // directly, so enforce the rebase confirm here (#8242). The ReviewHub
+      // CTA calls the IPC directly and is gated by its own in-component
+      // dialog, so it never goes through this action path.
+      const confirmed = await useGitPullRebaseConfirmStore
+        .getState()
+        .requestConfirmation(resolvedCwd);
+      if (!confirmed) return;
       await window.electron.git.pullRebase(resolvedCwd);
     },
   }));

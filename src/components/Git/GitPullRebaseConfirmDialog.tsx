@@ -6,31 +6,32 @@ import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
-import { useGitPushConfirmStore } from "@/store/gitPushConfirmStore";
+import { useGitPullRebaseConfirmStore } from "@/store/gitPullRebaseConfirmStore";
 
 const COMMIT_LIMIT = 12;
 const SHORT_HASH_LEN = 7;
 
-interface PushPreviewCommit {
+interface RebasePreviewCommit {
   hash: string;
   message: string;
   author: string;
 }
 
 /**
- * D2 confirm for `git.push` dispatched from the action palette or a keybinding
- * (#8242). Reads the pending request from `gitPushConfirmStore`, previews the
- * target branch and the recent local commits, and resolves the deferred
- * Promise the action `run()` is awaiting.
+ * D1 confirm for the `git.pullRebase` action dispatched outside the ReviewHub
+ * (palette, keybinding, terminal push-error recovery banner) (#8242). Reads
+ * the pending request from `gitPullRebaseConfirmStore`, previews the local
+ * commits a rebase would replay, and resolves the deferred Promise the action
+ * `run()` is awaiting.
  */
-function GitPushConfirmDialogInner() {
-  const pendingConfirm = useGitPushConfirmStore((s) => s.pendingConfirm);
-  const resolveConfirmation = useGitPushConfirmStore((s) => s.resolveConfirmation);
+function GitPullRebaseConfirmDialogInner() {
+  const pendingConfirm = useGitPullRebaseConfirmStore((s) => s.pendingConfirm);
+  const resolveConfirmation = useGitPullRebaseConfirmStore((s) => s.resolveConfirmation);
 
   const cwd = pendingConfirm?.cwd ?? null;
 
   const [branch, setBranch] = useState<string | null>(null);
-  const [commits, setCommits] = useState<PushPreviewCommit[] | null>(null);
+  const [commits, setCommits] = useState<RebasePreviewCommit[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const requestIdRef = useRef(0);
@@ -61,13 +62,13 @@ function GitPushConfirmDialogInner() {
         })
         .catch((err: unknown) => {
           if (requestIdRef.current !== requestId) return;
-          setLoadError(formatErrorMessage(err, "Failed to load push preview"));
+          setLoadError(formatErrorMessage(err, "Failed to load rebase preview"));
         })
         .finally(() => {
           if (requestIdRef.current !== requestId) return;
           setIsLoading(false);
         }),
-      { context: "GitPushConfirmDialog: load push preview" }
+      { context: "GitPullRebaseConfirmDialog: load rebase preview" }
     );
   }, [cwd]);
 
@@ -85,8 +86,8 @@ function GitPushConfirmDialogInner() {
   // Resolve false on unmount to prevent a leaked awaited Promise.
   useEffect(() => {
     return () => {
-      if (useGitPushConfirmStore.getState().pendingConfirm) {
-        useGitPushConfirmStore.getState().resolveConfirmation(false);
+      if (useGitPullRebaseConfirmStore.getState().pendingConfirm) {
+        useGitPullRebaseConfirmStore.getState().resolveConfirmation(false);
       }
     };
   }, []);
@@ -99,14 +100,15 @@ function GitPushConfirmDialogInner() {
     <ConfirmDialog
       isOpen={true}
       onClose={() => resolveConfirmation(false)}
-      title={`Push '${branchLabel}'?`}
+      title={`Pull and rebase '${branchLabel}'?`}
       description={
         <span>
-          Pushes local commits on <span className="font-mono">{branchLabel}</span> to its remote
-          branch. If the remote has moved forward, the push is rejected until you pull and rebase.
+          Pulls the remote and replays your local commits on{" "}
+          <span className="font-mono">{branchLabel}</span> on top of it. Rebasing rewrites local
+          commit history and cannot be undone.
         </span>
       }
-      confirmLabel="Push"
+      confirmLabel="Pull and rebase"
       cancelLabel="Cancel"
       variant="destructive"
       isConfirmLoading={isLoading}
@@ -115,14 +117,14 @@ function GitPushConfirmDialogInner() {
       <div className="rounded border border-tint/[0.08] bg-tint/[0.04]">
         <div className="px-3 py-2 border-b border-tint/[0.08]">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-daintree-text/60">
-            Recent local commits
+            Local commits to replay
           </span>
         </div>
 
         {isLoading && (
           <div
             className="flex items-center justify-center py-6"
-            data-testid="git-push-commits-loading"
+            data-testid="git-pull-rebase-commits-loading"
           >
             <Spinner size="sm" className="text-daintree-text/40" />
           </div>
@@ -136,7 +138,7 @@ function GitPushConfirmDialogInner() {
               <button
                 type="button"
                 onClick={loadPreview}
-                data-testid="git-push-commits-retry"
+                data-testid="git-pull-rebase-commits-retry"
                 className={cn(
                   "mt-1 inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium transition-colors",
                   "bg-status-error/15 hover:bg-status-error/25 text-status-error",
@@ -161,7 +163,7 @@ function GitPushConfirmDialogInner() {
               <li
                 key={commit.hash}
                 className="flex items-baseline gap-2"
-                data-testid="git-push-commit-row"
+                data-testid="git-pull-rebase-commit-row"
               >
                 <span className="font-mono text-[10px] text-daintree-text/40 shrink-0 tabular-nums">
                   {commit.hash.slice(0, SHORT_HASH_LEN)}
@@ -179,10 +181,10 @@ function GitPushConfirmDialogInner() {
   );
 }
 
-export function GitPushConfirmDialog() {
+export function GitPullRebaseConfirmDialog() {
   return (
-    <ErrorBoundary variant="component" componentName="GitPushConfirmDialog">
-      <GitPushConfirmDialogInner />
+    <ErrorBoundary variant="component" componentName="GitPullRebaseConfirmDialog">
+      <GitPullRebaseConfirmDialogInner />
     </ErrorBoundary>
   );
 }

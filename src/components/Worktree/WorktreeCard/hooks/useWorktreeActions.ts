@@ -83,7 +83,12 @@ export function useWorktreeActions({
         setSnapshotCreatedAt(available ? info.createdAt : null);
       })
       .catch(() => {
-        // Ignore errors — snapshot check is best-effort.
+        // Snapshot check is best-effort, but a failure after a prior success
+        // (host restart, snapshot deleted externally) must not leave the
+        // Revert button live against a snapshot that may no longer exist.
+        if (cancelled) return;
+        setHasSnapshot(false);
+        setSnapshotCreatedAt(null);
       });
     return () => {
       cancelled = true;

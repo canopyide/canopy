@@ -1321,6 +1321,19 @@ describe("ReviewHub", () => {
       });
     });
 
+    it("does not call checkoutOursTheirs until the confirm dialog is accepted (#8242)", async () => {
+      getStagingStatusMock.mockResolvedValue(makeMergingStatus());
+
+      render(<ReviewHub isOpen={true} worktreePath={WORKTREE_PATH} onClose={vi.fn()} />);
+
+      await waitFor(() => screen.getByTestId("conflict-panel"));
+      fireEvent.click(screen.getByRole("button", { name: /Take ours for src\/app\.ts/i }));
+
+      // Dialog is open but unconfirmed — the IPC must not have fired.
+      await screen.findByRole("alertdialog");
+      expect(checkoutOursTheirsMock).not.toHaveBeenCalled();
+    });
+
     it("renders the Abort action inside the operation chrome, not the footer", async () => {
       getStagingStatusMock.mockResolvedValue(makeMergingStatus());
 
@@ -1767,6 +1780,29 @@ describe("ReviewHub", () => {
       // refresh() called: once on initial load + once after commit (in
       // handleCommitAndPush) + once after pull-rebase success.
       expect(getStagingStatusMock).toHaveBeenCalledTimes(3);
+    });
+
+    it("does not call pullRebase until the confirm dialog is accepted (#8242)", async () => {
+      pushMock.mockRejectedValue(
+        Object.assign(new Error("! [rejected]"), {
+          name: "GitOperationError",
+          gitReason: "push-rejected-outdated",
+          leaseSha: "abc123",
+          branchName: "feature/x",
+        })
+      );
+
+      await triggerCommitAndPush();
+      await screen.findByTestId("review-hub-push-error");
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("review-hub-push-error-cta"));
+        await Promise.resolve();
+      });
+
+      // Dialog is open but unconfirmed — the rebase IPC must not have fired.
+      await screen.findByRole("alertdialog");
+      expect(pullRebaseMock).not.toHaveBeenCalled();
     });
 
     it("Pull-and-rebase failure surfaces conflict-unresolved through the banner", async () => {
