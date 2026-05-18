@@ -334,25 +334,30 @@ describe("SETTINGS_SEARCH_INDEX", () => {
     expect(SETTINGS_SEARCH_INDEX.length).toBeGreaterThanOrEqual(50);
   });
 
-  it("tabLabel values match canonical tabTitles", () => {
+  it("tabLabel values match canonical tab short labels", () => {
+    // tabLabel is the *short* tab label users actually type when searching
+    // (e.g. "GitHub", not the longer in-panel header "GitHub Integration").
+    // Keeps tabLabel consistent across global and project scopes so the
+    // result-row breadcrumb reads the same regardless of which scope a
+    // result came from.
     const tabTitles: Record<string, string> = {
       general: "General",
-      keyboard: "Keyboard Shortcuts",
+      keyboard: "Keyboard",
       terminal: "Panel Grid",
       terminalAppearance: "Appearance",
-      worktree: "Worktree Paths",
+      worktree: "Worktree",
       agents: "CLI agents",
-      github: "GitHub Integration",
-      forge: "Forge Integrations",
-      portal: "Portal Links",
-      toolbar: "Toolbar Customization",
+      github: "GitHub",
+      forge: "Forge integrations",
+      portal: "Portal",
+      toolbar: "Toolbar",
       notifications: "Notifications",
       integrations: "Integrations",
       voice: "Voice Input",
       assistant: "Daintree Assistant",
 
       mcp: "MCP Server",
-      environment: "Environment Variables",
+      environment: "Environment",
       privacy: "Privacy & Data",
       troubleshooting: "Troubleshooting",
       "project:general": "General",
@@ -438,7 +443,7 @@ describe("voice tab coverage", () => {
 
 describe("tab-name ranking", () => {
   it("tab-nav entry ranks first for exact tab name queries", () => {
-    const queries = ["Panel Grid", "Keyboard Shortcuts", "GitHub Integration"];
+    const queries = ["Panel Grid", "Keyboard", "GitHub"];
     for (const query of queries) {
       const results = filterSettings(SETTINGS_SEARCH_INDEX, query);
       expect(
@@ -627,35 +632,77 @@ describe("@modified filter", () => {
   });
 });
 
-describe("scope filtering", () => {
-  it("filters results to global scope only", () => {
-    const results = filterSettings(SETTINGS_SEARCH_INDEX, "notifications", { scope: "global" });
-    expect(results.length).toBeGreaterThan(0);
-    expect(results.every((r) => r.scope === "global")).toBe(true);
+describe("cross-scope search merging", () => {
+  it("returns cross-scope results when active scope is global", () => {
+    // Issue #8235: searching "branch prefix" from the global scope used to
+    // return zero results because the project entry was filtered out. The
+    // merged search must surface it.
+    const results = filterSettings(SETTINGS_SEARCH_INDEX, "branch prefix", { scope: "global" });
+    expect(results.some((r) => r.id === "project-branch-prefix")).toBe(true);
   });
 
-  it("filters results to project scope only", () => {
-    const results = filterSettings(SETTINGS_SEARCH_INDEX, "notifications", { scope: "project" });
-    expect(results.length).toBeGreaterThan(0);
-    expect(results.every((r) => r.scope === "project")).toBe(true);
+  it("returns cross-scope results when active scope is project", () => {
+    const results = filterSettings(SETTINGS_SEARCH_INDEX, "telemetry", { scope: "project" });
+    expect(results.some((r) => r.scope === "global")).toBe(true);
   });
 
-  it("project scope search for 'general' returns only project:general entries", () => {
-    const results = filterSettings(SETTINGS_SEARCH_INDEX, "general", { scope: "project" });
-    expect(results.length).toBeGreaterThan(0);
-    expect(results.every((r) => r.tab.startsWith("project:"))).toBe(true);
+  it("boosts same-scope results to win close-quality ties", () => {
+    // Both scopes have a "notifications" tab nav entry; the active scope's
+    // entry should rank in the top 2 thanks to the +2 boost.
+    const globalResults = filterSettings(SETTINGS_SEARCH_INDEX, "notifications", {
+      scope: "global",
+    });
+    const top2Global = globalResults.slice(0, 2);
+    expect(top2Global.some((r) => r.scope === "global")).toBe(true);
+
+    const projectResults = filterSettings(SETTINGS_SEARCH_INDEX, "notifications", {
+      scope: "project",
+    });
+    const top2Project = projectResults.slice(0, 2);
+    expect(top2Project.some((r) => r.scope === "project")).toBe(true);
   });
 
-  it("global scope search does not include project entries", () => {
-    const results = filterSettings(SETTINGS_SEARCH_INDEX, "recipes", { scope: "global" });
-    expect(results.every((r) => !r.tab.startsWith("project:"))).toBe(true);
-  });
-
-  it("returns results from both scopes when no scope filter is set", () => {
+  it("merges scopes by default when no scope is set", () => {
     const results = filterSettings(SETTINGS_SEARCH_INDEX, "notifications");
     const scopes = new Set(results.map((r) => r.scope));
     expect(scopes.has("global")).toBe(true);
     expect(scopes.has("project")).toBe(true);
+  });
+
+  it("hides project-scope results when hasProject is false", () => {
+    const results = filterSettings(SETTINGS_SEARCH_INDEX, "branch prefix", {
+      scope: "global",
+      hasProject: false,
+    });
+    expect(results.every((r) => r.scope !== "project")).toBe(true);
+    expect(results.some((r) => r.id === "project-branch-prefix")).toBe(false);
+  });
+
+  it("keeps project-scope results when hasProject is true", () => {
+    const results = filterSettings(SETTINGS_SEARCH_INDEX, "branch prefix", {
+      scope: "global",
+      hasProject: true,
+    });
+    expect(results.some((r) => r.scope === "project")).toBe(true);
+  });
+
+  it("@modified-only keeps the hard scope filter (empty-state copy is scope-specific)", () => {
+    const modifiedTabs = new Set<SettingsTab>(["general"]);
+    const results = filterSettings(SETTINGS_SEARCH_INDEX, "@modified", {
+      modifiedTabs,
+      scope: "global",
+    });
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every((r) => r.scope === "global")).toBe(true);
+  });
+
+  it("@modified + text query naturally excludes cross-scope when modifiedTabs is scope-bounded", () => {
+    const modifiedTabs = new Set<SettingsTab>(["general"]);
+    const results = filterSettings(SETTINGS_SEARCH_INDEX, "general @modified", {
+      modifiedTabs,
+      scope: "global",
+    });
+    expect(results.every((r) => r.tab === "general")).toBe(true);
   });
 
   it("every entry in the index has a scope field", () => {
