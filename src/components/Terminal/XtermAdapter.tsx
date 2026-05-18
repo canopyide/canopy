@@ -396,6 +396,11 @@ export function XtermAdapter({
             writeTerminalInputOrFleet(terminalId, submit);
             terminalInstanceService.notifyUserInput(terminalId);
             stableOnInput(submit);
+            // Plain Enter is a submit. The custom key handler returns `false`
+            // before xterm's onKey/onData fire, so the listener-installed
+            // onEnterPressed path is bypassed — call it explicitly to close
+            // the `directing` synthetic state. No-op when not in directing.
+            terminalInstanceService.notifyEnterPressed(terminalId);
           }
           return false;
         }
