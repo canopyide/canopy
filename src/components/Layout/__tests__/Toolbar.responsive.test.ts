@@ -78,8 +78,8 @@ describe("Toolbar responsive design — issue #4133", () => {
 
   describe("overflow trigger surfaces hidden state — issue #6416", () => {
     it("calls useOverflowBadgeSeverity for both left and right overflow", () => {
-      expect(source).toContain("useOverflowBadgeSeverity(leftOverflow");
-      expect(source).toContain("useOverflowBadgeSeverity(rightOverflow");
+      expect(source).toContain("useOverflowBadgeSeverity(visibleLeftOverflow");
+      expect(source).toContain("useOverflowBadgeSeverity(visibleRightOverflow");
     });
 
     it("passes left and right severities into renderOverflowMenu independently", () => {
