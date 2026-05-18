@@ -145,6 +145,22 @@ export function BlockedNavBanner({
     return cleanup;
   }, [panelId, onDispatch]);
 
+  const handleCancelOAuth = useCallback(async () => {
+    try {
+      await window.electron.webview.cancelOAuthLoopback(panelId);
+    } catch {
+      // cancel may fail if already settled — harmless
+    }
+  }, [panelId]);
+
+  const handleDismiss = useCallback(() => {
+    // Cancel any in-flight loopback when dismissing from an OAuth phase
+    if (state && (state.phase === "oauth-started" || state.phase === "oauth-intercepting")) {
+      window.electron.webview.cancelOAuthLoopback(panelId).catch(() => {});
+    }
+    onDispatch({ type: "DISMISS" });
+  }, [state, panelId, onDispatch]);
+
   if (!state) return null;
 
   const handleStartOAuth = async () => {
@@ -183,22 +199,6 @@ export function BlockedNavBanner({
       });
     }
   };
-
-  const handleCancelOAuth = useCallback(async () => {
-    try {
-      await window.electron.webview.cancelOAuthLoopback(panelId);
-    } catch {
-      // cancel may fail if already settled — harmless
-    }
-  }, [panelId]);
-
-  const handleDismiss = useCallback(() => {
-    // Cancel any in-flight loopback when dismissing from an OAuth phase
-    if (state && (state.phase === "oauth-started" || state.phase === "oauth-intercepting")) {
-      window.electron.webview.cancelOAuthLoopback(panelId).catch(() => {});
-    }
-    onDispatch({ type: "DISMISS" });
-  }, [state, panelId, onDispatch]);
 
   const copyAction: BannerAction = {
     id: "copy-url",

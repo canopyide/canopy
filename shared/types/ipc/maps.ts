@@ -2059,7 +2059,7 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
       webContentsId: number,
       sessionStorageSnapshot?: Array<[string, string]>,
     ];
-    result: import("../../../electron/services/OAuthLoopbackService.js").OAuthLoopbackResult;
+    result: import("../oauth.js").OAuthLoopbackResult;
   };
   "webview:cancel-oauth-loopback": {
     args: [payload: { panelId: string }];

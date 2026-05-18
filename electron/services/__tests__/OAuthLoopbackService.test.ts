@@ -137,15 +137,16 @@ describe("OAuthLoopbackService", () => {
 
       // The promise should resolve with the original callback URL + captured params
       const result = await loopbackPromise;
-      expect(result).not.toBeNull();
+      expect(result.success).toBe(true);
+      if (!result.success) throw new Error("expected success");
 
-      const resultUrl = new URL(result!.callbackUrl);
+      const resultUrl = new URL(result.callbackUrl);
       expect(resultUrl.origin).toBe("http://localhost:3000");
       expect(resultUrl.pathname).toBe("/auth/callback");
       expect(resultUrl.searchParams.get("code")).toBe("AUTH_CODE_123");
       expect(resultUrl.searchParams.get("state")).toBe("xyz123");
-      expect(result!.loopbackRedirectUri).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/oauth\/callback$/);
-      expect(result!.originalRedirectUri).toBe("http://localhost:3000/auth/callback");
+      expect(result.loopbackRedirectUri).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/oauth\/callback$/);
+      expect(result.originalRedirectUri).toBe("http://localhost:3000/auth/callback");
     });
 
     it("handles OAuth error responses from the IdP", async () => {
@@ -172,9 +173,10 @@ describe("OAuthLoopbackService", () => {
 
       // Should still resolve — the app handles the error params
       const result = await loopbackPromise;
-      expect(result).not.toBeNull();
+      expect(result.success).toBe(true);
+      if (!result.success) throw new Error("expected success");
 
-      const resultUrl = new URL(result!.callbackUrl);
+      const resultUrl = new URL(result.callbackUrl);
       expect(resultUrl.searchParams.get("error")).toBe("access_denied");
       expect(resultUrl.searchParams.get("error_description")).toBe("User cancelled");
     });
@@ -281,8 +283,12 @@ describe("OAuthLoopbackService", () => {
       const resultA = await promiseA;
       const resultB = await promiseB;
 
-      expect(new URL(resultA!.callbackUrl).searchParams.get("code")).toBe("CODE_A");
-      expect(new URL(resultB!.callbackUrl).searchParams.get("code")).toBe("CODE_B");
+      expect(resultA.success).toBe(true);
+      expect(resultB.success).toBe(true);
+      if (!resultA.success || !resultB.success) throw new Error("expected success");
+
+      expect(new URL(resultA.callbackUrl).searchParams.get("code")).toBe("CODE_A");
+      expect(new URL(resultB.callbackUrl).searchParams.get("code")).toBe("CODE_B");
     });
 
     it("resolves null on cancel", async () => {

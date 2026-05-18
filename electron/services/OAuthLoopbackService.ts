@@ -9,6 +9,8 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import { app, shell } from "electron";
 
 export { looksLikeOAuthUrl } from "../../shared/utils/urlUtils.js";
+export type { OAuthLoopbackResult } from "../../shared/types/oauth.js";
+import type { OAuthLoopbackResult } from "../../shared/types/oauth.js";
 
 const CALLBACK_PATH = "/oauth/callback";
 const TIMEOUT_MS = 300_000; // 5 minutes
@@ -30,22 +32,6 @@ interface LoopbackSession {
 
 /** Active loopback sessions keyed by panelId */
 const activeSessions = new Map<string, LoopbackSession>();
-
-/**
- * Start the OAuth loopback flow.
- *
- * @param authUrl - The original OAuth authorization URL (blocked by dev-preview)
- * @param panelId - The dev-preview panel ID (prevents duplicate flows)
- * @returns The original callback URL, the loopback URI used, and the original redirect_uri — or null
- */
-export type OAuthLoopbackResult =
-  | {
-      success: true;
-      callbackUrl: string;
-      loopbackRedirectUri: string;
-      originalRedirectUri: string;
-    }
-  | { success: false; cause: "cancelled" | "timed-out" | "server-error" | "open-external-failed" };
 
 export function startOAuthLoopback(authUrl: string, panelId: string): Promise<OAuthLoopbackResult> {
   cancelOAuthLoopback(panelId);

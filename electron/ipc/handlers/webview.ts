@@ -708,7 +708,7 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
     panelId: unknown,
     webContentsId: unknown,
     providedSessionStorageSnapshot: unknown
-  ): Promise<import("../../services/OAuthLoopbackService.js").OAuthLoopbackResult> => {
+  ): Promise<import("../../../shared/types/oauth.js").OAuthLoopbackResult> => {
     if (
       typeof authUrl !== "string" ||
       typeof panelId !== "string" ||
