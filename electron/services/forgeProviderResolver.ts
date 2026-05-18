@@ -1,7 +1,4 @@
-import type {
-  RegisteredForgeProvider,
-  ResolvedForgeProvider,
-} from "../../shared/types/forge.js";
+import type { RegisteredForgeProvider, ResolvedForgeProvider } from "../../shared/types/forge.js";
 import { getRegisteredForgeProviders, listMatchingProviders } from "./forgeProviderRegistry.js";
 import { projectStore } from "./ProjectStore.js";
 import { gitServiceCache } from "./GitServiceCache.js";

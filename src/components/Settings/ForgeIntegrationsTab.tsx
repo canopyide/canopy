@@ -10,6 +10,8 @@ import { SettingsSection } from "./SettingsSection";
 import { SettingsSelect, type SettingsSelectOption } from "./SettingsSelect";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useProjectStore } from "@/store";
+import { useDeferredLoading } from "@/hooks";
+import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { logError } from "@/utils/logger";
 
@@ -56,6 +58,16 @@ export function ForgeIntegrationsTab() {
   const [remotes, setRemotes] = useState<RemoteRouting[]>([]);
   const [remotesLoading, setRemotesLoading] = useState(false);
   const [remotesError, setRemotesError] = useState<string | null>(null);
+  // Mirror `remotes` into a ref so `reresolveRemotes` can read the latest value
+  // without closing over the state (which would risk re-resolving stale remotes
+  // when the active project changes between the settings write and its reply).
+  const remotesRef = useRef<RemoteRouting[]>([]);
+  useEffect(() => {
+    remotesRef.current = remotes;
+  }, [remotes]);
+  // Defer the "Loading remotes…" text past the Doherty threshold so fast IPC
+  // resolutions don't flash a loading state for sub-400ms work.
+  const showRemotesLoading = useDeferredLoading(remotesLoading, UI_DOHERTY_THRESHOLD);
 
   useEffect(() => {
     let cancelled = false;
@@ -171,7 +183,7 @@ export function ForgeIntegrationsTab() {
   // currently resolves via "hostname" — the default tier now wins.
   const reresolveRemotes = useCallback(async () => {
     if (!activeProjectId) return;
-    const currentRemotes = remotes.map((r) => r.remote);
+    const currentRemotes = remotesRef.current.map((r) => r.remote);
     if (currentRemotes.length === 0) return;
     const resolutions = await Promise.allSettled(
       currentRemotes.map((remote) =>
@@ -187,7 +199,7 @@ export function ForgeIntegrationsTab() {
         return { remote, resolved: { entry: null, resolvedVia: null } };
       })
     );
-  }, [activeProjectId, remotes]);
+  }, [activeProjectId]);
 
   const handleChange = useCallback(
     async (value: string) => {
@@ -253,7 +265,7 @@ export function ForgeIntegrationsTab() {
           activeProjectId={activeProjectId}
           providersInstalled={providers.length}
           remotes={remotes}
-          loading={remotesLoading}
+          loading={showRemotesLoading}
           error={remotesError}
         />
       </SettingsSection>
@@ -280,9 +292,7 @@ function ProjectRoutingPanel({
 }: ProjectRoutingPanelProps) {
   if (!activeProjectId) {
     return (
-      <p className="text-xs text-daintree-text/50">
-        Open a project to view its forge routing.
-      </p>
+      <p className="text-xs text-daintree-text/50">Open a project to view its forge routing.</p>
     );
   }
 

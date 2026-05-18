@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import fs from "fs/promises";
+import path from "path";
 import { render, screen, waitFor } from "@testing-library/react";
 import { ForgeIntegrationsTab } from "../ForgeIntegrationsTab";
 import { useProjectStore } from "@/store/projectStore";
@@ -264,5 +266,35 @@ describe("ForgeIntegrationsTab", () => {
       expect(screen.getByText("Gitea")).toBeTruthy();
       expect(screen.getByText(/override/i)).toBeTruthy();
     });
+  });
+});
+
+describe("ForgeIntegrationsTab source guards", () => {
+  let source: string;
+
+  beforeEach(async () => {
+    source = await fs.readFile(path.resolve(__dirname, "../ForgeIntegrationsTab.tsx"), "utf-8");
+  });
+
+  it("gates the remotes loading text on useDeferredLoading + UI_DOHERTY_THRESHOLD", () => {
+    expect(source).toContain("useDeferredLoading");
+    expect(source).toContain("UI_DOHERTY_THRESHOLD");
+    expect(source).toMatch(
+      /showRemotesLoading\s*=\s*useDeferredLoading\(\s*remotesLoading\s*,\s*UI_DOHERTY_THRESHOLD\s*\)/
+    );
+    expect(source).toMatch(/loading=\{showRemotesLoading\}/);
+    expect(source).not.toMatch(/loading=\{remotesLoading\}/);
+  });
+
+  it("reads remotes through a ref in reresolveRemotes to avoid stale closures on project switch", () => {
+    // Ref mirror present
+    expect(source).toMatch(/remotesRef\s*=\s*useRef<RemoteRouting\[\]>\(\[\]\)/);
+    // Ref kept in sync with state
+    expect(source).toMatch(/remotesRef\.current\s*=\s*remotes/);
+    // reresolveRemotes reads from the ref, not from closed-over remotes state
+    expect(source).toMatch(/const\s+currentRemotes\s*=\s*remotesRef\.current\.map/);
+    expect(source).not.toMatch(/const\s+currentRemotes\s*=\s*remotes\.map/);
+    // reresolveRemotes deps no longer include `remotes` (only activeProjectId)
+    expect(source).toMatch(/}\s*,\s*\[activeProjectId\]\s*\)\s*;?\s*\n\s*\n\s*const handleChange/);
   });
 });

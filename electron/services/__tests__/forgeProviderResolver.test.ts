@@ -271,10 +271,7 @@ describe("resolveForgeProvider", () => {
     const gitea = makeProvider("acme.gitea", "gitea", ["gitea.example.com"]);
     registryMock.listMatchingProviders.mockReturnValue([gitea]);
 
-    const result = await resolveForgeProvider(
-      "project-1",
-      "git@gitea.example.com:owner/repo.git"
-    );
+    const result = await resolveForgeProvider("project-1", "git@gitea.example.com:owner/repo.git");
 
     expect(result).toEqual({ entry: gitea, resolvedVia: "hostname" });
     expect(gitServiceMock.getRemoteUrl).not.toHaveBeenCalled();

@@ -1,8 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type {
-  ForgeProviderEntry,
-  ResolvedForgeProvider,
-} from "../../../../shared/types/forge.js";
+import type { ForgeProviderEntry, ResolvedForgeProvider } from "../../../../shared/types/forge.js";
 
 const ipcMainMock = vi.hoisted(() => ({
   handle: vi.fn(),

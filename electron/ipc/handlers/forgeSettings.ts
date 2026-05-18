@@ -37,17 +37,14 @@ export function registerForgeSettingsHandlers(): () => void {
   );
 
   cleanups.push(
-    typedHandle(
-      CHANNELS.FORGE_RESOLVE_PROVIDER,
-      async (projectId: unknown, remoteUrl: unknown) => {
-        if (typeof projectId !== "string" || projectId.length === 0) {
-          return { entry: null, resolvedVia: null };
-        }
-        const remoteUrlArg =
-          typeof remoteUrl === "string" && remoteUrl.length > 0 ? remoteUrl : undefined;
-        return resolveForgeProvider(projectId, remoteUrlArg);
+    typedHandle(CHANNELS.FORGE_RESOLVE_PROVIDER, async (projectId: unknown, remoteUrl: unknown) => {
+      if (typeof projectId !== "string" || projectId.length === 0) {
+        return { entry: null, resolvedVia: null };
       }
-    )
+      const remoteUrlArg =
+        typeof remoteUrl === "string" && remoteUrl.length > 0 ? remoteUrl : undefined;
+      return resolveForgeProvider(projectId, remoteUrlArg);
+    })
   );
 
   return () => cleanups.forEach((c) => c());
