@@ -1400,10 +1400,11 @@ export function DevPreviewPane({
                     </div>
                   )}
                   {showRecoverySpinner && !webviewLoadError && (
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-daintree-bg gap-3">
-                      <Spinner size="2xl" className="text-status-info" />
-                      <p className="text-xs text-daintree-text/50">Rehydrating preview...</p>
-                    </div>
+                    <DevPreviewLoadingState
+                      variant="overlay"
+                      isPending={true}
+                      phaseLabel="Rehydrating preview"
+                    />
                   )}
                   {isDragging && <div className="absolute inset-0 z-10 bg-transparent" />}
                   {findInPage.isOpen && <FindBar find={findInPage} />}
