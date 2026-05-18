@@ -184,6 +184,7 @@ export function registerHelpActions(actions: ActionRegistry, callbacks: ActionCa
     category: "help",
     kind: "command",
     danger: "safe",
+    nonRepeatable: true,
     scope: "renderer",
     keywords: ["onboarding", "checklist", "welcome", "tutorial"],
     run: async () => {
