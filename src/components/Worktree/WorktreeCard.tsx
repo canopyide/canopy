@@ -42,7 +42,6 @@ import { useWorktreeActions } from "./WorktreeCard/hooks/useWorktreeActions";
 import { copyContextWithFeedback } from "@/hooks/useWorktreeActions";
 import { useCopyWithFeedback } from "@/hooks/useCopyWithFeedback";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
-import { useMenuActionSource } from "@/components/ui/menu-source";
 import { CONTEXT_COMPONENTS, WorktreeMenuItems } from "./WorktreeMenuItems";
 import { isAgentFleetActionEligible, isFleetArmEligible } from "@/store/fleetArmingStore";
 import { useWorktreeStatus } from "./WorktreeCard/hooks/useWorktreeStatus";
@@ -123,7 +122,6 @@ export function WorktreeCard({
     (state) => state.settings?.notificationOverrides
   );
   const isProjectNotificationsMuted = areProjectNotificationsMuted(notificationOverrides);
-  const source = useMenuActionSource();
 
   const environmentIcon =
     worktree.worktreeMode && worktree.worktreeMode !== "local"
@@ -340,19 +338,23 @@ export function WorktreeCard({
     void actionService.dispatch(
       "worktree.resource.resume",
       { worktreeId: worktree.id },
-      { source }
+      { source: "user" }
     );
   };
 
   const handleResourcePause = () => {
-    void actionService.dispatch("worktree.resource.pause", { worktreeId: worktree.id }, { source });
+    void actionService.dispatch(
+      "worktree.resource.pause",
+      { worktreeId: worktree.id },
+      { source: "user" }
+    );
   };
 
   const handleResourceConnect = () => {
     void actionService.dispatch(
       "worktree.resource.connect",
       { worktreeId: worktree.id },
-      { source }
+      { source: "user" }
     );
   };
 
@@ -366,7 +368,7 @@ export function WorktreeCard({
     void actionService.dispatch(
       "worktree.resource.provision",
       { worktreeId: worktree.id },
-      { source }
+      { source: "user" }
     );
   };
 
@@ -374,16 +376,16 @@ export function WorktreeCard({
     void actionService.dispatch(
       "worktree.resource.status",
       { worktreeId: worktree.id },
-      { source }
+      { source: "user" }
     );
   };
 
   const handleCopyContextFull = () => {
-    void copyContextWithFeedback(worktree.id, source);
+    void copyContextWithFeedback(worktree.id, "context-menu");
   };
 
   const handleCopyContextModified = () => {
-    void copyContextWithFeedback(worktree.id, source, { modified: true });
+    void copyContextWithFeedback(worktree.id, "context-menu", { modified: true });
   };
 
   const { copy: copyWorktreePath } = useCopyWithFeedback();
@@ -550,7 +552,10 @@ export function WorktreeCard({
 
   const handleOpenPanelPalette = () => {
     useWorktreeSelectionStore.getState().setActiveWorktree(worktree.id);
-    void actionService.dispatch("panel.palette", undefined, { source });
+    void actionService.dispatch("panel.palette", undefined, {
+      // eslint-disable-next-line no-restricted-syntax -- context-menu-source: hardcoded because callback lives outside the ContextMenu Root (see #8322)
+      source: "context-menu",
+    });
   };
 
   const cardContent = (
@@ -744,7 +749,8 @@ export function WorktreeCard({
                   onOpenPanelPalette: () => {
                     useWorktreeSelectionStore.getState().setActiveWorktree(worktree.id);
                     void actionService.dispatch("panel.palette", undefined, {
-                      source,
+                      // eslint-disable-next-line no-restricted-syntax -- context-menu-source: hardcoded because callback lives outside the ContextMenu Root (see #8322)
+                      source: "context-menu",
                     });
                   },
                   onDockAll: handleDockAll,

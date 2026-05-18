@@ -4,15 +4,13 @@ import { ProjectResourceBadge, QuickRun } from "@/components/Project";
 import { useProjectStore } from "@/store/projectStore";
 import { useMacroFocusStore } from "@/store/macroFocusStore";
 import { DEFAULT_SIDEBAR_WIDTH } from "./AppLayout";
-import { actionService } from "@/services/ActionService";
 import {
   ContextMenu,
+  ContextMenuActionItem,
   ContextMenuContent,
-  ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { useMenuActionSource } from "@/components/ui/menu-source";
 import {
   FolderOpen,
   GitBranchPlus,
@@ -60,8 +58,6 @@ export function Sidebar({
   const sidebarRef = useRef<HTMLElement>(null);
   const currentProject = useProjectStore((state) => state.currentProject);
   const isMacroFocused = useMacroFocusStore((state) => state.focusedRegion === "sidebar");
-  const source = useMenuActionSource();
-
   useEffect(() => {
     useMacroFocusStore.getState().setRegionRef("sidebar", sidebarRef.current);
     return () => useMacroFocusStore.getState().setRegionRef("sidebar", null);
@@ -206,68 +202,36 @@ export function Sidebar({
         </aside>
       </ContextMenuTrigger>
       <ContextMenuContent>
-        <ContextMenuItem
-          onSelect={() =>
-            void actionService.dispatch("worktree.createDialog.open", undefined, {
-              source,
-            })
-          }
-        >
+        <ContextMenuActionItem actionId="worktree.createDialog.open">
           <GitBranchPlus className={ICON_CLASS} />
           New Worktree...
-        </ContextMenuItem>
-        <ContextMenuItem
-          onSelect={() => void actionService.dispatch("worktree.refresh", undefined, { source })}
-        >
+        </ContextMenuActionItem>
+        <ContextMenuActionItem actionId="worktree.refresh">
           <RefreshCw className={ICON_CLASS} />
           Refresh Sidebar
-        </ContextMenuItem>
+        </ContextMenuActionItem>
         <ContextMenuSeparator />
-        <ContextMenuItem
+        <ContextMenuActionItem
+          actionId="system.openPath"
+          args={currentProject ? { path: currentProject.path } : undefined}
           disabled={!currentProject}
-          onSelect={() => {
-            if (currentProject) {
-              void actionService.dispatch(
-                "system.openPath",
-                { path: currentProject.path },
-                { source }
-              );
-            }
-          }}
         >
           <FolderOpen className={ICON_CLASS} />
           Reveal Project in Finder
-        </ContextMenuItem>
-        <ContextMenuItem
-          disabled={!currentProject}
-          onSelect={() =>
-            void actionService.dispatch("project.settings.open", undefined, {
-              source,
-            })
-          }
-        >
+        </ContextMenuActionItem>
+        <ContextMenuActionItem actionId="project.settings.open" disabled={!currentProject}>
           <Settings className={ICON_CLASS} />
           Project Settings...
-        </ContextMenuItem>
+        </ContextMenuActionItem>
         <ContextMenuSeparator />
-        <ContextMenuItem
-          onSelect={() =>
-            void actionService.dispatch("ui.sidebar.resetWidth", undefined, {
-              source,
-            })
-          }
-        >
+        <ContextMenuActionItem actionId="ui.sidebar.resetWidth">
           <Ruler className={ICON_CLASS} />
           Reset Sidebar Width
-        </ContextMenuItem>
-        <ContextMenuItem
-          onSelect={() =>
-            void actionService.dispatch("app.settings.openTab", { tab: "worktree" }, { source })
-          }
-        >
+        </ContextMenuActionItem>
+        <ContextMenuActionItem actionId="app.settings.openTab" args={{ tab: "worktree" }}>
           <SlidersHorizontal className={ICON_CLASS} />
           Worktree Settings...
-        </ContextMenuItem>
+        </ContextMenuActionItem>
       </ContextMenuContent>
     </ContextMenu>
   );

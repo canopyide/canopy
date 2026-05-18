@@ -298,6 +298,46 @@ vi.mock("@/components/ui/context-menu", () => ({
       {children}
     </div>
   ),
+  ContextMenuActionItem: ({
+    children,
+    actionId,
+    args,
+    dispatchOptions,
+    onSelect,
+    disabled,
+    className,
+    "data-testid": dataTestId,
+  }: {
+    children: React.ReactNode;
+    actionId?: string;
+    args?: unknown;
+    dispatchOptions?: Record<string, unknown>;
+    onSelect?: (e: Event) => void;
+    disabled?: boolean;
+    className?: string;
+    "data-testid"?: string;
+  }) => (
+    <div
+      role="menuitem"
+      data-testid={dataTestId ?? "context-menu-item"}
+      data-disabled={disabled ? "true" : undefined}
+      className={className}
+      onClick={(e) => {
+        if (disabled) return;
+        onSelect?.(e as unknown as Event);
+        if (e.defaultPrevented) return;
+        dispatchMock(actionId, args, {
+          ...dispatchOptions,
+          source:
+            dispatchOptions && typeof dispatchOptions === "object" && "source" in dispatchOptions
+              ? dispatchOptions.source
+              : "user",
+        });
+      }}
+    >
+      {children}
+    </div>
+  ),
 }));
 
 vi.mock("lucide-react", () => ({
