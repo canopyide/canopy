@@ -170,15 +170,30 @@ describe("github.* one-release aliases", () => {
       expect(githubClientMock.validateToken).not.toHaveBeenCalled();
     });
 
-    it(`${aliasId} surfaces ${targetId} failures as thrown errors`, async () => {
+    it(`${aliasId} surfaces ${targetId} failures with code preserved on the thrown error`, async () => {
       actionServiceMock.dispatch.mockResolvedValueOnce({
         ok: false,
         error: { code: "VALIDATION_ERROR", message: "Invalid arguments" },
       });
       const def = setupActions()(aliasId);
-      await expect(def.run({}, {} as never)).rejects.toThrow("Invalid arguments");
+      const thrown = await def.run({}, {} as never).then(
+        () => null,
+        (e: Error & { code?: string }) => e
+      );
+      expect(thrown).toBeInstanceOf(Error);
+      expect(thrown?.message).toBe("Invalid arguments");
+      expect(thrown?.code).toBe("VALIDATION_ERROR");
     });
   }
+
+  it("every alias has its forge.* target factory registered", () => {
+    const actions: ActionRegistry = new Map();
+    registerGithubActions(actions, {} as unknown as ActionCallbacks);
+    for (const [aliasId, targetId] of aliasPairs) {
+      expect(actions.has(aliasId)).toBe(true);
+      expect(actions.has(targetId)).toBe(true);
+    }
+  });
 
   it("github.validateToken returns the result from forge.validateToken", async () => {
     const validation = { valid: true, scopes: ["repo"] };
@@ -199,6 +214,46 @@ describe("github.* one-release aliases", () => {
     for (const [aliasId] of aliasPairs) {
       const def = setupActions()(aliasId);
       expect(def.nonRepeatable).toBe(true);
+    }
+  });
+});
+
+describe("github.* aliases must not be reachable from agent surfaces", () => {
+  // dispatchAlias() in githubActions.ts intentionally does not preserve the
+  // caller source — the inner dispatch defaults to source="user". That is safe
+  // only because no agent-exposing allowlist contains a deprecated alias id.
+  // If a future edit adds one of the aliases below to MCP or the help
+  // assistant, an agent call could launder source="user" through the alias and
+  // populate ActionService.lastAction with the forge.* primary as if the user
+  // had invoked it. This guard pins that exclusion.
+  const aliasIds = [
+    "github.openIssues",
+    "github.openPRs",
+    "github.openCommits",
+    "github.openIssue",
+    "github.assignIssue",
+    "github.validateToken",
+  ] as const;
+
+  it("none of the migrated github.* aliases appear in MCP TIER_ALLOWLISTS", async () => {
+    const { TIER_ALLOWLISTS } = await import("../../../../../electron/services/mcp-server/shared");
+    for (const tier of Object.values(TIER_ALLOWLISTS)) {
+      for (const aliasId of aliasIds) {
+        expect(tier.has(aliasId)).toBe(false);
+      }
+    }
+  });
+
+  it("none of the migrated github.* aliases appear in help assistant tier tools/addons", async () => {
+    const { WORKBENCH_TIER_TOOLS, ACTION_TIER_ADDONS, SYSTEM_TIER_ADDONS } =
+      await import("@shared/config/helpAssistantTierAllowlists");
+    const combined = new Set<string>([
+      ...WORKBENCH_TIER_TOOLS,
+      ...ACTION_TIER_ADDONS,
+      ...SYSTEM_TIER_ADDONS,
+    ]);
+    for (const aliasId of aliasIds) {
+      expect(combined.has(aliasId)).toBe(false);
     }
   });
 });

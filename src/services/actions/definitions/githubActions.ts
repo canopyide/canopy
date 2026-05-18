@@ -22,9 +22,23 @@ const GitHubListOptionsSchema = z.object({
 // Forwards a deprecated alias to its forge.* counterpart and propagates failures
 // as thrown errors so callers using await def.run(...) see the same shape they
 // would from the primary. Used only by the one-release github.* aliases below.
+//
+// Source preservation: the inner dispatch defaults to source="user". This is the
+// intended behavior — the six github.* aliases are only reachable from
+// user-recorded artifacts (keybindings, recipes, MRU). They are intentionally
+// excluded from every agent-exposing allowlist (MCP, help assistant), and an
+// adversarial test pins that exclusion so a future allowlist edit cannot
+// silently launder agent intent through a deprecated alias.
 async function dispatchAlias<T = unknown>(targetId: ActionId, args: unknown): Promise<T> {
   const result = await actionService.dispatch<T>(targetId, args);
-  if (!result.ok) throw new Error(result.error.message);
+  if (!result.ok) {
+    // Preserve the structured error code on the thrown error so callers can
+    // discriminate VALIDATION_ERROR vs EXECUTION_ERROR vs DISABLED without
+    // re-parsing the message.
+    const err = new Error(result.error.message) as Error & { code?: string };
+    err.code = result.error.code;
+    throw err;
+  }
   return result.result;
 }
 
