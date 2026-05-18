@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import fsPromises from "node:fs/promises";
 import path from "node:path";
 import {
   getInvalidCommandMessage,
@@ -53,6 +54,16 @@ const RUNNING_STATES: ReadonlySet<DevPreviewSessionStatus> = new Set([
   "installing",
   "running",
 ]);
+
+// Framework build/dep caches wiped by restartAndClearCache, relative to the
+// session cwd. node_modules/.vite is Vite's dep-optimization cache and is
+// distinct from a root-level .vite directory.
+const CACHE_DIRS: readonly string[] = [
+  ".next",
+  ".vite",
+  ".turbo",
+  path.join("node_modules", ".vite"),
+];
 
 const DEFAULT_TIMEOUT_MS = 8000;
 const STALE_START_RECOVERY_MS = 10000;
@@ -242,6 +253,144 @@ export class DevPreviewSessionService {
       });
     }
     return this.getSessionState(request.projectId, request.panelId);
+  }
+
+  async restartAndClearCache(request: DevPreviewSessionRequest): Promise<DevPreviewSessionState> {
+    validateSessionRequest(request);
+    const key = createSessionKey(request.projectId, request.panelId);
+    await this.runLocked(key, async () => {
+      const session = this.sessions.get(key);
+      if (!session) return;
+
+      const commandError = getInvalidCommandMessage(session.devCommand);
+      if (commandError) {
+        if (session.terminalId) {
+          await this.stopSessionTerminal(session, "invalid-command");
+        }
+        this.updateSession(session, {
+          status: "error",
+          error: { type: "unknown", message: commandError },
+          url: null,
+          assignedUrl: null,
+          terminalId: null,
+          isRestarting: false,
+        });
+        return;
+      }
+
+      this.updateSession(session, {
+        status: "starting",
+        url: null,
+        error: null,
+        isRestarting: true,
+      });
+
+      // Caches must be deleted only after the PTY is confirmed dead — Vite and
+      // Next.js hold file handles on these directories, and a live process
+      // causes EPERM on Windows.
+      await this.stopSessionTerminal(session, "restart-clear-cache");
+
+      const deletionError = await this.clearCacheDirs(session.cwd);
+      if (deletionError) {
+        this.updateSession(session, {
+          status: "error",
+          url: null,
+          assignedUrl: null,
+          error: {
+            type: "unknown",
+            message: `Failed to clear cache: ${deletionError}`,
+          },
+          terminalId: null,
+          isRestarting: false,
+        });
+        return;
+      }
+
+      await this.spawnSessionTerminal(session);
+    });
+    return this.getSessionState(request.projectId, request.panelId);
+  }
+
+  async reinstallAndRestart(request: DevPreviewSessionRequest): Promise<DevPreviewSessionState> {
+    validateSessionRequest(request);
+    const key = createSessionKey(request.projectId, request.panelId);
+    await this.runLocked(key, async () => {
+      const session = this.sessions.get(key);
+      if (!session) return;
+
+      const commandError = getInvalidCommandMessage(session.devCommand);
+      if (commandError) {
+        if (session.terminalId) {
+          await this.stopSessionTerminal(session, "invalid-command");
+        }
+        this.updateSession(session, {
+          status: "error",
+          error: { type: "unknown", message: commandError },
+          url: null,
+          assignedUrl: null,
+          terminalId: null,
+          isRestarting: false,
+        });
+        return;
+      }
+
+      this.updateSession(session, {
+        status: "starting",
+        url: null,
+        error: null,
+        isRestarting: true,
+      });
+
+      await this.stopSessionTerminal(session, "reinstall-restart");
+
+      // node_modules deletion uses retries because Windows Defender frequently
+      // holds locks on files mid-scan, surfacing as transient EPERM/EBUSY.
+      try {
+        await fsPromises.rm(path.join(session.cwd, "node_modules"), {
+          recursive: true,
+          force: true,
+          maxRetries: 5,
+          retryDelay: 100,
+        });
+      } catch (err) {
+        const message = formatErrorMessage(err, "Failed to remove node_modules");
+        this.updateSession(session, {
+          status: "error",
+          url: null,
+          assignedUrl: null,
+          error: {
+            type: "unknown",
+            message: `Failed to remove node_modules: ${message}`,
+          },
+          terminalId: null,
+          isRestarting: false,
+        });
+        return;
+      }
+
+      // runInstall spawns its own install PTY; the handleExit chain respawns
+      // the dev server when the install exits 0. Do NOT call
+      // spawnSessionTerminal here — that would double-spawn.
+      await this.runInstall(session);
+    });
+    return this.getSessionState(request.projectId, request.panelId);
+  }
+
+  /**
+   * Deletes the framework cache directories under cwd. Returns an error
+   * message string if any deletion failed, or null on success. `force: true`
+   * makes missing directories a no-op.
+   */
+  private async clearCacheDirs(cwd: string): Promise<string | null> {
+    const failures: string[] = [];
+    for (const dir of CACHE_DIRS) {
+      try {
+        await fsPromises.rm(path.join(cwd, dir), { recursive: true, force: true });
+      } catch (err) {
+        failures.push(`${dir} (${formatErrorMessage(err, "deletion failed")})`);
+      }
+    }
+    return failures.length > 0 ? failures.join(", ") : null;
   }
 
   async stop(request: DevPreviewSessionRequest): Promise<DevPreviewSessionState> {
@@ -926,7 +1075,9 @@ export class DevPreviewSessionService {
   }
 
   private detectInstallCommand(cwd: string): string {
-    if (existsSync(path.join(cwd, "bun.lockb"))) return "bun install";
+    if (existsSync(path.join(cwd, "bun.lock")) || existsSync(path.join(cwd, "bun.lockb"))) {
+      return "bun install";
+    }
     if (existsSync(path.join(cwd, "pnpm-lock.yaml"))) return "pnpm install";
     if (existsSync(path.join(cwd, "yarn.lock"))) return "yarn install";
     return "npm install";

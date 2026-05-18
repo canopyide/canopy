@@ -157,6 +157,14 @@ The current GitHub action set is read-only (`openIssues`, `listPullRequests`, et
 | `keybinding.setOverride` / `removeOverride` | safe | n/a | reversible (reset to default) | one binding | D0 | Leave | — |
 | `keybinding.resetAll` | **confirm** (updated #8247) | yes (`ConfirmDialog` at `KeyboardShortcutsTab.tsx:184`, dispatches with `confirmed:true`) | local-irreversible (all overrides lost) | every override | D1 | Done (#8247) | #8247 |
 
+### Dev preview
+
+| Action / call site | Current | UI confirm | Reversibility | Blast | Tier | Recommendation | Follow-up |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `useDevServer.ts:299` `devPreview.restart` (direct IPC) | safe | none — hook calls IPC directly | local-irreversible (PTY killed, dev-server scrollback lost; rebuilds on respawn) | one panel | D1 | Document bypass; sibling UI issue migrates the button to the `devPreview.restart` action so the danger rating can gate it | TBD (UI issue) |
+| `devPreview.restartAndClearCache` | **confirm** | none yet — `ConfirmDialog` wired in sibling UI issue | local-irreversible (framework build caches `.next`/`.vite`/`.turbo` wiped; regenerate on next build) | one panel | D1 | `danger:"confirm"` classification set; wire `ConfirmDialog` at the UI call site | TBD (UI issue) |
+| `devPreview.reinstallAndRestart` | **confirm** | none yet — `ConfirmDialog` wired in sibling UI issue | shared-state (`node_modules` removed; recovery requires a full reinstall, network + lockfile dependent) | one panel | D2 | `danger:"confirm"` classification set; wire `ConfirmDialog` + change preview at the UI call site | TBD (UI issue) |
+
 ## Known bypasses
 
 Direct `window.electron.*` IPC calls that skip `ActionService`. These are the highest-risk locations because the action's `danger` rating cannot gate them — the confirmation must live in the component itself.
@@ -169,6 +177,7 @@ Direct `window.electron.*` IPC calls that skip `ActionService`. These are the hi
 | `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | `pullRebase` | **Yes** — `ConfirmDialog` with ahead/behind divergence preview (#8242) |
 | `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | `checkoutOursTheirs` | **Yes** — per-file `ConfirmDialog` in `ConflictPanel` (#8242) |
 | `src/components/Worktree/ReviewHub/ForcePushConfirmDialog.tsx` | `forcePushWithLease` | **Yes** — model implementation |
+| `src/hooks/useDevServer.ts:299` | `devPreview.restart` (dev-preview restart button) | **No** — hook invokes IPC directly; sibling UI issue migrates to the `devPreview.restart` action |
 
 ## Maintenance
 

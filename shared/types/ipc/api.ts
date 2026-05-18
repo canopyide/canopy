@@ -719,6 +719,8 @@ export interface ElectronAPI {
   devPreview: {
     ensure(request: DevPreviewEnsureRequest): Promise<DevPreviewSessionState>;
     restart(request: DevPreviewSessionRequest): Promise<DevPreviewSessionState>;
+    restartAndClearCache(request: DevPreviewSessionRequest): Promise<DevPreviewSessionState>;
+    reinstallAndRestart(request: DevPreviewSessionRequest): Promise<DevPreviewSessionState>;
     stop(request: DevPreviewSessionRequest): Promise<DevPreviewSessionState>;
     stopByPanel(request: DevPreviewStopByPanelRequest): Promise<void>;
     getState(request: DevPreviewSessionRequest): Promise<DevPreviewSessionState>;
