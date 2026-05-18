@@ -40,6 +40,7 @@ export interface DevPreviewSessionState {
   generation: number;
   updatedAt: number;
   forceKilled?: boolean;
+  phaseLabel: string | null;
 }
 
 export interface DevPreviewStateChangedPayload {

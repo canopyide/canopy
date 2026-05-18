@@ -247,6 +247,7 @@ export class DevPreviewSessionService {
           error: null,
           isRestarting: true,
           forceKilled: undefined,
+          phaseLabel: "Restarting",
         });
 
         await this.stopSessionTerminal(session, "restart");
@@ -537,6 +538,7 @@ export class DevPreviewSessionService {
       generation: 0,
       updatedAt: Date.now(),
       updatedAtPerformanceMs: performance.now(),
+      phaseLabel: null,
       cwd: "",
       devCommand: "",
       turbopackEnabled: true,
@@ -572,6 +574,7 @@ export class DevPreviewSessionService {
         generation: 0,
         updatedAt: Date.now(),
         forceKilled: undefined,
+        phaseLabel: null,
       };
     }
     return this.toPublicState(session);
@@ -591,6 +594,7 @@ export class DevPreviewSessionService {
       generation: session.generation,
       updatedAt: session.updatedAt,
       forceKilled: session.forceKilled,
+      phaseLabel: session.phaseLabel,
     };
   }
 
@@ -608,6 +612,7 @@ export class DevPreviewSessionService {
         | "worktreeId"
         | "generation"
         | "forceKilled"
+        | "phaseLabel"
       >
     >
   ): void {
@@ -621,6 +626,7 @@ export class DevPreviewSessionService {
     if (updates.worktreeId !== undefined) session.worktreeId = updates.worktreeId;
     if (updates.generation !== undefined) session.generation = updates.generation;
     if ("forceKilled" in updates) session.forceKilled = updates.forceKilled;
+    if (updates.phaseLabel !== undefined) session.phaseLabel = updates.phaseLabel;
     session.updatedAt = Date.now();
     session.updatedAtPerformanceMs = performance.now();
     this.onStateChanged(this.toPublicState(session));
@@ -724,6 +730,7 @@ export class DevPreviewSessionService {
       error: null,
       generation: nextGeneration,
       forceKilled: undefined,
+      phaseLabel: "Starting dev server",
     });
 
     try {
@@ -957,7 +964,12 @@ export class DevPreviewSessionService {
       this.pollServerReadiness(session, session.pendingUrl, abort.signal, session.generation);
     }
 
-    if (!result.error) return;
+    if (!result.error) {
+      if (session.status === "starting" && session.phaseLabel !== "Compiling") {
+        this.updateSession(session, { phaseLabel: "Compiling" });
+      }
+      return;
+    }
     const errorKey = `${result.error.type}:${result.error.message}`;
     if (errorKey === session.lastErrorKey) return;
     session.lastErrorKey = errorKey;
@@ -1076,6 +1088,7 @@ export class DevPreviewSessionService {
         type: "missing-dependencies",
         message: `Running ${installCommand}...`,
       },
+      phaseLabel: "Installing dependencies",
     });
 
     try {

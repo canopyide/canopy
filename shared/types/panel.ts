@@ -271,6 +271,8 @@ export interface PtyPanelData extends BasePanelData {
   devCommand?: string;
   /** Dev server status for dev-preview panels */
   devServerStatus?: "stopped" | "starting" | "installing" | "running" | "error";
+  /** Dev server phase label for dev-preview panels */
+  devServerPhaseLabel?: string | null;
   /** Dev server URL for dev-preview panels */
   devServerUrl?: string;
   /** Dev server error for dev-preview panels */
@@ -368,6 +370,8 @@ export interface DevPreviewPanelData extends BasePanelData {
   devPreviewConsoleOpen?: boolean;
   /** Dev server status */
   devServerStatus?: "stopped" | "starting" | "installing" | "running" | "error";
+  /** Dev server phase label */
+  devServerPhaseLabel?: string | null;
   /** Dev server URL */
   devServerUrl?: string;
   /** Dev server error */
@@ -492,6 +496,8 @@ export interface TerminalInstance {
   devCommand?: string;
   /** Dev server status for dev-preview panels */
   devServerStatus?: "stopped" | "starting" | "installing" | "running" | "error";
+  /** Dev server phase label for dev-preview panels */
+  devServerPhaseLabel?: string | null;
   /** Dev server URL for dev-preview panels */
   devServerUrl?: string;
   /** Dev server error for dev-preview panels */

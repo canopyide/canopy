@@ -9,7 +9,6 @@ import {
   WandSparkles,
   OctagonAlert,
 } from "lucide-react";
-import { Spinner } from "@/components/ui/Spinner";
 import { Button } from "@/components/ui/button";
 import { usePanelStore } from "@/store";
 import { useProjectStore } from "@/store/projectStore";
@@ -27,6 +26,7 @@ import {
 } from "../Browser/historyUtils";
 import { useDevServer, type UseDevServerReturn } from "@/hooks/useDevServer";
 import { ConsoleDrawer } from "./ConsoleDrawer";
+import { DevPreviewLoadingState } from "./DevPreviewLoadingState";
 import { useIsDragging } from "@/components/DragDrop";
 import { cn } from "@/lib/utils";
 import { computeDevServerUrl } from "./urlSync";
@@ -327,6 +327,7 @@ export function DevPreviewPane({
     url,
     terminalId,
     error,
+    phaseLabel,
     start,
     stop,
     restart,
@@ -384,6 +385,73 @@ export function DevPreviewPane({
   const isSettingsLoading = useProjectSettingsStore((state) => state.isLoading);
   const isMountedRef = useRef(true);
   const prevStatusRef = useRef(status);
+
+  // Phase label debounce (600ms) — prevents three-label slot machine on warm-cache boots
+  const lastPhaseChangeAtRef = useRef<number>(0);
+  const phaseDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [debouncedPhaseLabel, setDebouncedPhaseLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (phaseLabel === null) {
+      setDebouncedPhaseLabel(null);
+      return;
+    }
+    lastPhaseChangeAtRef.current = Date.now();
+    phaseDebounceTimerRef.current = setTimeout(() => {
+      if (Date.now() - lastPhaseChangeAtRef.current >= 600) {
+        setDebouncedPhaseLabel(phaseLabel);
+      }
+    }, 600);
+    return () => {
+      if (phaseDebounceTimerRef.current) {
+        clearTimeout(phaseDebounceTimerRef.current);
+        phaseDebounceTimerRef.current = null;
+      }
+    };
+  }, [phaseLabel]);
+
+  // Stall detection — auto-open console drawer on fatal error or 15s no-phase-progress
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasAutoOpenedConsoleRef = useRef(false);
+
+  useEffect(() => {
+    if (status === "error" && error) {
+      if (!hasAutoOpenedConsoleRef.current && !isConsoleOpen) {
+        hasAutoOpenedConsoleRef.current = true;
+        setDevPreviewConsoleOpen(id, true);
+      }
+      return;
+    }
+
+    if (status === "running" || status === "stopped") {
+      hasAutoOpenedConsoleRef.current = false;
+      if (stallTimerRef.current) {
+        clearTimeout(stallTimerRef.current);
+        stallTimerRef.current = null;
+      }
+      return;
+    }
+
+    if (status === "starting" || status === "installing") {
+      if (stallTimerRef.current) {
+        clearTimeout(stallTimerRef.current);
+      }
+      stallTimerRef.current = setTimeout(() => {
+        if (!hasAutoOpenedConsoleRef.current && !isConsoleOpen) {
+          hasAutoOpenedConsoleRef.current = true;
+          setDevPreviewConsoleOpen(id, true);
+        }
+      }, 15000);
+    }
+
+    return () => {
+      if (stallTimerRef.current) {
+        clearTimeout(stallTimerRef.current);
+        stallTimerRef.current = null;
+      }
+    };
+  }, [status, phaseLabel, error, id, isConsoleOpen, setDevPreviewConsoleOpen]);
+
   const loadTimeoutMs =
     Math.min(Math.max(projectSettings?.devServerLoadTimeout ?? 30, 1), 120) * 1000;
 
@@ -1066,13 +1134,11 @@ export function DevPreviewPane({
             </div>
           )}
           {isRestarting || status === "starting" || status === "installing" ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-daintree-bg">
-              <Spinner size="2xl" className="text-status-info mb-4" />
-              <p className="text-sm text-daintree-text/60">
-                {isRestarting ? "Restarting" : status === "installing" ? "Installing" : "Starting"}
-                ...
-              </p>
-            </div>
+            <DevPreviewLoadingState
+              variant="full"
+              isPending={true}
+              phaseLabel={debouncedPhaseLabel}
+            />
           ) : status === "error" && error ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-daintree-bg text-daintree-text p-6">
               <AlertTriangle className="w-6 h-6 text-status-warning mb-3" />
@@ -1295,24 +1361,23 @@ export function DevPreviewPane({
                     />
                   )}
                   {isLoading && (
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-daintree-bg gap-3">
-                      <Spinner size="2xl" className="text-status-info" />
-                      {isSlowLoad && (
-                        <>
-                          <p className="text-xs text-daintree-text/50">
-                            Taking longer than usual...
-                          </p>
-                          <Button
-                            onClick={handleCancelLoad}
-                            variant="ghost"
-                            size="sm"
-                            className="gap-1.5 px-2.5 py-1.5 group text-daintree-text/50 hover:text-daintree-text/70"
-                          >
-                            <Square className="h-3.5 w-3.5" />
-                            <span className="text-xs">Cancel</span>
-                          </Button>
-                        </>
-                      )}
+                    <DevPreviewLoadingState
+                      variant="overlay"
+                      isPending={true}
+                      phaseLabel={isSlowLoad ? "Taking longer than usual..." : "Loading preview"}
+                    />
+                  )}
+                  {isLoading && isSlowLoad && (
+                    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20">
+                      <Button
+                        onClick={handleCancelLoad}
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1.5 px-2.5 py-1.5 group text-daintree-text/50 hover:text-daintree-text/70"
+                      >
+                        <Square className="h-3.5 w-3.5" />
+                        <span className="text-xs">Cancel</span>
+                      </Button>
                     </div>
                   )}
                   {showRecoverySpinner && !webviewLoadError && (
