@@ -592,8 +592,8 @@ port.on("message", async (rawMsg: any) => {
         }
         break;
 
-      case "update-github-token":
-        workspaceService.updateGitHubToken(request.token);
+      case "update-forge-credentials":
+        workspaceService.updateForgeCredentials(request.providerId, request.credentials);
         break;
 
       case "get-file-tree": {

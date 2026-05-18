@@ -239,22 +239,26 @@ describe("PRIntegrationService", () => {
     });
   });
 
-  describe("updateToken", () => {
+  describe("updateForgeCredentials", () => {
     beforeEach(() => {
       vi.mocked(GitHubAuth.setMemoryToken).mockClear();
     });
 
-    it("sets memory token and refreshes when token is truthy", () => {
+    it("sets memory token and refreshes when credentials are truthy", () => {
       const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
 
-      service.updateToken("ghp_abc123", "/repo");
+      service.updateForgeCredentials(
+        "builtin.github",
+        { kind: "bearer", value: "ghp_abc123" },
+        "/repo"
+      );
 
       expect(GitHubAuth.setMemoryToken).toHaveBeenCalledWith("ghp_abc123");
       expect(prServiceMock.refresh).toHaveBeenCalledTimes(1);
       expect(prServiceMock.reset).not.toHaveBeenCalled();
     });
 
-    it("resets and reinitializes when token is null and path is provided", () => {
+    it("resets and reinitializes when credentials is null and path is provided", () => {
       const callOrder: string[] = [];
       prServiceMock.reset = vi.fn(() => callOrder.push("reset"));
       prServiceMock.initialize = vi.fn(() => callOrder.push("initialize"));
@@ -263,7 +267,7 @@ describe("PRIntegrationService", () => {
       });
       const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
 
-      service.updateToken(null, "/repo");
+      service.updateForgeCredentials("builtin.github", null, "/repo");
 
       expect(GitHubAuth.setMemoryToken).toHaveBeenCalledWith(null);
       expect(prServiceMock.refresh).not.toHaveBeenCalled();
@@ -271,15 +275,39 @@ describe("PRIntegrationService", () => {
       expect(prServiceMock.initialize).toHaveBeenCalledWith("/repo");
     });
 
-    it("only clears the memory token and resets when token and path are null", () => {
+    it("only clears the memory token and resets when credentials and path are null", () => {
       const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
 
-      service.updateToken(null, null);
+      service.updateForgeCredentials("builtin.github", null, null);
 
       expect(GitHubAuth.setMemoryToken).toHaveBeenCalledWith(null);
       expect(prServiceMock.reset).toHaveBeenCalledTimes(1);
       expect(prServiceMock.initialize).not.toHaveBeenCalled();
       expect(prServiceMock.start).not.toHaveBeenCalled();
+    });
+
+    it("silently ignores unknown providerId without side effects", () => {
+      const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
+
+      service.updateForgeCredentials("builtin.unknown", { kind: "bearer", value: "abc" }, "/repo");
+
+      // Should not crash, should not touch GitHubAuth for unknown provider
+      expect(GitHubAuth.setMemoryToken).not.toHaveBeenCalled();
+      // But should still refresh PR service since credentials is truthy
+      expect(prServiceMock.refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores non-bearer credentials for GitHub", () => {
+      const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
+
+      service.updateForgeCredentials(
+        "builtin.github",
+        { kind: "basic", value: "dXNlcjpwYXNz" },
+        "/repo"
+      );
+
+      expect(GitHubAuth.setMemoryToken).toHaveBeenCalledWith(null);
+      expect(prServiceMock.refresh).toHaveBeenCalledTimes(1);
     });
   });
 });

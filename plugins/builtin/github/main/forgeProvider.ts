@@ -479,6 +479,15 @@ export const githubForgeProvider: ForgeProviderImpl = {
     return { kind: "bearer", value: token };
   },
 
+  setCredentials(credentials: Credentials | null): void {
+    if (credentials === null) {
+      GitHubAuth.setMemoryToken(null);
+    } else if (credentials.kind === "bearer") {
+      GitHubAuth.setMemoryToken(credentials.value);
+    }
+    // Non-bearer credentials are silently ignored — GitHub only supports bearer tokens.
+  },
+
   async validateCredentials(): Promise<AuthValidation> {
     const token = GitHubAuth.getToken();
     if (!token) {

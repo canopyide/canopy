@@ -1919,10 +1919,13 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     void pullRequestService.refresh();
   }
 
-  updateGitHubToken(token: string | null): void {
-    this.prService.updateToken(token, this.projectRootPath);
-    if (token) {
-      // A new token may resolve previously-failing auth — drop suspensions so
+  updateForgeCredentials(
+    providerId: string,
+    credentials: import("../../shared/types/forge.js").Credentials | null
+  ): void {
+    this.prService.updateForgeCredentials(providerId, credentials, this.projectRootPath);
+    if (credentials) {
+      // A new credential may resolve previously-failing auth — drop suspensions so
       // the next scheduled fetch retries. Network/transient entries stay so we
       // don't immediately re-storm an offline remote.
       this.fetchCoordinator.clearAuthFailures();
