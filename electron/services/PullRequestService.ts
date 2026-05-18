@@ -312,13 +312,14 @@ class PullRequestService {
     if (!this.projectId) return;
     try {
       const registered = await resolveForgeProvider(this.projectId);
-      if (!registered) {
+      if (!registered?.entry) {
         this.providerNamespacedId = null;
         this.providerImpl = null;
         this.repoRef = null;
         return;
       }
-      const namespacedId = `${registered.pluginId}.${registered.contribution.id}`;
+      const { pluginId, contribution } = registered.entry;
+      const namespacedId = `${pluginId}.${contribution.id}`;
       const impl = getForgeProviderImpl(namespacedId);
       if (!impl) {
         this.providerNamespacedId = null;

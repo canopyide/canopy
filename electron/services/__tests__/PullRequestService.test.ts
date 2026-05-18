@@ -59,8 +59,11 @@ function mockForgeProviderResolved(findPRByBranch?: () => Promise<ForgePR | null
 
   vi.doMock("../forgeProviderResolver.js", () => ({
     resolveForgeProvider: vi.fn().mockResolvedValue({
-      pluginId: "builtin",
-      contribution: { id: "github", name: "GitHub", matches: ["github.com"] },
+      entry: {
+        pluginId: "builtin",
+        contribution: { id: "github", name: "GitHub", matches: ["github.com"] },
+      },
+      resolvedVia: "hostname",
     }),
   }));
   vi.doMock("../forgeProviderRegistry.js", () => ({

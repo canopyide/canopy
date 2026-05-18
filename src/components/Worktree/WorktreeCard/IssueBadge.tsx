@@ -31,6 +31,12 @@ export function IssueBadge({
   underlineOnHover,
   rowLastUpdatedAt,
 }: IssueBadgeProps) {
+  // Detects the cold-title gap by comparing issueNumber to its previous-render
+  // value via a ref; the lag (ref written in effect, no re-render) is what
+  // keeps `isColdTitleGap` true across the 400ms suppression window. Replacing
+  // the ref with state breaks that lag and flashes the #NNN fallback.
+  "use no memo";
+
   const { data, loading, error, missingToken, fetchTooltip, reset } = useIssueTooltip(
     worktreePath,
     issueNumber

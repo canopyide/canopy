@@ -323,6 +323,7 @@ function getEventCoordinates(event: Event): { x: number; y: number } | null {
 // modality (pointer vs keyboard) — Announcements callbacks only receive
 // `{active, over}`, so the keyboard flag has to be plumbed in via refs.
 function DragAnnouncementMonitor({ refs }: { refs: DragAnnouncementRefs }) {
+  const { isKeyboardDragRef, pinnedTotalRef } = refs;
   useDndMonitor({
     onDragStart({ activatorEvent, active }) {
       // Clear leftover state from the previous drag at the top of the next
@@ -332,7 +333,7 @@ function DragAnnouncementMonitor({ refs }: { refs: DragAnnouncementRefs }) {
       // order. Clearing at end/cancel would zero the refs before the
       // Accessibility component reads them to build the announcement, so the
       // "Dropped X at position N of T" copy would never fire.
-      refs.isKeyboardDragRef.current =
+      isKeyboardDragRef.current =
         typeof KeyboardEvent !== "undefined" && activatorEvent instanceof KeyboardEvent;
 
       const data = active.data.current as
@@ -345,7 +346,7 @@ function DragAnnouncementMonitor({ refs }: { refs: DragAnnouncementRefs }) {
       const dragOrderTotal = Array.isArray(data?.dragStartOrder)
         ? data.dragStartOrder.length
         : undefined;
-      refs.pinnedTotalRef.current =
+      pinnedTotalRef.current =
         typeof sortableTotal === "number"
           ? sortableTotal
           : typeof dragOrderTotal === "number"
