@@ -17,6 +17,17 @@ interface AgentDiscoveryState {
   setupBannerDismissed: boolean;
 }
 
+function normalizeAvailabilityFirstSeen(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof key === "string" && typeof value === "number" && Number.isFinite(value)) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
 const useAgentDiscoveryStore = create<AgentDiscoveryState>(() => ({
   loaded: false,
   seenAgentIds: [],
@@ -46,10 +57,11 @@ async function hydrate(): Promise<void> {
       useAgentDiscoveryStore.setState({
         loaded: true,
         seenAgentIds: Array.isArray(state.seenAgentIds) ? state.seenAgentIds : [],
-        availabilityFirstSeen:
-          state.availabilityFirstSeen && typeof state.availabilityFirstSeen === "object"
-            ? state.availabilityFirstSeen
-            : {},
+        // Filter persisted timestamps to finite numbers. A corrupted entry
+        // (NaN from an old build or hand-edited config) would otherwise leave
+        // the discovery dot pinned forever — `Date.now() - NaN` is NaN, and
+        // `NaN >= TTL` is false, so the TTL backstop wouldn't fire.
+        availabilityFirstSeen: normalizeAvailabilityFirstSeen(state.availabilityFirstSeen),
         welcomeCardDismissed: state.welcomeCardDismissed === true,
         setupBannerDismissed: state.setupBannerDismissed === true,
       });
