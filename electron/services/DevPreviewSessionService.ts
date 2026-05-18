@@ -422,6 +422,7 @@ export class DevPreviewSessionService {
           terminalId: null,
           isRestarting: false,
           forceKilled,
+          phaseLabel: null,
         });
       } else {
         this.updateSession(session, {
@@ -431,6 +432,7 @@ export class DevPreviewSessionService {
           error: null,
           terminalId: null,
           isRestarting: false,
+          phaseLabel: null,
         });
       }
     });
@@ -998,6 +1000,7 @@ export class DevPreviewSessionService {
       url: null,
       assignedUrl: null,
       isRestarting: false,
+      phaseLabel: null,
     });
   }
 
@@ -1034,6 +1037,7 @@ export class DevPreviewSessionService {
         },
         terminalId: null,
         isRestarting: false,
+        phaseLabel: null,
       });
       return;
     }
@@ -1057,6 +1061,7 @@ export class DevPreviewSessionService {
         error,
         terminalId: null,
         isRestarting: false,
+        phaseLabel: null,
       });
       return;
     }
@@ -1068,6 +1073,7 @@ export class DevPreviewSessionService {
       error: null,
       terminalId: null,
       isRestarting: false,
+      phaseLabel: null,
     });
   }
 
@@ -1158,6 +1164,7 @@ export class DevPreviewSessionService {
             url,
             error: null,
             isRestarting: false,
+            phaseLabel: null,
           });
           markPerformance(PERF_MARKS.DEVPREVIEW_RUNNING, {
             panelId: session.panelId,
@@ -1175,6 +1182,7 @@ export class DevPreviewSessionService {
               message: `Dev server at ${url} did not respond within ${READINESS_TIMEOUT_MS / 1000} seconds`,
             },
             isRestarting: false,
+            phaseLabel: null,
           });
         }
       })
@@ -1200,6 +1208,7 @@ export class DevPreviewSessionService {
             message: `Dev server readiness check failed: ${message}`,
           },
           isRestarting: false,
+          phaseLabel: null,
         });
       });
   }
