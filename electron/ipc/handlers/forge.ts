@@ -43,7 +43,8 @@ async function resolveForCwd(cwd: string): Promise<ResolvedContext> {
     throw new Error("No forge provider registered for this repository");
   }
 
-  const impl = getForgeProviderImpl(resolved.entry.pluginId);
+  const namespaceId = `${resolved.entry.pluginId}.${resolved.entry.contribution.id}`;
+  const impl = getForgeProviderImpl(namespaceId);
   if (!impl) {
     throw new Error(
       `Forge provider "${resolved.entry.contribution.id}" not activated. Activate it in Settings.`
@@ -55,7 +56,7 @@ async function resolveForCwd(cwd: string): Promise<ResolvedContext> {
     throw new Error("Could not parse repository identity from remote URL");
   }
 
-  return { namespaceId: `${resolved.entry.pluginId}.${resolved.entry.contribution.id}`, repoRef };
+  return { namespaceId, repoRef };
 }
 
 function getImplForNamespace(namespaceId: string) {
