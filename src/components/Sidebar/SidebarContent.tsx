@@ -30,7 +30,11 @@ import { FleetPickerPalette } from "@/components/Fleet/FleetPickerPalette";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { getWorktreeSortDragId } from "@/components/DragDrop/SortableWorktreeCard";
+import { useDndMonitor } from "@dnd-kit/core";
+import {
+  getWorktreeSortDragId,
+  isWorktreeSortDragData,
+} from "@/components/DragDrop/SortableWorktreeCard";
 import { applyManualWorktreeReorder } from "@/lib/worktreeReorder";
 import { usePanelStore, useWorktreeSelectionStore, useProjectStore } from "@/store";
 import { useFleetArmingStore, collectFilterArmEligibleIds } from "@/store/fleetArmingStore";
@@ -127,6 +131,14 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   // after the row settles. Only the final resting position is announced.
   const reorderAnnouncementTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [keyboardReorderAnnouncement, setKeyboardReorderAnnouncement] = useState("");
+  // Assertive sibling region for explicit Escape-cancel during a worktree-sort
+  // drag. dnd-kit's built-in announcer is polite, so the cancel string can
+  // queue behind backlogged movement announcements from Alt+Arrow. Setting
+  // assertive state forces NVDA/JAWS to flush the speech buffer. The
+  // clear-then-setTimeout pattern is required so a repeat cancel string
+  // produces a fresh DOM mutation that AT actually treats as new content.
+  const [keyboardCancelAnnouncement, setKeyboardCancelAnnouncement] = useState("");
+  const cancelAnnouncementTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleKeyboardReorder = useCallback((rowEl: HTMLElement, delta: -1 | 1) => {
     // Grouped-by-type and active-search modes hide the drag handle; keyboard
     // reorder must mirror that — writing to manualOrder here would silently
@@ -162,6 +174,61 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     scrollContainerRef,
     { onKeyboardReorder: handleKeyboardReorder }
   );
+  // Drop the cancel timer if the sidebar unmounts mid-flight so the trailing
+  // setTimeout doesn't fire setState on an unmounted component.
+  useEffect(() => {
+    return () => {
+      if (cancelAnnouncementTimerRef.current !== null) {
+        clearTimeout(cancelAnnouncementTimerRef.current);
+        cancelAnnouncementTimerRef.current = null;
+      }
+    };
+  }, []);
+  useDndMonitor({
+    onDragStart() {
+      // Drop any pending 50ms cancel-announcement timer from a previous drag
+      // so a rapid Escape → pickup sequence can't speak stale cancel copy on
+      // top of the new drag's pickup announcement.
+      if (cancelAnnouncementTimerRef.current !== null) {
+        clearTimeout(cancelAnnouncementTimerRef.current);
+        cancelAnnouncementTimerRef.current = null;
+      }
+    },
+    onDragCancel({ active }) {
+      // Only handle worktree-sort drags — other drag types live on their own
+      // surfaces and don't compete with this region's polite Alt+Arrow queue.
+      // Note: dnd-kit fires onDragCancel for both Escape presses and
+      // cancelDrop-converted rejections (e.g., a grid-full rejection). The
+      // assertive interrupt is appropriate for both since each ends the drag
+      // without committing, and the user needs immediate audible feedback.
+      if (!isWorktreeSortDragData(active.data.current as Record<string, unknown> | undefined)) {
+        return;
+      }
+      const worktreeId = (active.data.current as { worktreeId?: string } | undefined)?.worktreeId;
+      const wt = worktreeId ? worktreesRef.current.find((w) => w.id === worktreeId) : undefined;
+      // Match DndProvider.resolveWorktreeLabel so the assertive interrupt
+      // reads the same human-readable name the polite announcer would.
+      const label = wt?.issueTitle ?? wt?.branch ?? wt?.name ?? worktreeId ?? "worktree";
+      // Drop any pending trailing reorder announcement so the polite region
+      // doesn't speak a stale "Moved to position N" after the cancel lands.
+      if (reorderAnnouncementTimerRef.current !== null) {
+        clearTimeout(reorderAnnouncementTimerRef.current);
+        reorderAnnouncementTimerRef.current = null;
+      }
+      setKeyboardReorderAnnouncement("");
+      // Clear → 50ms → set so repeated cancels still register as new content
+      // in the AT speech buffer. Same DOM-mutation trick the polite region
+      // doesn't need because its strings already differ between updates.
+      setKeyboardCancelAnnouncement("");
+      if (cancelAnnouncementTimerRef.current !== null) {
+        clearTimeout(cancelAnnouncementTimerRef.current);
+      }
+      cancelAnnouncementTimerRef.current = setTimeout(() => {
+        cancelAnnouncementTimerRef.current = null;
+        setKeyboardCancelAnnouncement(`Drag cancelled. ${label} returned to its original position`);
+      }, 50);
+    },
+  });
   const { worktrees, isLoading, isReconnecting, reconnectingAt, error, refresh } = useWorktrees();
   worktreesRef.current = worktrees;
 
@@ -1002,6 +1069,13 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
           announce here. */}
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {keyboardReorderAnnouncement}
+      </div>
+      {/* Sibling assertive region for explicit Escape-cancel of a worktree-sort
+          drag. Always mounted so the AT has registered it before the drag begins.
+          Assertive priority interrupts any polite "Moved to position N" backlog
+          queued from rapid Alt+Arrow reorders. */}
+      <div className="sr-only" role="status" aria-live="assertive" aria-atomic="true">
+        {keyboardCancelAnnouncement}
       </div>
       {/* Worktree list — single role="grid" with roving tab stop spans pinned + scrollable rows */}
       <div
