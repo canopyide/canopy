@@ -55,7 +55,7 @@ async function resolveForCwd(cwd: string): Promise<ResolvedContext> {
     throw new Error("Could not parse repository identity from remote URL");
   }
 
-  return { namespaceId: resolved.entry.pluginId, repoRef };
+  return { namespaceId: `${resolved.entry.pluginId}.${resolved.entry.contribution.id}`, repoRef };
 }
 
 function getImplForNamespace(namespaceId: string) {
@@ -157,28 +157,31 @@ export function registerForgeHandlers(): () => void {
       if (typeof token !== "string" || !token.trim()) {
         return { valid: false as const, error: "Token is required" };
       }
+      const providers = getRegisteredForgeProviders();
+      if (providers.length === 0) {
+        return { valid: false as const, error: "No forge provider configured" };
+      }
+
       const globalDefault = store.get("forgeDefaultProviderId");
       const providerId = typeof globalDefault === "string" ? globalDefault.trim() : "";
-      if (!providerId) {
-        const providers = getRegisteredForgeProviders();
-        if (providers.length === 0) {
-          return { valid: false as const, error: "No forge provider configured" };
-        }
-        // Use the first registered provider when no default is set
-        const impl = getForgeProviderImpl(providers[0].pluginId);
-        if (!impl) {
-          return {
-            valid: false as const,
-            error: `Forge provider "${providers[0].contribution.id}" not activated`,
-          };
-        }
-        return impl.validateToken(token.trim());
+
+      // Resolve bare or namespaced id to the registered entry
+      let targetProvider: (typeof providers)[0] | undefined;
+      if (providerId) {
+        targetProvider = providers.find(
+          (p) =>
+            p.contribution.id === providerId || `${p.pluginId}.${p.contribution.id}` === providerId
+        );
       }
-      const impl = getForgeProviderImpl(providerId);
+      // Fall back to first registered provider
+      const entry = targetProvider ?? providers[0];
+
+      const namespaceId = `${entry.pluginId}.${entry.contribution.id}`;
+      const impl = getForgeProviderImpl(namespaceId);
       if (!impl) {
         return {
           valid: false as const,
-          error: `Forge provider "${providerId}" not found`,
+          error: `Forge provider "${entry.contribution.id}" not activated`,
         };
       }
       return impl.validateToken(token.trim());
