@@ -26,11 +26,14 @@ const SAFE_AGENT_ID = /^[a-zA-Z0-9_.-]+$/;
 
 /**
  * Returns true if the value is "present enough" to write to disk. Mirrors the
- * legacy hand-coded checks: skip `undefined`, empty strings, and empty arrays;
- * keep `0`, `false`, and non-empty objects.
+ * legacy hand-coded checks: skip `undefined`, `null`, empty strings, and empty
+ * arrays; keep `0`, `false`, and non-empty objects. Renderer callers
+ * occasionally send `null` for "clear this field", which must not survive into
+ * the committed `.daintree/settings.json` (the reader drops it, but a `null`
+ * entry produces spurious git diffs).
  */
 function shouldWriteValue(value: unknown): boolean {
-  if (value === undefined) return false;
+  if (value === undefined || value === null) return false;
   if (typeof value === "string") return value.length > 0;
   if (Array.isArray(value)) return value.length > 0;
   return true;

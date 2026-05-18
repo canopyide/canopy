@@ -281,13 +281,13 @@ describe("writeInRepoSettings", () => {
       [K in keyof ProjectTerminalSettings]?: ProjectTerminalSettings[K];
     } = {
       shell: "/bin/zsh",
+      defaultWorkingDirectory: "/Users/me/project",
     };
 
     const TERMINAL_SHAREABLE_SAMPLES: {
       [K in keyof ProjectTerminalSettings]?: ProjectTerminalSettings[K];
     } = {
       shellArgs: ["-l"],
-      defaultWorkingDirectory: "src",
       scrollbackLines: 5000,
     };
 
@@ -364,6 +364,37 @@ describe("writeInRepoSettings", () => {
       await fs.readFile(path.join(tmpDir, DAINTREE_SETTINGS_JSON), "utf-8")
     );
     expect(content.turbopackEnabled).toBe(false);
+  });
+
+  it("omits null values from output (e.g. when renderer sends 'clear this field')", async () => {
+    // The renderer occasionally sends `null` to clear an optional field. The
+    // type declares `string` for most of these, but the IPC handler calls the
+    // writer with raw incoming settings before sanitization runs. Writing
+    // `null` produces a spurious git diff that means nothing to teammates.
+    await identityFiles.writeInRepoSettings(
+      tmpDir,
+      makeSettings({
+        devServerCommand: null as unknown as string,
+        worktreePathPattern: null as unknown as string,
+      })
+    );
+    const content = JSON.parse(
+      await fs.readFile(path.join(tmpDir, DAINTREE_SETTINGS_JSON), "utf-8")
+    );
+    expect(content).not.toHaveProperty("devServerCommand");
+    expect(content).not.toHaveProperty("worktreePathPattern");
+  });
+
+  it("refuses to write when .daintree/ is a symlink", async () => {
+    const target = await fs.mkdtemp(path.join(os.tmpdir(), "daintree-symlink-target-"));
+    try {
+      await fs.symlink(target, path.join(tmpDir, ".daintree"));
+      await expect(identityFiles.writeInRepoSettings(tmpDir, makeSettings())).rejects.toThrow(
+        /symbolic link/
+      );
+    } finally {
+      await fs.rm(target, { recursive: true, force: true });
+    }
   });
 });
 

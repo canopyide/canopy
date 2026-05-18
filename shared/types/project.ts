@@ -331,11 +331,17 @@ export interface ProjectTerminalSettings {
  */
 export type FieldShareability = "shareable" | "local" | "transient";
 
-/** Shareability classification for each field of `ProjectTerminalSettings`. */
+/**
+ * Shareability classification for each field of `ProjectTerminalSettings`.
+ *
+ * `shell` and `defaultWorkingDirectory` are both machine-local: the reader
+ * (`parseTerminalSettings`) requires an absolute path, and absolute paths
+ * are inherently per-machine. Teammates cannot meaningfully share either.
+ */
 export const PROJECT_TERMINAL_SETTINGS_SHAREABILITY = {
   shell: "local",
   shellArgs: "shareable",
-  defaultWorkingDirectory: "shareable",
+  defaultWorkingDirectory: "local",
   scrollbackLines: "shareable",
 } as const satisfies Record<keyof ProjectTerminalSettings, FieldShareability>;
 
