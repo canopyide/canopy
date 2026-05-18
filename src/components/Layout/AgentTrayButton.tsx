@@ -206,7 +206,17 @@ function SplitLaunchItem({ row, onLaunch }: SplitLaunchItemProps) {
               <row.Icon brandColor={getBrandColorHex(row.id)} />
             </BrandMark>
           </span>
-          {row.name}
+          <span className="flex-1">{row.name}</span>
+          {row.isNew && (
+            <>
+              <span
+                data-testid={`agent-tray-new-pill-${row.id}`}
+                aria-hidden="true"
+                className="ml-1 shrink-0 size-1.5 rounded-full bg-status-info ring-1 ring-daintree-sidebar"
+              />
+              <span className="sr-only">New</span>
+            </>
+          )}
         </span>
         <span
           className="flex items-center px-2 py-1.5 border-l border-daintree-border/50"
@@ -861,11 +871,14 @@ function LaunchRow({
       <span className="flex-1">{row.name}</span>
 
       {row.isNew && (
-        <span
-          data-testid={`agent-tray-new-pill-${row.id}`}
-          aria-label="New"
-          className="ml-2 shrink-0 size-1.5 rounded-full bg-status-info ring-1 ring-daintree-sidebar"
-        />
+        <>
+          <span
+            data-testid={`agent-tray-new-pill-${row.id}`}
+            aria-hidden="true"
+            className="ml-2 shrink-0 size-1.5 rounded-full bg-status-info ring-1 ring-daintree-sidebar"
+          />
+          <span className="sr-only">New</span>
+        </>
       )}
 
       {displayCombo && <DropdownMenuShortcut>{displayCombo}</DropdownMenuShortcut>}

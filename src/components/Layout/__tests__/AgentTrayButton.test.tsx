@@ -1033,19 +1033,63 @@ describe("AgentTrayButton", () => {
     expect(queryByTestId("agent-tray-new-pill-gemini")).toBeTruthy();
   });
 
-  it("renders the NEW indicator as a labelled dot rather than a text pill", () => {
-    // #8177: unify with the trigger badge — dot + aria-label, no "New" text.
+  it("renders the NEW indicator as a screen-reader-paired dot rather than a text pill", () => {
+    // #8177: unify with the trigger badge — dot is aria-hidden, screen
+    // readers get "New" via the adjacent sr-only span. No visible "NEW" text.
     const availability = { claude: "ready" } as unknown as CliAvailability;
     mockSettings = settingsWith({});
     mockSeenAgentIds = [];
 
-    const { getByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
+    const { getByTestId, container } = render(<AgentTrayButton agentAvailability={availability} />);
     const dot = getByTestId("agent-tray-new-pill-claude");
-    expect(dot.getAttribute("aria-label")).toBe("New");
-    // No legacy "NEW" text content — the dot is purely visual.
+    expect(dot.getAttribute("aria-hidden")).toBe("true");
     expect(dot.textContent ?? "").toBe("");
     expect(dot.className).toContain("rounded-full");
     expect(dot.className).toContain("bg-status-info");
+
+    // Screen reader pairing: the row should expose "New" via an sr-only sibling.
+    const row = container.querySelector(
+      '[data-testid="agent-tray-row-claude"]'
+    ) as HTMLElement | null;
+    expect(row).toBeTruthy();
+    const srOnly = Array.from(row!.querySelectorAll(".sr-only")).map((el) =>
+      el.textContent?.trim()
+    );
+    expect(srOnly).toContain("New");
+  });
+
+  it("renders the NEW dot inside the SplitLaunchItem trigger when the agent has presets", () => {
+    // Regression for #8177: agents with presets route through SplitLaunchItem
+    // (not LaunchRow). The dot must surface there too, or the most visible
+    // agents get no per-row discovery indicator.
+    const availability = { claude: "ready" } as unknown as CliAvailability;
+    mockSettings = settingsWith({});
+    mockSeenAgentIds = [];
+    mockMergedPresetsFn = (agentId: string) =>
+      agentId === "claude" ? [{ id: "user-alpha", name: "Alpha" }] : [];
+
+    const { getByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
+    const dot = getByTestId("agent-tray-new-pill-claude");
+    expect(dot.getAttribute("aria-hidden")).toBe("true");
+    expect(dot.className).toContain("rounded-full");
+    expect(dot.className).toContain("bg-status-info");
+  });
+
+  it("clears the NEW dot when the agent is launched via the SplitLaunchItem trigger", () => {
+    // Pressing Enter on the SubTrigger goes through onLaunch → handleLaunch,
+    // which now fires markAgentsSeen([agentId]) per-launch.
+    const availability = { claude: "ready" } as unknown as CliAvailability;
+    mockSettings = settingsWith({});
+    mockSeenAgentIds = [];
+    mockMergedPresetsFn = (agentId: string) =>
+      agentId === "claude" ? [{ id: "user-alpha", name: "Alpha" }] : [];
+
+    const { getAllByTestId } = render(<AgentTrayButton agentAvailability={availability} />);
+    markAgentsSeenMock.mockClear();
+    fireEvent.keyDown(getAllByTestId("submenu-trigger")[0]!, { key: "Enter" });
+
+    expect(markAgentsSeenMock).toHaveBeenCalledTimes(1);
+    expect(markAgentsSeenMock).toHaveBeenCalledWith(["claude"]);
   });
 
   it("pinned rows render the pin icon muted until the row is highlighted", () => {
