@@ -316,6 +316,7 @@ export class ActionService {
         durationMs,
         danger: definition.danger,
         safeArgs: this.extractSafeBreadcrumbArgs(args, definition),
+        confirmed: options?.confirmed,
       });
       this.emitShortcutHint(actionId, source);
       return { ok: true, result: result as Result };
@@ -502,6 +503,7 @@ export class ActionService {
     durationMs: number;
     danger: ActionDanger;
     safeArgs?: Record<string, unknown>;
+    confirmed?: boolean;
   }): Promise<void> {
     if (!isElectronApiAvailable()) return;
 
@@ -516,6 +518,7 @@ export class ActionService {
         durationMs: payload.durationMs,
         danger: payload.danger,
         ...(payload.safeArgs ? { safeArgs: payload.safeArgs } : {}),
+        ...(payload.confirmed !== undefined ? { confirmed: payload.confirmed } : {}),
       });
     } catch (err) {
       logWarn("Failed to emit action:dispatched event", {

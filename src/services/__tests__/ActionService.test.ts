@@ -910,6 +910,33 @@ describe("ActionService", () => {
         restore();
       }
     });
+
+    it("includes confirmed in payload when agent dispatches confirm action with confirmed:true", async () => {
+      const emit = vi.fn().mockResolvedValue(undefined);
+      const restore = installEmit(emit);
+      try {
+        service.register({
+          id: "worktree.delete" as ActionId,
+          title: "T",
+          description: "T",
+          category: "worktree",
+          kind: "command",
+          danger: "confirm",
+          scope: "renderer",
+          run: vi.fn().mockResolvedValue(undefined),
+        });
+        await service.dispatch("worktree.delete" as ActionId, undefined, {
+          source: "agent",
+          confirmed: true,
+        });
+        await Promise.resolve();
+        expect(emit).toHaveBeenCalledTimes(1);
+        const payload = emit.mock.calls[0]![1] as Record<string, unknown>;
+        expect(payload.confirmed).toBe(true);
+      } finally {
+        restore();
+      }
+    });
   });
 
   describe("lastAction tracking", () => {

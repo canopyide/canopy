@@ -12,6 +12,8 @@ export interface ActionBreadcrumb {
   timestamp: number;
   args?: Record<string, unknown>;
   count: number;
+  /** True when an agent explicitly confirmed a danger:"confirm" action. Absent for user-source and safe actions. */
+  confirmed?: boolean;
 }
 
 export interface CrashLogEntry {

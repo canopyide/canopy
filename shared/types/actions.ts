@@ -165,6 +165,8 @@ export interface ActionDispatchPayload {
   context: ActionContext;
   source: ActionSource;
   timestamp: number;
+  /** True when an agent explicitly confirmed a danger:"confirm" action. Absent for user-source and safe actions. */
+  confirmed?: boolean;
 }
 
 export interface ActionFrecencyEntry {

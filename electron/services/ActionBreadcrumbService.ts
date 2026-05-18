@@ -62,6 +62,7 @@ export class ActionBreadcrumbService {
     durationMs: number;
     danger: ActionDanger;
     safeArgs?: Record<string, unknown>;
+    confirmed?: boolean;
   }): void {
     try {
       const last = this.lastEntry;
@@ -69,9 +70,12 @@ export class ActionBreadcrumbService {
       // Reject negative deltas so an out-of-order emission (a long-running dispatch
       // that started earlier but finishes later) is recorded as a distinct entry
       // rather than merged into a newer fast dispatch of the same actionId.
+      // Also split entries with different confirmed values — merging different
+      // consent states obscures forensic signal in crash diagnostics.
       const isDedup =
         last !== null &&
         last.actionId === payload.actionId &&
+        last.confirmed === payload.confirmed &&
         delta >= 0 &&
         delta <= DEDUP_WINDOW_MS;
 
@@ -93,6 +97,7 @@ export class ActionBreadcrumbService {
         danger: payload.danger,
         ...(payload.safeArgs ? { args: payload.safeArgs } : {}),
         count: 1,
+        ...(payload.confirmed !== undefined ? { confirmed: payload.confirmed } : {}),
       };
 
       this.ring.push(entry);
