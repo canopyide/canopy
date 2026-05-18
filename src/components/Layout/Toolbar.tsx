@@ -12,6 +12,11 @@ import {
   MonitorPlay,
   Ellipsis,
   GitBranch,
+  Pin,
+  PinOff,
+  Clipboard,
+  Square,
+  X,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { Folders, McpServerIcon } from "@/components/icons";
@@ -31,6 +36,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { middleTruncate } from "@/utils/textParsing";
 import { useToolbarOverflow } from "@/hooks/useToolbarOverflow";
 import { useWorktreeActions } from "@/hooks/useWorktreeActions";
 import {
@@ -1046,6 +1059,40 @@ export function Toolbar({
     projectSwitcher.close();
   }, [projectSwitcher]);
 
+  // Project pill: Radix Tooltip reopens on focus restoration after the popover
+  // or context menu closes. Controlled state + a suppression ref (set in the
+  // popover/context-menu close handlers, cleared on the next pointer enter)
+  // mirrors the AgentButton pattern so the tooltip doesn't pop on top of a
+  // freshly-opened destination surface.
+  const [pillTooltipOpen, setPillTooltipOpen] = useState(false);
+  const isRestoringFocusPillRef = useRef(false);
+  const handlePillTooltipOpenChange = useCallback((open: boolean) => {
+    if (open && isRestoringFocusPillRef.current) return;
+    setPillTooltipOpen(open);
+  }, []);
+  const suppressPillTooltipForFocusRestore = useCallback(() => {
+    setPillTooltipOpen(false);
+    isRestoringFocusPillRef.current = true;
+  }, []);
+  const clearPillTooltipFocusSuppression = useCallback(() => {
+    isRestoringFocusPillRef.current = false;
+  }, []);
+  const handlePillDropdownClose = useCallback(() => {
+    suppressPillTooltipForFocusRestore();
+    handleDropdownClose();
+  }, [handleDropdownClose, suppressPillTooltipForFocusRestore]);
+
+  const activeSearchableProject = projectSwitcher.activeProject;
+  const truncatedBranchName = branchName ? middleTruncate(branchName, 24) : undefined;
+  const handleCopyProjectPath = useCallback(() => {
+    if (!currentProject) return;
+    void navigator.clipboard.writeText(currentProject.path);
+  }, [currentProject]);
+  const handlePillTogglePin = useCallback(() => {
+    if (!activeSearchableProject) return;
+    void projectSwitcher.togglePinProject(activeSearchableProject.id);
+  }, [activeSearchableProject, projectSwitcher]);
+
   return (
     <header>
       <div
@@ -1094,81 +1141,160 @@ export function Toolbar({
           aria-label="Project"
           className="app-no-drag flex items-center justify-center min-w-0 max-w-full pointer-events-none justify-self-center"
         >
-          <ProjectSwitcherPalette
-            mode="dropdown"
-            isOpen={isDropdownOpen}
-            query={projectSwitcher.query}
-            results={projectSwitcher.results}
-            selectedIndex={projectSwitcher.selectedIndex}
-            onQueryChange={projectSwitcher.setQuery}
-            onSelectPrevious={projectSwitcher.selectPrevious}
-            onSelectNext={projectSwitcher.selectNext}
-            onSelect={projectSwitcher.selectProject}
-            onHoverProject={projectSwitcher.onHoverProject}
-            onHoverProjectEnd={projectSwitcher.onHoverProjectEnd}
-            onClose={handleDropdownClose}
-            onAddProject={projectSwitcher.addProject}
-            onCloneRepo={projectSwitcher.cloneRepo}
-            onStopProject={handleStopProject}
-            onCloseProject={handleCloseProject}
-            onLocateProject={handleLocateProject}
-            onTogglePinProject={projectSwitcher.togglePinProject}
-            onCopyPath={projectSwitcher.copyPath}
-            onOpenProjectSettings={currentProject ? handleOpenProjectSettings : undefined}
-            onSelectNewWindow={handleSelectNewWindow}
-            dropdownAlign="center"
-            removeConfirmProject={projectSwitcher.removeConfirmProject}
-            onRemoveConfirmClose={handleRemoveConfirmClose}
-            onConfirmRemove={projectSwitcher.confirmRemoveProject}
-            isRemovingProject={projectSwitcher.isRemovingProject}
-            scratchResults={projectSwitcher.scratchResults}
-            onCreateScratch={() => void projectSwitcher.createScratch()}
-            onSelectScratch={(scratch) => void projectSwitcher.selectScratch(scratch)}
-            onRemoveScratch={(scratchId) => void projectSwitcher.removeScratchAction(scratchId)}
-            onSaveAsProject={(scratchId) => void projectSwitcher.saveAsProject(scratchId)}
-            saveAsProjectConfirm={projectSwitcher.saveAsProjectConfirm}
-            onDismissSaveAsProjectConfirm={projectSwitcher.dismissSaveAsProjectConfirm}
-            onConfirmDeleteOriginalScratch={() =>
-              void projectSwitcher.confirmDeleteOriginalScratch()
-            }
-            isDeletingOriginalScratch={projectSwitcher.isDeletingOriginalScratch}
+          <Tooltip
+            open={currentProject ? pillTooltipOpen : false}
+            onOpenChange={currentProject ? handlePillTooltipOpenChange : undefined}
           >
-            <button
-              data-toolbar-item=""
-              className="toolbar-project-pill app-no-drag pointer-events-auto flex h-9 min-w-0 max-w-full items-center justify-center gap-2 overflow-hidden border px-3 outline-hidden"
-              data-testid="project-switcher-trigger"
-              aria-label={currentProject ? undefined : "Open project"}
-              onClick={() => projectSwitcher.open("dropdown")}
-            >
-              <span
-                className={cn("text-base leading-none shrink-0", !currentProject && "opacity-0")}
-                aria-label={currentProject ? "Project emoji" : undefined}
-                aria-hidden={currentProject ? undefined : true}
+            <ContextMenu>
+              <ProjectSwitcherPalette
+                mode="dropdown"
+                isOpen={isDropdownOpen}
+                query={projectSwitcher.query}
+                results={projectSwitcher.results}
+                selectedIndex={projectSwitcher.selectedIndex}
+                onQueryChange={projectSwitcher.setQuery}
+                onSelectPrevious={projectSwitcher.selectPrevious}
+                onSelectNext={projectSwitcher.selectNext}
+                onSelect={projectSwitcher.selectProject}
+                onHoverProject={projectSwitcher.onHoverProject}
+                onHoverProjectEnd={projectSwitcher.onHoverProjectEnd}
+                onClose={handlePillDropdownClose}
+                onAddProject={projectSwitcher.addProject}
+                onCloneRepo={projectSwitcher.cloneRepo}
+                onStopProject={handleStopProject}
+                onCloseProject={handleCloseProject}
+                onLocateProject={handleLocateProject}
+                onTogglePinProject={projectSwitcher.togglePinProject}
+                onCopyPath={projectSwitcher.copyPath}
+                onOpenProjectSettings={currentProject ? handleOpenProjectSettings : undefined}
+                onSelectNewWindow={handleSelectNewWindow}
+                dropdownAlign="center"
+                removeConfirmProject={projectSwitcher.removeConfirmProject}
+                onRemoveConfirmClose={handleRemoveConfirmClose}
+                onConfirmRemove={projectSwitcher.confirmRemoveProject}
+                isRemovingProject={projectSwitcher.isRemovingProject}
+                scratchResults={projectSwitcher.scratchResults}
+                onCreateScratch={() => void projectSwitcher.createScratch()}
+                onSelectScratch={(scratch) => void projectSwitcher.selectScratch(scratch)}
+                onRemoveScratch={(scratchId) => void projectSwitcher.removeScratchAction(scratchId)}
+                onSaveAsProject={(scratchId) => void projectSwitcher.saveAsProject(scratchId)}
+                saveAsProjectConfirm={projectSwitcher.saveAsProjectConfirm}
+                onDismissSaveAsProjectConfirm={projectSwitcher.dismissSaveAsProjectConfirm}
+                onConfirmDeleteOriginalScratch={() =>
+                  void projectSwitcher.confirmDeleteOriginalScratch()
+                }
+                isDeletingOriginalScratch={projectSwitcher.isDeletingOriginalScratch}
               >
-                {currentProject?.emoji ?? "•"}
-              </span>
-              <span
-                className={cn(
-                  "min-w-0 truncate text-xs tracking-wide text-daintree-text",
-                  currentProject ? "font-semibold" : "font-medium"
-                )}
-              >
-                {currentProject?.name ?? "Open project"}
-              </span>
-              <span
-                className={cn(
-                  "toolbar-project-chip shrink-0 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono tabular-nums",
-                  !branchName && "opacity-0"
-                )}
-                aria-label={branchName ? `Current branch ${branchName}` : undefined}
-                aria-hidden={branchName ? undefined : true}
-              >
-                <GitBranch className="toolbar-project-chip-icon h-3 w-3 shrink-0" />
-                <span className="toolbar-project-chip-label">{branchName ?? "main"}</span>
-              </span>
-              <ChevronsUpDown className="toolbar-project-meta ml-0.5 h-3 w-3 shrink-0" />
-            </button>
-          </ProjectSwitcherPalette>
+                <ContextMenuTrigger asChild>
+                  <TooltipTrigger asChild>
+                    <button
+                      data-toolbar-item=""
+                      className="toolbar-project-pill app-no-drag pointer-events-auto flex h-9 min-w-0 max-w-full items-center justify-center gap-2 overflow-hidden border px-3 outline-hidden"
+                      data-testid="project-switcher-trigger"
+                      aria-label={currentProject ? undefined : "Open project"}
+                      role={currentProject ? "combobox" : undefined}
+                      aria-haspopup={currentProject ? "listbox" : undefined}
+                      aria-expanded={currentProject ? isDropdownOpen : undefined}
+                      onClick={() => projectSwitcher.open("dropdown")}
+                      onPointerEnter={clearPillTooltipFocusSuppression}
+                    >
+                      <span
+                        className={cn(
+                          "text-base leading-none shrink-0",
+                          !currentProject && "opacity-0"
+                        )}
+                        aria-label={currentProject ? "Project emoji" : undefined}
+                        aria-hidden={currentProject ? undefined : true}
+                      >
+                        {currentProject?.emoji ?? "•"}
+                      </span>
+                      <span
+                        className={cn(
+                          "min-w-0 truncate text-xs tracking-wide text-daintree-text",
+                          currentProject ? "font-semibold" : "font-medium"
+                        )}
+                      >
+                        {currentProject?.name ?? "Open project"}
+                      </span>
+                      <span
+                        className={cn(
+                          "toolbar-project-chip shrink-0 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono tabular-nums",
+                          !branchName && "opacity-0"
+                        )}
+                        aria-label={branchName ? `Current branch ${branchName}` : undefined}
+                        aria-hidden={branchName ? undefined : true}
+                      >
+                        <GitBranch className="toolbar-project-chip-icon h-3 w-3 shrink-0" />
+                        <span className="toolbar-project-chip-label">
+                          {truncatedBranchName ?? "main"}
+                        </span>
+                      </span>
+                      <ChevronsUpDown className="toolbar-project-meta ml-0.5 h-3 w-3 shrink-0" />
+                    </button>
+                  </TooltipTrigger>
+                </ContextMenuTrigger>
+              </ProjectSwitcherPalette>
+              {currentProject && activeSearchableProject && (
+                <ContextMenuContent
+                  className="max-h-[var(--radix-context-menu-content-available-height)] overflow-y-auto"
+                  onCloseAutoFocus={(e) => {
+                    suppressPillTooltipForFocusRestore();
+                    e.preventDefault();
+                  }}
+                >
+                  <ContextMenuItem onSelect={handlePillTogglePin}>
+                    {activeSearchableProject.isPinned ? (
+                      <>
+                        <PinOff className="mr-2 h-3.5 w-3.5" />
+                        Unpin project
+                      </>
+                    ) : (
+                      <>
+                        <Pin className="mr-2 h-3.5 w-3.5" />
+                        Pin project
+                      </>
+                    )}
+                  </ContextMenuItem>
+                  <ContextMenuItem onSelect={handleCopyProjectPath}>
+                    <Clipboard className="mr-2 h-3.5 w-3.5" />
+                    Copy path
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem onSelect={handleOpenProjectSettings}>
+                    Project settings
+                  </ContextMenuItem>
+                  {activeSearchableProject.processCount > 0 && (
+                    <ContextMenuItem
+                      onSelect={() => handleStopProject(activeSearchableProject.id)}
+                    >
+                      <Square className="mr-2 h-3.5 w-3.5" />
+                      Stop all agents
+                    </ContextMenuItem>
+                  )}
+                  <ContextMenuItem
+                    onSelect={() => handleCloseProject(activeSearchableProject.id)}
+                    className="text-status-error focus:text-status-error"
+                  >
+                    <X className="mr-2 h-3.5 w-3.5" />
+                    Close project
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              )}
+            </ContextMenu>
+            {currentProject && (
+              <TooltipContent side="bottom" className="max-w-[28rem]">
+                <div className="flex flex-col gap-0.5">
+                  <div className="text-xs font-medium">
+                    {currentProject.name}
+                    {branchName ? ` · ${branchName}` : ""}
+                  </div>
+                  <div className="text-text-muted font-mono text-[11px] truncate">
+                    {currentProject.path}
+                  </div>
+                </div>
+              </TooltipContent>
+            )}
+          </Tooltip>
         </div>
 
         {/* RIGHT GROUP */}

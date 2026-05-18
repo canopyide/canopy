@@ -47,6 +47,14 @@ export interface UseProjectSwitcherPaletteReturn {
   mode: ProjectSwitcherMode;
   query: string;
   results: SearchableProject[];
+  /**
+   * The currently active project as a `SearchableProject`, with stats and
+   * pin/missing flags enriched. Decoupled from `results` so callers (e.g. the
+   * toolbar pill context menu) can read pin/processCount/etc. even when the
+   * active project sits outside the 15-item results window or is filtered out
+   * by the current `query`.
+   */
+  activeProject: SearchableProject | null;
   selectedIndex: number;
   open: (mode?: ProjectSwitcherMode) => void;
   close: () => void;
@@ -238,6 +246,14 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
 
     return rankProjectMatches(query, sortedProjects).slice(0, MAX_RESULTS);
   }, [query, sortedProjects]);
+
+  // Decoupled from `results` so the toolbar pill keeps the active project's
+  // pin/process state even when search filters exclude it or it sits outside
+  // the MAX_RESULTS window.
+  const activeProject = useMemo<SearchableProject | null>(
+    () => searchableProjects.find((p) => p.isActive) ?? null,
+    [searchableProjects]
+  );
 
   useEffect(() => {
     if (results.length === 0) {
@@ -706,6 +722,7 @@ export function useProjectSwitcherPalette(): UseProjectSwitcherPaletteReturn {
     mode,
     query,
     results,
+    activeProject,
     selectedIndex,
     open,
     close,
