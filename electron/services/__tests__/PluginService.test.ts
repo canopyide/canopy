@@ -1788,6 +1788,59 @@ describe("Plugin action registry", () => {
     );
   });
 
+  it("sets effectiveDanger='safe' when the plugin holds no high-risk permission", () => {
+    service.registerPluginAction("acme.my-plugin", validContribution());
+    expect(service.listPluginActions()[0].effectiveDanger).toBe("safe");
+  });
+
+  it("keeps effectiveDanger='confirm' when the plugin self-declares confirm", () => {
+    service.registerPluginAction("acme.my-plugin", {
+      ...validContribution(),
+      danger: "confirm" as const,
+    });
+    expect(service.listPluginActions()[0].effectiveDanger).toBe("confirm");
+  });
+
+  it("raises effectiveDanger to 'confirm' for a self-declared 'safe' action when the manifest grants a high-risk permission", async () => {
+    await writePlugin("risky", {
+      name: "acme.risky",
+      version: "1.0.0",
+      permissions: ["fs:project-read", "shell:exec"],
+    });
+    const svc = new PluginService(tmpDir);
+    await svc.initialize();
+
+    svc.registerPluginAction("acme.risky", {
+      ...validContribution(),
+      id: "acme.risky.doThing",
+      danger: "safe" as const,
+    });
+
+    const action = svc.listPluginActions().find((a) => a.id === "acme.risky.doThing");
+    expect(action?.danger).toBe("safe"); // plugin's advisory declaration preserved
+    expect(action?.effectiveDanger).toBe("confirm"); // host raised it
+  });
+
+  it("does not raise effectiveDanger for read-only / reversible permissions", async () => {
+    await writePlugin("readonly", {
+      name: "acme.readonly",
+      version: "1.0.0",
+      permissions: ["fs:project-read", "network:fetch", "clipboard:write", "git:read"],
+    });
+    const svc = new PluginService(tmpDir);
+    await svc.initialize();
+
+    svc.registerPluginAction("acme.readonly", {
+      ...validContribution(),
+      id: "acme.readonly.doThing",
+      danger: "safe" as const,
+    });
+
+    expect(
+      svc.listPluginActions().find((a) => a.id === "acme.readonly.doThing")?.effectiveDanger
+    ).toBe("safe");
+  });
+
   it("unregisterPluginAction removes a single action and broadcasts", () => {
     service.registerPluginAction("acme.my-plugin", validContribution());
     broadcastToRendererMock.mockClear();

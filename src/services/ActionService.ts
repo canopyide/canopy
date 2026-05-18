@@ -293,7 +293,12 @@ export class ActionService {
     const monotonicStartMs = typeof performance !== "undefined" ? performance.now() : Date.now();
 
     try {
-      const result = await definition.run(validatedArgs, context);
+      // Derive (don't mutate — `context` may be a shared object from the
+      // context provider) a run-scoped context carrying the dispatch source
+      // so source-aware definitions (plugin synthetic actions) can avoid
+      // double-confirming an agent dispatch the MCP bridge already gated.
+      const runContext: ActionContext = { ...context, dispatchSource: source };
+      const result = await definition.run(validatedArgs, runContext);
       const durationMs =
         (typeof performance !== "undefined" ? performance.now() : Date.now()) - monotonicStartMs;
       if (

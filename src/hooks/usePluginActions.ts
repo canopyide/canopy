@@ -3,6 +3,7 @@ import { actionService } from "@/services/ActionService";
 import type { AnyActionDefinition } from "@/services/actions/actionTypes";
 import type { ActionDefinition } from "@shared/types/actions";
 import type { PluginActionDescriptor } from "@shared/types/plugin";
+import { requestPluginConfirmation } from "@/store/pluginConfirmStore";
 import { logWarn } from "@/utils/logger";
 
 /**
@@ -96,14 +97,20 @@ function descriptorsEqual(a: PluginActionDescriptor, b: PluginActionDescriptor):
     a.category === b.category &&
     a.kind === b.kind &&
     a.danger === b.danger &&
+    a.effectiveDanger === b.effectiveDanger &&
     JSON.stringify(a.keywords ?? null) === JSON.stringify(b.keywords ?? null) &&
     JSON.stringify(a.inputSchema ?? null) === JSON.stringify(b.inputSchema ?? null)
   );
 }
 
 function toSyntheticDefinition(descriptor: PluginActionDescriptor): AnyActionDefinition {
-  const { pluginId, id, title, description, category, kind, danger, keywords, inputSchema } =
-    descriptor;
+  const { pluginId, id, title, description, category, kind, keywords, inputSchema } = descriptor;
+
+  // Read the host-authoritative classification, never the plugin's advisory
+  // `danger`. Fail safe to "confirm" if `effectiveDanger` is absent — e.g. a
+  // stale descriptor from a pre-migration cached WebContentsView — so a
+  // missing field can never silently downgrade a destructive action.
+  const effectiveDanger = descriptor.effectiveDanger ?? "confirm";
 
   const definition: ActionDefinition = {
     id,
@@ -111,10 +118,27 @@ function toSyntheticDefinition(descriptor: PluginActionDescriptor): AnyActionDef
     description: description ?? "",
     category,
     kind,
-    danger,
+    danger: effectiveDanger,
     scope: "renderer",
     keywords: keywords ? [...keywords] : undefined,
-    run: async (args) => {
+    run: async (args, ctx) => {
+      // Confirm before dispatching a host-classified destructive plugin
+      // action. Skip for agent-sourced dispatch: the MCP bridge already
+      // surfaced its own confirm dialog and a second prompt would
+      // double-gate the same call. This is a UI consent gate, not a
+      // security boundary (enforcement is trust-based per #5651).
+      if (effectiveDanger === "confirm" && ctx?.dispatchSource !== "agent") {
+        const decision = await requestPluginConfirmation({
+          requestId: crypto.randomUUID(),
+          pluginId,
+          actionId: id,
+          actionTitle: title ?? id,
+          actionDescription: description ?? "",
+        });
+        if (decision !== "approved") {
+          return { ok: false, cancelled: true };
+        }
+      }
       return window.electron.plugin.invoke(pluginId, id, args);
     },
   };

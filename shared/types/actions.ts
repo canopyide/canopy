@@ -45,6 +45,15 @@ export interface ActionContext {
   focusedTerminalType?: string;
   focusedTerminalTitle?: string;
   isSettingsOpen?: boolean;
+  /**
+   * The dispatch source for the in-flight `run()` call. Set by
+   * `ActionService.dispatch` from the resolved {@link ActionSource} before
+   * invoking the definition. A read-only contextual signal (never a security
+   * gate): plugin synthetic actions read it to skip their own confirm dialog
+   * when `"agent"`, since the MCP bridge has already confirmed and would
+   * otherwise double-prompt.
+   */
+  dispatchSource?: ActionSource;
 }
 
 export type InferActionArgs<S extends z.ZodTypeAny | undefined> = [S] extends [z.ZodTypeAny]

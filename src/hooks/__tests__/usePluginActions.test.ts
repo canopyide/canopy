@@ -18,6 +18,7 @@ function descriptor(overrides: Partial<PluginActionDescriptor> = {}): PluginActi
     category: "plugin",
     kind: "command",
     danger: "safe",
+    effectiveDanger: "safe",
     ...overrides,
   };
 }
@@ -164,6 +165,80 @@ describe("usePluginActions", () => {
 
     act(() => emit!({ actions: [descriptor({ title: "Updated" })] }));
     expect(actionService.get("acme.my-plugin.doThing")?.title).toBe("Updated");
+  });
+
+  it("classifies the synthetic definition from effectiveDanger, not the advisory danger", async () => {
+    const { actionService } = await import("@/services/ActionService");
+    const { usePluginActions } = await import("../usePluginActions");
+
+    // Plugin self-declares "safe" but the host raised effectiveDanger to
+    // "confirm" — the renderer must trust the host value.
+    const action = descriptor({ danger: "safe", effectiveDanger: "confirm" });
+    getActionsMock.mockResolvedValue([action]);
+
+    renderHook(() => usePluginActions());
+    await waitFor(() => expect(actionService.has(action.id)).toBe(true));
+
+    expect(actionService.get(action.id)?.danger).toBe("confirm");
+  });
+
+  it("fails safe to confirm when effectiveDanger is absent (stale descriptor)", async () => {
+    const { actionService } = await import("@/services/ActionService");
+    const { usePluginActions } = await import("../usePluginActions");
+
+    const stale = descriptor();
+    delete (stale as { effectiveDanger?: unknown }).effectiveDanger;
+    getActionsMock.mockResolvedValue([stale]);
+
+    renderHook(() => usePluginActions());
+    await waitFor(() => expect(actionService.has(stale.id)).toBe(true));
+
+    expect(actionService.get(stale.id)?.danger).toBe("confirm");
+  });
+
+  it("prompts for confirmation before invoking a confirm-classified action and respects rejection", async () => {
+    const { actionService } = await import("@/services/ActionService");
+    const { usePluginActions } = await import("../usePluginActions");
+    const { usePluginConfirmStore } = await import("@/store/pluginConfirmStore");
+
+    const action = descriptor({ effectiveDanger: "confirm" });
+    getActionsMock.mockResolvedValue([action]);
+    invokeMock.mockResolvedValue({ ok: true });
+
+    renderHook(() => usePluginActions());
+    await waitFor(() => expect(actionService.has(action.id)).toBe(true));
+
+    // Reject path: invoke must NOT be called.
+    const rejected = actionService.dispatch(action.id, { x: 1 });
+    await waitFor(() => expect(usePluginConfirmStore.getState().current).not.toBeNull());
+    expect(invokeMock).not.toHaveBeenCalled();
+    act(() => usePluginConfirmStore.getState().resolveCurrent("rejected"));
+    await rejected;
+    expect(invokeMock).not.toHaveBeenCalled();
+
+    // Approve path: invoke runs after explicit approval.
+    const approved = actionService.dispatch(action.id, { x: 2 });
+    await waitFor(() => expect(usePluginConfirmStore.getState().current).not.toBeNull());
+    act(() => usePluginConfirmStore.getState().resolveCurrent("approved"));
+    await approved;
+    expect(invokeMock).toHaveBeenCalledWith("acme.my-plugin", action.id, { x: 2 });
+  });
+
+  it("skips the confirm dialog for agent-sourced dispatch (MCP bridge already confirmed)", async () => {
+    const { actionService } = await import("@/services/ActionService");
+    const { usePluginActions } = await import("../usePluginActions");
+    const { usePluginConfirmStore } = await import("@/store/pluginConfirmStore");
+
+    const action = descriptor({ effectiveDanger: "confirm" });
+    getActionsMock.mockResolvedValue([action]);
+    invokeMock.mockResolvedValue({ ok: true });
+
+    renderHook(() => usePluginActions());
+    await waitFor(() => expect(actionService.has(action.id)).toBe(true));
+
+    await actionService.dispatch(action.id, { y: 1 }, { source: "agent", confirmed: true });
+    expect(usePluginConfirmStore.getState().current).toBeNull();
+    expect(invokeMock).toHaveBeenCalledWith("acme.my-plugin", action.id, { y: 1 });
   });
 
   it("does not clobber an already-registered built-in action of the same id", async () => {
