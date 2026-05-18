@@ -286,18 +286,17 @@ describe("PRIntegrationService", () => {
       expect(prServiceMock.start).not.toHaveBeenCalled();
     });
 
-    it("silently ignores unknown providerId without side effects", () => {
+    it("does not mutate auth state for unknown providerId", () => {
       const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
 
       service.updateForgeCredentials("builtin.unknown", { kind: "bearer", value: "abc" }, "/repo");
 
-      // Should not crash, should not touch GitHubAuth for unknown provider
       expect(GitHubAuth.setMemoryToken).not.toHaveBeenCalled();
-      // But should still refresh PR service since credentials is truthy
+      // Still refreshes since credentials is truthy
       expect(prServiceMock.refresh).toHaveBeenCalledTimes(1);
     });
 
-    it("ignores non-bearer credentials for GitHub", () => {
+    it("does not alter GitHub auth for non-bearer credentials", () => {
       const service = new PRIntegrationService(prServiceMock, eventBus, callbacks);
 
       service.updateForgeCredentials(
@@ -306,7 +305,8 @@ describe("PRIntegrationService", () => {
         "/repo"
       );
 
-      expect(GitHubAuth.setMemoryToken).toHaveBeenCalledWith(null);
+      // Non-bearer is silently ignored — GitHub only supports bearer tokens
+      expect(GitHubAuth.setMemoryToken).not.toHaveBeenCalled();
       expect(prServiceMock.refresh).toHaveBeenCalledTimes(1);
     });
   });

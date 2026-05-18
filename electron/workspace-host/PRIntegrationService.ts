@@ -193,8 +193,12 @@ export class PRIntegrationService {
     projectRootPath: string | null
   ): void {
     if (providerId === "github" || providerId === "builtin.github") {
-      const token = credentials?.kind === "bearer" ? credentials.value : null;
-      GitHubAuth.setMemoryToken(token);
+      if (credentials === null) {
+        GitHubAuth.setMemoryToken(null);
+      } else if (credentials.kind === "bearer") {
+        GitHubAuth.setMemoryToken(credentials.value);
+      }
+      // Non-bearer credentials are silently ignored — GitHub only supports bearer tokens.
     }
     // Additional providers dispatch through their own auth modules.
 
