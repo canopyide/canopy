@@ -1074,6 +1074,28 @@ describe("ActionService", () => {
       });
     });
 
+    it("nonRepeatable outer alias yields lastAction = inner primary (deprecated-alias pattern)", async () => {
+      // Models the github.* → forge.* one-release alias: the outer alias is
+      // nonRepeatable so it never overwrites lastAction, and the inner forge.*
+      // primary is what action.repeatLast should replay.
+      service.register(makeAction("forge.primary"));
+      service.register(
+        makeAction("github.alias", {
+          nonRepeatable: true,
+          run: async () => {
+            await service.dispatch("forge.primary" as ActionId, undefined, { source: "user" });
+          },
+        })
+      );
+
+      await service.dispatch("github.alias" as ActionId, { marker: "alias" }, { source: "user" });
+
+      expect(service.getLastAction()).toEqual({
+        actionId: "forge.primary",
+        args: undefined,
+      });
+    });
+
     it("captured args are isolated from later caller mutation", async () => {
       service.register(makeAction("test.mutable"));
       const args = { list: [1, 2, 3] };

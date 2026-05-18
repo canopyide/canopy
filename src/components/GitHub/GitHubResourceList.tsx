@@ -327,13 +327,13 @@ export function GitHubResourceList({
     const state = filterState as string;
     if (type === "issue") {
       void actionService.dispatch(
-        "github.openIssues",
+        "forge.openIssues",
         { projectPath, query, state },
         { source: "user" }
       );
     } else {
       void actionService.dispatch(
-        "github.openPRs",
+        "forge.openPRs",
         { projectPath, query, state },
         { source: "user" }
       );

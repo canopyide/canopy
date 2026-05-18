@@ -177,12 +177,25 @@ export const BUILT_IN_ACTION_IDS = [
   "window.zoomReset",
   "window.close",
 
+  // -- forgeActions (provider-routed; GitHub-only today) --
+  "forge.openIssues",
+  "forge.openPRs",
+  "forge.openCommits",
+  "forge.openIssue",
+  "forge.assignIssue",
+  "forge.validateToken",
+
   // -- githubActions --
+  // Five entries (openIssues, openPRs, openCommits, openIssue, validateToken)
+  // are one-release aliases that forward to forge.*. assignIssue is a net-new
+  // alias matching forge.assignIssue for parity. Removed in the release after
+  // this one with a CHANGELOG callout.
   "github.openIssues",
   "github.openPRs",
   "github.openCommits",
   "github.openIssue",
   "github.openPR",
+  "github.assignIssue",
   "github.getRepoStats",
   "github.listIssues",
   "github.listPullRequests",

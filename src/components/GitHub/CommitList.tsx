@@ -158,7 +158,7 @@ export function CommitList({ projectPath, branch, onClose, initialCount }: Commi
   };
 
   const handleViewOnGitHub = () => {
-    actionService.dispatch("github.openCommits", { projectPath, branch }, { source: "user" });
+    actionService.dispatch("forge.openCommits", { projectPath, branch }, { source: "user" });
     onClose?.();
   };
 
