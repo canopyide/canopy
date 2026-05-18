@@ -73,10 +73,10 @@ Columns:
 | Action / call site | Current | UI confirm | Reversibility | Blast | Tier | Recommendation | Follow-up |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `worktree.sessions.minimizeAll` / `maximizeAll` | safe | n/a | reversible | one worktree | D0 | Leave | — |
-| `worktree.sessions.restartAll` | safe | n/a | local-irreversible (scrollback lost) | one worktree | D1 | Add confirm when the worktree has any running agent sessions | TBD |
+| `worktree.sessions.restartAll` | **confirm** (updated #8245) | yes (`TerminalDestructiveActionConfirmDialog` via `useTerminalPendingDestructiveActionStore`) — fires only when the target worktree has a running agent session | local-irreversible (scrollback lost) | one worktree | D1 | Done (#8245) | — |
 | `worktree.sessions.resetRenderers` | safe | n/a | reversible (just re-renders) | one worktree | D0 | Leave | — |
 | `worktree.sessions.closeCompleted` | safe | n/a | local-irreversible (trashed terminals lose scrollback) | one worktree | D0 | Leave — only targets completed/exited terminals | — |
-| `worktree.sessions.trashAll` | **confirm** (updated #7881) | none in current call sites | local-irreversible (scrollback lost; trashed) | one worktree | D1 | Wire `ConfirmDialog` at the call site (worktree card menu) | TBD |
+| `worktree.sessions.trashAll` | confirm | yes (`useWorktreeActions.ts` `handleCloseAll`, updated #8245) — verb-noun "Trash all sessions" with consequence preview | local-irreversible (scrollback lost; trashed) | one worktree | D1 | Done (#8245) | — |
 | `worktree.sessions.endAll` | confirm | yes (`useWorktreeActions.ts:130-148`) | local-irreversible | one worktree | D1 | Leave — current pattern is the model for D1 confirms | — |
 
 ### Terminal lifecycle
@@ -85,10 +85,11 @@ Columns:
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `terminal.close` / `terminal.trash` | safe | n/a | reversible (restore from trash before next gc) | one terminal | D0 | Leave | — |
 | `terminal.background` | safe | n/a | reversible (foreground / focus) | one terminal | D0 | Leave | — |
-| `terminal.kill` | safe | none (single-terminal kill from context menu / keybinding) | local-irreversible (PTY killed, scrollback lost) | one terminal | D1 | Add confirm when terminal has an agent session attached; bare PTY can stay D0 | TBD |
-| `terminal.killAll` | safe | none | local-irreversible | every non-ephemeral terminal | D1 | Add confirm (label includes terminal count) | TBD |
+| `terminal.kill` | **confirm** (updated #8245) | yes — context menu (local `ConfirmDialog`) and keybinding/palette (app-level `TerminalDestructiveActionConfirmDialog`); fires only when the terminal has a running agent session (`terminalHasRunningAgentSession`), bare PTY stays D0 | local-irreversible (PTY killed, scrollback lost) | one terminal | D1 | Done (#8245) | — |
+| `terminal.killAll` | **confirm** (updated #8245) | yes (`TerminalDestructiveActionConfirmDialog`) — fires when any non-ephemeral terminal has a running agent; label shows total terminals + running-agent count | local-irreversible | every non-ephemeral terminal | D1 | Done (#8245) | — |
 | `terminal.closeAll` | safe | none | reversible (trash, not kill) | every active-worktree terminal | D0 | Leave | — |
-| `terminal.restart` / `terminal.restartAll` | safe | n/a | local-irreversible (scrollback lost; process re-spawned) | one / many terminals | D1 (when agent present) | Add confirm for terminals with running agent sessions | TBD |
+| `terminal.restart` | **confirm** (updated #8245) | yes — context menu + keybinding/palette dialog hosts; fires only when terminal has a running agent session | local-irreversible (scrollback lost; process re-spawned) | one terminal | D1 | Done (#8245) | — |
+| `terminal.restartAll` | **confirm** (updated #8245) | yes (`TerminalDestructiveActionConfirmDialog`) — fires when any non-trash terminal has a running agent | local-irreversible | many terminals | D1 | Done (#8245) | — |
 | `terminal.restartService` | safe | n/a | local-irreversible (all PTY processes restart) | every terminal in the window | D1 | Action is gated on `backendStatus === "disconnected"`; the gate already implies an error state, so leave as-is | — |
 
 ### Fleet operations

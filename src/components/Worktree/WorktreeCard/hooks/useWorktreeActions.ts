@@ -124,12 +124,24 @@ export function useWorktreeActions({
   }, [worktree.id]);
 
   const handleCloseAll = useCallback(() => {
-    void actionService.dispatch(
-      "worktree.sessions.trashAll",
-      { worktreeId: worktree.id },
-      { source: "user" }
-    );
-  }, [worktree.id]);
+    const label = worktree.issueTitle ?? worktree.branch;
+    setConfirmDialog({
+      isOpen: true,
+      title: `Trash all sessions for '${label}'?`,
+      description:
+        "Every session in this worktree moves to trash. Active agents, running processes, and unsaved scrollback will be lost. Sessions can be restored from trash before garbage collection.",
+      confirmLabel: "Trash all sessions",
+      variant: "destructive",
+      onConfirm: () => {
+        void actionService.dispatch(
+          "worktree.sessions.trashAll",
+          { worktreeId: worktree.id, confirmed: true },
+          { source: "user" }
+        );
+        setConfirmDialog({ isOpen: false });
+      },
+    });
+  }, [worktree.id, worktree.issueTitle, worktree.branch]);
 
   const handleTerminateAll = useCallback(() => {
     const label = worktree.issueTitle ?? worktree.branch;
