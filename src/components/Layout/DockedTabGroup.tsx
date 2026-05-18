@@ -494,7 +494,11 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
               aria-label={`${activePanel.title} (${panels.length} tabs) - Click to preview, double-click to move to grid, drag to reorder`}
             >
               <div className="flex items-center justify-center shrink-0">
-                <TerminalIcon kind={activePanel.kind} chrome={activeChrome} className="w-3.5 h-3.5" />
+                <TerminalIcon
+                  kind={activePanel.kind}
+                  chrome={activeChrome}
+                  className="w-3.5 h-3.5"
+                />
               </div>
               <span className="truncate min-w-[48px] max-w-[140px] font-sans font-medium">
                 {displayTitle}
@@ -569,7 +573,10 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
               return;
             }
 
-            setTimeout(() => terminalInstanceService.focus(activePanel.id), TERMINAL_FOCUS_DELAY_MS);
+            setTimeout(
+              () => terminalInstanceService.focus(activePanel.id),
+              TERMINAL_FOCUS_DELAY_MS
+            );
           }}
         >
           {/* Tab bar at top of popover */}
