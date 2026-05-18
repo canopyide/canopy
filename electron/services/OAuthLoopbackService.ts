@@ -58,6 +58,15 @@ export function startOAuthLoopback(authUrl: string, panelId: string): Promise<OA
     return Promise.resolve({ success: false, cause: "server-error" });
   }
 
+  // Validate redirect_uri is a parseable absolute URL — a relative path would
+  // throw inside the HTTP server handler, leaving the promise unsettled.
+  try {
+    new URL(originalRedirectUri);
+  } catch {
+    console.warn("[OAuthLoopback] Invalid redirect_uri:", originalRedirectUri);
+    return Promise.resolve({ success: false, cause: "server-error" });
+  }
+
   return new Promise((resolve) => {
     let settled = false;
     let capturedLoopbackUri = "";

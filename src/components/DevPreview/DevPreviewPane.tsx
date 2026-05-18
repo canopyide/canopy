@@ -991,11 +991,11 @@ export function DevPreviewPane({
   // replace the pending data rather than stacking.
   useEffect(() => {
     let disposed = false;
-    let latestUrl: string | null = null;
+    let latestBlockedData: { url: string; canOpenExternal: boolean } | null = null;
 
     const cleanup = window.electron.webview.onNavigationBlocked((data) => {
       if (data.panelId !== id) return;
-      latestUrl = data.url;
+      latestBlockedData = { url: data.url, canOpenExternal: data.canOpenExternal };
       const sessionStorageSnapshotPromise = looksLikeOAuthUrl(data.url)
         ? captureWebviewSessionStorage(webviewElement)
         : Promise.resolve<SessionStorageEntry[]>([]);
@@ -1004,13 +1004,14 @@ export function DevPreviewPane({
         clearTimeout(blockedNavTimerRef.current);
       }
       blockedNavTimerRef.current = setTimeout(() => {
+        const latestData = latestBlockedData;
         void sessionStorageSnapshotPromise
           .then((sessionStorageSnapshot) => {
             if (disposed) return;
             dispatchBlockedNav({
               type: "BLOCKED",
-              url: latestUrl ?? data.url,
-              canOpenExternal: data.canOpenExternal,
+              url: latestData?.url ?? data.url,
+              canOpenExternal: latestData?.canOpenExternal ?? data.canOpenExternal,
               sessionStorageSnapshot,
             });
             blockedNavTimerRef.current = null;

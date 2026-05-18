@@ -785,16 +785,14 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
     // Step 2: Start loopback server, open system browser, wait for callback
     const loopbackResult = await startOAuthLoopback(authUrl, panelId);
     if (!loopbackResult.success) {
-      if (ownerWindow) {
+      // Suppress status event for cancelled flows — the renderer already
+      // dismissed the banner via the Cancel button, and a second "Sign in"
+      // preempting a first would flash a misleading "error" phase.
+      if (loopbackResult.cause !== "cancelled" && ownerWindow) {
         sendToRenderer(ownerWindow, CHANNELS.WEBVIEW_OAUTH_LOOPBACK_STATUS, {
           panelId,
           phase: loopbackResult.cause === "timed-out" ? "timed-out" : "error",
-          message:
-            loopbackResult.cause === "cancelled"
-              ? "Sign-in cancelled"
-              : loopbackResult.cause === "timed-out"
-                ? "Sign-in timed out"
-                : undefined,
+          message: loopbackResult.cause === "timed-out" ? "Sign-in timed out" : undefined,
         });
       }
       return loopbackResult;

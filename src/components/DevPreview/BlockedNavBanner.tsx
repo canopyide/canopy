@@ -1,4 +1,4 @@
-import { useReducer, useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ExternalLink, AlertTriangle, CircleCheck, Copy } from "lucide-react";
 import { InlineStatusBanner, type BannerAction } from "../Terminal/InlineStatusBanner";
 import { looksLikeOAuthUrl } from "@shared/utils/urlUtils";
@@ -102,16 +102,16 @@ export function BlockedNavBanner({
   webviewElement,
   onDispatch,
 }: BlockedNavBannerProps) {
-  const [copied, setCopied] = useReducer((_: boolean) => true, false);
+  const [copied, setCopied] = useState(false);
   const copyTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleCopyUrl = useCallback(async () => {
     if (!state) return;
     try {
       await window.electron.clipboard.writeText(state.url);
-      setCopied();
+      setCopied(true);
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
-      copyTimerRef.current = setTimeout(() => setCopied(), 2000);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
     } catch {
       // clipboard unavailable — silently ignore
     }
@@ -184,14 +184,21 @@ export function BlockedNavBanner({
     }
   };
 
-  const handleCancelOAuth = async () => {
+  const handleCancelOAuth = useCallback(async () => {
     try {
       await window.electron.webview.cancelOAuthLoopback(panelId);
     } catch {
       // cancel may fail if already settled — harmless
     }
+  }, [panelId]);
+
+  const handleDismiss = useCallback(() => {
+    // Cancel any in-flight loopback when dismissing from an OAuth phase
+    if (state && (state.phase === "oauth-started" || state.phase === "oauth-intercepting")) {
+      window.electron.webview.cancelOAuthLoopback(panelId).catch(() => {});
+    }
     onDispatch({ type: "DISMISS" });
-  };
+  }, [state, panelId, onDispatch]);
 
   const copyAction: BannerAction = {
     id: "copy-url",
@@ -230,7 +237,10 @@ export function BlockedNavBanner({
         actions.push({
           id: "oauth-cancel",
           label: "Cancel",
-          onClick: handleCancelOAuth,
+          onClick: () => {
+            handleCancelOAuth();
+            onDispatch({ type: "DISMISS" });
+          },
           variant: "danger",
         });
         break;
@@ -238,7 +248,10 @@ export function BlockedNavBanner({
         actions.push({
           id: "oauth-cancel",
           label: "Cancel",
-          onClick: handleCancelOAuth,
+          onClick: () => {
+            handleCancelOAuth();
+            onDispatch({ type: "DISMISS" });
+          },
           variant: "danger",
         });
         break;
@@ -309,7 +322,7 @@ export function BlockedNavBanner({
       contextLine={url}
       severity={severity}
       actions={buildActions()}
-      onClose={() => onDispatch({ type: "DISMISS" })}
+      onClose={handleDismiss}
       role={phase === "blocked" || phase === "oauth-started" ? "status" : "alert"}
     />
   );
