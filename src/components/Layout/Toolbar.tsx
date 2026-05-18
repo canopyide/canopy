@@ -44,6 +44,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { middleTruncate } from "@/utils/textParsing";
+import { useCopyWithFeedback } from "@/hooks/useCopyWithFeedback";
 import { useToolbarOverflow } from "@/hooks/useToolbarOverflow";
 import { useWorktreeActions } from "@/hooks/useWorktreeActions";
 import {
@@ -1084,14 +1085,15 @@ export function Toolbar({
 
   const activeSearchableProject = projectSwitcher.activeProject;
   const truncatedBranchName = branchName ? middleTruncate(branchName, 24) : undefined;
+  const { copy: copyPillPath } = useCopyWithFeedback({ announcement: "Path copied" });
   const handleCopyProjectPath = useCallback(() => {
     if (!currentProject) return;
-    void navigator.clipboard.writeText(currentProject.path);
-  }, [currentProject]);
+    void copyPillPath(currentProject.path);
+  }, [currentProject, copyPillPath]);
   const handlePillTogglePin = useCallback(() => {
-    if (!activeSearchableProject) return;
-    void projectSwitcher.togglePinProject(activeSearchableProject.id);
-  }, [activeSearchableProject, projectSwitcher]);
+    if (!currentProject) return;
+    void projectSwitcher.togglePinProject(currentProject.id);
+  }, [currentProject, projectSwitcher]);
 
   return (
     <header>
@@ -1234,7 +1236,7 @@ export function Toolbar({
                   </TooltipTrigger>
                 </ContextMenuTrigger>
               </ProjectSwitcherPalette>
-              {currentProject && activeSearchableProject && (
+              {currentProject && (
                 <ContextMenuContent
                   className="max-h-[var(--radix-context-menu-content-available-height)] overflow-y-auto"
                   onCloseAutoFocus={(e) => {
@@ -1243,7 +1245,7 @@ export function Toolbar({
                   }}
                 >
                   <ContextMenuItem onSelect={handlePillTogglePin}>
-                    {activeSearchableProject.isPinned ? (
+                    {activeSearchableProject?.isPinned ? (
                       <>
                         <PinOff className="mr-2 h-3.5 w-3.5" />
                         Unpin project
@@ -1263,16 +1265,17 @@ export function Toolbar({
                   <ContextMenuItem onSelect={handleOpenProjectSettings}>
                     Project settings
                   </ContextMenuItem>
-                  {activeSearchableProject.processCount > 0 && (
-                    <ContextMenuItem
-                      onSelect={() => handleStopProject(activeSearchableProject.id)}
-                    >
-                      <Square className="mr-2 h-3.5 w-3.5" />
-                      Stop all agents
-                    </ContextMenuItem>
-                  )}
+                  {activeSearchableProject &&
+                    activeSearchableProject.processCount > 0 && (
+                      <ContextMenuItem
+                        onSelect={() => handleStopProject(currentProject.id)}
+                      >
+                        <Square className="mr-2 h-3.5 w-3.5" />
+                        Stop all agents
+                      </ContextMenuItem>
+                    )}
                   <ContextMenuItem
-                    onSelect={() => handleCloseProject(activeSearchableProject.id)}
+                    onSelect={() => handleCloseProject(currentProject.id)}
                     className="text-status-error focus:text-status-error"
                   >
                     <X className="mr-2 h-3.5 w-3.5" />

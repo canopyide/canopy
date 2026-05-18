@@ -501,10 +501,16 @@ describe("useProjectSwitcherPalette", () => {
       };
     }
 
-    it("exposes the active project as a SearchableProject", async () => {
-      const projects = [makeProject(1), makeProject(2)];
+    it("exposes the active project as a SearchableProject with enriched stats + pin state", async () => {
+      const projects = [
+        { ...makeProject(1), pinned: true },
+        makeProject(2),
+      ];
       projectState.projects = projects;
       projectState.currentProject = { id: "project-1" };
+      projectStatsState.stats = {
+        "project-1": { processCount: 3, activeAgentCount: 1, waitingAgentCount: 0 },
+      };
       getBulkStatsMock.mockResolvedValue(emptyBulkStats(["project-1", "project-2"]));
 
       const { result } = renderHook(() => useProjectSwitcherPalette());
@@ -515,6 +521,12 @@ describe("useProjectSwitcherPalette", () => {
 
       expect(result.current.activeProject?.id).toBe("project-1");
       expect(result.current.activeProject?.isActive).toBe(true);
+      // Conditional context-menu items on the toolbar pill depend on these
+      // enriched fields, so assert them explicitly rather than relying on id
+      // equality to imply they're populated.
+      expect(result.current.activeProject?.isPinned).toBe(true);
+      expect(result.current.activeProject?.processCount).toBe(3);
+      expect(result.current.activeProject?.path).toBe("/repo/p1");
     });
 
     it("keeps activeProject populated even when the active project sits outside the 15-item results cap", async () => {
@@ -538,6 +550,10 @@ describe("useProjectSwitcherPalette", () => {
       expect(idsInResults).not.toContain("project-20");
       expect(result.current.results).toHaveLength(15);
       expect(result.current.activeProject?.isActive).toBe(true);
+      // Fields the pill context-menu reads must remain populated even when
+      // the active project sits outside the results window.
+      expect(result.current.activeProject?.path).toBe("/repo/p20");
+      expect(result.current.activeProject?.processCount).toBe(0);
     });
 
     it("keeps activeProject populated even when the current query filters out the active project", async () => {
@@ -572,8 +588,11 @@ describe("useProjectSwitcherPalette", () => {
 
       const { result } = renderHook(() => useProjectSwitcherPalette());
 
+      // Wait for searchableProjects to populate so the activeProject memo has
+      // genuinely run with a non-empty list, otherwise the `null` assertion
+      // could resolve trivially before any project data is present.
       await waitFor(() => {
-        expect(result.current.results.length).toBeGreaterThanOrEqual(0);
+        expect(result.current.results).toHaveLength(1);
       });
 
       expect(result.current.activeProject).toBeNull();
