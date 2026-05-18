@@ -360,7 +360,19 @@ const RATE_LIMIT_MAX_BUCKETS = 200;
 
 interface RateLimitBucket {
   tokens: number;
+  /**
+   * Token-refill clock — advances only when a refill interval elapses, so
+   * its rate of change reflects token mechanics, not source activity. Don't
+   * use it for LRU pruning; use `lastSeen` instead.
+   */
   lastRefill: number;
+  /**
+   * Wall-clock of the most recent rate-limit check on this bucket. Updated
+   * on every call (allow or overflow). Used as the LRU sort key so an
+   * actively-overflowing source stays in the map and isn't recycled into a
+   * fresh 3-token bucket by an unrelated insert burst.
+   */
+  lastSeen: number;
   /** id of the active summary inbox row, or null when no overflow is in flight */
   overflowEntryId: string | null;
   overflowCount: number;
@@ -376,7 +388,7 @@ function pruneRateLimitBuckets(): void {
   if (_rateLimitBuckets.size <= RATE_LIMIT_MAX_BUCKETS) return;
 
   const entries = Array.from(_rateLimitBuckets.entries());
-  entries.sort((a, b) => a[1].lastRefill - b[1].lastRefill);
+  entries.sort((a, b) => a[1].lastSeen - b[1].lastSeen);
 
   const toRemove = entries.slice(0, entries.length - RATE_LIMIT_MAX_BUCKETS);
   for (const [key] of toRemove) {
@@ -414,12 +426,14 @@ function checkAndApplyRateLimit(payload: NotifyPayload): boolean {
     bucket = {
       tokens: RATE_LIMIT_MAX_TOKENS,
       lastRefill: now,
+      lastSeen: now,
       overflowEntryId: null,
       overflowCount: 0,
     };
     _rateLimitBuckets.set(key, bucket);
     pruneRateLimitBuckets();
   } else {
+    bucket.lastSeen = now;
     const elapsed = now - bucket.lastRefill;
     const refill = Math.floor(elapsed / RATE_LIMIT_REFILL_MS);
     if (refill > 0) {
@@ -441,20 +455,35 @@ function checkAndApplyRateLimit(payload: NotifyPayload): boolean {
   }
 
   bucket.overflowCount += 1;
-  const summaryText = buildOverflowSummary(key, bucket.overflowCount);
   const historyStore = useNotificationHistoryStore.getState();
 
+  // Try to update an existing summary row first. If the row has been
+  // archived, dismissed, or pushed off the end of the 200-entry history
+  // ring, `updateEntryMessage` returns false — fall through and write a
+  // fresh row so the overflow signal isn't silently lost.
   if (bucket.overflowEntryId) {
-    historyStore.updateEntryMessage(bucket.overflowEntryId, summaryText);
-  } else {
+    const updated = historyStore.updateEntryMessage(
+      bucket.overflowEntryId,
+      buildOverflowSummary(key, bucket.overflowCount)
+    );
+    if (!updated) {
+      bucket.overflowEntryId = null;
+      bucket.overflowCount = 1;
+    }
+  }
+  if (!bucket.overflowEntryId) {
+    // No context on the summary row: a bucket can span multiple projects
+    // when its key isn't context-derived (explicit `rateLimitKey`, falls
+    // back to `correlationId` or `type`), so a contextual affordance like
+    // "Mute project X" would dispatch against the first overflow's project
+    // and silently mute the wrong target on later events.
     bucket.overflowEntryId = historyStore.addEntry({
       type: payload.type,
       title: payload.title,
-      message: summaryText,
+      message: buildOverflowSummary(key, bucket.overflowCount),
       correlationId: payload.correlationId,
       seenAsToast: false,
       countable: payload.countable,
-      context: payload.context,
     });
   }
 
@@ -651,13 +680,24 @@ export function notify(payload: NotifyPayload): string {
 
   const isFocused = typeof document !== "undefined" ? document.hasFocus() : true;
 
-  // Per-source rate-limit gate. Runs before history-entry creation so
-  // overflowed events aren't double-recorded (original row + summary row).
-  // Skips priority "low" (already inbox-only), transient (no inbox fallback),
-  // urgent (explicit critical override), and coalesce (its own gate over a
-  // shorter window).
+  const originVisible = priority === "high" && isFocused && isOriginSurfaceVisible(context);
+  const shouldToast = priority === "watch" || (priority === "high" && isFocused && !originVisible);
+  const shouldNative = priority === "watch";
+
+  // Per-source rate-limit gate. Only consumes a token (and routes to the
+  // overflow summary inbox row) when the notification would actually toast
+  // in the current state — blurred/quiet/disabled paths already deliver
+  // inbox-only, so rate-limiting them would create a confusing summary row
+  // alongside the normal inbox entries it's meant to replace. Bypasses:
+  // `transient` (no inbox fallback would silently drop), `urgent` (explicit
+  // critical override — `isQuiet` is already false here when `urgent`),
+  // and `coalesce` (its own gate over a shorter window). Runs before the
+  // history-entry write so overflowed events aren't double-recorded as
+  // both an original row and a summary row.
   if (
-    priority !== "low" &&
+    shouldToast &&
+    notificationsEnabled &&
+    !isQuiet &&
     !payload.transient &&
     !payload.urgent &&
     !payload.coalesce &&
@@ -665,10 +705,6 @@ export function notify(payload: NotifyPayload): string {
   ) {
     return "";
   }
-
-  const originVisible = priority === "high" && isFocused && isOriginSurfaceVisible(context);
-  const shouldToast = priority === "watch" || (priority === "high" && isFocused && !originVisible);
-  const shouldNative = priority === "watch";
 
   const historyEntryId =
     historyMessage && !payload.transient

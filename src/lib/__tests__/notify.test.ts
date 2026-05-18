@@ -2451,4 +2451,158 @@ describe("per-source rate-limit", () => {
     // No assertion on exact map size (internal state), but no crash means
     // the LRU pruner ran without indexing past the end.
   });
+
+  it("recreates the summary row after a user archives the overflow entry", () => {
+    for (let i = 0; i < 5; i++) {
+      notify({ type: "error", message: `f${i}`, rateLimitKey: "noisy" });
+    }
+    const firstSummary = useNotificationHistoryStore
+      .getState()
+      .entries.find((e) => e.message.includes("more event"));
+    expect(firstSummary).toBeDefined();
+
+    useNotificationHistoryStore.getState().archiveEntry(firstSummary!.id);
+
+    // Source keeps firing — next overflow must create a fresh summary row,
+    // not silently vanish into the archived (no-op-updateable) entry.
+    notify({ type: "error", message: "f5", rateLimitKey: "noisy" });
+
+    const liveSummary = useNotificationHistoryStore
+      .getState()
+      .entries.find((e) => e.message.includes("more event") && !e.archivedAt);
+    expect(liveSummary).toBeDefined();
+    expect(liveSummary!.id).not.toBe(firstSummary!.id);
+    expect(liveSummary!.message).toBe("noisy reported 1 more event — open inbox");
+  });
+
+  it("recreates the summary row after the entry is evicted by MAX_ENTRIES truncation", () => {
+    for (let i = 0; i < 5; i++) {
+      notify({ type: "error", message: `f${i}`, rateLimitKey: "noisy" });
+    }
+    const firstSummary = useNotificationHistoryStore
+      .getState()
+      .entries.find((e) => e.message.includes("more event"));
+    expect(firstSummary).toBeDefined();
+
+    // Push the summary row off the 200-entry ring buffer with unrelated
+    // entries; pruner takes oldest-first.
+    for (let i = 0; i < 200; i++) {
+      useNotificationHistoryStore.getState().addEntry({
+        type: "info",
+        message: `unrelated-${i}`,
+        seenAsToast: true,
+      });
+    }
+    expect(
+      useNotificationHistoryStore.getState().entries.find((e) => e.id === firstSummary!.id)
+    ).toBeUndefined();
+
+    // Next overflow must write a fresh summary row, not silently drop.
+    notify({ type: "error", message: "after-eviction", rateLimitKey: "noisy" });
+
+    const newSummary = useNotificationHistoryStore
+      .getState()
+      .entries.find((e) => e.message.includes("more event"));
+    expect(newSummary).toBeDefined();
+    expect(newSummary!.id).not.toBe(firstSummary!.id);
+  });
+
+  it("LRU prune keeps the most-recently-active bucket even when its lastRefill is old", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 0, 1, 12, 0, 0));
+
+    // T0: seed bucket A and drive it into overflow. Its `lastRefill` freezes
+    // here since an empty bucket never refills.
+    for (let i = 0; i < 5; i++) {
+      notify({ type: "info", message: `a${i}`, rateLimitKey: "active" });
+    }
+
+    // T1: create 199 unrelated buckets. Each has `lastRefill = T1`, newer
+    // than `active`'s frozen `lastRefill = T0`. No prune yet — map size 200.
+    vi.advanceTimersByTime(1_000);
+    for (let i = 0; i < 199; i++) {
+      notify({ type: "info", message: `u${i}`, rateLimitKey: `unrelated-${i}` });
+    }
+
+    // T2: touch `active` one more time — `lastSeen` advances to T2, but
+    // `lastRefill` stays at T0 (still overflowing, no refill window crossed).
+    vi.advanceTimersByTime(1_000);
+    notify({ type: "info", message: "keepalive", rateLimitKey: "active" });
+
+    // T2 (same tick): create the 200th unrelated bucket → map size 201,
+    // pruner fires. Sorted by `lastSeen` ascending, the oldest is one of
+    // the T1-created unrelated buckets, NOT `active` (touched at T2).
+    // Buggy sort-by-`lastRefill` would evict `active` (lastRefill = T0,
+    // oldest).
+    notify({ type: "info", message: "u199", rateLimitKey: "unrelated-199" });
+
+    // Fire on `active` again. If the bucket survived (correct LRU), this
+    // overflows and writes an "active reported …" summary row (the original
+    // one was evicted from the 200-entry history ring by the unrelated
+    // entries, so a fresh row gets created via the no-op fall-through).
+    // If `active` had been evicted from the bucket map, it would be re-
+    // created with 3 fresh tokens, consume one, write a normal "after-prune"
+    // history entry, and no overflow summary would exist.
+    notify({ type: "info", message: "after-prune", rateLimitKey: "active" });
+
+    const summary = useNotificationHistoryStore
+      .getState()
+      .entries.find((e) => e.message.startsWith("active reported"));
+    expect(summary).toBeDefined();
+
+    vi.useRealTimers();
+  });
+
+  it("does not consume tokens when notifications are disabled", () => {
+    useNotificationSettingsStore.setState({ enabled: false });
+    for (let i = 0; i < 10; i++) {
+      notify({ type: "error", message: `d${i}`, rateLimitKey: "disabled-src" });
+    }
+    expect(useNotificationStore.getState().notifications).toHaveLength(0);
+    const summaries = useNotificationHistoryStore
+      .getState()
+      .entries.filter((e) => e.message.includes("more event"));
+    expect(summaries).toHaveLength(0);
+  });
+
+  it("does not consume tokens during quiet hours", () => {
+    _setQuietUntil(Date.now() + 60_000);
+    for (let i = 0; i < 10; i++) {
+      notify({ type: "error", message: `q${i}`, rateLimitKey: "quiet-src" });
+    }
+    expect(useNotificationStore.getState().notifications).toHaveLength(0);
+    const summaries = useNotificationHistoryStore
+      .getState()
+      .entries.filter((e) => e.message.includes("more event"));
+    expect(summaries).toHaveLength(0);
+  });
+
+  it("does not consume tokens for blurred high-priority (already inbox-only)", () => {
+    vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    for (let i = 0; i < 10; i++) {
+      notify({ type: "error", message: `b${i}`, rateLimitKey: "blurred-src" });
+    }
+    expect(useNotificationStore.getState().notifications).toHaveLength(0);
+    // All 10 written individually to history; no summary row collapse.
+    expect(useNotificationHistoryStore.getState().entries).toHaveLength(10);
+    const summaries = useNotificationHistoryStore
+      .getState()
+      .entries.filter((e) => e.message.includes("more event"));
+    expect(summaries).toHaveLength(0);
+  });
+
+  it("summary row carries no context (cross-context buckets shouldn't surface mute affordances)", () => {
+    for (let i = 0; i < 4; i++) {
+      notify({
+        type: "error",
+        message: `m${i}`,
+        rateLimitKey: "shared",
+        context: { projectId: `project-${i}` },
+      });
+    }
+    const summary = useNotificationHistoryStore
+      .getState()
+      .entries.find((e) => e.message.includes("more event"));
+    expect(summary?.context).toBeUndefined();
+  });
 });
