@@ -26,7 +26,7 @@ import { useDevServer } from "@/hooks/useDevServer";
 import { ConsoleDrawer } from "./ConsoleDrawer";
 import { useIsDragging } from "@/components/DragDrop";
 import { cn } from "@/lib/utils";
-import { shouldAdoptDetectedDevServerUrl } from "./urlSync";
+import { computeDevServerUrl } from "./urlSync";
 import { findDevServerCandidate } from "@/utils/devServerDetection";
 import { useProjectSettings } from "@/hooks/useProjectSettings";
 import { projectClient } from "@/clients";
@@ -288,6 +288,7 @@ export function DevPreviewPane({
   } = useDevPreviewLoadLifecycle({
     webviewElement,
     id,
+    projectId: currentProjectId,
     loadTimeoutMs,
     zoomFactor,
     viewportPreset,
@@ -377,9 +378,10 @@ export function DevPreviewPane({
 
   useEffect(() => {
     if (isUnconfigured) return;
-    if (url && shouldAdoptDetectedDevServerUrl(url, currentUrl)) {
-      setHistory((prev) => pushBrowserHistory(prev, url));
-      lastSetUrlRef.current = url;
+    const nextUrl = url ? computeDevServerUrl(url, currentUrl) : false;
+    if (nextUrl !== false) {
+      setHistory((prev) => pushBrowserHistory(prev, nextUrl));
+      lastSetUrlRef.current = nextUrl;
     }
   }, [url, currentUrl, isUnconfigured]);
 
@@ -730,6 +732,7 @@ export function DevPreviewPane({
       <div className="flex flex-col h-full">
         <BrowserToolbar
           terminalId={id}
+          projectId={currentProjectId}
           url={currentUrl}
           canGoBack={canGoBack}
           canGoForward={canGoForward}

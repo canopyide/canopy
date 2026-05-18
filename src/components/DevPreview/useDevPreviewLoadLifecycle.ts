@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { usePanelStore } from "@/store";
+import { useUrlHistoryStore } from "@/store/urlHistoryStore";
 import type { BrowserHistory } from "@shared/types/browser";
 import type { ViewportPresetId } from "@shared/types/panel";
 import { getViewportPreset } from "@/panels/dev-preview/viewportPresets";
@@ -17,6 +18,7 @@ export type DevPreviewBlockedNav = {
 interface UseDevPreviewLoadLifecycleParams {
   webviewElement: Electron.WebviewTag | null;
   id: string;
+  projectId?: string;
   loadTimeoutMs: number;
   zoomFactor: number;
   viewportPreset: ViewportPresetId | undefined;
@@ -43,6 +45,7 @@ interface UseDevPreviewLoadLifecycleResult {
 export function useDevPreviewLoadLifecycle({
   webviewElement,
   id,
+  projectId,
   loadTimeoutMs,
   zoomFactor,
   viewportPreset,
@@ -87,6 +90,18 @@ export function useDevPreviewLoadLifecycle({
       setIsWebviewReady(false);
       return undefined;
     }
+
+    const recordVisit = (navigatedUrl: string) => {
+      if (!projectId) return;
+      if (navigatedUrl === "about:blank") return;
+      let title: string | undefined;
+      try {
+        title = webview.getTitle();
+      } catch {
+        // webview may not be ready for getTitle
+      }
+      useUrlHistoryStore.getState().recordVisit(projectId, navigatedUrl, title);
+    };
 
     const handleDidStartLoading = () => {
       setIsLoading(true);
@@ -254,6 +269,7 @@ export function useDevPreviewLoadLifecycle({
         setHistory((prev) => pushBrowserHistory(prev, navigatedUrl));
         lastSetUrlRef.current = navigatedUrl;
       }
+      recordVisit(navigatedUrl);
     };
 
     const handleDidNavigateInPage = (e: Electron.DidNavigateInPageEvent) => {
@@ -264,6 +280,7 @@ export function useDevPreviewLoadLifecycle({
         setHistory((prev) => pushBrowserHistory(prev, navigatedUrl));
         lastSetUrlRef.current = navigatedUrl;
       }
+      recordVisit(navigatedUrl);
     };
 
     webview.addEventListener("did-start-loading", handleDidStartLoading);
@@ -299,7 +316,15 @@ export function useDevPreviewLoadLifecycle({
         loadTimeoutRef.current = null;
       }
     };
-  }, [webviewElement, loadTimeoutMs, evictingRef, lastSetUrlRef, setHistory, setBlockedNav]);
+  }, [
+    webviewElement,
+    projectId,
+    loadTimeoutMs,
+    evictingRef,
+    lastSetUrlRef,
+    setHistory,
+    setBlockedNav,
+  ]);
 
   useEffect(() => {
     const webview = webviewElement;
