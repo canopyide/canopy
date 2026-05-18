@@ -1852,6 +1852,12 @@ const api: ElectronAPI = {
       _unwrappingInvoke(CHANNELS.WEBVIEW_RELOAD_IGNORING_CACHE, webContentsId, panelId),
     getScrollPosition: (webContentsId: number): Promise<number> =>
       _unwrappingInvoke(CHANNELS.WEBVIEW_GET_SCROLL_POSITION, webContentsId),
+    setDeviceEmulation: (
+      webContentsId: number,
+      panelId: string,
+      params: { screenPosition: "mobile" | "desktop"; width: number; height: number } | null
+    ): Promise<void> =>
+      _unwrappingInvoke(CHANNELS.WEBVIEW_SET_DEVICE_EMULATION, webContentsId, panelId, params),
   },
 
   // Hibernation API

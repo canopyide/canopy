@@ -13,6 +13,7 @@ type MockWebviewElement = HTMLElement & {
   isLoading: ReturnType<typeof vi.fn>;
   executeJavaScript: ReturnType<typeof vi.fn>;
   getWebContentsId: ReturnType<typeof vi.fn>;
+  getWebContents: ReturnType<typeof vi.fn>;
   setMockLoading: (value: boolean) => void;
 };
 
@@ -42,6 +43,10 @@ function decorateWebviewElement(element: HTMLElement): MockWebviewElement {
   webview.isLoading = vi.fn(() => loading);
   webview.executeJavaScript = vi.fn().mockResolvedValue(0);
   webview.getWebContentsId = vi.fn(() => 42);
+  webview.getWebContents = vi.fn(() => ({
+    setUserAgent: vi.fn(),
+    getUserAgent: vi.fn(() => "original-ua"),
+  }));
   webview.setMockLoading = (value: boolean) => {
     loading = value;
   };
@@ -292,6 +297,8 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         onNavigationBlocked: vi.fn(() => vi.fn()),
         setLifecycleState: vi.fn().mockResolvedValue(undefined),
         getScrollPosition: vi.fn().mockResolvedValue(0),
+        reloadIgnoringCache: vi.fn(() => Promise.resolve()),
+        setDeviceEmulation: vi.fn(() => Promise.resolve()),
       },
     };
   });
@@ -437,6 +444,86 @@ describe("DevPreviewPane webview lifecycle regression", () => {
     expect(webview.stop).not.toHaveBeenCalled();
     expect(devServerStateRef.current.restart).toHaveBeenCalledTimes(1);
     expect(terminalStoreState.setBrowserUrl).toHaveBeenCalledWith("dev-preview-panel-1", "");
+  });
+
+  describe("viewport device emulation", () => {
+    const withPreset = (preset: string | undefined) => {
+      terminalStoreState.getTerminal.mockImplementation(() => ({
+        id: "dev-preview-panel-1",
+        browserHistory: { past: [], present: "http://localhost:5173/", future: [] },
+        browserZoom: 1.4,
+        devPreviewConsoleOpen: false,
+        devCommand: "npm run dev",
+        viewportPreset: preset,
+      }));
+    };
+
+    const setDeviceEmulation = () =>
+      (
+        window as unknown as {
+          electron: { webview: { setDeviceEmulation: ReturnType<typeof vi.fn> } };
+        }
+      ).electron.webview.setDeviceEmulation;
+
+    it("applies device emulation for the active preset without reloading the page", async () => {
+      withPreset("iphone");
+      const { container } = render(<DevPreviewPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(setDeviceEmulation()).toHaveBeenCalledWith(42, "dev-preview-panel-1", {
+        screenPosition: "mobile",
+        width: 393,
+        height: 852,
+      });
+      expect(webview.reload).not.toHaveBeenCalled();
+    });
+
+    it("re-applies device emulation on did-finish-load (cross-origin nav drops it)", async () => {
+      withPreset("galaxy");
+      const { container } = render(<DevPreviewPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      setDeviceEmulation().mockClear();
+
+      act(() => {
+        emitWebviewEvent(webview, "did-finish-load");
+      });
+
+      expect(setDeviceEmulation()).toHaveBeenCalledWith(42, "dev-preview-panel-1", {
+        screenPosition: "mobile",
+        width: 360,
+        height: 780,
+      });
+    });
+
+    it("clears device emulation when the viewport preset is removed", async () => {
+      withPreset("iphone");
+      const { container, rerender } = render(<DevPreviewPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      setDeviceEmulation().mockClear();
+      withPreset(undefined);
+      rerender(<DevPreviewPane {...baseProps} />);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(setDeviceEmulation()).toHaveBeenCalledWith(42, "dev-preview-panel-1", null);
+      expect(webview.reload).not.toHaveBeenCalled();
+    });
   });
 
   it("retries loadURL with exponential backoff when did-fail-load fires with ERR_CONNECTION_REFUSED", async () => {

@@ -890,6 +890,16 @@ export interface ElectronAPI {
     reloadIgnoringCache(webContentsId: number, panelId: string): Promise<void>;
     /** Read the current scroll position from Blink layout — works on frozen pages */
     getScrollPosition(webContentsId: number): Promise<number>;
+    /**
+     * Apply (or clear) device emulation on a webview to drive real viewport
+     * dimensions. Pass `null` to disable emulation. Runs in the main process
+     * via webContents, so it must be re-applied after cross-origin navigation.
+     */
+    setDeviceEmulation(
+      webContentsId: number,
+      panelId: string,
+      params: { screenPosition: "mobile" | "desktop"; width: number; height: number } | null
+    ): Promise<void>;
   };
   hibernation: {
     getConfig(): Promise<HibernationConfig>;
