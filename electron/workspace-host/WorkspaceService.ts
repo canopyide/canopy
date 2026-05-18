@@ -151,8 +151,30 @@ export class WorkspaceService {
           issueLastUpdatedAt: data.issueLastUpdatedAt,
         });
 
-        // Populate provider-agnostic linked projection alongside legacy fields
+        // Populate provider-agnostic linked projection alongside legacy fields.
+        // Preserve any existing linked.issue so that an earlier issue-detected
+        // event isn't wiped when the PR is resolved afterwards.
         if (data.providerId) {
+          const existingLinked = monitor.getSnapshot().linked;
+          const existingIssue = existingLinked?.issue;
+          const issueData =
+            data.issueNumber && data.issueTitle
+              ? {
+                  issue: {
+                    ref: {
+                      providerId: data.providerId,
+                      owner: "",
+                      repo: "",
+                      number: data.issueNumber,
+                      rawData: null,
+                    },
+                    title: data.issueTitle,
+                  },
+                }
+              : existingIssue
+                ? { issue: existingIssue }
+                : {};
+
           monitor.setLinked({
             providerId: data.providerId,
             pr: {
@@ -168,20 +190,7 @@ export class WorkspaceService {
               state: data.prState,
               ...(data.ciStatus ? { ciStatus: data.ciStatus } : {}),
             },
-            ...(data.issueNumber && data.issueTitle
-              ? {
-                  issue: {
-                    ref: {
-                      providerId: data.providerId,
-                      owner: "",
-                      repo: "",
-                      number: data.issueNumber,
-                      rawData: null,
-                    },
-                    title: data.issueTitle,
-                  },
-                }
-              : {}),
+            ...issueData,
           });
         }
 
@@ -219,20 +228,7 @@ export class WorkspaceService {
                   state: data.prState,
                   ...(data.ciStatus ? { ciStatus: data.ciStatus } : {}),
                 },
-                ...(data.issueNumber && data.issueTitle
-                  ? {
-                      issue: {
-                        ref: {
-                          providerId: data.providerId,
-                          owner: "",
-                          repo: "",
-                          number: data.issueNumber,
-                          rawData: null,
-                        },
-                        title: data.issueTitle,
-                      },
-                    }
-                  : {}),
+                ...issueData,
               }
             : undefined,
         });
@@ -249,7 +245,16 @@ export class WorkspaceService {
         }
 
         monitor.clearPRInfo();
-        monitor.clearLinked();
+        // Preserve linked.issue when only the PR is being cleared
+        const existingLinked = monitor.getSnapshot().linked;
+        if (existingLinked?.issue) {
+          monitor.setLinked({
+            providerId: existingLinked.providerId,
+            issue: existingLinked.issue,
+          });
+        } else {
+          monitor.clearLinked();
+        }
         if (monitor.hasInitialStatus) {
           this.emitUpdate(monitor);
         }

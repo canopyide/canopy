@@ -58,6 +58,7 @@ interface IssueDetectedEvent {
   issueTitle: string;
   issueLastUpdatedAt?: number;
   branchName?: string;
+  providerId?: string;
 }
 
 interface IssueNotFoundEvent {
@@ -343,7 +344,9 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
             prTitle: undefined,
             prLastUpdatedAt: undefined,
             issueLastUpdatedAt: undefined,
-            linked: null,
+            linked: existing.linked?.issue
+              ? { providerId: existing.linked.providerId, issue: existing.linked.issue }
+              : null,
           },
           store.getState().nextVersion()
         );
@@ -371,6 +374,24 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
             issueNumber: event.issueNumber,
             issueTitle: event.issueTitle,
             issueLastUpdatedAt: event.issueLastUpdatedAt ?? existing.issueLastUpdatedAt,
+            ...(event.providerId
+              ? {
+                  linked: {
+                    providerId: event.providerId,
+                    issue: {
+                      ref: {
+                        providerId: event.providerId,
+                        owner: "",
+                        repo: "",
+                        number: event.issueNumber,
+                        rawData: null,
+                      },
+                      title: event.issueTitle,
+                    },
+                    ...(existing.linked?.pr ? { pr: existing.linked.pr } : {}),
+                  },
+                }
+              : {}),
           },
           store.getState().nextVersion()
         );

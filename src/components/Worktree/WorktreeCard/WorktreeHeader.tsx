@@ -155,7 +155,8 @@ export function WorktreeHeader({
     (worktree.aheadCount !== undefined && worktree.aheadCount > 0) ||
     (worktree.behindCount !== undefined && worktree.behindCount > 0);
   const hasAuthFailedSignIn = Boolean(
-    worktree.fetchAuthFailed && worktree.linked?.providerId === "builtin.github"
+    worktree.fetchAuthFailed &&
+    (worktree.isGitHubRemote || worktree.linked?.providerId === "builtin.github")
   );
   const isMainStandardLayout = !!(isMainOnStandardBranch && !hasIssueTitle);
 
