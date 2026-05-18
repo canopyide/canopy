@@ -1,17 +1,53 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { ForgeProviderContribution, RepoRef } from "../../../shared/types/forge.js";
+import type {
+  ForgeProviderContribution,
+  ForgeProviderImpl,
+  RepoRef,
+} from "../../../shared/types/forge.js";
 import {
+  clearForgeProviderImplRegistry,
   clearForgeProviderRegistry,
   getActiveProvider,
+  getForgeProviderImpl,
   getRegisteredForgeProviders,
   listMatchingProviders,
+  registerForgeProviderImpl,
   registerForgeProviders,
+  unregisterForgeProviderImpl,
+  unregisterForgeProviderImpls,
   unregisterForgeProviders,
 } from "../forgeProviderRegistry.js";
 
 beforeEach(() => {
   clearForgeProviderRegistry();
+  clearForgeProviderImplRegistry();
 });
+
+function makeImpl(label: string): ForgeProviderImpl {
+  // Minimal stub — the registry doesn't introspect the impl shape; tests only
+  // need identity to verify the right impl is stored/returned.
+  return {
+    label,
+    getCredentials: async () => null,
+    validateCredentials: async () => ({ valid: false }),
+    parseRemote: () => null,
+    listIssues: async () => ({ items: [], nextCursor: null, hasMore: false }),
+    listPRs: async () => ({ items: [], nextCursor: null, hasMore: false }),
+    getIssue: async () => null,
+    getPR: async () => null,
+    findPRByBranch: async () => null,
+    getCIStatus: async () => null,
+    getRepoMetadata: async () => ({
+      defaultBranch: "main",
+      isPrivate: false,
+      isFork: false,
+      isArchived: false,
+      rawData: null,
+    }),
+    buildIssueUrl: () => "",
+    buildPRUrl: () => "",
+  } as unknown as ForgeProviderImpl;
+}
 
 function makeContribution(
   id: string,
@@ -296,5 +332,110 @@ describe("forgeProviderRegistry — getActiveProvider", () => {
     registerForgeProviders("acme.github", [makeContribution("github", ["github.com"])]);
     expect(getActiveProvider({ host: "", owner: "", repo: "", rawData: null })).toBeUndefined();
     expect(getActiveProvider(null as unknown as RepoRef)).toBeUndefined();
+  });
+});
+
+describe("forgeProviderRegistry — implementation registry", () => {
+  it("stores and retrieves an impl by namespaced id", () => {
+    const impl = makeImpl("primary");
+    registerForgeProviderImpl("acme", "github", impl);
+    expect(getForgeProviderImpl("acme.github")).toBe(impl);
+  });
+
+  it("uses the bare contribution id when the plugin id is the built-in convention", () => {
+    // The built-in GitHub plugin registers under pluginId "github" with
+    // contributionId "github"; lookup uses the same `${pluginId}.${id}` key.
+    const impl = makeImpl("builtin");
+    registerForgeProviderImpl("github", "github", impl);
+    expect(getForgeProviderImpl("github.github")).toBe(impl);
+  });
+
+  it("returns undefined for an unbound namespaced id", () => {
+    expect(getForgeProviderImpl("acme.github")).toBeUndefined();
+  });
+
+  it("overwrites the impl when re-registered under the same key", () => {
+    const first = makeImpl("first");
+    const second = makeImpl("second");
+    registerForgeProviderImpl("acme", "github", first);
+    registerForgeProviderImpl("acme", "github", second);
+    expect(getForgeProviderImpl("acme.github")).toBe(second);
+  });
+
+  it("unregisterForgeProviderImpl removes only the targeted impl", () => {
+    const a = makeImpl("a");
+    const b = makeImpl("b");
+    registerForgeProviderImpl("acme", "github", a);
+    registerForgeProviderImpl("acme", "gitlab", b);
+    unregisterForgeProviderImpl("acme", "github");
+    expect(getForgeProviderImpl("acme.github")).toBeUndefined();
+    expect(getForgeProviderImpl("acme.gitlab")).toBe(b);
+  });
+
+  it("unregisterForgeProviderImpl with expected impl removes only when identity matches", () => {
+    const first = makeImpl("first");
+    const second = makeImpl("second");
+    registerForgeProviderImpl("acme", "github", first);
+    registerForgeProviderImpl("acme", "github", second);
+    // The stale disposer holds `first` but the live entry is `second`.
+    unregisterForgeProviderImpl("acme", "github", first);
+    expect(getForgeProviderImpl("acme.github")).toBe(second);
+    // The fresh disposer holds `second` and matches the live entry.
+    unregisterForgeProviderImpl("acme", "github", second);
+    expect(getForgeProviderImpl("acme.github")).toBeUndefined();
+  });
+
+  it("unregisterForgeProviderImpls removes every impl owned by the plugin", () => {
+    registerForgeProviderImpl("acme", "github", makeImpl("g"));
+    registerForgeProviderImpl("acme", "gitlab", makeImpl("l"));
+    registerForgeProviderImpl("other", "github", makeImpl("o"));
+    unregisterForgeProviderImpls("acme");
+    expect(getForgeProviderImpl("acme.github")).toBeUndefined();
+    expect(getForgeProviderImpl("acme.gitlab")).toBeUndefined();
+    expect(getForgeProviderImpl("other.github")).toBeDefined();
+  });
+
+  it("double-unregister is a safe no-op", () => {
+    registerForgeProviderImpl("acme", "github", makeImpl("x"));
+    unregisterForgeProviderImpls("acme");
+    expect(() => unregisterForgeProviderImpls("acme")).not.toThrow();
+    expect(() => unregisterForgeProviderImpl("acme", "github")).not.toThrow();
+    expect(getForgeProviderImpl("acme.github")).toBeUndefined();
+  });
+
+  it("ignores empty/non-string plugin or contribution ids on register", () => {
+    registerForgeProviderImpl("", "github", makeImpl("x"));
+    registerForgeProviderImpl("acme", "", makeImpl("x"));
+    registerForgeProviderImpl(undefined as unknown as string, "github", makeImpl("x"));
+    expect(getForgeProviderImpl(".github")).toBeUndefined();
+    expect(getForgeProviderImpl("acme.")).toBeUndefined();
+  });
+
+  it("ignores a non-object impl on register", () => {
+    registerForgeProviderImpl("acme", "github", null as unknown as ForgeProviderImpl);
+    registerForgeProviderImpl("acme", "github", "nope" as unknown as ForgeProviderImpl);
+    expect(getForgeProviderImpl("acme.github")).toBeUndefined();
+  });
+
+  it("clearForgeProviderImplRegistry wipes every entry", () => {
+    registerForgeProviderImpl("acme", "github", makeImpl("g"));
+    registerForgeProviderImpl("acme", "gitlab", makeImpl("l"));
+    clearForgeProviderImplRegistry();
+    expect(getForgeProviderImpl("acme.github")).toBeUndefined();
+    expect(getForgeProviderImpl("acme.gitlab")).toBeUndefined();
+  });
+
+  it("descriptor cleanup and impl cleanup are independent", () => {
+    registerForgeProviders("acme", [makeContribution("github", ["github.com"])]);
+    registerForgeProviderImpl("acme", "github", makeImpl("x"));
+
+    unregisterForgeProviders("acme");
+    // Descriptor gone, impl still present — descriptor-only cleanup must not
+    // touch the impl table (and vice versa).
+    expect(getRegisteredForgeProviders()).toHaveLength(0);
+    expect(getForgeProviderImpl("acme.github")).toBeDefined();
+
+    unregisterForgeProviderImpls("acme");
+    expect(getForgeProviderImpl("acme.github")).toBeUndefined();
   });
 });

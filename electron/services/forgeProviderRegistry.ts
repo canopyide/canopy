@@ -1,4 +1,8 @@
-import type { ForgeProviderContribution, RepoRef } from "../../shared/types/forge.js";
+import type {
+  ForgeProviderContribution,
+  ForgeProviderImpl,
+  RepoRef,
+} from "../../shared/types/forge.js";
 
 /**
  * Host-side registry of `forgeProviders` contributions, keyed by pluginId.
@@ -9,10 +13,21 @@ import type { ForgeProviderContribution, RepoRef } from "../../shared/types/forg
  * cascade in `PluginService.unloadPlugin`.
  *
  * The runtime implementation handler (`ForgeProviderImpl`) is wired separately
- * in #8058 via `host.registerForgeProvider`. This registry tracks only the
- * descriptor surface declared in the manifest.
+ * via `host.registerForgeProvider` and stored in
+ * {@link PLUGIN_FORGE_PROVIDER_IMPLS} keyed by namespaced id.
  */
 const PLUGIN_FORGE_PROVIDERS = new Map<string, ForgeProviderContribution[]>();
+
+/**
+ * Runtime implementation handlers bound via `host.registerForgeProvider`.
+ * Keyed by the namespaced provider id `{pluginId}.{contributionId}` so the
+ * router can resolve an impl from a descriptor without a second lookup
+ * (built-in GitHub uses bare `github`). Separate from {@link PLUGIN_FORGE_PROVIDERS}
+ * because descriptors register eagerly from the manifest while impls bind
+ * lazily during `activate()` — callers must handle "descriptor present but
+ * impl not yet bound" by treating an `undefined` result as absent.
+ */
+const PLUGIN_FORGE_PROVIDER_IMPLS = new Map<string, ForgeProviderImpl>();
 
 export interface RegisteredForgeProvider {
   pluginId: string;
@@ -54,6 +69,85 @@ export function unregisterForgeProviders(pluginId: string): void {
 
 export function clearForgeProviderRegistry(): void {
   PLUGIN_FORGE_PROVIDERS.clear();
+}
+
+/**
+ * Bind a runtime {@link ForgeProviderImpl} to a descriptor declared by
+ * `contributes.forgeProviders`. Keyed as `{pluginId}.{contributionId}` so a
+ * later lookup by namespaced id resolves without joining two maps. Re-binding
+ * the same key overwrites — plugins that re-register from a deferred callback
+ * pick up the new impl on next call.
+ */
+export function registerForgeProviderImpl(
+  pluginId: string,
+  contributionId: string,
+  impl: ForgeProviderImpl
+): void {
+  if (typeof pluginId !== "string" || pluginId.length === 0) return;
+  if (typeof contributionId !== "string" || contributionId.length === 0) return;
+  if (impl === null || typeof impl !== "object") return;
+  PLUGIN_FORGE_PROVIDER_IMPLS.set(buildImplKey(pluginId, contributionId), impl);
+}
+
+/**
+ * Unbind a single runtime impl. Silent no-op if the key was never bound.
+ * Used by the per-provider disposer returned from `host.registerForgeProvider`
+ * so a plugin can clean up one binding without unloading itself.
+ *
+ * Pass `expected` to make the removal conditional — the entry is deleted only
+ * if it currently references that exact impl. This prevents a stale disposer
+ * (from a prior `registerForgeProviderImpl` call on the same key that was
+ * later overwritten) from removing the active impl.
+ */
+export function unregisterForgeProviderImpl(
+  pluginId: string,
+  contributionId: string,
+  expected?: ForgeProviderImpl
+): void {
+  if (typeof pluginId !== "string" || pluginId.length === 0) return;
+  if (typeof contributionId !== "string" || contributionId.length === 0) return;
+  const key = buildImplKey(pluginId, contributionId);
+  if (expected !== undefined) {
+    const current = PLUGIN_FORGE_PROVIDER_IMPLS.get(key);
+    if (current !== expected) return;
+  }
+  PLUGIN_FORGE_PROVIDER_IMPLS.delete(key);
+}
+
+/**
+ * Unbind every impl owned by the given plugin. Fires from `unloadPlugin`
+ * alongside descriptor cleanup. Idempotent — calling after the per-provider
+ * disposers have already fired is a safe no-op.
+ */
+export function unregisterForgeProviderImpls(pluginId: string): void {
+  if (typeof pluginId !== "string" || pluginId.length === 0) return;
+  const prefix = `${pluginId}.`;
+  for (const key of [...PLUGIN_FORGE_PROVIDER_IMPLS.keys()]) {
+    if (key.startsWith(prefix)) {
+      PLUGIN_FORGE_PROVIDER_IMPLS.delete(key);
+    }
+  }
+}
+
+/**
+ * Look up a runtime impl by its namespaced id (`{pluginId}.{contributionId}`,
+ * or bare `github` for the built-in). Returns `undefined` when the descriptor
+ * is registered but the plugin's `activate()` has not yet bound an impl, or
+ * after the plugin unloads. Callers must treat `undefined` as "no impl
+ * currently available" and avoid throwing.
+ */
+export function getForgeProviderImpl(namespacedId: string): ForgeProviderImpl | undefined {
+  if (typeof namespacedId !== "string" || namespacedId.length === 0) return undefined;
+  return PLUGIN_FORGE_PROVIDER_IMPLS.get(namespacedId);
+}
+
+/** Test-isolation helper paralleling {@link clearForgeProviderRegistry}. */
+export function clearForgeProviderImplRegistry(): void {
+  PLUGIN_FORGE_PROVIDER_IMPLS.clear();
+}
+
+function buildImplKey(pluginId: string, contributionId: string): string {
+  return `${pluginId}.${contributionId}`;
 }
 
 export function getRegisteredForgeProviders(): RegisteredForgeProvider[] {

@@ -30,7 +30,13 @@ import {
   getAllPluginToolbarButtonConfigs,
 } from "../../shared/config/toolbarButtonRegistry.js";
 import { registerPluginMenuItem, unregisterPluginMenuItems } from "./pluginMenuRegistry.js";
-import { registerForgeProviders, unregisterForgeProviders } from "./forgeProviderRegistry.js";
+import {
+  registerForgeProviderImpl,
+  registerForgeProviders,
+  unregisterForgeProviderImpl,
+  unregisterForgeProviderImpls,
+  unregisterForgeProviders,
+} from "./forgeProviderRegistry.js";
 import { broadcastToRenderer } from "../ipc/utils.js";
 import { CHANNELS } from "../ipc/channels.js";
 import type { LoadedPluginInfo } from "../../shared/types/plugin.js";
@@ -528,6 +534,67 @@ export class PluginService {
           disposeRemove();
         };
       },
+      registerForgeProvider: (descriptor, impl) => {
+        if (revoked) {
+          throw new Error(
+            `Plugin "${pluginId}" host revoked: registerForgeProvider called after activate() returned or timed out`
+          );
+        }
+        if (!descriptor || typeof descriptor !== "object") {
+          throw new Error(
+            `Plugin "${pluginId}" registerForgeProvider: descriptor must be an object`
+          );
+        }
+        if (typeof descriptor.id !== "string" || descriptor.id.length === 0) {
+          throw new Error(
+            `Plugin "${pluginId}" registerForgeProvider: descriptor.id must be a non-empty string`
+          );
+        }
+        if (!impl || typeof impl !== "object") {
+          throw new Error(`Plugin "${pluginId}" registerForgeProvider: impl must be an object`);
+        }
+        // The impl is keyed by the same `{pluginId}.{descriptor.id}` namespace
+        // used by the eager descriptor table. Binding an impl whose id wasn't
+        // declared in `contributes.forgeProviders` produces an orphaned entry —
+        // unreachable through the routing table, since `listMatchingProviders`
+        // walks descriptors first. Reject up front so the failure is loud.
+        const contributionId = descriptor.id;
+        const plugin = this.plugins.get(pluginId);
+        const declared = plugin?.manifest.contributes.forgeProviders.some(
+          (c) => c.id === contributionId
+        );
+        if (!declared) {
+          throw new Error(
+            `Plugin "${pluginId}" registerForgeProvider: descriptor.id "${contributionId}" is not declared in contributes.forgeProviders`
+          );
+        }
+
+        registerForgeProviderImpl(pluginId, contributionId, impl);
+
+        let disposed = false;
+        const dispose = (): void => {
+          if (disposed) return;
+          disposed = true;
+          // Pass `impl` so a stale disposer (from a prior re-bind that was
+          // overwritten via a second registerForgeProvider call on the same
+          // id) cannot remove the currently-active impl by mistake — the
+          // registry compares identities before deleting.
+          unregisterForgeProviderImpl(pluginId, contributionId, impl);
+          const list = this.pluginEventCleanups.get(pluginId);
+          if (!list) return;
+          const idx = list.indexOf(dispose);
+          if (idx >= 0) list.splice(idx, 1);
+          if (list.length === 0) this.pluginEventCleanups.delete(pluginId);
+        };
+
+        let list = this.pluginEventCleanups.get(pluginId);
+        if (!list) {
+          list = [];
+          this.pluginEventCleanups.set(pluginId, list);
+        }
+        list.push(dispose);
+        return dispose;
+      },
     };
     return {
       host,
@@ -703,6 +770,13 @@ export class PluginService {
     this.scheduleToolbarButtonsBroadcast(true);
     unregisterPluginPanelKinds(pluginId);
     unregisterForgeProviders(pluginId);
+    // Belt-and-suspenders: per-provider disposers pushed onto
+    // pluginEventCleanups by host.registerForgeProvider have already fired in
+    // flushPluginEventCleanups() above, but a direct bulk-clear guards against
+    // any impl entry that wasn't tracked through that path (e.g. a future
+    // re-bind that didn't refresh the disposer slot). The bulk call is
+    // idempotent — already-cleared keys are silent no-ops.
+    unregisterForgeProviderImpls(pluginId);
     this.plugins.delete(pluginId);
   }
 
