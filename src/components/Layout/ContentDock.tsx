@@ -28,7 +28,6 @@ import {
   SortableDockItem,
   SortableDockPlaceholder,
   DOCK_PLACEHOLDER_ID,
-  useIsDragging,
   useIsWorktreeSortDragging,
 } from "@/components/DragDrop";
 import { useWorktrees } from "@/hooks/useWorktrees";
@@ -164,13 +163,8 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
     data: { container: "dock" },
   });
 
-  // Mirror TrashContainer's ghost-scrim ladder: show a subtle in-flight cue for
-  // any panel drag, then a stronger armed cue when actually over the dock.
-  // Worktree-card sort drags also flip isDragging but cannot drop here, so a
-  // phantom drop target would be misleading — exclude them.
-  const isDragging = useIsDragging();
+  // Worktree-card sort drags cannot drop here — signal rejection with cursor-no-drop.
   const isWorktreeSortDragging = useIsWorktreeSortDragging();
-  const isPanelDragging = isDragging && !isWorktreeSortDragging;
 
   // Sync droppable ref with scroll container ref using stable callback
   // This prevents ResizeObserver thrashing that causes infinite update loops
@@ -288,8 +282,9 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
               ref={combinedRef}
               className={cn(
                 "flex items-center gap-[var(--dock-gap)] overflow-x-auto overscroll-x-none flex-1 min-h-[var(--dock-item-height)] no-scrollbar scroll-smooth px-1 transition-[color,background-color,box-shadow]",
-                isPanelDragging && "bg-overlay-subtle",
+                isWorktreeSortDragging && "cursor-no-drop",
                 isOver &&
+                  !isWorktreeSortDragging &&
                   "cursor-copy bg-overlay-soft ring-2 ring-border-default ring-inset rounded-[var(--radius-md)]"
               )}
             >
