@@ -246,7 +246,7 @@ describe("getSettingsNavGroups", () => {
       "project:recipes",
       "project:commands",
       "project:notifications",
-      "project:github",
+      "project:code-forge",
     ];
     expect(groups[0]!.entries.map((e) => e.id)).toEqual(expectedOrder);
   });
