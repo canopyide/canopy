@@ -81,12 +81,15 @@
   outline-offset: 2px;
 }
 
-/* Armed state ("anchored" — dropdown open, toggle on) gets an inset shadow on top
- * of the emphasis background. The inset cue reads as pressed-into-surface and
- * distinguishes armed from hover (which only differs by an overlay tier). The
- * accent color is reserved per CLAUDE.md, so the directional cue carries the
- * signal instead. Comes after :hover in source order so the inset shadow
- * survives hover-over-armed (equal specificity, later wins). */
+/* Armed state ("anchored" — dropdown open, toggle on) gets an inset hairline ring on
+ * top of the emphasis background. The 1px ring reads as a crisp state edge and
+ * distinguishes armed from hover (which only differs by an overlay tier) — the
+ * previous soft directional shadow (inset 0 1px 2px) read as fog on low-contrast
+ * light themes (#7XXX). The accent color is reserved per CLAUDE.md, so the ring
+ * carries the signal instead. Dark themes override --toolbar-control-armed-shadow
+ * to a white-tinted ring; a black ring goes invisible on dark surfaces. Comes
+ * after :hover in source order so the ring survives hover-over-armed (equal
+ * specificity, later wins). */
 .toolbar-icon-button[aria-pressed="true"],
 .toolbar-icon-button[aria-expanded="true"],
 .toolbar-icon-button[data-state="open"],
@@ -94,7 +97,7 @@
 .toolbar-agent-button[aria-expanded="true"],
 .toolbar-agent-button[data-state="open"] {
   background: var(--toolbar-control-armed-bg, var(--theme-overlay-emphasis));
-  box-shadow: var(--toolbar-control-armed-shadow, inset 0 1px 2px rgba(0, 0, 0, 0.15));
+  box-shadow: var(--toolbar-control-armed-shadow, inset 0 0 0 1px rgba(0, 0, 0, 0.18));
 }
 
 /* The press snap (transform: scale(0.98) at 1ms) comes from the base Button cva.

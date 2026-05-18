@@ -151,14 +151,29 @@ describe("Toolbar responsive design — issue #4133", () => {
 
     it("armed selectors carry an inset shadow on top of the emphasis background", () => {
       // The armed selector block must include both background AND box-shadow
-      // so the state reads as anchored/pressed, not "still hovering".
+      // so the state reads as anchored/pressed, not "still hovering". The shadow
+      // shape is asserted as an inset hairline ring (0 0 0 1px) — the geometry
+      // that distinguishes the state edge from a soft directional shadow that
+      // reads as fog on low-contrast light themes (#7XXX).
       const armedBlock = css.match(
         /\.toolbar-icon-button\[aria-pressed="true"\][\s\S]*?\{[\s\S]*?\}/
       )?.[0];
       expect(armedBlock).toBeDefined();
       expect(armedBlock).toContain("--toolbar-control-armed-bg");
       expect(armedBlock).toContain("--toolbar-control-armed-shadow");
-      expect(armedBlock).toMatch(/inset\s+0\s+1px\s+2px/);
+      expect(armedBlock).toMatch(/inset\s+0\s+0\s+0\s+1px/);
+      expect(armedBlock).toContain('.toolbar-agent-button[aria-pressed="true"]');
+    });
+
+    it("armed selectors appear after :hover in source order so armed survives hover-over-armed", () => {
+      // Hover and armed have equal specificity, so later-in-source wins. If a
+      // refactor moves the armed block above hover, hovering an armed button
+      // would erase the ring — silently regressing #8175.
+      const hoverIndex = css.search(/\.toolbar-icon-button:hover\s*[,{]/);
+      const armedIndex = css.search(/\.toolbar-icon-button\[aria-pressed="true"\]/);
+      expect(hoverIndex).toBeGreaterThan(-1);
+      expect(armedIndex).toBeGreaterThan(-1);
+      expect(armedIndex).toBeGreaterThan(hoverIndex);
     });
 
     it("press transform is owned by base Button cva, not the toolbar transition list", () => {
