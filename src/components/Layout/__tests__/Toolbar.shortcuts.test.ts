@@ -163,6 +163,36 @@ describe("Toolbar shortcut tooltips — issue #3443", () => {
     });
   });
 
+  describe("copy-tree button polish — issue #8179", () => {
+    it("imports useDeferredLoading from @/hooks", () => {
+      expect(source).toMatch(/useDeferredLoading[\s\S]*?from "@\/hooks"/);
+    });
+
+    it("imports UI_DOHERTY_THRESHOLD from @/lib/animationUtils", () => {
+      expect(source).toContain('import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils"');
+    });
+
+    it("derives showCopyingSpinner via useDeferredLoading at the Doherty threshold", () => {
+      expect(source).toContain(
+        "const showCopyingSpinner = useDeferredLoading(isCopyingTree, UI_DOHERTY_THRESHOLD);"
+      );
+    });
+
+    it("renders the spinner glyph gated on showCopyingSpinner, not raw isCopyingTree", () => {
+      expect(source).toContain(
+        "{showCopyingSpinner ? <Spinner /> : treeCopied ? <Check /> : <Folders />}"
+      );
+      expect(source).not.toContain(
+        "{isCopyingTree ? <Spinner /> : treeCopied ? <Check /> : <Folders />}"
+      );
+    });
+
+    it("uses sentence-case 'Context copied' aria-label", () => {
+      expect(source).toContain('"Context copied"');
+      expect(source).not.toContain('"Context Copied"');
+    });
+  });
+
   describe("useMemo dependency array", () => {
     it("includes sidebarShortcut in useMemo deps", () => {
       const depsMatch = source.match(/\}\),\s*\[([^\]]+)\]\s*\);/s);
@@ -176,6 +206,13 @@ describe("Toolbar shortcut tooltips — issue #3443", () => {
       expect(depsMatch).not.toBeNull();
       const deps = depsMatch![1];
       expect(deps).toContain("copyTreeShortcut");
+    });
+
+    it("includes showCopyingSpinner in useMemo deps (issue #8179)", () => {
+      const depsMatch = source.match(/\}\),\s*\[([^\]]+)\]\s*\);/s);
+      expect(depsMatch).not.toBeNull();
+      const deps = depsMatch![1];
+      expect(deps).toContain("showCopyingSpinner");
     });
 
     it("diagnosticsShortcut is in ToolbarProblemsButton", () => {

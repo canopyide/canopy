@@ -33,7 +33,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToolbarOverflow } from "@/hooks/useToolbarOverflow";
 import { useWorktreeActions } from "@/hooks/useWorktreeActions";
-import { useAriaKeyshortcuts, useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
+import {
+  useAriaKeyshortcuts,
+  useDeferredLoading,
+  useKeybindingDisplay,
+  useShortcutHintHover,
+} from "@/hooks";
+import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
 import type { UseProjectSwitcherPaletteReturn } from "@/hooks";
 import type { SearchableProject } from "@/hooks/useProjectSwitcherPalette";
 import { useProjectStore } from "@/store/projectStore";
@@ -212,6 +218,7 @@ export function Toolbar({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [treeCopied, setTreeCopied] = useState(false);
   const [isCopyingTree, setIsCopyingTree] = useState(false);
+  const showCopyingSpinner = useDeferredLoading(isCopyingTree, UI_DOHERTY_THRESHOLD);
   const [copyFeedback, setCopyFeedback] = useState<string>("");
   const treeCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -547,11 +554,11 @@ export function Toolbar({
                   "aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
                 )}
                 aria-label={
-                  isCopyingTree ? "Copying…" : treeCopied ? "Context Copied" : "Copy Context"
+                  isCopyingTree ? "Copying…" : treeCopied ? "Context copied" : "Copy Context"
                 }
                 aria-keyshortcuts={copyTreeAriaShortcut}
               >
-                {isCopyingTree ? <Spinner /> : treeCopied ? <Check /> : <Folders />}
+                {showCopyingSpinner ? <Spinner /> : treeCopied ? <Check /> : <Folders />}
                 {!treeCopied && !isCopyingTree && (
                   <ShortcutRevealChip actionId="worktree.copyTree" />
                 )}
@@ -635,6 +642,7 @@ export function Toolbar({
       currentProject,
       handleCopyTreeClick,
       isCopyingTree,
+      showCopyingSpinner,
       activeWorktree,
       treeCopied,
       copyFeedback,
