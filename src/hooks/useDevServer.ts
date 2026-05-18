@@ -27,7 +27,7 @@ export interface UseDevServerState {
   url: string | null;
   terminalId: string | null;
   error: DevServerError | null;
-  phaseLabel: string | null;
+  phaseLabel?: "Compiling";
 }
 
 export interface UseDevServerReturn extends UseDevServerState {
@@ -109,7 +109,7 @@ export function useDevServer({
   const [url, setUrl] = useState<string | null>(null);
   const [terminalId, setTerminalId] = useState<string | null>(null);
   const [error, setError] = useState<DevServerError | null>(null);
-  const [phaseLabel, setPhaseLabel] = useState<string | null>(null);
+  const [phaseLabel, setPhaseLabel] = useState<"Compiling" | undefined>(undefined);
   const [isRestarting, setIsRestarting] = useState(false);
   const [stuckTier, setStuckTier] = useState<DevServerStuckTier>(0);
   const [forceKilled, setForceKilled] = useState<boolean | undefined>(undefined);
@@ -182,9 +182,9 @@ export function useDevServer({
     setUrl(state.url);
     setTerminalId(state.terminalId);
     setError(state.error ?? null);
+    setPhaseLabel(state.phaseLabel);
     setIsRestarting(state.isRestarting);
     setForceKilled(state.forceKilled);
-    setPhaseLabel(state.phaseLabel);
   }, []);
 
   const applyInvokeError = useCallback((err: unknown) => {
@@ -202,7 +202,6 @@ export function useDevServer({
     setError({ type: "unknown", message });
     setTerminalId(null);
     setIsRestarting(false);
-    setPhaseLabel(null);
   }, []);
 
   const ensureLatestConfig = useCallback(
@@ -357,7 +356,6 @@ export function useDevServer({
       setTerminalId(null);
       setError(null);
       setIsRestarting(false);
-      setPhaseLabel(null);
       lastEnsureConfigRef.current = "";
       pendingEnsureConfigRef.current = null;
       persistedEnsureCache.delete(panelId);
