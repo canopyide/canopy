@@ -174,7 +174,7 @@ import type { CloneRepoOptions, CloneRepoResult } from "./gitClone.js";
 import type { AppAgentConfig } from "../appAgent.js";
 import type { AgentSessionRecord } from "./agentSessionHistory.js";
 import type { GeneratedIpcInvokeMap } from "./generated.js";
-import type { ForgeProviderEntry, ResolvedForgeProvider } from "../forge.js";
+import type { AuthValidation, ForgeProviderEntry, ResolvedForgeProvider } from "../forge.js";
 
 export type ChecklistItemId =
   | "openedProject"
@@ -1613,6 +1613,30 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
   "forge:resolve-provider": {
     args: [projectId: string, remoteUrl?: string];
     result: ResolvedForgeProvider;
+  };
+  "forge:open-issues": {
+    args: [cwd: string, query?: string, state?: string];
+    result: void;
+  };
+  "forge:open-prs": {
+    args: [cwd: string, query?: string, state?: string];
+    result: void;
+  };
+  "forge:open-commits": {
+    args: [cwd: string, branch?: string];
+    result: void;
+  };
+  "forge:open-issue": {
+    args: [payload: { cwd: string; issueNumber: number }];
+    result: void;
+  };
+  "forge:assign-issue": {
+    args: [payload: { cwd: string; issueNumber: number; username: string }];
+    result: void;
+  };
+  "forge:validate-token": {
+    args: [token: string];
+    result: AuthValidation;
   };
 
   // Shortcut Hints

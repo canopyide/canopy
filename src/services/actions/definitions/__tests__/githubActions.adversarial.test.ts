@@ -19,13 +19,22 @@ const githubClientMock = vi.hoisted(() => ({
   validateToken: vi.fn(),
 }));
 
+const forgeClientMock = vi.hoisted(() => ({
+  openIssues: vi.fn(),
+  openPRs: vi.fn(),
+  openCommits: vi.fn(),
+  openIssue: vi.fn(),
+  assignIssue: vi.fn(),
+  validateToken: vi.fn(),
+}));
+
 const projectStoreMock = vi.hoisted(() => ({ getState: vi.fn() }));
 
 const actionServiceMock = vi.hoisted(() => ({
   dispatch: vi.fn(),
 }));
 
-vi.mock("@/clients", () => ({ githubClient: githubClientMock }));
+vi.mock("@/clients", () => ({ githubClient: githubClientMock, forgeClient: forgeClientMock }));
 vi.mock("@/store/projectStore", () => ({ useProjectStore: projectStoreMock }));
 vi.mock("@/services/ActionService", () => ({ actionService: actionServiceMock }));
 
@@ -58,6 +67,7 @@ function setCurrentProject(project: { path?: string } | null) {
 beforeEach(() => {
   vi.clearAllMocks();
   for (const fn of Object.values(githubClientMock)) fn.mockResolvedValue(undefined);
+  for (const fn of Object.values(forgeClientMock)) fn.mockResolvedValue(undefined);
   actionServiceMock.dispatch.mockResolvedValue({ ok: true, result: undefined });
 });
 
@@ -66,14 +76,14 @@ describe("forge.* primaries adversarial", () => {
     setCurrentProject({ path: "/repo" });
     const def = setupActions()("forge.openIssues");
     await def.run({}, {} as never);
-    expect(githubClientMock.openIssues).toHaveBeenCalledWith("/repo", undefined, undefined);
+    expect(forgeClientMock.openIssues).toHaveBeenCalledWith("/repo", undefined, undefined);
   });
 
   it("openIssues throws loudly when neither arg nor current project has a path", async () => {
     setCurrentProject(null);
     const def = setupActions()("forge.openIssues");
     await expect(def.run({}, {} as never)).rejects.toThrow(/No project path/);
-    expect(githubClientMock.openIssues).not.toHaveBeenCalled();
+    expect(forgeClientMock.openIssues).not.toHaveBeenCalled();
   });
 
   it("openPRs also throws loudly without a path", async () => {
@@ -92,7 +102,7 @@ describe("forge.* primaries adversarial", () => {
     setCurrentProject({ path: "/stale" });
     const def = setupActions()("forge.openIssues");
     await def.run({ projectPath: "/explicit", query: "bug", state: "open" }, {} as never);
-    expect(githubClientMock.openIssues).toHaveBeenCalledWith("/explicit", "bug", "open");
+    expect(forgeClientMock.openIssues).toHaveBeenCalledWith("/explicit", "bug", "open");
   });
 
   it("openIssues schema accepts arbitrary state strings (runtime gap vs list schema)", async () => {
@@ -101,30 +111,30 @@ describe("forge.* primaries adversarial", () => {
     setCurrentProject({ path: "/repo" });
     const def = setupActions()("forge.openIssues");
     await def.run({ state: "wat" }, {} as never);
-    expect(githubClientMock.openIssues).toHaveBeenCalledWith("/repo", undefined, "wat");
+    expect(forgeClientMock.openIssues).toHaveBeenCalledWith("/repo", undefined, "wat");
   });
 
   it("openIssue forwards cwd + issueNumber positionally", async () => {
     const def = setupActions()("forge.openIssue");
     await def.run({ cwd: "/repo", issueNumber: 42 }, {} as never);
-    expect(githubClientMock.openIssue).toHaveBeenCalledWith("/repo", 42);
+    expect(forgeClientMock.openIssue).toHaveBeenCalledWith("/repo", 42);
   });
 
   it("openIssue falls back to ctx.activeWorktreePath", async () => {
     await runAction("forge.openIssue", { issueNumber: 7 }, { activeWorktreePath: "/repo" });
-    expect(githubClientMock.openIssue).toHaveBeenCalledWith("/repo", 7);
+    expect(forgeClientMock.openIssue).toHaveBeenCalledWith("/repo", 7);
   });
 
   it("validateToken forwards the token unchanged (including whitespace)", async () => {
     const def = setupActions()("forge.validateToken");
     await def.run({ token: "  ghp_123  " }, {} as never);
-    expect(githubClientMock.validateToken).toHaveBeenCalledWith("  ghp_123  ");
+    expect(forgeClientMock.validateToken).toHaveBeenCalledWith("  ghp_123  ");
   });
 
   it("assignIssue forwards cwd, issueNumber, and username positionally", async () => {
     const def = setupActions()("forge.assignIssue");
     await def.run({ cwd: "/repo", issueNumber: 42, username: "bob" }, {} as never);
-    expect(githubClientMock.assignIssue).toHaveBeenCalledWith("/repo", 42, "bob");
+    expect(forgeClientMock.assignIssue).toHaveBeenCalledWith("/repo", 42, "bob");
   });
 
   it("assignIssue falls back to ctx.activeWorktreePath when cwd omitted", async () => {
@@ -133,13 +143,36 @@ describe("forge.* primaries adversarial", () => {
       { issueNumber: 7, username: "alice" },
       { activeWorktreePath: "/repo" }
     );
-    expect(githubClientMock.assignIssue).toHaveBeenCalledWith("/repo", 7, "alice");
+    expect(forgeClientMock.assignIssue).toHaveBeenCalledWith("/repo", 7, "alice");
   });
 
   it("assignIssue throws when no cwd and no ctx.activeWorktreePath", async () => {
     await expect(
       runAction("forge.assignIssue", { issueNumber: 7, username: "bob" })
     ).rejects.toThrow("No active worktree");
+  });
+
+  it("forge.* primaries never call githubClient", async () => {
+    // All six forge.* primaries must route through forgeClient, not githubClient.
+    // The github.* aliases are the only path to require githubClient at all.
+    setCurrentProject({ path: "/repo" });
+    await runAction("forge.openIssues", {}, { activeWorktreePath: "/repo" });
+    await runAction("forge.openPRs", {}, { activeWorktreePath: "/repo" });
+    await runAction("forge.openCommits", {}, { activeWorktreePath: "/repo" });
+    await runAction("forge.openIssue", { issueNumber: 1 }, { activeWorktreePath: "/repo" });
+    await runAction(
+      "forge.assignIssue",
+      { issueNumber: 1, username: "bob" },
+      { activeWorktreePath: "/repo" }
+    );
+    await runAction("forge.validateToken", { token: "ghp_test" });
+
+    expect(githubClientMock.openIssues).not.toHaveBeenCalled();
+    expect(githubClientMock.openPRs).not.toHaveBeenCalled();
+    expect(githubClientMock.openCommits).not.toHaveBeenCalled();
+    expect(githubClientMock.openIssue).not.toHaveBeenCalled();
+    expect(githubClientMock.assignIssue).not.toHaveBeenCalled();
+    expect(githubClientMock.validateToken).not.toHaveBeenCalled();
   });
 });
 
@@ -159,15 +192,19 @@ describe("github.* one-release aliases", () => {
       const args = { foo: "bar", n: 42 };
       await def.run(args, {} as never);
       expect(actionServiceMock.dispatch).toHaveBeenCalledWith(targetId, args);
-      // The alias must NOT call the underlying client — that is the target's job.
-      // Without this assertion, a regression that double-routes (alias calls
-      // both dispatch and the client) would slip through.
+      // The alias must NOT call the underlying clients — that is the target's job.
       expect(githubClientMock.openIssues).not.toHaveBeenCalled();
       expect(githubClientMock.openPRs).not.toHaveBeenCalled();
       expect(githubClientMock.openCommits).not.toHaveBeenCalled();
       expect(githubClientMock.openIssue).not.toHaveBeenCalled();
       expect(githubClientMock.assignIssue).not.toHaveBeenCalled();
       expect(githubClientMock.validateToken).not.toHaveBeenCalled();
+      expect(forgeClientMock.openIssues).not.toHaveBeenCalled();
+      expect(forgeClientMock.openPRs).not.toHaveBeenCalled();
+      expect(forgeClientMock.openCommits).not.toHaveBeenCalled();
+      expect(forgeClientMock.openIssue).not.toHaveBeenCalled();
+      expect(forgeClientMock.assignIssue).not.toHaveBeenCalled();
+      expect(forgeClientMock.validateToken).not.toHaveBeenCalled();
     });
 
     it(`${aliasId} surfaces ${targetId} failures with code preserved on the thrown error`, async () => {
@@ -219,16 +256,6 @@ describe("github.* one-release aliases", () => {
 });
 
 describe("github.* aliases must not be reachable from help assistant surfaces", () => {
-  // dispatchAlias() in githubActions.ts intentionally does not preserve the
-  // caller source — the inner dispatch defaults to source="user". That is safe
-  // only because no agent-exposing allowlist contains a deprecated alias id.
-  // If a future edit adds one of the aliases below to a help assistant tier,
-  // an agent call could launder source="user" through the alias and populate
-  // ActionService.lastAction with the forge.* primary as if the user had
-  // invoked it. The MCP-side counterpart lives at
-  // electron/services/mcp-server/__tests__/forgeAliasGuard.test.ts (kept on
-  // the electron side so the renderer typecheck graph doesn't pull in
-  // electron sources, which use looser tsconfig flags).
   const aliasIds = [
     "github.openIssues",
     "github.openPRs",

@@ -42,6 +42,7 @@ import { registerSentryHandlers } from "./handlers/sentry.js";
 import { registerOnboardingHandlers } from "./handlers/onboarding.js";
 import { registerMilestonesHandlers } from "./handlers/milestones.js";
 import { registerShortcutHintsHandlers } from "./handlers/shortcutHints.js";
+import { registerForgeHandlers } from "./handlers/forge.js";
 import { registerForgeSettingsHandlers } from "./handlers/forgeSettings.js";
 import { registerVoiceInputHandlers } from "./handlers/voiceInput.js";
 import { registerMcpServerHandlers } from "./handlers/mcpServer.js";
@@ -143,6 +144,7 @@ export function registerIpcHandlers(deps: HandlerDependencies): () => void {
     register(() => registerMilestonesHandlers());
     register(() => registerShortcutHintsHandlers());
     register(() => registerForgeSettingsHandlers());
+    register(() => registerForgeHandlers());
     register(() => registerVoiceInputHandlers(deps));
     register(() => registerMcpServerHandlers());
     register(() => registerHelpAssistantHandlers());

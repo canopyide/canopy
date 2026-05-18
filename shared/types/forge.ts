@@ -296,6 +296,13 @@ export interface ForgeProviderImpl {
   // URL builders — the provider knows its own URL shape.
   buildIssueUrl(repo: RepoRef, number: number): string;
   buildPRUrl(repo: RepoRef, number: number): string;
+  buildIssuesUrl(repo: RepoRef, options?: { query?: string; state?: string }): string;
+  buildPRsUrl(repo: RepoRef, options?: { query?: string; state?: string }): string;
+  buildCommitsUrl(repo: RepoRef, branch?: string): string;
+
+  // Mutations — providers that don't support assignment throw "Not supported".
+  assignIssue(repo: RepoRef, issueNumber: number, username: string): Promise<void>;
+  validateToken(token: string): Promise<AuthValidation>;
 
   // Host-visible rate-limit state, parsed from the provider's own transport.
   getRateLimit?(): Promise<RateLimitInfo>;

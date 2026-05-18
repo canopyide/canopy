@@ -9,6 +9,7 @@ export { copyTreeClient } from "./copyTreeClient";
 export { errorsClient } from "./errorsClient";
 export { eventInspectorClient } from "./eventInspectorClient";
 export { filesClient } from "./filesClient";
+export { forgeClient } from "./forgeClient";
 export { githubClient } from "./githubClient";
 export { hibernationClient } from "./hibernationClient";
 export { idleTerminalClient } from "./idleTerminalClient";

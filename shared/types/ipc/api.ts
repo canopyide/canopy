@@ -22,7 +22,7 @@ import type { AgentSettings, AgentSettingsEntry } from "../agentSettings.js";
 import type { AgentPreset } from "../../config/agentRegistry.js";
 import type { VoiceInputStatus } from "../voice.js";
 export type { VoiceInputStatus };
-import type { ForgeProviderEntry, ResolvedForgeProvider } from "../forge.js";
+import type { AuthValidation, ForgeProviderEntry, ResolvedForgeProvider } from "../forge.js";
 import type { ResourceProfilePayload } from "../resourceProfile.js";
 import type {
   CreateWorktreeOptions,
@@ -1282,6 +1282,18 @@ export interface ElectronAPI {
      * resolution per remote rather than the project default.
      */
     resolveProvider(projectId: string, remoteUrl?: string): Promise<ResolvedForgeProvider>;
+    /** Open the issues list page for the resolved forge provider. */
+    openIssues(cwd: string, query?: string, state?: string): Promise<void>;
+    /** Open the pull requests list page for the resolved forge provider. */
+    openPRs(cwd: string, query?: string, state?: string): Promise<void>;
+    /** Open the commits page for the resolved forge provider. */
+    openCommits(cwd: string, branch?: string): Promise<void>;
+    /** Open a single issue in the system browser via the resolved forge provider. */
+    openIssue(payload: { cwd: string; issueNumber: number }): Promise<void>;
+    /** Assign an issue to a user via the resolved forge provider. */
+    assignIssue(payload: { cwd: string; issueNumber: number; username: string }): Promise<void>;
+    /** Validate a token against the global default forge provider. */
+    validateToken(token: string): Promise<AuthValidation>;
   };
   voiceInput: {
     getSettings(): Promise<VoiceInputSettings>;
