@@ -769,15 +769,15 @@ describe("GitHubResourceList wake-coordinator revalidation", () => {
     // Advance past debounce.
     await vi.advanceTimersByTimeAsync(400);
 
-    await waitFor(() => {
-      expect(mockListIssues.mock.calls.length).toBeGreaterThanOrEqual(1);
-    });
     // The list-query effect re-runs twice on search-clear (numberQuery flip,
     // then debouncedSearch flip after the debounce timer) — both calls are
     // pre-existing behavior. The wake epoch must NOT add a third call: the
     // consume-during-numeric-search fix guarantees the stale wake doesn't
-    // replay when numberQuery transitions back to null.
-    expect(mockListIssues).toHaveBeenCalledTimes(2);
+    // replay when numberQuery transitions back to null. waitFor on the exact
+    // count so CI doesn't race the second effect flush.
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("clears the refreshing spinner when a wake revalidation is interrupted by a numeric search", async () => {
