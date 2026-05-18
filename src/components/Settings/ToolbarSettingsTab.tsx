@@ -106,6 +106,46 @@ function SortableButtonItem({
   );
 }
 
+interface PluginButtonRowProps {
+  buttonId: AnyToolbarButtonId;
+  isVisible: boolean;
+  onToggle: (buttonId: AnyToolbarButtonId) => void;
+  metadata: ToolbarButtonMetadata | undefined;
+}
+
+// Plugin buttons are hide-only — they're never persisted into
+// `layout.rightButtons`, so they get no drag handle. Reusing
+// `SortableButtonItem` would call `useSortable` outside a `SortableContext`
+// and crash; this is a plain non-sortable row mirroring its visual structure.
+function PluginButtonRow({ buttonId, isVisible, onToggle, metadata }: PluginButtonRowProps) {
+  if (!metadata) return null;
+  const Icon = metadata.icon;
+
+  return (
+    <div
+      style={{ opacity: isVisible ? 1 : 0.5 }}
+      className="flex items-center gap-3 p-3 rounded-[var(--radius-md)] border border-daintree-border bg-daintree-bg/30"
+    >
+      <div className="flex items-center gap-2 flex-1">
+        <div className="text-daintree-text">
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="flex-1">
+          <div className="text-sm font-medium text-daintree-text">{metadata.label}</div>
+          <div className="text-xs text-daintree-text/50 select-text">{metadata.description}</div>
+        </div>
+      </div>
+      <input
+        type="checkbox"
+        checked={isVisible}
+        onChange={() => onToggle(buttonId)}
+        aria-label={`Toggle ${metadata.label} visibility`}
+        className="w-4 h-4 rounded border-border-strong bg-daintree-bg text-daintree-accent focus:ring-daintree-accent focus:ring-2"
+      />
+    </div>
+  );
+}
+
 export function ToolbarSettingsTab() {
   const layout = useToolbarPreferencesStore((s) => s.layout);
   const launcher = useToolbarPreferencesStore((s) => s.launcher);
@@ -280,6 +320,35 @@ export function ToolbarSettingsTab() {
           </SortableContext>
         </DndContext>
       </SettingsSection>
+
+      {pluginButtonIds.length > 0 && (
+        <SettingsSection
+          icon={McpServerIcon}
+          title="Plugin buttons"
+          description={`Uncheck to hide. ${pluginButtonIds.filter((id) => isToolbarButtonVisible(id, layout.pinnedButtons, agentSettings, agentAvailability)).length} of ${pluginButtonIds.length} visible.`}
+        >
+          <div className="space-y-2">
+            {pluginButtonIds.map((buttonId) => (
+              <PluginButtonRow
+                key={buttonId}
+                buttonId={buttonId}
+                isVisible={isToolbarButtonVisible(
+                  buttonId,
+                  layout.pinnedButtons,
+                  agentSettings,
+                  agentAvailability
+                )}
+                onToggle={(id) => toggleButtonVisibility(id, "right")}
+                metadata={
+                  (allMetadata as Partial<Record<AnyToolbarButtonId, ToolbarButtonMetadata>>)[
+                    buttonId
+                  ]
+                }
+              />
+            ))}
+          </div>
+        </SettingsSection>
+      )}
 
       <SettingsSection
         icon={Rocket}

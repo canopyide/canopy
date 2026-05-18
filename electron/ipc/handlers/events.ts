@@ -54,6 +54,7 @@ const EVENT_BUS_BRIDGED_MANIFEST = {
   "sound:cancel": "external",
   "plugin:actions-changed": "external",
   "plugin:panel-kinds-changed": "external",
+  "plugin:toolbar-buttons-changed": "external",
   "terminal:exit": "external",
   "terminal:spawn-result": "external",
 } as const satisfies Record<keyof IpcEventBusMap, "bus" | "external">;

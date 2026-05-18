@@ -2294,6 +2294,17 @@ export interface IpcEventMap {
     kinds: import("../../config/panelKindRegistry.js").PanelKindConfig[];
   };
 
+  // Plugin toolbar button registry events (main → renderer).
+  // `complete` is true only for an authoritative snapshot (a plugin unload —
+  // i.e. uninstall — where the registry reflects exactly the currently-loaded
+  // set). Load-time broadcasts are partial/growing because plugins load
+  // concurrently and `initialize()` is deferred, so the renderer must NOT
+  // prune persisted hide preferences off a non-`complete` snapshot.
+  "plugin:toolbar-buttons-changed": {
+    buttons: import("../../config/toolbarButtonRegistry.js").ToolbarButtonConfig[];
+    complete: boolean;
+  };
+
   // Resource profile change (main → renderer)
   "resource:profile-changed": import("../resourceProfile.js").ResourceProfilePayload;
 
@@ -2366,6 +2377,8 @@ export type IpcEventBusMap = Pick<
   | "plugin:actions-changed"
   // Plugin panel kind registry (global broadcast)
   | "plugin:panel-kinds-changed"
+  // Plugin toolbar button registry (global broadcast)
+  | "plugin:toolbar-buttons-changed"
   // Terminal lifecycle (non-data) — exit, spawn-result, backend crash/ready
   | "terminal:exit"
   | "terminal:backend-crashed"

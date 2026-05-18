@@ -27,6 +27,7 @@ import {
 import {
   registerToolbarButton,
   unregisterPluginToolbarButtons,
+  getAllPluginToolbarButtonConfigs,
 } from "../../shared/config/toolbarButtonRegistry.js";
 import { registerPluginMenuItem, unregisterPluginMenuItems } from "./pluginMenuRegistry.js";
 import { registerForgeProviders, unregisterForgeProviders } from "./forgeProviderRegistry.js";
@@ -99,6 +100,21 @@ export class PluginService {
    * snapshot.
    */
   private panelKindsBroadcastPending = false;
+  /**
+   * Same coalescing rationale as {@link panelKindsBroadcastPending}: a plugin
+   * contributing N toolbar buttons calls `registerToolbarButton` N times in
+   * `loadPlugin()`, and `unregisterPluginToolbarButtons` removes them in one
+   * call on unload — batch into a single snapshot broadcast per tick.
+   */
+  private toolbarButtonsBroadcastPending = false;
+  /**
+   * OR-accumulated across triggers coalesced into one tick: true if any was an
+   * unload (uninstall). The registry at microtask-drain time always reflects
+   * the current set, so a tick that included an unload is an authoritative
+   * snapshot the renderer may safely sweep against; a tick of only loads is a
+   * partial/growing snapshot (concurrent load + deferred init) and must not.
+   */
+  private toolbarButtonsBroadcastComplete = false;
   private disposed = false;
   private readonly disposeRegistrySubscriptions: () => void;
 
@@ -363,6 +379,9 @@ export class PluginService {
         priority: btn.priority ?? 3,
         pluginId: manifest.name,
       });
+    }
+    if (manifest.contributes.toolbarButtons.length > 0) {
+      this.scheduleToolbarButtonsBroadcast(false);
     }
 
     for (const menuItem of manifest.contributes.menuItems) {
@@ -681,6 +700,7 @@ export class PluginService {
     this.unregisterPluginActions(pluginId);
     unregisterPluginMenuItems(pluginId);
     unregisterPluginToolbarButtons(pluginId);
+    this.scheduleToolbarButtonsBroadcast(true);
     unregisterPluginPanelKinds(pluginId);
     unregisterForgeProviders(pluginId);
     this.plugins.delete(pluginId);
@@ -848,6 +868,33 @@ export class PluginService {
     broadcastToRenderer(CHANNELS.EVENTS_PUSH, {
       name: "plugin:panel-kinds-changed",
       payload: { kinds: getPluginPanelKinds() },
+    });
+  }
+
+  /**
+   * Coalesce toolbar-button registry mutations the same way panel kinds are
+   * batched (see {@link schedulePanelKindsBroadcast}). Toolbar buttons are only
+   * ever mutated from `loadPlugin()` / `unloadPlugin()`, so the two call sites
+   * invoke this directly rather than via registry event listeners.
+   */
+  private scheduleToolbarButtonsBroadcast(complete: boolean): void {
+    if (this.disposed) return;
+    if (complete) this.toolbarButtonsBroadcastComplete = true;
+    if (this.toolbarButtonsBroadcastPending) return;
+    this.toolbarButtonsBroadcastPending = true;
+    queueMicrotask(() => {
+      this.toolbarButtonsBroadcastPending = false;
+      const complete = this.toolbarButtonsBroadcastComplete;
+      this.toolbarButtonsBroadcastComplete = false;
+      if (this.disposed) return;
+      this.broadcastPluginToolbarButtons(complete);
+    });
+  }
+
+  private broadcastPluginToolbarButtons(complete: boolean): void {
+    broadcastToRenderer(CHANNELS.EVENTS_PUSH, {
+      name: "plugin:toolbar-buttons-changed",
+      payload: { buttons: getAllPluginToolbarButtonConfigs(), complete },
     });
   }
 }
