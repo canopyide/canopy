@@ -135,7 +135,7 @@ export function useWorktreeActions({
       onConfirm: () => {
         void actionService.dispatch(
           "worktree.sessions.trashAll",
-          { worktreeId: worktree.id },
+          { worktreeId: worktree.id, confirmed: true },
           { source: "user" }
         );
         setConfirmDialog({ isOpen: false });

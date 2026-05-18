@@ -17,7 +17,8 @@ export type TerminalPendingDestructiveActionKind =
   | "restart" // single terminal restart
   | "killAll"
   | "restartAll"
-  | "worktreeRestartAll";
+  | "worktreeRestartAll"
+  | "worktreeTrashAll";
 
 export interface TerminalPendingDestructiveActionSnapshot {
   kind: TerminalPendingDestructiveActionKind;

@@ -53,15 +53,15 @@ export function registerWorktreeSessionActions(
     kind: "command",
     danger: "confirm",
     scope: "renderer",
-    argsSchema: z.object({
-      worktreeId: z.string().optional(),
-      confirmed: z.boolean().optional(),
-    }),
+    argsSchema: z
+      .object({
+        worktreeId: z.string().optional(),
+        confirmed: z.boolean().optional(),
+      })
+      .optional(),
     run: async (args: unknown, ctx: ActionContext) => {
-      const { worktreeId, confirmed } = args as {
-        worktreeId?: string;
-        confirmed?: boolean;
-      };
+      const { worktreeId, confirmed } =
+        (args as { worktreeId?: string; confirmed?: boolean } | undefined) ?? {};
       const targetWorktreeId = worktreeId ?? ctx.activeWorktreeId;
       if (!targetWorktreeId) return;
       const state = usePanelStore.getState();
@@ -140,12 +140,43 @@ export function registerWorktreeSessionActions(
     kind: "command",
     danger: "confirm",
     scope: "renderer",
-    argsSchema: z.object({ worktreeId: z.string().optional() }),
+    argsSchema: z
+      .object({
+        worktreeId: z.string().optional(),
+        confirmed: z.boolean().optional(),
+      })
+      .optional(),
     run: async (args: unknown, ctx: ActionContext) => {
-      const { worktreeId } = args as { worktreeId?: string };
+      const { worktreeId, confirmed } =
+        (args as { worktreeId?: string; confirmed?: boolean } | undefined) ?? {};
       const targetWorktreeId = worktreeId ?? ctx.activeWorktreeId;
       if (!targetWorktreeId) return;
-      usePanelStore.getState().bulkTrashByWorktree(targetWorktreeId);
+      const state = usePanelStore.getState();
+      const targets = state.panelIds
+        .map((id) => state.panelsById[id])
+        .filter(
+          (t): t is NonNullable<typeof t> =>
+            t != null && t.worktreeId === targetWorktreeId && t.location !== "trash"
+        );
+      if (targets.length === 0) return;
+      if (confirmed !== true) {
+        // Classification leads wiring (CLAUDE.md hard rule 2): the action
+        // body must gate even though `useWorktreeActions.handleCloseAll`
+        // already wires a call-site dialog. Without this guard, action-palette
+        // and keybinding dispatches would silently fire `bulkTrashByWorktree`.
+        useTerminalPendingDestructiveActionStore.getState().request({
+          kind: "worktreeTrashAll",
+          targetCount: targets.length,
+          runningAgentCount: collectRunningAgentTerminals(targets).length,
+          worktreeId: targetWorktreeId,
+        });
+        return;
+      }
+      const pending = useTerminalPendingDestructiveActionStore.getState().pending;
+      if (pending && pending.kind === "worktreeTrashAll") {
+        useTerminalPendingDestructiveActionStore.getState().clear();
+      }
+      state.bulkTrashByWorktree(targetWorktreeId);
     },
   }));
 

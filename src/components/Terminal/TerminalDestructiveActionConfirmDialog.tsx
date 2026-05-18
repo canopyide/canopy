@@ -64,6 +64,20 @@ function buildCopy(pending: TerminalPendingDestructiveActionSnapshot): DialogCop
         confirmLabel: `Restart ${pending.targetCount} ${noun}`,
       };
     }
+    case "worktreeTrashAll": {
+      const noun = pending.targetCount === 1 ? "session" : "sessions";
+      const agentNote =
+        pending.runningAgentCount === 0
+          ? ""
+          : pending.runningAgentCount === 1
+            ? " 1 has a running agent."
+            : ` ${pending.runningAgentCount} have running agents.`;
+      return {
+        title: `Trash ${pending.targetCount} ${noun} in this worktree?`,
+        description: `Every active session in the worktree moves to trash. Running processes and unsaved scrollback will be lost. Sessions can be restored from trash before garbage collection.${agentNote}`,
+        confirmLabel: `Trash ${pending.targetCount} ${noun}`,
+      };
+    }
   }
 }
 
@@ -83,6 +97,10 @@ export function TerminalDestructiveActionConfirmDialog(): ReactElement | null {
     if (pending === null) return;
     switch (pending.kind) {
       case "kill":
+        // Defensive: refuse to dispatch when the snapshot lost the target.
+        // Without this guard, `terminal.kill` would fall back to
+        // `focusedId`, which may have changed since the dialog opened.
+        if (!pending.terminalId) break;
         void actionService.dispatch(
           "terminal.kill",
           { terminalId: pending.terminalId, confirmed: true },
@@ -90,6 +108,7 @@ export function TerminalDestructiveActionConfirmDialog(): ReactElement | null {
         );
         break;
       case "restart":
+        if (!pending.terminalId) break;
         void actionService.dispatch(
           "terminal.restart",
           { terminalId: pending.terminalId, confirmed: true },
@@ -103,8 +122,17 @@ export function TerminalDestructiveActionConfirmDialog(): ReactElement | null {
         void actionService.dispatch("terminal.restartAll", { confirmed: true }, { source: "user" });
         break;
       case "worktreeRestartAll":
+        if (!pending.worktreeId) break;
         void actionService.dispatch(
           "worktree.sessions.restartAll",
+          { worktreeId: pending.worktreeId, confirmed: true },
+          { source: "user" }
+        );
+        break;
+      case "worktreeTrashAll":
+        if (!pending.worktreeId) break;
+        void actionService.dispatch(
+          "worktree.sessions.trashAll",
           { worktreeId: pending.worktreeId, confirmed: true },
           { source: "user" }
         );
