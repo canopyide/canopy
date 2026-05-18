@@ -60,6 +60,12 @@ export function useDevPreviewLoadLifecycle({
   const [isSlowLoad, setIsSlowLoad] = useState(false);
   const [webviewLoadError, setWebviewLoadError] = useState<string | null>(null);
 
+  // Read projectId through a ref so a late project-hydration transition
+  // (undefined → id) doesn't rebind the webview listeners mid-load and clear
+  // the load watchdog timer.
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
+
   const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const slowLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const failLoadRetryRef = useRef<NodeJS.Timeout | null>(null);
@@ -92,7 +98,8 @@ export function useDevPreviewLoadLifecycle({
     }
 
     const recordVisit = (navigatedUrl: string) => {
-      if (!projectId) return;
+      const currentProjectId = projectIdRef.current;
+      if (!currentProjectId) return;
       if (navigatedUrl === "about:blank") return;
       let title: string | undefined;
       try {
@@ -100,7 +107,22 @@ export function useDevPreviewLoadLifecycle({
       } catch {
         // webview may not be ready for getTitle
       }
-      useUrlHistoryStore.getState().recordVisit(projectId, navigatedUrl, title);
+      useUrlHistoryStore.getState().recordVisit(currentProjectId, navigatedUrl, title);
+    };
+
+    const handlePageTitleUpdated = (event: Event) => {
+      const detail = event as Event & { title?: string; explicitSet?: boolean };
+      if (detail.explicitSet === false) return;
+      const currentProjectId = projectIdRef.current;
+      if (currentProjectId && detail.title) {
+        try {
+          useUrlHistoryStore
+            .getState()
+            .updateTitle(currentProjectId, webview.getURL(), detail.title);
+        } catch {
+          // webview may be detached
+        }
+      }
     };
 
     const handleDidStartLoading = () => {
@@ -292,6 +314,7 @@ export function useDevPreviewLoadLifecycle({
       "did-navigate-in-page",
       handleDidNavigateInPage as unknown as EventListener
     );
+    webview.addEventListener("page-title-updated", handlePageTitleUpdated);
 
     return () => {
       webview.removeEventListener("did-start-loading", handleDidStartLoading);
@@ -303,6 +326,7 @@ export function useDevPreviewLoadLifecycle({
         "did-navigate-in-page",
         handleDidNavigateInPage as unknown as EventListener
       );
+      webview.removeEventListener("page-title-updated", handlePageTitleUpdated);
       if (failLoadRetryRef.current) {
         clearTimeout(failLoadRetryRef.current);
         failLoadRetryRef.current = null;
@@ -316,15 +340,7 @@ export function useDevPreviewLoadLifecycle({
         loadTimeoutRef.current = null;
       }
     };
-  }, [
-    webviewElement,
-    projectId,
-    loadTimeoutMs,
-    evictingRef,
-    lastSetUrlRef,
-    setHistory,
-    setBlockedNav,
-  ]);
+  }, [webviewElement, loadTimeoutMs, evictingRef, lastSetUrlRef, setHistory, setBlockedNav]);
 
   useEffect(() => {
     const webview = webviewElement;

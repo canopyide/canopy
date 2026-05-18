@@ -41,6 +41,24 @@ describe("computeDevServerUrl", () => {
     );
   });
 
+  it("respects a non-root base path the dev server advertises on a port shift", () => {
+    expect(
+      computeDevServerUrl("http://localhost:5174/app/", "http://localhost:5173/dashboard")
+    ).toBe("http://localhost:5174/app/");
+  });
+
+  it("returns a base-path detected URL unchanged when there is no current URL", () => {
+    expect(computeDevServerUrl("http://localhost:5174/app/", "")).toBe(
+      "http://localhost:5174/app/"
+    );
+  });
+
+  it("preserves a hash-router route when grafting onto the new origin", () => {
+    expect(
+      computeDevServerUrl("http://localhost:5174/", "http://localhost:5173/#/settings?tab=auth")
+    ).toBe("http://localhost:5174/#/settings?tab=auth");
+  });
+
   it("falls forward to the detected URL when the current URL cannot be parsed", () => {
     expect(computeDevServerUrl("http://localhost:3001/", "not-a-url")).toBe(
       "http://localhost:3001/"

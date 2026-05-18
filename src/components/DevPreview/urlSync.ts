@@ -9,6 +9,10 @@
  * e.g. 3000 → 3001), the detected URL is the bare server root. Navigating to it
  * directly would drop the route the user was on. To preserve it, the current
  * URL's pathname/search/hash are grafted onto the detected origin.
+ *
+ * If the detected URL itself carries a non-root path (e.g. a Vite `base`
+ * config advertising `http://localhost:5174/app/`), that path is intentional
+ * and is navigated to as-is — grafting only applies to a bare server root.
  */
 export function computeDevServerUrl(detectedUrl: string, currentUrl: string): string | false {
   if (!detectedUrl) return false;
@@ -27,8 +31,13 @@ export function computeDevServerUrl(detectedUrl: string, currentUrl: string): st
 
   if (detected.origin === current.origin) return false;
 
-  // Origin changed (port shift). Graft the user's current route onto the new
-  // origin so a dev-server restart doesn't kick them back to the root.
+  // The detected URL advertises its own non-root path (e.g. a Vite `base`).
+  // Respect it rather than grafting the user's route onto a different base.
+  if (detected.pathname !== "/") return detected.toString();
+
+  // Origin changed (port shift) and the detected URL is a bare root. Graft the
+  // user's current route onto the new origin so a dev-server restart doesn't
+  // kick them back to the root.
   detected.pathname = current.pathname;
   detected.search = current.search;
   detected.hash = current.hash;
