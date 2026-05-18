@@ -607,6 +607,128 @@ describe("registerWebviewHandlers", () => {
       );
       expect(logRows).toHaveLength(5);
     });
+
+    it("still captures Runtime.consoleAPICalled when Log.enable fails", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      debuggerMock.sendCommand.mockImplementation((cmd: string) => {
+        if (cmd === "Log.enable") return Promise.reject(new Error("Log domain unsupported"));
+        return Promise.resolve();
+      });
+
+      cleanup = registerWebviewHandlers(deps);
+      const handler = getHandler("webview:start-console-capture");
+      await handler(null, 42, "pane-1");
+
+      const messageCall = debuggerMock.on.mock.calls.find(
+        ([event]: string[]) => event === "message"
+      );
+      expect(messageCall).toBeDefined();
+      messageCall![1]({}, "Runtime.consoleAPICalled", {
+        type: "log",
+        args: [{ type: "string", value: "still works" }],
+        timestamp: 1000,
+      });
+
+      expect(mainWindowMock.webContents.send).toHaveBeenCalledWith(
+        "webview:console-message",
+        expect.objectContaining({ paneId: "pane-1", summaryText: "still works" })
+      );
+      warnSpy.mockRestore();
+    });
+
+    it("fans exceptionThrown and Log.entryAdded out to every pane", async () => {
+      cleanup = registerWebviewHandlers(deps);
+      const handler = getHandler("webview:start-console-capture");
+      await handler(null, 42, "pane-1");
+      await handler(null, 42, "pane-2");
+
+      const messageListener = debuggerMock.on.mock.calls.find(
+        ([event]: string[]) => event === "message"
+      )![1];
+
+      messageListener({}, "Runtime.exceptionThrown", {
+        timestamp: 1,
+        exceptionDetails: { text: "Uncaught Error: x" },
+      });
+      messageListener({}, "Log.entryAdded", {
+        entry: { source: "network", level: "error", text: "failed", timestamp: 2 },
+      });
+
+      const rows = mainWindowMock.webContents.send.mock.calls
+        .filter(([ch]: string[]) => ch === "webview:console-message")
+        .map(([, row]: [string, { paneId: string; cdpType: string }]) => row);
+      const exceptionPanes = rows.filter((r) => r.cdpType === "error").map((r) => r.paneId);
+      const logPanes = rows.filter((r) => r.cdpType === "log-entry").map((r) => r.paneId);
+      expect(exceptionPanes.sort()).toEqual(["pane-1", "pane-2"]);
+      expect(logPanes.sort()).toEqual(["pane-1", "pane-2"]);
+    });
+
+    it("resets the Log.entryAdded rate-limit window after it elapses", async () => {
+      vi.useFakeTimers();
+      try {
+        cleanup = registerWebviewHandlers(deps);
+        const handler = getHandler("webview:start-console-capture");
+        await handler(null, 42, "pane-1");
+
+        const messageListener = debuggerMock.on.mock.calls.find(
+          ([event]: string[]) => event === "message"
+        )![1];
+
+        const evt = {
+          entry: {
+            source: "network",
+            level: "warning",
+            text: "slow",
+            timestamp: 1,
+            url: "https://x.test/a",
+            lineNumber: 3,
+          },
+        };
+        for (let i = 0; i < 6; i++) messageListener({}, "Log.entryAdded", evt);
+        const countAfterFlood = mainWindowMock.webContents.send.mock.calls.filter(
+          ([ch, row]: [string, { cdpType?: string }]) =>
+            ch === "webview:console-message" && row.cdpType === "log-entry"
+        ).length;
+        expect(countAfterFlood).toBe(5);
+
+        vi.advanceTimersByTime(5_001);
+        messageListener({}, "Log.entryAdded", evt);
+
+        const totalAfterReset = mainWindowMock.webContents.send.mock.calls.filter(
+          ([ch, row]: [string, { cdpType?: string }]) =>
+            ch === "webview:console-message" && row.cdpType === "log-entry"
+        ).length;
+        expect(totalAfterReset).toBe(6);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("uses the fallback summary for malformed Runtime.exceptionThrown payloads", async () => {
+      cleanup = registerWebviewHandlers(deps);
+      const handler = getHandler("webview:start-console-capture");
+      await handler(null, 42, "pane-1");
+
+      const messageListener = debuggerMock.on.mock.calls.find(
+        ([event]: string[]) => event === "message"
+      )![1];
+
+      expect(() => messageListener({}, "Runtime.exceptionThrown", null)).not.toThrow();
+      messageListener({}, "Runtime.exceptionThrown", {
+        timestamp: 1,
+        exceptionDetails: { exception: { type: "object" } },
+      });
+
+      expect(mainWindowMock.webContents.send).toHaveBeenCalledWith(
+        "webview:console-message",
+        expect.objectContaining({
+          level: "error",
+          cdpType: "error",
+          summaryText: "Uncaught (unknown exception)",
+          args: [],
+        })
+      );
+    });
   });
 
   describe("ownership validation", () => {

@@ -329,13 +329,6 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
         session.runtimeEnabled = true;
       }
 
-      // Log domain surfaces browser-emitted entries (CSP violations, network
-      // failures, deprecations) that never reach Runtime.consoleAPICalled.
-      if (!session.logEnabled) {
-        await wc.debugger.sendCommand("Log.enable");
-        session.logEnabled = true;
-      }
-
       // Bind CDP message listener once per webContents
       if (!session.messageListener) {
         const listener = (_event: Electron.Event, method: string, params: unknown) => {
@@ -399,6 +392,24 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
         };
         session.detachListener = detachListener;
         wc.debugger.on("detach", detachListener);
+      }
+
+      // Log domain surfaces browser-emitted entries (CSP violations, network
+      // failures, deprecations) that never reach Runtime.consoleAPICalled.
+      // Enabled AFTER the message listener is wired so any entries CDP replays
+      // on enable are captured, and in its own try/catch so a Log.enable
+      // failure degrades to "no log-entry rows" rather than silently breaking
+      // the already-registered Runtime.consoleAPICalled capture.
+      if (!session.logEnabled) {
+        try {
+          await wc.debugger.sendCommand("Log.enable");
+          session.logEnabled = true;
+        } catch (logErr) {
+          console.warn(
+            `[webview] CDP Log.enable failed for id=${webContentsId}:`,
+            formatErrorMessage(logErr, "Log.enable failed")
+          );
+        }
       }
     } catch (err) {
       const message = formatErrorMessage(err, "CDP console capture start failed");
