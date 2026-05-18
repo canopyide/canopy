@@ -764,6 +764,7 @@ export function Toolbar({
       pluginConfigs,
       devServerShortcut,
       devServerHintHover,
+      toggleButtonVisibility,
     ]
   );
 
