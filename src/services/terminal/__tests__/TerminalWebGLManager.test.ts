@@ -7,13 +7,19 @@ let mockOnContextLoss: ReturnType<typeof vi.fn>;
 
 function createMockAddon() {
   // Per-instance so a resync test can fire one addon's merge event and assert
-  // every co-owning addon's clearTextureAtlas() ran.
+  // every co-owning addon's local resize-like reset ran.
   const removeAtlasHandlers = new Set<() => void>();
   const changeAtlasHandlers = new Set<() => void>();
+  const clearLocalModel = vi.fn();
+  const resizeLocalRenderer = vi.fn();
   return {
     dispose: mockAddonDispose,
     onContextLoss: mockOnContextLoss,
     clearTextureAtlas: vi.fn(),
+    _renderer: {
+      _clearModel: clearLocalModel,
+      handleResize: resizeLocalRenderer,
+    },
     onChangeTextureAtlas: vi.fn((handler: () => void) => {
       changeAtlasHandlers.add(handler);
       return {
@@ -30,7 +36,7 @@ function createMockAddon() {
         },
       };
     }),
-    // Test helper — simulate a shared-atlas page merge for this addon.
+    // Test helper: simulate a shared-atlas page merge for this addon.
     __fireRemoveTextureAtlasCanvas(): void {
       for (const handler of [...removeAtlasHandlers]) {
         handler();
@@ -159,6 +165,7 @@ function makeManagedTerminal(overrides: Partial<ManagedTerminal> = {}): ManagedT
     terminal: {
       loadAddon: vi.fn(),
       element,
+      cols: 80,
       rows: 24,
       refresh: vi.fn(),
     },
@@ -254,13 +261,18 @@ describe("TerminalWebGLManager", () => {
     const addon2 = addonAt(1);
 
     // A real merge reindexes the shared atlas, and xterm forwards the event to
-    // every co-owning renderer — each must drop and rebuild its GPU texture
-    // cache, not just the one that triggered the merge.
+    // every co-owning renderer. Each renderer must run the same local reset
+    // path that makes a user resize heal corruption, without clearing the
+    // shared atlas again.
     addon1.__fireRemoveTextureAtlasCanvas();
     addon2.__fireRemoveTextureAtlasCanvas();
 
-    expect(addon1.clearTextureAtlas).toHaveBeenCalledTimes(1);
-    expect(addon2.clearTextureAtlas).toHaveBeenCalledTimes(1);
+    expect(addon1._renderer.handleResize).toHaveBeenCalledWith(80, 24);
+    expect(addon2._renderer.handleResize).toHaveBeenCalledWith(80, 24);
+    expect(addon1._renderer._clearModel).not.toHaveBeenCalled();
+    expect(addon2._renderer._clearModel).not.toHaveBeenCalled();
+    expect(addon1.clearTextureAtlas).not.toHaveBeenCalled();
+    expect(addon2.clearTextureAtlas).not.toHaveBeenCalled();
     expect(managed1.terminal.refresh).toHaveBeenCalledWith(0, 23);
     expect(managed2.terminal.refresh).toHaveBeenCalledWith(0, 23);
   });
@@ -279,7 +291,10 @@ describe("TerminalWebGLManager", () => {
     // fired, so clearing it would be wasted work on an unaffected renderer.
     addon1.__fireRemoveTextureAtlasCanvas();
 
-    expect(addon1.clearTextureAtlas).toHaveBeenCalledTimes(1);
+    expect(addon1._renderer.handleResize).toHaveBeenCalledWith(80, 24);
+    expect(addon1._renderer._clearModel).not.toHaveBeenCalled();
+    expect(addon1.clearTextureAtlas).not.toHaveBeenCalled();
+    expect(addon2._renderer.handleResize).not.toHaveBeenCalled();
     expect(addon2.clearTextureAtlas).not.toHaveBeenCalled();
     expect(managed1.terminal.refresh).toHaveBeenCalledWith(0, 23);
     expect(managed2.terminal.refresh).not.toHaveBeenCalled();
@@ -292,8 +307,23 @@ describe("TerminalWebGLManager", () => {
 
     addon.__fireChangeTextureAtlas();
 
-    expect(addon.clearTextureAtlas).toHaveBeenCalledTimes(1);
+    expect(addon._renderer.handleResize).toHaveBeenCalledWith(80, 24);
+    expect(addon._renderer._clearModel).not.toHaveBeenCalled();
+    expect(addon.clearTextureAtlas).not.toHaveBeenCalled();
     expect(managed.terminal.refresh).toHaveBeenCalledTimes(1);
+    expect(managed.terminal.refresh).toHaveBeenCalledWith(0, 23);
+  });
+
+  it("falls back to local model clear when resize-like reset is unavailable", () => {
+    const managed = makeManagedTerminal();
+    manager.ensureContext("t1", managed);
+    const addon = addonAt(0);
+    delete (addon._renderer as { handleResize?: unknown }).handleResize;
+
+    addon.__fireRemoveTextureAtlasCanvas();
+
+    expect(addon._renderer._clearModel).toHaveBeenCalledWith(true);
+    expect(addon.clearTextureAtlas).not.toHaveBeenCalled();
     expect(managed.terminal.refresh).toHaveBeenCalledWith(0, 23);
   });
 
@@ -316,18 +346,22 @@ describe("TerminalWebGLManager", () => {
     addon2.__fireRemoveTextureAtlasCanvas();
     addon1.__fireRemoveTextureAtlasCanvas();
 
-    expect(addon1.clearTextureAtlas).not.toHaveBeenCalled();
+    expect(addon1._renderer.handleResize).not.toHaveBeenCalled();
     expect(flushRafFrame()).toBe(true);
 
-    expect(addon1.clearTextureAtlas).toHaveBeenCalledTimes(1);
-    expect(addon2.clearTextureAtlas).toHaveBeenCalledTimes(1);
+    expect(addon1._renderer.handleResize).toHaveBeenCalledTimes(1);
+    expect(addon2._renderer.handleResize).toHaveBeenCalledTimes(1);
+    expect(addon1._renderer._clearModel).not.toHaveBeenCalled();
+    expect(addon2._renderer._clearModel).not.toHaveBeenCalled();
+    expect(addon1.clearTextureAtlas).not.toHaveBeenCalled();
+    expect(addon2.clearTextureAtlas).not.toHaveBeenCalled();
     expect(managed1.terminal.refresh).toHaveBeenCalledTimes(1);
     expect(managed2.terminal.refresh).toHaveBeenCalledTimes(1);
     // The burst collapsed to one frame — nothing else is queued.
     expect(flushRafFrame()).toBe(false);
   });
 
-  it("resyncs the rest of the fired set when one clearTextureAtlas throws", () => {
+  it("falls back to reacquire when local renderer reset throws and continues the fired set", () => {
     const managed1 = makeManagedTerminal();
     const managed2 = makeManagedTerminal();
     manager.ensureContext("t1", managed1);
@@ -335,7 +369,10 @@ describe("TerminalWebGLManager", () => {
 
     const addon1 = addonAt(0);
     const addon2 = addonAt(1);
-    addon1.clearTextureAtlas.mockImplementation(() => {
+    addon1._renderer.handleResize.mockImplementation(() => {
+      throw new Error("context lost mid-resync");
+    });
+    addon1._renderer._clearModel.mockImplementation(() => {
       throw new Error("context lost mid-resync");
     });
 
@@ -346,17 +383,30 @@ describe("TerminalWebGLManager", () => {
     addon2.__fireRemoveTextureAtlasCanvas();
     flushRafFrame();
 
-    expect(addon1.clearTextureAtlas).toHaveBeenCalledTimes(1);
-    expect(addon2.clearTextureAtlas).toHaveBeenCalledTimes(1);
+    expect(addon1._renderer.handleResize).toHaveBeenCalledTimes(1);
+    expect(addon1._renderer._clearModel).toHaveBeenCalledTimes(1);
+    expect(addon1.clearTextureAtlas).not.toHaveBeenCalled();
+    expect(mockAddonDispose).toHaveBeenCalledTimes(1);
+    expect(addon2._renderer.handleResize).toHaveBeenCalledTimes(1);
+    expect(addon2._renderer._clearModel).not.toHaveBeenCalled();
+    expect(addon2.clearTextureAtlas).not.toHaveBeenCalled();
     expect(managed1.terminal.refresh).not.toHaveBeenCalled();
     expect(managed2.terminal.refresh).toHaveBeenCalledTimes(1);
+
+    // The fallback reacquire is paced through the same one-context-per-rAF
+    // attach queue as normal WebGL acquisition.
+    expect(manager.isActive("t1")).toBe(false);
+    expect(flushRafFrame()).toBe(true);
+    expect(WebglAddonMock).toHaveBeenCalledTimes(3);
+    expect(manager.isActive("t1")).toBe(true);
   });
 
-  it("skips the post-clear refresh when the terminal has no rows", () => {
+  it("skips the post-reset refresh when the terminal has no rows", () => {
     const managed = makeManagedTerminal({
       terminal: {
         loadAddon: vi.fn(),
         element: makeFakeElement(),
+        cols: 80,
         rows: 0,
         refresh: vi.fn(),
       } as unknown as ManagedTerminal["terminal"],
@@ -366,7 +416,9 @@ describe("TerminalWebGLManager", () => {
 
     addon.__fireRemoveTextureAtlasCanvas();
 
-    expect(addon.clearTextureAtlas).toHaveBeenCalledTimes(1);
+    expect(addon._renderer.handleResize).not.toHaveBeenCalled();
+    expect(addon._renderer._clearModel).toHaveBeenCalledWith(true);
+    expect(addon.clearTextureAtlas).not.toHaveBeenCalled();
     expect(managed.terminal.refresh).not.toHaveBeenCalled();
   });
 
@@ -382,6 +434,8 @@ describe("TerminalWebGLManager", () => {
     // The queued frame was cancelled — flushing finds nothing — and the
     // resync never runs.
     expect(flushRafFrame()).toBe(false);
+    expect(addon1._renderer.handleResize).not.toHaveBeenCalled();
+    expect(addon1._renderer._clearModel).not.toHaveBeenCalled();
     expect(addon1.clearTextureAtlas).not.toHaveBeenCalled();
     expect(managed1.terminal.refresh).not.toHaveBeenCalled();
   });
@@ -403,6 +457,10 @@ describe("TerminalWebGLManager", () => {
     // The released terminal's subscription is disposed: no frame is scheduled
     // and no addon is cleared.
     expect(flushRafFrame()).toBe(false);
+    expect(addon1._renderer.handleResize).not.toHaveBeenCalled();
+    expect(addon2._renderer.handleResize).not.toHaveBeenCalled();
+    expect(addon1._renderer._clearModel).not.toHaveBeenCalled();
+    expect(addon2._renderer._clearModel).not.toHaveBeenCalled();
     expect(addon1.clearTextureAtlas).not.toHaveBeenCalled();
     expect(addon2.clearTextureAtlas).not.toHaveBeenCalled();
     expect(managed1.terminal.refresh).not.toHaveBeenCalled();

@@ -67,6 +67,34 @@ function combineDisposables(disposables: IDisposable[]): IDisposable | null {
   };
 }
 
+type WebglAddonWithRendererInternals = WebglAddonType & {
+  _renderer?: {
+    _clearModel?: (clearGlyphRenderer: boolean) => void;
+    handleResize?: (cols: number, rows: number) => void;
+  };
+};
+
+function resetLocalWebGLRenderer(addon: WebglAddonType, cols: number, rows: number): boolean {
+  const renderer = (addon as WebglAddonWithRendererInternals)._renderer;
+  if (cols > 0 && rows > 0 && typeof renderer?.handleResize === "function") {
+    try {
+      renderer.handleResize(cols, rows);
+      return true;
+    } catch {
+      // fall through to the lighter local-model reset
+    }
+  }
+  if (typeof renderer?._clearModel !== "function") {
+    return false;
+  }
+  try {
+    renderer._clearModel(true);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 interface WebGLEntry {
   addon: WebglAddonType;
   managed: ManagedTerminal;
@@ -123,16 +151,20 @@ export class TerminalWebGLManager {
   private pendingEnsureRafId: number | null = null;
   // xterm shares one module-global TextureAtlas across every terminal with a
   // matching font/theme config. A page-merge (TextureAtlas._mergePages) splices
-  // pages and rewrites glyph texturePage indices, but a WebGL context's GPU
-  // texture cache (GlyphRenderer._atlasTextures) is only invalidated by
-  // setAtlas() at attach. The atlas fires onRemoveTextureAtlasCanvas on a merge,
-  // forwarded to every co-owning renderer, so the fired ids are exactly the
-  // co-owners of the merged atlas. The renderer also fires onChangeTextureAtlas
-  // when it swaps to a different atlas object (font/theme/DPR resize path).
-  // clearTextureAtlas() plus a full terminal.refresh() is the public recovery:
-  // it clears the local render model and forces vertex buffers to be rebuilt
-  // from the corrected atlas pointers. Coalesce through one rAF because a
-  // single merge fires once per merged-away page, per co-owner.
+  // pages and rewrites glyph texturePage indices, but each WebGL renderer keeps
+  // its own local model/vertex buffers. Colored/dim status lines amplify this
+  // because atlas entries are keyed by code + bg + fg + ext, so the same text
+  // shape can churn many colored glyph entries. If a cell's code/bg/fg/ext did
+  // not change, xterm can skip rebuilding that cell even though the underlying
+  // atlas coordinates changed, leaving the renderer sampling the wrong glyph
+  // image. The normal user-visible recovery, resizing the terminal, works
+  // because xterm's WebGL resize path locally resizes the glyph renderer,
+  // reattaches the atlas, clears the model, and then repaints. The public
+  // clearTextureAtlas() API clears the shared atlas too, so using it as a
+  // per-renderer recovery can perturb co-owners under tiled-agent load. Instead,
+  // run only the local resize-like reset through the pinned 0.19 internal shape
+  // and follow with a full terminal.refresh(). If that internal shape drifts,
+  // fall back to releasing/reacquiring only this context.
   private atlasResyncPending = new Set<string>();
   private atlasResyncRafId: number | null = null;
 
@@ -281,9 +313,8 @@ export class TerminalWebGLManager {
   }
 
   // Resync every renderer that co-owns the merged atlas (the ids whose merge
-  // event fired). clearTextureAtlas() drops a renderer's model and re-rasterizes
-  // from the corrected atlas; clearing only one co-owner would wipe the shared
-  // CPU pages and strand the rest, so the whole fired set must be cleared.
+  // event fired). The reset must be local to each renderer; clearing the shared
+  // CPU atlas here can create synchronized glyph churn across tiled panes.
   private runAtlasResync = (): void => {
     this.atlasResyncRafId = null;
     const ids = [...this.atlasResyncPending];
@@ -291,14 +322,18 @@ export class TerminalWebGLManager {
     for (const id of ids) {
       const entry = this.pool.get(id);
       if (!entry) continue;
-      try {
-        entry.addon.clearTextureAtlas();
-      } catch {
-        // ignore — renderer may be mid-teardown or its context lost
+      if (
+        !resetLocalWebGLRenderer(
+          entry.addon,
+          entry.managed.terminal.cols,
+          entry.managed.terminal.rows
+        )
+      ) {
+        this.reacquireContext(id, entry);
         continue;
       }
       try {
-        // Re-check identity after clearTextureAtlas(): the addon can synchronously
+        // Re-check identity after local reset: the addon can synchronously
         // lose context and release itself before we ask xterm to repaint.
         if (this.pool.get(id) !== entry) continue;
         if (entry.managed.isOpened && entry.managed.terminal.rows > 0) {
@@ -309,6 +344,15 @@ export class TerminalWebGLManager {
       }
     }
   };
+
+  private reacquireContext(id: string, entry: WebGLEntry): void {
+    if (this.pool.get(id) !== entry) return;
+    const managed = entry.managed;
+    this.doRelease(id);
+    if (managed.isOpened) {
+      this.ensureContext(id, managed);
+    }
+  }
 
   private attachWithLoadedAddon(
     id: string,
