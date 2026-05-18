@@ -243,7 +243,7 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     // resourceEnvironment → resourceEnvironments migration is owned by the
     // main-process codec (electron/services/projectSettingsCodec.ts), so by
     // the time settings reach the renderer they are already canonical.
-    let initialResourceEnvironments: Record<string, ResourceEnvironment> | undefined =
+    const initialResourceEnvironments: Record<string, ResourceEnvironment> | undefined =
       projectSettings.resourceEnvironments;
     let initialActiveResourceEnvironment: string | undefined =
       projectSettings.activeResourceEnvironment;

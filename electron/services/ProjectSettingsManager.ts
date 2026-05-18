@@ -172,7 +172,8 @@ export class ProjectSettingsManager {
    */
   private async quarantine(filePath: string, suffix: string): Promise<string | null> {
     try {
-      const base = suffix === "corrupted" ? `${filePath}.corrupted.${Date.now()}` : `${filePath}.${suffix}`;
+      const base =
+        suffix === "corrupted" ? `${filePath}.corrupted.${Date.now()}` : `${filePath}.${suffix}`;
       const quarantinePath = existsSync(base) ? `${base}.${Date.now()}` : base;
       await resilientRename(filePath, quarantinePath);
       console.warn(`[ProjectSettingsManager] Quarantined settings file to ${quarantinePath}`);
@@ -189,8 +190,7 @@ export class ProjectSettingsManager {
         : "Project settings couldn't be read. Defaults are in effect until you reload the project.";
       broadcastToRenderer(CHANNELS.NOTIFICATION_SHOW_TOAST, {
         type: "error",
-        title:
-          kind === "future-version" ? "Settings file too new" : "Project settings corrupted",
+        title: kind === "future-version" ? "Settings file too new" : "Project settings corrupted",
         message:
           kind === "future-version"
             ? `${quarantinedPath ? `Settings file written by a newer version of Daintree was quarantined to ${quarantinedPath}. ` : ""}Defaults are in effect until you reload with a newer build.`

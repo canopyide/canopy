@@ -188,17 +188,14 @@ describe("round-trip", () => {
     { requiredKeys: ["runCommands"] }
   );
 
-  test.prop([canonicalSettingsArb])(
-    "decode(encode(decode(x))) deep-equals decode(x)",
-    (raw) => {
-      const first = decode(raw);
-      if (!first.ok) return;
-      const envelope = encodeEnvelope(first.settings);
-      const second = decode(envelope);
-      if (!second.ok) throw new Error("encoded envelope failed to decode");
-      expect(second.settings).toEqual(first.settings);
-    }
-  );
+  test.prop([canonicalSettingsArb])("decode(encode(decode(x))) deep-equals decode(x)", (raw) => {
+    const first = decode(raw);
+    if (!first.ok) return;
+    const envelope = encodeEnvelope(first.settings);
+    const second = decode(envelope);
+    if (!second.ok) throw new Error("encoded envelope failed to decode");
+    expect(second.settings).toEqual(first.settings);
+  });
 });
 
 describe("migration is idempotent", () => {
