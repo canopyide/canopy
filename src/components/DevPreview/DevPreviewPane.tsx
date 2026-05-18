@@ -323,47 +323,7 @@ export function DevPreviewPane({
   const isMountedRef = useRef(true);
   const prevStatusRef = useRef(status);
 
-  const PHASE_DEBOUNCE_MS = 600;
   const STALL_DETECTION_MS = 15_000;
-
-  // Phase label debounce — prevents three-label slot machine on warm-cache boots
-  const lastPhaseChangeAtRef = useRef<number>(0);
-  const phaseDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [debouncedPhaseLabel, setDebouncedPhaseLabel] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (phaseLabel === null) {
-      setDebouncedPhaseLabel(null);
-      return;
-    }
-    lastPhaseChangeAtRef.current = Date.now();
-    phaseDebounceTimerRef.current = setTimeout(() => {
-      if (Date.now() - lastPhaseChangeAtRef.current >= PHASE_DEBOUNCE_MS) {
-        setDebouncedPhaseLabel(phaseLabel);
-      }
-    }, PHASE_DEBOUNCE_MS);
-    return () => {
-      if (phaseDebounceTimerRef.current) {
-        clearTimeout(phaseDebounceTimerRef.current);
-        phaseDebounceTimerRef.current = null;
-      }
-    };
-  }, [phaseLabel]);
-
-  // Bypass debounce on deliberate transitions (e.g. restart) so the user sees
-  // the label even when the backend replaces it within the debounce window.
-  useEffect(() => {
-    if (isRestarting) {
-      lastPhaseChangeAtRef.current = 0;
-      if (phaseDebounceTimerRef.current) {
-        clearTimeout(phaseDebounceTimerRef.current);
-        phaseDebounceTimerRef.current = null;
-      }
-      if (phaseLabel) {
-        setDebouncedPhaseLabel(phaseLabel);
-      }
-    }
-  }, [isRestarting]); // eslint-disable-line react-hooks/exhaustive-deps -- phaseLabel is read but not needed as dep; only restart transitions matter
 
   // Stall detection — auto-open console drawer on fatal error or 15s no-phase-progress
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

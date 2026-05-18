@@ -41,7 +41,6 @@ export interface DevPreviewSessionState {
   updatedAt: number;
   phaseLabel?: "Compiling";
   forceKilled?: boolean;
-  phaseLabel: string | null;
 }
 
 export interface DevPreviewStateChangedPayload {

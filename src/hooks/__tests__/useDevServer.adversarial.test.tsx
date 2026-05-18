@@ -42,7 +42,7 @@ function buildState(overrides: Partial<DevPreviewSessionState>): DevPreviewSessi
     isRestarting: overrides.isRestarting ?? false,
     generation: overrides.generation ?? 0,
     updatedAt: overrides.updatedAt ?? Date.now(),
-    phaseLabel: overrides.phaseLabel ?? null,
+    phaseLabel: overrides.phaseLabel ?? undefined,
   };
 }
 

@@ -251,7 +251,6 @@ export class DevPreviewSessionService {
           error: null,
           isRestarting: true,
           forceKilled: undefined,
-          phaseLabel: "Restarting",
         });
 
         await this.stopSessionTerminal(session, "restart");
@@ -426,7 +425,7 @@ export class DevPreviewSessionService {
           terminalId: null,
           isRestarting: false,
           forceKilled,
-          phaseLabel: null,
+          phaseLabel: undefined,
         });
       } else {
         this.updateSession(session, {
@@ -436,7 +435,7 @@ export class DevPreviewSessionService {
           error: null,
           terminalId: null,
           isRestarting: false,
-          phaseLabel: null,
+          phaseLabel: undefined,
         });
       }
     });
@@ -544,7 +543,7 @@ export class DevPreviewSessionService {
       generation: 0,
       updatedAt: Date.now(),
       updatedAtPerformanceMs: performance.now(),
-      phaseLabel: null,
+      phaseLabel: undefined,
       cwd: "",
       devCommand: "",
       turbopackEnabled: true,
@@ -582,7 +581,7 @@ export class DevPreviewSessionService {
         generation: 0,
         updatedAt: Date.now(),
         forceKilled: undefined,
-        phaseLabel: null,
+        phaseLabel: undefined,
       };
     }
     return this.toPublicState(session);
@@ -603,7 +602,6 @@ export class DevPreviewSessionService {
       updatedAt: session.updatedAt,
       phaseLabel: session.phaseLabel,
       forceKilled: session.forceKilled,
-      phaseLabel: session.phaseLabel,
     };
   }
 
@@ -622,7 +620,6 @@ export class DevPreviewSessionService {
         | "generation"
         | "phaseLabel"
         | "forceKilled"
-        | "phaseLabel"
       >
     >
   ): void {
@@ -637,7 +634,6 @@ export class DevPreviewSessionService {
     if (updates.generation !== undefined) session.generation = updates.generation;
     if ("phaseLabel" in updates) session.phaseLabel = updates.phaseLabel;
     if ("forceKilled" in updates) session.forceKilled = updates.forceKilled;
-    if (updates.phaseLabel !== undefined) session.phaseLabel = updates.phaseLabel;
     session.updatedAt = Date.now();
     session.updatedAtPerformanceMs = performance.now();
     this.onStateChanged(this.toPublicState(session));
@@ -742,7 +738,6 @@ export class DevPreviewSessionService {
       error: null,
       generation: nextGeneration,
       forceKilled: undefined,
-      phaseLabel: "Starting dev server",
     });
 
     try {
@@ -1045,7 +1040,7 @@ export class DevPreviewSessionService {
       url: null,
       assignedUrl: null,
       isRestarting: false,
-      phaseLabel: null,
+      phaseLabel: undefined,
     });
   }
 
@@ -1083,7 +1078,7 @@ export class DevPreviewSessionService {
         },
         terminalId: null,
         isRestarting: false,
-        phaseLabel: null,
+        phaseLabel: undefined,
       });
       return;
     }
@@ -1107,7 +1102,7 @@ export class DevPreviewSessionService {
         error,
         terminalId: null,
         isRestarting: false,
-        phaseLabel: null,
+        phaseLabel: undefined,
       });
       return;
     }
@@ -1119,7 +1114,7 @@ export class DevPreviewSessionService {
       error: null,
       terminalId: null,
       isRestarting: false,
-      phaseLabel: null,
+      phaseLabel: undefined,
     });
   }
 
@@ -1140,7 +1135,6 @@ export class DevPreviewSessionService {
         type: "missing-dependencies",
         message: `Running ${installCommand}...`,
       },
-      phaseLabel: "Installing dependencies",
     });
 
     try {
@@ -1211,7 +1205,7 @@ export class DevPreviewSessionService {
             url,
             error: null,
             isRestarting: false,
-            phaseLabel: null,
+            phaseLabel: undefined,
           });
           markPerformance(PERF_MARKS.DEVPREVIEW_RUNNING, {
             panelId: session.panelId,
@@ -1229,7 +1223,7 @@ export class DevPreviewSessionService {
               message: `Dev server at ${url} did not respond within ${READINESS_TIMEOUT_MS / 1000} seconds`,
             },
             isRestarting: false,
-            phaseLabel: null,
+            phaseLabel: undefined,
           });
         }
       })
@@ -1255,7 +1249,7 @@ export class DevPreviewSessionService {
             message: `Dev server readiness check failed: ${message}`,
           },
           isRestarting: false,
-          phaseLabel: null,
+          phaseLabel: undefined,
         });
       });
   }
