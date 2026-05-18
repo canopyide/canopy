@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useProjectStore } from "@/store/projectStore";
-import type { DevServerErrorType } from "../../shared/utils/devServerErrors";
+import type { DevServerError } from "../../shared/utils/devServerErrors";
 import type { DevPreviewSessionState } from "../../shared/types/ipc/devPreview";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
@@ -20,7 +20,7 @@ export interface UseDevServerState {
   status: DevPreviewStatus;
   url: string | null;
   terminalId: string | null;
-  error: { type: DevServerErrorType; message: string; recommendedActionId?: string } | null;
+  error: DevServerError | null;
 }
 
 export interface UseDevServerReturn extends UseDevServerState {
@@ -100,11 +100,7 @@ export function useDevServer({
   const [status, setStatus] = useState<DevPreviewStatus>("stopped");
   const [url, setUrl] = useState<string | null>(null);
   const [terminalId, setTerminalId] = useState<string | null>(null);
-  const [error, setError] = useState<{
-    type: DevServerErrorType;
-    message: string;
-    recommendedActionId?: string;
-  } | null>(null);
+  const [error, setError] = useState<DevServerError | null>(null);
   const [isRestarting, setIsRestarting] = useState(false);
   const [stuckTier, setStuckTier] = useState<DevServerStuckTier>(0);
   const latestSessionRef = useRef<{
@@ -175,15 +171,7 @@ export function useDevServer({
     setStatus(state.status);
     setUrl(state.url);
     setTerminalId(state.terminalId);
-    setError(
-      state.error
-        ? {
-            type: state.error.type,
-            message: state.error.message,
-            recommendedActionId: state.error.recommendedActionId,
-          }
-        : null
-    );
+    setError(state.error ?? null);
     setIsRestarting(state.isRestarting);
   }, []);
 
