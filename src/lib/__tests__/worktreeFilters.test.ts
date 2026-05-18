@@ -24,7 +24,7 @@ const createMockWorktree = (overrides: Partial<Worktree> = {}): Worktree => {
   const state = overrides.prState;
   const title = overrides.prTitle;
   const linked =
-    num !== undefined || state !== undefined
+    num !== undefined || state !== undefined || title !== undefined
       ? {
           linked: {
             providerId: "github",

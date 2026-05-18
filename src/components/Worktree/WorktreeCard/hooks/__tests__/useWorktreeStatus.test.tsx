@@ -178,6 +178,7 @@ describe("useWorktreeStatus — lifecycleStage", () => {
 
   it("updates from merged to ready-for-cleanup when issueNumber is added", () => {
     const initialWorktree = makeWorktree({
+      ...prLinked({ prState: "merged" }),
       prState: "merged",
       prNumber: 10,
     });
