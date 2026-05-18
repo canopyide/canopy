@@ -714,6 +714,7 @@ describe("preferences action hardening", () => {
       "worktreeConfig.setPattern",
       "help.shortcuts",
       "help.shortcutsAlt",
+      "help.gettingStarted.show",
       "help.launchAgent",
       "help.togglePanel",
       "modal.close",
