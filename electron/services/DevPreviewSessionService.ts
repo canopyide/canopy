@@ -746,6 +746,9 @@ export class DevPreviewSessionService {
       const abort = new AbortController();
       session.readinessAbort = abort;
       session.pendingUrl = result.url;
+      // A new URL (e.g. a port change) starts a fresh poll; allow its own
+      // readiness marker to accelerate it again.
+      session.markerSeen = false;
 
       this.pollServerReadiness(session, result.url, abort.signal, session.generation);
       urlJustStarted = true;
@@ -773,6 +776,14 @@ export class DevPreviewSessionService {
     const errorKey = `${result.error.type}:${result.error.message}`;
     if (errorKey === session.lastErrorKey) return;
     session.lastErrorKey = errorKey;
+
+    // Cancel any in-flight readiness poll: a server that still answers HEAD on
+    // a half-started port would otherwise resolve to "running" and clobber the
+    // error/installing status we are about to set.
+    session.readinessAbort?.abort();
+    session.readinessAbort = null;
+    session.pendingUrl = null;
+    session.markerSeen = false;
 
     if (result.error.type === "missing-dependencies") {
       session.needsInstall = true;
