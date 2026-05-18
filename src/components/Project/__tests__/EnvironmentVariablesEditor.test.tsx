@@ -295,5 +295,22 @@ describe("EnvironmentVariablesEditor", () => {
         expect(onFlush).toHaveBeenCalledTimes(1);
       });
     });
+
+    it("does not migrate and surfaces a top-level error when an unrelated row is invalid", () => {
+      const onFlush = vi.fn().mockResolvedValue(undefined);
+      render(
+        <EnvironmentVariablesEditor
+          {...defaultProps}
+          environmentVariables={[makeEnvVar("API_KEY", "plain"), makeEnvVar("BAD-NAME", "x")]}
+          settings={makeSettings({ insecureEnvironmentVariables: ["API_KEY"] })}
+          onFlush={onFlush}
+        />
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Move 1 value out of shared settings" }));
+
+      expect(onFlush).not.toHaveBeenCalled();
+      expect(screen.getByText(/fix the errors above before saving/i)).toBeTruthy();
+    });
   });
 });

@@ -122,7 +122,10 @@ export function EnvironmentVariablesEditor({
   };
 
   const handleSave = async () => {
-    if (!validate()) return;
+    if (!validate()) {
+      setSaveError("Fix the errors above before saving");
+      return;
+    }
     setIsSaving(true);
     setSaveError(null);
 
