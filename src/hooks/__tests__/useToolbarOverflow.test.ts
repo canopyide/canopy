@@ -113,12 +113,12 @@ describe("computeOverflow", () => {
     it("non-pinned items still overflow normally when pinned IDs are present", () => {
       const ordered: ToolbarButtonId[] = ["voice-recording", "terminal", "settings", "copy-tree"];
       const widths = makeWidths(ordered, 40);
-      // Pinned 40 → availableWidth = 120-40 = 80. Removable = terminal, settings,
-      // copy-tree → 120 > 80. target = 80 - 0 - 8 = 72.
+      // Pinned 40 → availableWidth = 110-40 = 70. Removable = terminal, settings,
+      // copy-tree → 120 > 70. target = 70.
       // Sorted by priority: copy-tree(5), settings(5), terminal(3).
-      // Remove copy-tree → 80, remove settings → 40 ≤ 72. terminal survives.
+      // Remove copy-tree → 80 > 70, remove settings → 40 ≤ 70. terminal survives.
       const result = computeOverflow(
-        120,
+        110,
         widths,
         ordered,
         TOOLBAR_BUTTON_PRIORITIES,
