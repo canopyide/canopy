@@ -134,7 +134,7 @@ describe("useGitHubTokenExpiryNotification", () => {
     expect(notifyMock).toHaveBeenCalledTimes(1);
   });
 
-  it("latch resets when health recovers while error persists, re-fires on next unhealthy", () => {
+  it("latch resets silently when health recovers while error persists, re-fires on next unhealthy", () => {
     useGitHubTokenHealthStore.setState({ isUnhealthy: true });
     const { rerender } = renderHook(
       ({ isTokenError }) => useGitHubTokenExpiryNotification(isTokenError),
@@ -142,16 +142,31 @@ describe("useGitHubTokenExpiryNotification", () => {
     );
     expect(notifyMock).toHaveBeenCalledTimes(1);
 
-    // Health recovery emits a low-priority "Token validated" row.
+    // `isUnhealthy` clearing while `isTokenError` stays true is not a true
+    // recovery — silently re-arm the latch but do NOT emit the success row.
     useGitHubTokenHealthStore.setState({ isUnhealthy: false });
     rerender({ isTokenError: true });
-    expect(notifyMock).toHaveBeenCalledTimes(2);
-    expect(notifyMock.mock.calls[1]?.[0]?.type).toBe("success");
-    expect(notifyMock.mock.calls[1]?.[0]?.priority).toBe("low");
+    expect(notifyMock).toHaveBeenCalledTimes(1);
 
     useGitHubTokenHealthStore.setState({ isUnhealthy: true });
     rerender({ isTokenError: true });
-    expect(notifyMock).toHaveBeenCalledTimes(3);
+    expect(notifyMock).toHaveBeenCalledTimes(2);
+    expect(notifyMock.mock.calls[1]?.[0]?.type).toBe("warning");
+  });
+
+  it("does not emit recovery when only isUnhealthy clears (isTokenError still true)", () => {
+    useGitHubTokenHealthStore.setState({ isUnhealthy: true });
+    const { rerender } = renderHook(
+      ({ isTokenError }) => useGitHubTokenExpiryNotification(isTokenError),
+      { initialProps: { isTokenError: true } }
+    );
+    expect(notifyMock).toHaveBeenCalledTimes(1);
+
+    useGitHubTokenHealthStore.setState({ isUnhealthy: false });
+    rerender({ isTokenError: true });
+    expect(notifyMock).toHaveBeenCalledTimes(1);
+    // No success row emitted — the token error is still active per the caller's signal.
+    expect(notifyMock.mock.calls.every((c) => c[0]?.type === "warning")).toBe(true);
   });
 
   it("emits a low-priority recovery row with matching supersedeKey on true → false transition", () => {

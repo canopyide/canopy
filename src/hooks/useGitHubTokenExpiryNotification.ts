@@ -52,9 +52,16 @@ export function useGitHubTokenExpiryNotification(isTokenError: boolean): void {
           },
         },
       });
-    } else {
-      if (firedRef.current) {
-        firedRef.current = false;
+    } else if (firedRef.current) {
+      const isResolved = !isTokenError;
+      firedRef.current = false;
+      // Only emit the recovery row when the caller's `isTokenError` signal
+      // actually clears. When only `isUnhealthy` drops (a health-store race or
+      // independent recovery) while `isTokenError` is still true, the token
+      // hasn't truly recovered — silently re-arm the latch so the next
+      // unhealthy event re-fires the warning, but don't show a stale
+      // "validated" confirmation.
+      if (isResolved) {
         notify({
           type: "success",
           priority: "low",
