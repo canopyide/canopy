@@ -4,6 +4,13 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import type { DevPreviewPaneProps } from "../DevPreviewPane";
 import { DevPreviewPane } from "../DevPreviewPane";
 
+type MockWebContents = {
+  setUserAgent: ReturnType<typeof vi.fn>;
+  getUserAgent: ReturnType<typeof vi.fn>;
+  enableDeviceEmulation: ReturnType<typeof vi.fn>;
+  disableDeviceEmulation: ReturnType<typeof vi.fn>;
+};
+
 type MockWebviewElement = HTMLElement & {
   reload: ReturnType<typeof vi.fn>;
   loadURL: ReturnType<typeof vi.fn>;
@@ -13,7 +20,7 @@ type MockWebviewElement = HTMLElement & {
   isLoading: ReturnType<typeof vi.fn>;
   executeJavaScript: ReturnType<typeof vi.fn>;
   getWebContentsId: ReturnType<typeof vi.fn>;
-  getWebContents: ReturnType<typeof vi.fn>;
+  getWebContents: () => MockWebContents;
   setMockLoading: (value: boolean) => void;
 };
 
@@ -43,10 +50,13 @@ function decorateWebviewElement(element: HTMLElement): MockWebviewElement {
   webview.isLoading = vi.fn(() => loading);
   webview.executeJavaScript = vi.fn().mockResolvedValue(0);
   webview.getWebContentsId = vi.fn(() => 42);
-  webview.getWebContents = vi.fn(() => ({
+  const mockWc = {
     setUserAgent: vi.fn(),
     getUserAgent: vi.fn(() => "original-ua"),
-  }));
+    enableDeviceEmulation: vi.fn(),
+    disableDeviceEmulation: vi.fn(),
+  };
+  webview.getWebContents = vi.fn(() => mockWc);
   webview.setMockLoading = (value: boolean) => {
     loading = value;
   };
@@ -325,7 +335,6 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         onConsoleMessage: vi.fn(() => vi.fn()),
         onConsoleContextCleared: vi.fn(() => vi.fn()),
         reloadIgnoringCache: vi.fn(() => Promise.resolve()),
-        setDeviceEmulation: vi.fn(() => Promise.resolve()),
       },
     };
   });
@@ -485,12 +494,10 @@ describe("DevPreviewPane webview lifecycle regression", () => {
       }));
     };
 
-    const setDeviceEmulation = () =>
-      (
-        window as unknown as {
-          electron: { webview: { setDeviceEmulation: ReturnType<typeof vi.fn> } };
-        }
-      ).electron.webview.setDeviceEmulation;
+    const getEmulationMock = (container: HTMLElement) =>
+      getWebviewElement(container).getWebContents().enableDeviceEmulation;
+    const getDisableEmulationMock = (container: HTMLElement) =>
+      getWebviewElement(container).getWebContents().disableDeviceEmulation;
 
     it("applies device emulation for the active preset without reloading the page", async () => {
       withPreset("iphone");
@@ -501,10 +508,13 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         await Promise.resolve();
       });
 
-      expect(setDeviceEmulation()).toHaveBeenCalledWith(42, "dev-preview-panel-1", {
+      expect(getEmulationMock(container)).toHaveBeenCalledWith({
         screenPosition: "mobile",
-        width: 393,
-        height: 852,
+        screenSize: { width: 393, height: 852 },
+        viewPosition: { x: 0, y: 0 },
+        deviceScaleFactor: 1,
+        viewSize: { width: 393, height: 852 },
+        scale: 1,
       });
       expect(webview.reload).not.toHaveBeenCalled();
     });
@@ -518,16 +528,19 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         await Promise.resolve();
       });
 
-      setDeviceEmulation().mockClear();
+      getEmulationMock(container).mockClear();
 
       act(() => {
         emitWebviewEvent(webview, "did-finish-load");
       });
 
-      expect(setDeviceEmulation()).toHaveBeenCalledWith(42, "dev-preview-panel-1", {
+      expect(getEmulationMock(container)).toHaveBeenCalledWith({
         screenPosition: "mobile",
-        width: 360,
-        height: 780,
+        screenSize: { width: 360, height: 780 },
+        viewPosition: { x: 0, y: 0 },
+        deviceScaleFactor: 1,
+        viewSize: { width: 360, height: 780 },
+        scale: 1,
       });
     });
 
@@ -540,7 +553,7 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         await Promise.resolve();
       });
 
-      setDeviceEmulation().mockClear();
+      getEmulationMock(container).mockClear();
       withPreset(undefined);
       rerender(<DevPreviewPane {...baseProps} />);
 
@@ -548,7 +561,7 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         await Promise.resolve();
       });
 
-      expect(setDeviceEmulation()).toHaveBeenCalledWith(42, "dev-preview-panel-1", null);
+      expect(getDisableEmulationMock(container)).toHaveBeenCalled();
       expect(webview.reload).not.toHaveBeenCalled();
     });
   });
