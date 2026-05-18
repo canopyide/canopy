@@ -2334,6 +2334,13 @@ const api: ElectronAPI = {
       _unwrappingInvoke(CHANNELS.SHORTCUT_HINTS_INCREMENT_COUNT, actionId),
   },
 
+  forge: {
+    getSettings: () => _unwrappingInvoke(CHANNELS.FORGE_GET_SETTINGS),
+    setDefaultProvider: (providerId: string | null) =>
+      _unwrappingInvoke(CHANNELS.FORGE_SET_DEFAULT_PROVIDER, providerId),
+    getProviders: () => _unwrappingInvoke(CHANNELS.FORGE_GET_PROVIDERS),
+  },
+
   // Voice Input API
   voiceInput: {
     getSettings: () => _unwrappingInvoke(CHANNELS.VOICE_INPUT_GET_SETTINGS),

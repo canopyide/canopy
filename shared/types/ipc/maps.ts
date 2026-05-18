@@ -174,6 +174,7 @@ import type { CloneRepoOptions, CloneRepoResult } from "./gitClone.js";
 import type { AppAgentConfig } from "../appAgent.js";
 import type { AgentSessionRecord } from "./agentSessionHistory.js";
 import type { GeneratedIpcInvokeMap } from "./generated.js";
+import type { ForgeProviderEntry } from "../forge.js";
 
 export type ChecklistItemId =
   | "openedProject"
@@ -1594,6 +1595,20 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
   "milestones:mark-shown": {
     args: [milestoneId: string];
     result: void;
+  };
+
+  // Forge integration
+  "forge:get-settings": {
+    args: [];
+    result: { defaultProviderId: string | null };
+  };
+  "forge:set-default-provider": {
+    args: [providerId: string | null];
+    result: { defaultProviderId: string | null };
+  };
+  "forge:get-providers": {
+    args: [];
+    result: ForgeProviderEntry[];
   };
 
   // Shortcut Hints
