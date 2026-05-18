@@ -945,6 +945,13 @@ function App() {
                     onCloseProject={(projectId) =>
                       void projectSwitcherPalette.removeProject(projectId)
                     }
+                    onLocateProject={(projectId) =>
+                      void projectSwitcherPalette.locateProject(projectId)
+                    }
+                    onTogglePinProject={(projectId) =>
+                      void projectSwitcherPalette.togglePinProject(projectId)
+                    }
+                    onCopyPath={projectSwitcherPalette.copyPath}
                     removeConfirmProject={projectSwitcherPalette.removeConfirmProject}
                     onRemoveConfirmClose={() =>
                       projectSwitcherPalette.setRemoveConfirmProject(null)

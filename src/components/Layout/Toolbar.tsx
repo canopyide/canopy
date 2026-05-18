@@ -279,6 +279,13 @@ export function Toolbar({
     [projectSwitcher]
   );
 
+  const handleLocateProject = useCallback(
+    (projectId: string) => {
+      void projectSwitcher.locateProject(projectId);
+    },
+    [projectSwitcher]
+  );
+
   const handleRemoveConfirmClose = useCallback(() => {
     projectSwitcher.setRemoveConfirmProject(null);
   }, [projectSwitcher]);
@@ -1104,7 +1111,9 @@ export function Toolbar({
             onCloneRepo={projectSwitcher.cloneRepo}
             onStopProject={handleStopProject}
             onCloseProject={handleCloseProject}
+            onLocateProject={handleLocateProject}
             onTogglePinProject={projectSwitcher.togglePinProject}
+            onCopyPath={projectSwitcher.copyPath}
             onOpenProjectSettings={currentProject ? handleOpenProjectSettings : undefined}
             onSelectNewWindow={handleSelectNewWindow}
             dropdownAlign="center"
