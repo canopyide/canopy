@@ -36,6 +36,7 @@ import {
 } from "../Browser/historyUtils";
 import { useDevServer, type UseDevServerReturn } from "@/hooks/useDevServer";
 import { ConsoleDrawer } from "./ConsoleDrawer";
+import { useDevPreviewConsoleCapture } from "./useDevPreviewConsoleCapture";
 import { useIsDragging } from "@/components/DragDrop";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -310,6 +311,7 @@ export function DevPreviewPane({
   const setBrowserHistory = usePanelStore((state) => state.setBrowserHistory);
   const setBrowserZoom = usePanelStore((state) => state.setBrowserZoom);
   const setDevPreviewConsoleOpen = usePanelStore((state) => state.setDevPreviewConsoleOpen);
+  const setDevPreviewConsoleTab = usePanelStore((state) => state.setDevPreviewConsoleTab);
   const setViewportPreset = usePanelStore((state) => state.setViewportPreset);
   const setViewportRotated = usePanelStore((state) => state.setViewportRotated);
   const setViewportDpr = usePanelStore((state) => state.setViewportDpr);
@@ -385,6 +387,8 @@ export function DevPreviewPane({
   // promise that resolves after the clear must NOT write the stale position back.
   const scrollCaptureGenerationRef = useRef<number>(0);
   const isConsoleOpen = terminal?.devPreviewConsoleOpen ?? false;
+  const activeConsoleTab = terminal?.devPreviewConsoleTab ?? "output";
+  const [guestWebContentsId, setGuestWebContentsId] = useState<number | undefined>(undefined);
   // Store the original guest UA so we can restore it when clearing a preset
   const originalUaRef = useRef<string | null>(null);
   const [isAutoDetecting, setIsAutoDetecting] = useState(false);
@@ -690,6 +694,16 @@ export function DevPreviewPane({
     setDevPreviewConsoleOpen(id, !isConsoleOpen);
   }, [id, isConsoleOpen, setDevPreviewConsoleOpen]);
 
+  const handleToggleDevTools = useCallback(() => {
+    const webview = webviewRef.current;
+    if (!webview || !isWebviewReady) return;
+    if (webview.isDevToolsOpened()) {
+      webview.closeDevTools();
+    } else {
+      webview.openDevTools();
+    }
+  }, [isWebviewReady]);
+
   const handleOpenExternal = useCallback(() => {
     if (currentUrl) {
       safeFireAndForget(window.electron.system.openExternal(currentUrl), {
@@ -920,6 +934,23 @@ export function DevPreviewPane({
       }
     }
   }, [currentUrl, isWebviewReady, webviewElement]);
+
+  // Wire the guest-page CDP console capture into the renderer store. The hook
+  // owns start/stop keyed on the ready/eviction lifecycle; here we only mirror
+  // the live webContentsId so lazy object inspection can reach the right guest.
+  useDevPreviewConsoleCapture(id, webviewRef, isWebviewReady, isEvicted);
+
+  useEffect(() => {
+    if (!isWebviewReady || isEvicted) {
+      setGuestWebContentsId(undefined);
+      return;
+    }
+    try {
+      setGuestWebContentsId(webviewRef.current?.getWebContentsId());
+    } catch {
+      setGuestWebContentsId(undefined);
+    }
+  }, [isWebviewReady, isEvicted]);
 
   // Blank the webview and clear timers before React unmounts it for faster memory reclamation
   useEffect(() => {
@@ -1479,9 +1510,13 @@ export function DevPreviewPane({
         {consoleTerminalId && (
           <ConsoleDrawer
             terminalId={consoleTerminalId}
+            paneId={id}
+            webContentsId={guestWebContentsId}
             status={status}
             isOpen={isConsoleOpen}
             onOpenChange={(nextOpen) => setDevPreviewConsoleOpen(id, nextOpen)}
+            activeTab={activeConsoleTab}
+            onTabChange={(tab) => setDevPreviewConsoleTab(id, tab)}
             isRestarting={isRestarting}
             onReloadPreview={handleHardReload}
             onRestartDevServer={handleRestartDevServer}

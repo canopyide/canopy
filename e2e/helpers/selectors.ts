@@ -124,7 +124,9 @@ export const SEL = {
     findClose: '[aria-label="Close find bar"]',
   },
   devPreview: {
-    consoleToggle: '[aria-label="Show Terminal"], [aria-label="Hide Terminal"]',
+    consoleToggle: '[aria-label="Toggle output drawer"]',
+    consoleTab: '[role="tab"][data-tab="console"]',
+    outputTab: '[role="tab"][data-tab="output"]',
   },
   projectSwitcher: {
     palette: '[data-testid="project-switcher-palette"]',
