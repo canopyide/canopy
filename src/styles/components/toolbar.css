@@ -20,6 +20,32 @@
   backdrop-filter: blur(var(--theme-material-blur)) saturate(var(--theme-material-saturation));
 }
 
+/* ── backdrop-filter fallbacks ──
+ * The translucent material relies on GPU compositing and ignores the OS
+ * "reduce transparency" accessibility preference. Engines without
+ * backdrop-filter would render the toolbar over a near-transparent base;
+ * users who set Reduce Transparency (macOS) / Transparency effects off
+ * (Windows) explicitly want solid chrome. Both fall back to the opaque
+ * surface token already used by the data-performance-mode override. The
+ * two gates are independent — a GPU-capable machine can still have
+ * Reduce Transparency enabled — so they are separate at-rules, not nested.
+ */
+@supports not (backdrop-filter: blur(1px)) {
+  .surface-toolbar {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background-color: var(--theme-surface-toolbar);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .surface-toolbar {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background-color: var(--theme-surface-toolbar);
+  }
+}
+
 .toolbar-icon-button,
 .toolbar-agent-button {
   --_hover-fg: var(--toolbar-control-hover-fg, var(--theme-accent-primary));
