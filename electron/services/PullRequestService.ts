@@ -203,13 +203,15 @@ class PullRequestService {
         });
       }
 
+      // Read providerId BEFORE deleting so the clear event carries the
+      // correct provider reference. Compare with handleWorktreeRemove below.
+      const clearedProviderId = this.detectedPRs.get(state.worktreeId)?.providerId;
       this.resolvedWorktrees.delete(state.worktreeId);
       this.detectedPRs.delete(state.worktreeId);
 
       // Tag the clear with the OLD branch and provider so the renderer drops it
       // if the worktree's branch has since moved on again — the clear is only valid
       // for the branch identity at the time it was decided.
-      const clearedProviderId = this.detectedPRs.get(state.worktreeId)?.providerId;
       events.emit("sys:pr:cleared", {
         worktreeId: state.worktreeId,
         branchName: currentContext.branchName,
@@ -514,6 +516,8 @@ class PullRequestService {
     this.setDetectionState(false);
     this.boostExpiresAt = null;
     this.lastCheckAt = Number.NEGATIVE_INFINITY;
+    this.inFlightBranchLookups.clear();
+    this.invalidateProvider();
   }
 
   /**
@@ -750,18 +754,23 @@ class PullRequestService {
     logDebug("Revalidating resolved PRs", { count: uniquePRNumbers.size });
 
     try {
-      // Revalidate each known PR by number via provider.getPR
+      // Revalidate each known PR by number via provider.getPR.
+      // Use a sentinel so transient errors (network, 5xx) don't clear valid PR state.
+      const NOT_FOUND = Symbol("not-found");
       const prNumbers = [...uniquePRNumbers];
       const results = await mapWithConcurrencyLimit(prNumbers, 5, async (prNumber) => {
         try {
           const pr = await provider.getPR(repo, prNumber);
-          return { prNumber, pr };
+          return { prNumber, pr, error: false };
         } catch {
-          return { prNumber, pr: null };
+          return { prNumber, pr: null, error: true };
         }
       });
 
-      for (const { prNumber, pr } of results) {
+      for (const { prNumber, pr, error } of results) {
+        // Skip transient errors — a single flaky API call must not wipe PR state.
+        if (error) continue;
+
         // Find all worktrees that have this PR
         for (const [worktreeId, detectedPR] of this.detectedPRs) {
           if (detectedPR.number !== prNumber) continue;

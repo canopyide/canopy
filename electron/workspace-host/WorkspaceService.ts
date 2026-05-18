@@ -286,6 +286,18 @@ export class WorkspaceService {
 
         monitor.setIssueNumber(undefined);
         monitor.setIssueTitle(undefined);
+
+        // Clear the linked.issue projection but preserve any PR linkage
+        const snapshot = monitor.getSnapshot();
+        const existingLinked = snapshot.linked ?? null;
+        if (existingLinked?.issue) {
+          monitor.setLinked(
+            existingLinked.pr
+              ? { providerId: existingLinked.providerId, pr: existingLinked.pr }
+              : null
+          );
+        }
+
         if (monitor.hasInitialStatus) {
           this.emitUpdate(monitor);
         }
