@@ -404,6 +404,7 @@ export function useDevPreviewLoadLifecycle({
     };
 
     const handleRenderProcessGone = (e: Event) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const detail = (e as unknown as { detail?: { reason?: string; exitCode?: number } }).detail;
       if (!detail || detail.reason === "clean-exit") return;
       onRenderProcessGone?.({
