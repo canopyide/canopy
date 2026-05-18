@@ -477,7 +477,7 @@ export function GitHubResourceList({
   const handleOpenGitHubSettings = useCallback(() => {
     void actionService.dispatch(
       "app.settings.openTab",
-      { tab: "github", sectionId: "github-token" },
+      { tab: "code-forge", subtab: "github", sectionId: "github-token" },
       { source: "user" }
     );
     handleClose();

@@ -35,6 +35,7 @@ export function CodeForgeSettingsTab({ activeSubtab, onSubtabChange }: CodeForge
       .then((loaded) => {
         if (cancelled) return;
         setProviders(loaded);
+        setLoadTimedOut(false);
       })
       .catch((err) => {
         if (cancelled) return;
