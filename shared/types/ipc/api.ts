@@ -1232,6 +1232,7 @@ export interface ElectronAPI {
     markNewsletterSeen(): Promise<void>;
     markWaitingNudgeSeen(): Promise<void>;
     markAgentsSeen(agentIds: string[]): Promise<OnboardingState>;
+    recordAgentFirstSeen(agentIds: string[]): Promise<OnboardingState>;
     dismissWelcomeCard(): Promise<OnboardingState>;
     dismissSetupBanner(): Promise<OnboardingState>;
     getChecklist(): Promise<ChecklistState>;
