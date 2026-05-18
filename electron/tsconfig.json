@@ -18,7 +18,7 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["./**/*.ts", "../plugins/builtin/**/*.ts"],
+  "include": ["./**/*.ts", "../plugins/builtin/github/main/**/*.ts"],
   "exclude": ["node_modules", "preload.cts"],
   "references": [{ "path": "../shared/tsconfig.json" }]
 }
