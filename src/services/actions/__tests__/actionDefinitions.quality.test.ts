@@ -253,6 +253,8 @@ const EXPECTED_CONFIRM_DANGER: ReadonlyArray<ActionId> = [
   "keybinding.resetAll",
   "project.remove",
   "recipe.delete",
+  "devPreview.restartAndClearCache",
+  "devPreview.reinstallAndRestart",
 ];
 
 describe("destructive-action danger metadata", () => {

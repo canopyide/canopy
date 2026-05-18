@@ -4,6 +4,7 @@ import { registerAgentActions } from "./definitions/agentActions";
 import { registerFileActions } from "./definitions/fileActions";
 import { registerAppActions } from "./definitions/appActions";
 import { registerBrowserActions } from "./definitions/browserActions";
+import { registerDevPreviewActions } from "./definitions/devPreviewActions";
 import { registerDevServerActions } from "./definitions/devServerActions";
 import { registerEnvActions } from "./definitions/envActions";
 import { registerGithubActions } from "./definitions/githubActions";
@@ -62,6 +63,7 @@ export function createActionDefinitions(
   registerBrowserActions(actions, callbacks);
   registerIntrospectionActions(actions, callbacks);
   registerDevServerActions(actions, callbacks);
+  registerDevPreviewActions(actions, callbacks);
   registerWorkflowActions(actions, callbacks);
   registerFileActions(actions, callbacks);
   registerVoiceActions(actions);

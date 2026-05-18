@@ -389,6 +389,12 @@ export const BUILT_IN_ACTION_IDS = [
   // -- devServerActions --
   "devServer.start",
 
+  // -- devPreviewActions --
+  "devPreview.reloadPreview",
+  "devPreview.restart",
+  "devPreview.restartAndClearCache",
+  "devPreview.reinstallAndRestart",
+
   // -- envActions --
   "env.global.get",
   "env.global.set",

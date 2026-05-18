@@ -140,7 +140,15 @@ export interface GeneratedIpcInvokeMap {
     args: [request: import("./devPreview.js").DevPreviewSessionRequest];
     result: import("./devPreview.js").DevPreviewSessionState;
   };
+  "dev-preview:reinstall-and-restart": {
+    args: [request: import("./devPreview.js").DevPreviewSessionRequest];
+    result: import("./devPreview.js").DevPreviewSessionState;
+  };
   "dev-preview:restart": {
+    args: [request: import("./devPreview.js").DevPreviewSessionRequest];
+    result: import("./devPreview.js").DevPreviewSessionState;
+  };
+  "dev-preview:restart-and-clear-cache": {
     args: [request: import("./devPreview.js").DevPreviewSessionRequest];
     result: import("./devPreview.js").DevPreviewSessionState;
   };
