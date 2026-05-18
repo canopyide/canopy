@@ -1,8 +1,10 @@
-import type { RegisteredForgeProvider } from "../../shared/types/forge.js";
+import type { RegisteredForgeProvider, ResolvedForgeProvider } from "../../shared/types/forge.js";
 import { getRegisteredForgeProviders, listMatchingProviders } from "./forgeProviderRegistry.js";
 import { projectStore } from "./ProjectStore.js";
 import { gitServiceCache } from "./GitServiceCache.js";
 import { store } from "../store.js";
+
+const NO_MATCH: ResolvedForgeProvider = { entry: null, resolvedVia: null };
 
 /**
  * Pick the single active forge provider for a project from the candidates the
@@ -14,10 +16,14 @@ import { store } from "../store.js";
  *      provider is one of the candidates for the project's remote.
  *   3. First hostname match from `listMatchingProviders(remoteUrl)`.
  *
- * Returns `null` when no rule resolves — override pointing at an uninstalled
- * plugin, default pointing at an unregistered ID, or no hostname match.
- * Consumers treat `null` the same as "no provider registered" (quiet linkage
- * absence, no toast, no log spam).
+ * Returns `{ entry: null, resolvedVia: null }` when no rule resolves — override
+ * pointing at an uninstalled plugin, default pointing at an unregistered ID, or
+ * no hostname match. Consumers treat `entry === null` the same as "no provider
+ * registered" (quiet linkage absence, no toast, no log spam).
+ *
+ * `resolvedVia` reports which precedence tier picked the entry so the
+ * Preferences UI can render an explanatory tooltip without re-implementing
+ * the chain. Issue #8064.
  *
  * Stateless and synchronous per the issue contract — no caching beyond
  * per-call. Settings changes re-resolve on the next call.
@@ -25,15 +31,21 @@ import { store } from "../store.js";
  * Override and global-default IDs may be stored either as the bare
  * `contribution.id` (e.g. `"github"`) or as the namespaced `{pluginId}.{id}`
  * form. The matcher accepts both.
+ *
+ * `remoteUrl`, when supplied, replaces the resolver's internal `getRemoteUrl`
+ * lookup for hostname matching. Per-remote resolution (Preferences →
+ * Forge Integrations) uses this; project-wide callers (PR linkage) omit it
+ * and fall back to the project's `origin` remote.
  */
 export async function resolveForgeProvider(
-  projectId: string
-): Promise<RegisteredForgeProvider | null> {
-  if (typeof projectId !== "string" || projectId.length === 0) return null;
+  projectId: string,
+  remoteUrl?: string
+): Promise<ResolvedForgeProvider> {
+  if (typeof projectId !== "string" || projectId.length === 0) return NO_MATCH;
 
   try {
     const project = projectStore.getProjectById(projectId);
-    if (!project) return null;
+    if (!project) return NO_MATCH;
 
     // 1. Per-project override — searches the full registry, not just remote
     //    candidates. A user who names a provider overrides hostname matching
@@ -45,26 +57,34 @@ export async function resolveForgeProvider(
     const override = settings?.forgeProviderOverride;
     if (typeof override === "string" && override.length > 0) {
       const all = getRegisteredForgeProviders();
-      return findById(all, override) ?? null;
+      const match = findById(all, override);
+      return match ? { entry: match, resolvedVia: "override" } : NO_MATCH;
     }
 
-    const gitService = gitServiceCache.getGitService(project.path);
-    const remoteUrl = await gitService.getRemoteUrl(project.path).catch(() => null);
-    if (!remoteUrl) return null;
-    const candidates = listMatchingProviders(remoteUrl);
+    let effectiveRemoteUrl: string | null;
+    if (typeof remoteUrl === "string" && remoteUrl.length > 0) {
+      effectiveRemoteUrl = remoteUrl;
+    } else {
+      const gitService = gitServiceCache.getGitService(project.path);
+      effectiveRemoteUrl = await gitService.getRemoteUrl(project.path).catch(() => null);
+    }
+    if (!effectiveRemoteUrl) return NO_MATCH;
+    const candidates = listMatchingProviders(effectiveRemoteUrl);
 
     // 2. Global default — must be one of the remote's candidates. A default
     //    that does not match this project's remote returns null (no fallthrough).
     const globalDefault = store.get("forgeDefaultProviderId");
     if (typeof globalDefault === "string" && globalDefault.length > 0) {
-      return findById(candidates, globalDefault) ?? null;
+      const match = findById(candidates, globalDefault);
+      return match ? { entry: match, resolvedVia: "default" } : NO_MATCH;
     }
 
     // 3. First hostname match (or null if there are no candidates).
-    return candidates[0] ?? null;
+    const first = candidates[0];
+    return first ? { entry: first, resolvedVia: "hostname" } : NO_MATCH;
   } catch (error) {
     console.warn(`[forgeProviderResolver] resolve failed for ${projectId}:`, error);
-    return null;
+    return NO_MATCH;
   }
 }
 

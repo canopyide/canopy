@@ -22,7 +22,7 @@ import type { AgentSettings, AgentSettingsEntry } from "../agentSettings.js";
 import type { AgentPreset } from "../../config/agentRegistry.js";
 import type { VoiceInputStatus } from "../voice.js";
 export type { VoiceInputStatus };
-import type { ForgeProviderEntry } from "../forge.js";
+import type { ForgeProviderEntry, ResolvedForgeProvider } from "../forge.js";
 import type { ResourceProfilePayload } from "../resourceProfile.js";
 import type {
   CreateWorktreeOptions,
@@ -1270,11 +1270,16 @@ export interface ElectronAPI {
     /**
      * Resolve the active forge provider for the given project, applying the
      * per-project override → global default → first hostname match precedence
-     * chain. Returns `null` when no rule resolves (override or default points
-     * at an unavailable provider, no hostname match). Consumers treat `null`
-     * the same as "no provider registered".
+     * chain. `entry` is `null` when no rule resolves (override or default
+     * points at an unavailable provider, no hostname match) and `resolvedVia`
+     * is `null` in lock-step. Consumers treat `entry === null` the same as
+     * "no provider registered".
+     *
+     * `remoteUrl`, when supplied, replaces the project's `origin` for the
+     * hostname-match step — used by per-remote routing UIs that need a
+     * resolution per remote rather than the project default.
      */
-    resolveProvider(projectId: string): Promise<ForgeProviderEntry | null>;
+    resolveProvider(projectId: string, remoteUrl?: string): Promise<ResolvedForgeProvider>;
   };
   voiceInput: {
     getSettings(): Promise<VoiceInputSettings>;

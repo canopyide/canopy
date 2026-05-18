@@ -538,5 +538,7 @@ export type {
   ForgeProviderContribution,
   ForgeProviderDescriptor,
   ForgeProviderEntry,
+  ForgeProviderResolutionVia,
   ForgeCapabilityHint,
+  ResolvedForgeProvider,
 } from "./forge.js";

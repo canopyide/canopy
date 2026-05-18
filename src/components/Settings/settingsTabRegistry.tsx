@@ -1093,6 +1093,23 @@ export const SETTINGS_REGISTRY = [
           "hostname",
         ],
       },
+      {
+        id: "forge-active-project-routing",
+        section: "Active project routing",
+        title: "Active project routing",
+        description:
+          "Inspect which forge provider each remote of the active project routes to and why.",
+        keywords: [
+          "forge",
+          "remote",
+          "routing",
+          "provider",
+          "match",
+          "hostname",
+          "override",
+          "active project",
+        ],
+      },
     ],
   } satisfies LazySettingsTabEntry,
 

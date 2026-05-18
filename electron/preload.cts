@@ -2341,8 +2341,8 @@ const api: ElectronAPI = {
     setDefaultProvider: (providerId: string | null) =>
       _unwrappingInvoke(CHANNELS.FORGE_SET_DEFAULT_PROVIDER, providerId),
     getProviders: () => _unwrappingInvoke(CHANNELS.FORGE_GET_PROVIDERS),
-    resolveProvider: (projectId: string) =>
-      _unwrappingInvoke(CHANNELS.FORGE_RESOLVE_PROVIDER, projectId),
+    resolveProvider: (projectId: string, remoteUrl?: string) =>
+      _unwrappingInvoke(CHANNELS.FORGE_RESOLVE_PROVIDER, projectId, remoteUrl),
   },
 
   // Voice Input API

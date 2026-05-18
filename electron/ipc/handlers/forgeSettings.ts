@@ -6,7 +6,9 @@ import { resolveForgeProvider } from "../../services/forgeProviderResolver.js";
 
 function readDefaultProviderId(): string | null {
   const value = store.get("forgeDefaultProviderId");
-  return typeof value === "string" && value.length > 0 ? value : null;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 export function registerForgeSettingsHandlers(): () => void {
@@ -20,7 +22,11 @@ export function registerForgeSettingsHandlers(): () => void {
 
   cleanups.push(
     typedHandle(CHANNELS.FORGE_SET_DEFAULT_PROVIDER, (providerId: unknown) => {
-      const next = typeof providerId === "string" && providerId.length > 0 ? providerId : null;
+      let next: string | null = null;
+      if (typeof providerId === "string") {
+        const trimmed = providerId.trim();
+        if (trimmed.length > 0) next = trimmed;
+      }
       if (next === null) {
         store.set("forgeDefaultProviderId", null);
       } else {
@@ -37,9 +43,13 @@ export function registerForgeSettingsHandlers(): () => void {
   );
 
   cleanups.push(
-    typedHandle(CHANNELS.FORGE_RESOLVE_PROVIDER, async (projectId: unknown) => {
-      if (typeof projectId !== "string" || projectId.length === 0) return null;
-      return resolveForgeProvider(projectId);
+    typedHandle(CHANNELS.FORGE_RESOLVE_PROVIDER, async (projectId: unknown, remoteUrl: unknown) => {
+      if (typeof projectId !== "string" || projectId.length === 0) {
+        return { entry: null, resolvedVia: null };
+      }
+      const remoteUrlArg =
+        typeof remoteUrl === "string" && remoteUrl.length > 0 ? remoteUrl : undefined;
+      return resolveForgeProvider(projectId, remoteUrlArg);
     })
   );
 

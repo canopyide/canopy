@@ -382,3 +382,26 @@ export interface ForgeProviderEntry {
   pluginId: string;
   contribution: ForgeProviderContribution;
 }
+
+/**
+ * Which precedence rule fired during a `resolveForgeProvider` call.
+ *
+ *   - `"override"` — per-project `forgeProviderOverride` named a registered provider.
+ *   - `"default"`  — global default (`forgeDefaultProviderId`) matched one of
+ *                    the project's remote candidates.
+ *   - `"hostname"` — first hostname match for the project's remote URL.
+ *
+ * `null` lives on the wrapper alongside `entry: null` when no rule resolved.
+ */
+export type ForgeProviderResolutionVia = "override" | "default" | "hostname";
+
+/**
+ * Resolver output: the chosen provider entry plus the precedence rule that
+ * picked it. The renderer renders an explanatory tooltip from `resolvedVia`
+ * without re-implementing the precedence chain. When `entry === null`,
+ * `resolvedVia === null` — no rule fired.
+ */
+export interface ResolvedForgeProvider {
+  entry: ForgeProviderEntry | null;
+  resolvedVia: ForgeProviderResolutionVia | null;
+}

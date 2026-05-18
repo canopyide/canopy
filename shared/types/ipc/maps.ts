@@ -174,7 +174,7 @@ import type { CloneRepoOptions, CloneRepoResult } from "./gitClone.js";
 import type { AppAgentConfig } from "../appAgent.js";
 import type { AgentSessionRecord } from "./agentSessionHistory.js";
 import type { GeneratedIpcInvokeMap } from "./generated.js";
-import type { ForgeProviderEntry } from "../forge.js";
+import type { ForgeProviderEntry, ResolvedForgeProvider } from "../forge.js";
 
 export type ChecklistItemId =
   | "openedProject"
@@ -1611,8 +1611,8 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
     result: ForgeProviderEntry[];
   };
   "forge:resolve-provider": {
-    args: [projectId: string];
-    result: ForgeProviderEntry | null;
+    args: [projectId: string, remoteUrl?: string];
+    result: ResolvedForgeProvider;
   };
 
   // Shortcut Hints

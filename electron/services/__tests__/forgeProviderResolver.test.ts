@@ -69,14 +69,17 @@ beforeEach(() => {
 });
 
 describe("resolveForgeProvider", () => {
-  it("returns null when the project does not exist", async () => {
+  it("returns no-match when the project does not exist", async () => {
     projectStoreMock.getProjectById.mockReturnValue(null);
-    expect(await resolveForgeProvider("missing")).toBeNull();
+    expect(await resolveForgeProvider("missing")).toEqual({ entry: null, resolvedVia: null });
   });
 
-  it("returns null for empty or non-string projectId", async () => {
-    expect(await resolveForgeProvider("")).toBeNull();
-    expect(await resolveForgeProvider(undefined as unknown as string)).toBeNull();
+  it("returns no-match for empty or non-string projectId", async () => {
+    expect(await resolveForgeProvider("")).toEqual({ entry: null, resolvedVia: null });
+    expect(await resolveForgeProvider(undefined as unknown as string)).toEqual({
+      entry: null,
+      resolvedVia: null,
+    });
   });
 
   it("returns the override match when forgeProviderOverride names a registered provider", async () => {
@@ -89,7 +92,7 @@ describe("resolveForgeProvider", () => {
     });
 
     const result = await resolveForgeProvider("project-1");
-    expect(result).toEqual(gitea);
+    expect(result).toEqual({ entry: gitea, resolvedVia: "override" });
     // Override path bypasses hostname matching entirely.
     expect(registryMock.listMatchingProviders).not.toHaveBeenCalled();
   });
@@ -102,10 +105,13 @@ describe("resolveForgeProvider", () => {
       forgeProviderOverride: "acme.gitea.gitea",
     });
 
-    expect(await resolveForgeProvider("project-1")).toEqual(gitea);
+    expect(await resolveForgeProvider("project-1")).toEqual({
+      entry: gitea,
+      resolvedVia: "override",
+    });
   });
 
-  it("returns null when forgeProviderOverride names an unregistered provider (no fallthrough)", async () => {
+  it("returns no-match when forgeProviderOverride names an unregistered provider (no fallthrough)", async () => {
     const github = makeProvider("builtin", "github", ["github.com"]);
     registryMock.getRegisteredForgeProviders.mockReturnValue([github]);
     registryMock.listMatchingProviders.mockReturnValue([github]);
@@ -117,7 +123,7 @@ describe("resolveForgeProvider", () => {
       forgeProviderOverride: "gone.away",
     });
 
-    expect(await resolveForgeProvider("project-1")).toBeNull();
+    expect(await resolveForgeProvider("project-1")).toEqual({ entry: null, resolvedVia: null });
     expect(registryMock.listMatchingProviders).not.toHaveBeenCalled();
   });
 
@@ -129,7 +135,10 @@ describe("resolveForgeProvider", () => {
       forgeProviderOverride: null,
     });
 
-    expect(await resolveForgeProvider("project-1")).toEqual(github);
+    expect(await resolveForgeProvider("project-1")).toEqual({
+      entry: github,
+      resolvedVia: "hostname",
+    });
   });
 
   it("treats forgeProviderOverride absent as auto-detect (falls through)", async () => {
@@ -137,7 +146,10 @@ describe("resolveForgeProvider", () => {
     registryMock.listMatchingProviders.mockReturnValue([github]);
     projectStoreMock.getProjectSettings.mockResolvedValue({ runCommands: [] });
 
-    expect(await resolveForgeProvider("project-1")).toEqual(github);
+    expect(await resolveForgeProvider("project-1")).toEqual({
+      entry: github,
+      resolvedVia: "hostname",
+    });
   });
 
   it("returns the global default when it matches one of the remote candidates", async () => {
@@ -146,10 +158,13 @@ describe("resolveForgeProvider", () => {
     registryMock.listMatchingProviders.mockReturnValue([github, enterprise]);
     storeMock._data["forgeDefaultProviderId"] = "gh-enterprise";
 
-    expect(await resolveForgeProvider("project-1")).toEqual(enterprise);
+    expect(await resolveForgeProvider("project-1")).toEqual({
+      entry: enterprise,
+      resolvedVia: "default",
+    });
   });
 
-  it("returns null when the global default is not a hostname match for the remote", async () => {
+  it("returns no-match when the global default is not a hostname match for the remote", async () => {
     const github = makeProvider("builtin", "github", ["github.com"]);
     const gitea = makeProvider("acme.gitea", "gitea", ["gitea.example.com"]);
     // The default IS registered globally — but not for this remote's hostname.
@@ -158,7 +173,7 @@ describe("resolveForgeProvider", () => {
     registryMock.listMatchingProviders.mockReturnValue([github]);
     storeMock._data["forgeDefaultProviderId"] = "gitea";
 
-    expect(await resolveForgeProvider("project-1")).toBeNull();
+    expect(await resolveForgeProvider("project-1")).toEqual({ entry: null, resolvedVia: null });
   });
 
   it("accepts namespaced ids for the global default", async () => {
@@ -166,7 +181,10 @@ describe("resolveForgeProvider", () => {
     registryMock.listMatchingProviders.mockReturnValue([github]);
     storeMock._data["forgeDefaultProviderId"] = "builtin.github";
 
-    expect(await resolveForgeProvider("project-1")).toEqual(github);
+    expect(await resolveForgeProvider("project-1")).toEqual({
+      entry: github,
+      resolvedVia: "default",
+    });
   });
 
   it("returns the first hostname match when no override or default is set", async () => {
@@ -174,20 +192,23 @@ describe("resolveForgeProvider", () => {
     const other = makeProvider("acme.other", "other", ["github.com"]);
     registryMock.listMatchingProviders.mockReturnValue([github, other]);
 
-    expect(await resolveForgeProvider("project-1")).toEqual(github);
+    expect(await resolveForgeProvider("project-1")).toEqual({
+      entry: github,
+      resolvedVia: "hostname",
+    });
   });
 
-  it("returns null when there are no hostname matches", async () => {
+  it("returns no-match when there are no hostname matches", async () => {
     registryMock.listMatchingProviders.mockReturnValue([]);
-    expect(await resolveForgeProvider("project-1")).toBeNull();
+    expect(await resolveForgeProvider("project-1")).toEqual({ entry: null, resolvedVia: null });
   });
 
-  it("returns null when the remote URL cannot be read", async () => {
+  it("returns no-match when the remote URL cannot be read", async () => {
     gitServiceMock.getRemoteUrl.mockResolvedValue(null);
     const github = makeProvider("builtin", "github", ["github.com"]);
     registryMock.listMatchingProviders.mockReturnValue([github]);
 
-    expect(await resolveForgeProvider("project-1")).toBeNull();
+    expect(await resolveForgeProvider("project-1")).toEqual({ entry: null, resolvedVia: null });
     expect(registryMock.listMatchingProviders).not.toHaveBeenCalled();
   });
 
@@ -200,12 +221,15 @@ describe("resolveForgeProvider", () => {
       forgeProviderOverride: "gitea",
     });
 
-    expect(await resolveForgeProvider("project-1")).toEqual(gitea);
+    expect(await resolveForgeProvider("project-1")).toEqual({
+      entry: gitea,
+      resolvedVia: "override",
+    });
   });
 
-  it("returns null when getRemoteUrl rejects", async () => {
+  it("returns no-match when getRemoteUrl rejects", async () => {
     gitServiceMock.getRemoteUrl.mockRejectedValue(new Error("not a git repo"));
-    expect(await resolveForgeProvider("project-1")).toBeNull();
+    expect(await resolveForgeProvider("project-1")).toEqual({ entry: null, resolvedVia: null });
   });
 
   it("falls through to hostname match when getProjectSettings rejects", async () => {
@@ -216,7 +240,10 @@ describe("resolveForgeProvider", () => {
     const github = makeProvider("builtin", "github", ["github.com"]);
     registryMock.listMatchingProviders.mockReturnValue([github]);
 
-    expect(await resolveForgeProvider("project-1")).toEqual(github);
+    expect(await resolveForgeProvider("project-1")).toEqual({
+      entry: github,
+      resolvedVia: "hostname",
+    });
   });
 
   it("does not throw when a synchronous registry call throws", async () => {
@@ -224,7 +251,7 @@ describe("resolveForgeProvider", () => {
       throw new Error("boom");
     });
 
-    expect(await resolveForgeProvider("project-1")).toBeNull();
+    expect(await resolveForgeProvider("project-1")).toEqual({ entry: null, resolvedVia: null });
   });
 
   it("does no caching — settings, store, remote, and registry are re-read on each call", async () => {
@@ -238,5 +265,44 @@ describe("resolveForgeProvider", () => {
     expect(gitServiceMock.getRemoteUrl).toHaveBeenCalledTimes(2);
     expect(registryMock.listMatchingProviders).toHaveBeenCalledTimes(2);
     expect(storeMock.get).toHaveBeenCalledWith("forgeDefaultProviderId");
+  });
+
+  it("uses the supplied remoteUrl for hostname matching instead of origin", async () => {
+    const gitea = makeProvider("acme.gitea", "gitea", ["gitea.example.com"]);
+    registryMock.listMatchingProviders.mockReturnValue([gitea]);
+
+    const result = await resolveForgeProvider("project-1", "git@gitea.example.com:owner/repo.git");
+
+    expect(result).toEqual({ entry: gitea, resolvedVia: "hostname" });
+    expect(gitServiceMock.getRemoteUrl).not.toHaveBeenCalled();
+    expect(registryMock.listMatchingProviders).toHaveBeenCalledWith(
+      "git@gitea.example.com:owner/repo.git"
+    );
+  });
+
+  it("ignores an empty supplied remoteUrl and falls back to origin", async () => {
+    const github = makeProvider("builtin", "github", ["github.com"]);
+    registryMock.listMatchingProviders.mockReturnValue([github]);
+
+    const result = await resolveForgeProvider("project-1", "");
+
+    expect(result).toEqual({ entry: github, resolvedVia: "hostname" });
+    expect(gitServiceMock.getRemoteUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it("override path ignores the supplied remoteUrl entirely", async () => {
+    const gitea = makeProvider("acme.gitea", "gitea", ["gitea.example.com"]);
+    const github = makeProvider("builtin", "github", ["github.com"]);
+    registryMock.getRegisteredForgeProviders.mockReturnValue([github, gitea]);
+    projectStoreMock.getProjectSettings.mockResolvedValue({
+      runCommands: [],
+      forgeProviderOverride: "gitea",
+    });
+
+    const result = await resolveForgeProvider("project-1", "https://github.com/owner/repo.git");
+
+    expect(result).toEqual({ entry: gitea, resolvedVia: "override" });
+    expect(registryMock.listMatchingProviders).not.toHaveBeenCalled();
+    expect(gitServiceMock.getRemoteUrl).not.toHaveBeenCalled();
   });
 });
