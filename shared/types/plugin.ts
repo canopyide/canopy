@@ -217,6 +217,13 @@ export interface PluginHostApi {
    * unbinds the single implementation; all bindings are automatically removed
    * when the plugin is unloaded. Must be called during `activate()` — the
    * host is revoked once activation resolves or times out.
+   *
+   * The `descriptor.id` must match an entry declared in
+   * `contributes.forgeProviders`; an undeclared id is rejected so the impl
+   * cannot drift away from the manifest-driven routing table. Calling this
+   * method twice with the same `descriptor.id` overwrites the prior binding;
+   * the older disposer becomes inert and will not remove the newer impl when
+   * later invoked.
    */
   registerForgeProvider(descriptor: ForgeProviderDescriptor, impl: ForgeProviderImpl): () => void;
 }

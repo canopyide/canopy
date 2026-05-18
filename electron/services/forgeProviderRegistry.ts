@@ -93,11 +93,25 @@ export function registerForgeProviderImpl(
  * Unbind a single runtime impl. Silent no-op if the key was never bound.
  * Used by the per-provider disposer returned from `host.registerForgeProvider`
  * so a plugin can clean up one binding without unloading itself.
+ *
+ * Pass `expected` to make the removal conditional — the entry is deleted only
+ * if it currently references that exact impl. This prevents a stale disposer
+ * (from a prior `registerForgeProviderImpl` call on the same key that was
+ * later overwritten) from removing the active impl.
  */
-export function unregisterForgeProviderImpl(pluginId: string, contributionId: string): void {
+export function unregisterForgeProviderImpl(
+  pluginId: string,
+  contributionId: string,
+  expected?: ForgeProviderImpl
+): void {
   if (typeof pluginId !== "string" || pluginId.length === 0) return;
   if (typeof contributionId !== "string" || contributionId.length === 0) return;
-  PLUGIN_FORGE_PROVIDER_IMPLS.delete(buildImplKey(pluginId, contributionId));
+  const key = buildImplKey(pluginId, contributionId);
+  if (expected !== undefined) {
+    const current = PLUGIN_FORGE_PROVIDER_IMPLS.get(key);
+    if (current !== expected) return;
+  }
+  PLUGIN_FORGE_PROVIDER_IMPLS.delete(key);
 }
 
 /**

@@ -372,6 +372,19 @@ describe("forgeProviderRegistry — implementation registry", () => {
     expect(getForgeProviderImpl("acme.gitlab")).toBe(b);
   });
 
+  it("unregisterForgeProviderImpl with expected impl removes only when identity matches", () => {
+    const first = makeImpl("first");
+    const second = makeImpl("second");
+    registerForgeProviderImpl("acme", "github", first);
+    registerForgeProviderImpl("acme", "github", second);
+    // The stale disposer holds `first` but the live entry is `second`.
+    unregisterForgeProviderImpl("acme", "github", first);
+    expect(getForgeProviderImpl("acme.github")).toBe(second);
+    // The fresh disposer holds `second` and matches the live entry.
+    unregisterForgeProviderImpl("acme", "github", second);
+    expect(getForgeProviderImpl("acme.github")).toBeUndefined();
+  });
+
   it("unregisterForgeProviderImpls removes every impl owned by the plugin", () => {
     registerForgeProviderImpl("acme", "github", makeImpl("g"));
     registerForgeProviderImpl("acme", "gitlab", makeImpl("l"));

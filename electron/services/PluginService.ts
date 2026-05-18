@@ -555,14 +555,33 @@ export class PluginService {
             `Plugin "${pluginId}" registerForgeProvider: impl must be an object`
           );
         }
+        // The impl is keyed by the same `{pluginId}.{descriptor.id}` namespace
+        // used by the eager descriptor table. Binding an impl whose id wasn't
+        // declared in `contributes.forgeProviders` produces an orphaned entry —
+        // unreachable through the routing table, since `listMatchingProviders`
+        // walks descriptors first. Reject up front so the failure is loud.
         const contributionId = descriptor.id;
+        const plugin = this.plugins.get(pluginId);
+        const declared = plugin?.manifest.contributes.forgeProviders.some(
+          (c) => c.id === contributionId
+        );
+        if (!declared) {
+          throw new Error(
+            `Plugin "${pluginId}" registerForgeProvider: descriptor.id "${contributionId}" is not declared in contributes.forgeProviders`
+          );
+        }
+
         registerForgeProviderImpl(pluginId, contributionId, impl);
 
         let disposed = false;
         const dispose = (): void => {
           if (disposed) return;
           disposed = true;
-          unregisterForgeProviderImpl(pluginId, contributionId);
+          // Pass `impl` so a stale disposer (from a prior re-bind that was
+          // overwritten via a second registerForgeProvider call on the same
+          // id) cannot remove the currently-active impl by mistake — the
+          // registry compares identities before deleting.
+          unregisterForgeProviderImpl(pluginId, contributionId, impl);
           const list = this.pluginEventCleanups.get(pluginId);
           if (!list) return;
           const idx = list.indexOf(dispose);

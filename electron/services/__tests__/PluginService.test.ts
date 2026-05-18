@@ -1539,8 +1539,22 @@ describe("createHost (plugin activation API)", () => {
 });
 
 describe("createHost — registerForgeProvider", () => {
+  function forgeManifest(name: string, providerIds: string[] = ["github"]): Record<string, unknown> {
+    return {
+      name,
+      version: "1.0.0",
+      contributes: {
+        forgeProviders: providerIds.map((id) => ({
+          id,
+          name: id,
+          matches: [`${id}.example`],
+        })),
+      },
+    };
+  }
+
   it("binds the impl via registerForgeProviderImpl with the descriptor id", async () => {
-    await writePlugin("forge-host", { name: "acme.forge-host", version: "1.0.0" });
+    await writePlugin("forge-host", forgeManifest("acme.forge-host"));
     const service = new PluginService(tmpDir);
     await service.initialize();
 
@@ -1555,7 +1569,7 @@ describe("createHost — registerForgeProvider", () => {
   });
 
   it("returns a disposer that calls unregisterForgeProviderImpl exactly once", async () => {
-    await writePlugin("forge-dispose", { name: "acme.forge-dispose", version: "1.0.0" });
+    await writePlugin("forge-dispose", forgeManifest("acme.forge-dispose"));
     const service = new PluginService(tmpDir);
     await service.initialize();
 
@@ -1564,15 +1578,20 @@ describe("createHost — registerForgeProvider", () => {
     );
 
     vi.mocked(unregisterForgeProviderImpl).mockClear();
-    const dispose = host.registerForgeProvider({ id: "github" }, { tag: "impl" });
+    const impl = { tag: "impl" };
+    const dispose = host.registerForgeProvider({ id: "github" }, impl);
     dispose();
     dispose(); // idempotent — only the first call should propagate
     expect(unregisterForgeProviderImpl).toHaveBeenCalledTimes(1);
-    expect(unregisterForgeProviderImpl).toHaveBeenCalledWith("acme.forge-dispose", "github");
+    expect(unregisterForgeProviderImpl).toHaveBeenCalledWith(
+      "acme.forge-dispose",
+      "github",
+      impl
+    );
   });
 
   it("rejects a descriptor missing an id", async () => {
-    await writePlugin("forge-baddesc", { name: "acme.forge-baddesc", version: "1.0.0" });
+    await writePlugin("forge-baddesc", forgeManifest("acme.forge-baddesc"));
     const service = new PluginService(tmpDir);
     await service.initialize();
 
@@ -1586,7 +1605,7 @@ describe("createHost — registerForgeProvider", () => {
   });
 
   it("rejects a non-object impl", async () => {
-    await writePlugin("forge-badimpl", { name: "acme.forge-badimpl", version: "1.0.0" });
+    await writePlugin("forge-badimpl", forgeManifest("acme.forge-badimpl"));
     const service = new PluginService(tmpDir);
     await service.initialize();
 
@@ -1599,8 +1618,51 @@ describe("createHost — registerForgeProvider", () => {
     );
   });
 
+  it("rejects a descriptor.id not declared in contributes.forgeProviders", async () => {
+    // Manifest declares only "github"; "bogus" must be rejected.
+    await writePlugin("forge-undeclared", forgeManifest("acme.forge-undeclared", ["github"]));
+    const service = new PluginService(tmpDir);
+    await service.initialize();
+
+    const { host } = (service as unknown as { createHost: CreateHostShape }).createHost(
+      "acme.forge-undeclared"
+    );
+
+    expect(() => host.registerForgeProvider({ id: "bogus" }, { tag: "impl" })).toThrow(
+      /not declared in contributes.forgeProviders/
+    );
+  });
+
+  it("re-binding the same descriptor.id makes the older disposer inert", async () => {
+    await writePlugin("forge-rebind", forgeManifest("acme.forge-rebind"));
+    const service = new PluginService(tmpDir);
+    await service.initialize();
+
+    const { host } = (service as unknown as { createHost: CreateHostShape }).createHost(
+      "acme.forge-rebind"
+    );
+
+    vi.mocked(unregisterForgeProviderImpl).mockClear();
+
+    const impl1 = { tag: "first" };
+    const impl2 = { tag: "second" };
+    const dispose1 = host.registerForgeProvider({ id: "github" }, impl1);
+    host.registerForgeProvider({ id: "github" }, impl2);
+
+    // Calling the older disposer must pass the older impl so the registry
+    // can decline to clear an already-overwritten entry. The registry side
+    // of this guard is covered in forgeProviderRegistry.test.ts; here we
+    // only assert the disposer carries the right identity into the call.
+    dispose1();
+    expect(unregisterForgeProviderImpl).toHaveBeenCalledWith(
+      "acme.forge-rebind",
+      "github",
+      impl1
+    );
+  });
+
   it("unloadPlugin fires unregisterForgeProviderImpls alongside unregisterForgeProviders", async () => {
-    await writePlugin("forge-unload", { name: "acme.forge-unload", version: "1.0.0" });
+    await writePlugin("forge-unload", forgeManifest("acme.forge-unload"));
     const service = new PluginService(tmpDir);
     await service.initialize();
 
@@ -1614,21 +1676,26 @@ describe("createHost — registerForgeProvider", () => {
   });
 
   it("unloadPlugin flushes per-provider disposers from pluginEventCleanups", async () => {
-    await writePlugin("forge-flush", { name: "acme.forge-flush", version: "1.0.0" });
+    await writePlugin("forge-flush", forgeManifest("acme.forge-flush"));
     const service = new PluginService(tmpDir);
     await service.initialize();
 
     const { host } = (service as unknown as { createHost: CreateHostShape }).createHost(
       "acme.forge-flush"
     );
-    host.registerForgeProvider({ id: "github" }, { tag: "impl" });
+    const impl = { tag: "impl" };
+    host.registerForgeProvider({ id: "github" }, impl);
 
     vi.mocked(unregisterForgeProviderImpl).mockClear();
     service.unloadPlugin("acme.forge-flush");
     // The per-provider disposer fires through the pluginEventCleanups flush
     // path during unloadPlugin — independent from the bulk unregisterForgeProviderImpls
     // belt-and-suspenders call.
-    expect(unregisterForgeProviderImpl).toHaveBeenCalledWith("acme.forge-flush", "github");
+    expect(unregisterForgeProviderImpl).toHaveBeenCalledWith(
+      "acme.forge-flush",
+      "github",
+      impl
+    );
   });
 });
 

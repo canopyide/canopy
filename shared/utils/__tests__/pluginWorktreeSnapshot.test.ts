@@ -77,6 +77,21 @@ describe("toPluginWorktreeSnapshot — linked projection", () => {
     expect(out.linked?.issue?.ref.number).toBe(7);
   });
 
+  it("uses the same providerId on linked, linked.pr.ref, and linked.issue.ref", () => {
+    const out = toPluginWorktreeSnapshot(
+      makeSnapshot({
+        prNumber: 42,
+        prUrl: "u",
+        prState: "open",
+        issueNumber: 7,
+      })
+    );
+    const providerId = out.linked?.providerId;
+    expect(providerId).toBe("github");
+    expect(out.linked?.pr?.ref.providerId).toBe(providerId);
+    expect(out.linked?.issue?.ref.providerId).toBe(providerId);
+  });
+
   it("maps the three WorktreeSnapshot prState values through directly", () => {
     const open = toPluginWorktreeSnapshot(makeSnapshot({ prNumber: 1, prState: "open" }));
     expect(open.linked?.pr?.state).toBe("open");
