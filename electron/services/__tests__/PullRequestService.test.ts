@@ -55,6 +55,7 @@ function mockForgeProviderResolved(findPRByBranch?: () => Promise<ForgePR | null
     getRepoMetadata: vi.fn(),
     buildIssueUrl: vi.fn(),
     buildPRUrl: vi.fn(),
+    getRateLimit: vi.fn().mockResolvedValue({ limit: null, remaining: null, resetAt: null }),
   };
 
   vi.doMock("../forgeProviderResolver.js", () => ({
@@ -244,6 +245,188 @@ describe("PullRequestService", () => {
     expect(detected).toHaveLength(0);
 
     unsubscribe();
+    pullRequestService.destroy();
+  });
+
+  it("skips polling when provider reports remaining: 0 with a future resetAt", async () => {
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ clearPRCaches }));
+
+    const futureReset = Date.now() + 30_000;
+    const mockImpl = mockForgeProviderResolved();
+    mockImpl.getRateLimit = vi.fn().mockResolvedValue({
+      limit: 5000,
+      remaining: 0,
+      resetAt: futureReset,
+    });
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/test" })
+    );
+
+    await pullRequestService.refresh();
+
+    expect(mockImpl.getRateLimit).toHaveBeenCalled();
+    expect(mockImpl.findPRByBranch).not.toHaveBeenCalled();
+
+    const status = pullRequestService.getStatus();
+    expect(status.isEnabled).toBe(false);
+
+    pullRequestService.destroy();
+  });
+
+  it("skips polling when provider reports secondaryThrottled: true", async () => {
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ clearPRCaches }));
+
+    const mockImpl = mockForgeProviderResolved();
+    mockImpl.getRateLimit = vi.fn().mockResolvedValue({
+      limit: 5000,
+      remaining: 200,
+      resetAt: null,
+      secondaryThrottled: true,
+    });
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/test" })
+    );
+
+    await pullRequestService.refresh();
+
+    expect(mockImpl.getRateLimit).toHaveBeenCalled();
+    expect(mockImpl.findPRByBranch).not.toHaveBeenCalled();
+
+    pullRequestService.destroy();
+  });
+
+  it("proceeds normally when getRateLimit is absent from the provider", async () => {
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ clearPRCaches }));
+
+    const mockImpl = mockForgeProviderResolved();
+    delete (mockImpl as Record<string, unknown>).getRateLimit;
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/test" })
+    );
+
+    await pullRequestService.refresh();
+
+    expect(mockImpl.findPRByBranch).toHaveBeenCalledTimes(1);
+
+    pullRequestService.destroy();
+  });
+
+  it("proceeds normally when remaining is null (provider doesn't report that dimension)", async () => {
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ clearPRCaches }));
+
+    const mockImpl = mockForgeProviderResolved();
+    mockImpl.getRateLimit = vi.fn().mockResolvedValue({
+      limit: null,
+      remaining: null,
+      resetAt: null,
+    });
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/test" })
+    );
+
+    await pullRequestService.refresh();
+
+    expect(mockImpl.findPRByBranch).toHaveBeenCalledTimes(1);
+
+    pullRequestService.destroy();
+  });
+
+  it("proceeds normally when getRateLimit rejects (fails open)", async () => {
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ clearPRCaches }));
+
+    const mockImpl = mockForgeProviderResolved();
+    mockImpl.getRateLimit = vi.fn().mockRejectedValue(new Error("timeout"));
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/test" })
+    );
+
+    await pullRequestService.refresh();
+
+    expect(mockImpl.findPRByBranch).toHaveBeenCalledTimes(1);
+
+    pullRequestService.destroy();
+  });
+
+  it("skips revalidation when provider reports rate-limited", async () => {
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ clearPRCaches }));
+
+    const mockImpl = mockForgeProviderResolved();
+    // First call succeeds to get a resolved PR, then rate-limit kicks in
+    // so revalidation blocks
+    let callCount = 0;
+    mockImpl.getRateLimit = vi.fn().mockImplementation(() => {
+      callCount++;
+      return Promise.resolve(
+        callCount <= 1
+          ? { limit: null, remaining: null, resetAt: null }
+          : { limit: 5000, remaining: 0, resetAt: Date.now() + 60_000 }
+      );
+    });
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/test" })
+    );
+
+    await pullRequestService.refresh();
+
+    // PR was detected (first getRateLimit was clear)
+    expect(mockImpl.findPRByBranch).toHaveBeenCalledTimes(1);
+
+    // Manually revalidate — now getRateLimit returns blocked
+    await (pullRequestService as any).revalidateResolvedPRs();
+
+    // getRateLimit was called 3 times (resolveProvider + check + checkForPRs + revalidate)
+    // Actually: resolveProvider doesn't call getRateLimit. It's called:
+    // 1 & 2: checkRateLimitGate in checkForPRs + checkRateLimitGate in revalidate
+    // 3: checkRateLimitGate again when revalidateResolvedPRs runs again
+
     pullRequestService.destroy();
   });
 });

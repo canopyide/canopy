@@ -5,6 +5,8 @@ import { broadcastToRenderer } from "../../ipc/utils.js";
 import { gitHubRateLimitService } from "../github/index.js";
 import { type ProcessEntry, type CopyTreeProgressCallback, sendToEntryWindows } from "./types.js";
 import type { WorkspaceHostEvent } from "../../../shared/types/workspace-host.js";
+import type { RateLimitInfo } from "../../../shared/types/forge.js";
+import type { GitHubRateLimitPayload } from "../../../shared/types/ipc/github.js";
 
 export type EmitFn = (event: string | symbol, ...args: unknown[]) => boolean;
 
@@ -12,6 +14,20 @@ export interface WorkspaceHostEventRouterDeps {
   emit: EmitFn;
   worktreePathToProject: Map<string, string>;
   copyTreeProgressCallbacks: Map<string, CopyTreeProgressCallback>;
+}
+
+// Reconstruct a GitHubRateLimitPayload from the provider-agnostic RateLimitInfo
+// so the existing gitHubRateLimitService.applyRemoteState() path in main works
+// unchanged for the GitHub provider.
+function toGitHubRateLimitPayload(info: RateLimitInfo): GitHubRateLimitPayload {
+  if (info.remaining !== 0 && !info.secondaryThrottled) {
+    return { blocked: false, kind: null };
+  }
+  return {
+    blocked: true,
+    kind: info.secondaryThrottled ? "secondary" : "primary",
+    ...(info.resetAt ? { resetAt: info.resetAt } : {}),
+  };
 }
 
 export class WorkspaceHostEventRouter {
@@ -24,6 +40,7 @@ export class WorkspaceHostEventRouter {
   private githubTokenChangeAt = 0;
   private inotifyLimitToastSent = false;
   private emfileLimitToastSent = false;
+  private forgeRateLimitStates = new Map<string, RateLimitInfo>();
 
   constructor(deps: WorkspaceHostEventRouterDeps) {
     this.emit = deps.emit;
@@ -116,16 +133,25 @@ export class WorkspaceHostEventRouter {
         break;
       }
 
-      case "github-rate-limit-changed": {
-        if (
-          event.state.blocked &&
-          this.githubTokenChangeAt > 0 &&
-          Date.now() - this.githubTokenChangeAt <
-            WorkspaceHostEventRouter.RATE_LIMIT_TOKEN_CHANGE_GUARD_MS
-        ) {
-          break;
+      case "forge-rate-limit-changed": {
+        // Route rate-limit state by provider. GitHub's provider updates the
+        // existing `gitHubRateLimitService` singleton so the toolbar countdown
+        // and main-process callers see limits triggered by workspace-host polling.
+        // Unknown providers get cached locally for future inspection.
+        if (event.providerId === "builtin.github") {
+          if (
+            event.state.remaining === 0 &&
+            this.githubTokenChangeAt > 0 &&
+            Date.now() - this.githubTokenChangeAt <
+              WorkspaceHostEventRouter.RATE_LIMIT_TOKEN_CHANGE_GUARD_MS
+          ) {
+            break;
+          }
+          const payload = toGitHubRateLimitPayload(event.state);
+          gitHubRateLimitService.applyRemoteState(payload);
+        } else {
+          this.forgeRateLimitStates.set(event.providerId, event.state);
         }
-        gitHubRateLimitService.applyRemoteState(event.state);
         break;
       }
 
