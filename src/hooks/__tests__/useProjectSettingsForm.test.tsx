@@ -492,6 +492,40 @@ describe("useProjectSettingsForm", () => {
     vi.useRealTimers();
   });
 
+  it("saves the corrected pattern after the user fixes an invalid worktreePathPattern", async () => {
+    vi.useFakeTimers();
+    const { result, rerender } = renderHook(
+      ({ isOpen }: { isOpen: boolean; tick: number }) =>
+        useProjectSettingsForm({ projectId: "proj-1", isOpen }),
+      { initialProps: { isOpen: false, tick: 0 } }
+    );
+    rerender({ isOpen: true, tick: 1 });
+    mockSettings.value = { ...baseSettings, worktreePathPattern: "{parent-dir}/{branch-slug}" };
+    rerender({ isOpen: true, tick: 2 });
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    act(() => {
+      result.current.setWorktreePathPattern("no-branch-slug-token-here");
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+
+    act(() => {
+      result.current.setWorktreePathPattern("{base-folder}-trees/{branch-slug}");
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+
+    const lastCall = mockSaveSettings.mock.calls.at(-1)?.[0];
+    expect(lastCall?.worktreePathPattern).toBe("{base-folder}-trees/{branch-slug}");
+    expect(result.current.projectAutoSaveError).toBeNull();
+    vi.useRealTimers();
+  });
+
   it("filters invalid env var keys on save", async () => {
     vi.useFakeTimers();
     const { result, rerender } = renderHook(
