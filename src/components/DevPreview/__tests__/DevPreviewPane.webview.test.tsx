@@ -655,6 +655,49 @@ describe("DevPreviewPane webview lifecycle regression", () => {
     expect(webview.executeJavaScript).not.toHaveBeenCalledWith("window.scrollY");
   });
 
+  it("captures scroll position via CDP in setWebviewNode ref cleanup (#8281)", async () => {
+    // Ref-cleanup regression: when the <webview> JSX is unmounted (e.g. on
+    // panel unmount or eviction-driven branch switch), the React ref callback
+    // fires with null. Previously, this path also relied on
+    // executeJavaScript("window.scrollY"), which hangs on a frozen page. The
+    // fix routes both capture sites through the main-process CDP path.
+    const getScrollPosition = vi.fn().mockResolvedValue(310);
+    (window as unknown as { electron: Record<string, unknown> }).electron = {
+      system: { openExternal: vi.fn() },
+      window: { onDestroyHiddenWebviews: vi.fn(() => vi.fn()) },
+      webview: {
+        registerPanel: vi.fn(() => Promise.resolve()),
+        onDialogRequest: vi.fn(() => vi.fn()),
+        onFindShortcut: vi.fn(() => vi.fn()),
+        onNavigationBlocked: vi.fn(() => vi.fn()),
+        setLifecycleState: vi.fn().mockResolvedValue(undefined),
+        getScrollPosition,
+      },
+    };
+
+    const { container, unmount } = render(<DevPreviewPane {...baseProps} />);
+    const webview = getWebviewElement(container);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Unmount triggers ref-callback(null) → setWebviewNode cleanup path.
+    await act(async () => {
+      unmount();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getScrollPosition).toHaveBeenCalledWith(42);
+    expect(terminalStoreState.setDevPreviewScrollPosition).toHaveBeenCalledWith(
+      "dev-preview-panel-1",
+      { url: "http://localhost:5173/", scrollY: 310 }
+    );
+    // Frozen-page path must NOT be used for ref-cleanup capture.
+    expect(webview.executeJavaScript).not.toHaveBeenCalledWith("window.scrollY");
+  });
+
   it("captures scroll position when status transitions from running", async () => {
     const { container, rerender } = render(<DevPreviewPane {...baseProps} />);
     const webview = getWebviewElement(container);
