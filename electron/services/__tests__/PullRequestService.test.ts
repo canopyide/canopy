@@ -55,6 +55,11 @@ function mockForgeProviderResolved(findPRByBranch?: () => Promise<ForgePR | null
     getRepoMetadata: vi.fn(),
     buildIssueUrl: vi.fn(),
     buildPRUrl: vi.fn(),
+    buildIssuesUrl: vi.fn(),
+    buildPRsUrl: vi.fn(),
+    buildCommitsUrl: vi.fn(),
+    assignIssue: vi.fn(),
+    validateToken: vi.fn(),
     getRateLimit: vi.fn().mockResolvedValue({ limit: null, remaining: null, resetAt: null }),
   };
 
