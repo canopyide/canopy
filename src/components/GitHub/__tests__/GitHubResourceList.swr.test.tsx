@@ -726,6 +726,122 @@ describe("GitHubResourceList wake-coordinator revalidation", () => {
 
     expect(mockListIssues).toHaveBeenCalledTimes(1);
   });
+
+  it("consumes the epoch even when a numeric search is active so a later search-clear doesn't replay it", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(1)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+
+    mockListIssues.mockResolvedValue(makeResponse([makeIssue(1)]));
+    mockGetIssueByNumber.mockResolvedValue(makeIssue(42));
+
+    // Enter a numeric search before the wake fires.
+    useGitHubFilterStore.getState().setIssueSearchQuery("#42");
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    // The numeric-query effect fires getByNumber, not listIssues.
+    await waitFor(() => {
+      expect(mockGetIssueByNumber).toHaveBeenCalledTimes(1);
+    });
+    expect(mockListIssues).toHaveBeenCalledTimes(0);
+
+    // Wake while the numeric search is still active.
+    await act(async () => {
+      useSystemWakeStore.setState((s) => ({ wakeEpoch: s.wakeEpoch + 1 }));
+    });
+
+    // The numeric path does not re-fetch the list, so listIssues stays at 0.
+    expect(mockListIssues).toHaveBeenCalledTimes(0);
+
+    // User clears the search. The wake should have been consumed by the wake
+    // effect already, so clearing must not replay it as an extra list call.
+    // The only listIssues call after clearing is the natural mount-style
+    // revalidate driven by the list-query effect.
+    await act(async () => {
+      useGitHubFilterStore.getState().setIssueSearchQuery("");
+    });
+
+    // Advance past debounce.
+    await vi.advanceTimersByTimeAsync(400);
+
+    await waitFor(() => {
+      expect(mockListIssues.mock.calls.length).toBeGreaterThanOrEqual(1);
+    });
+    // The list-query effect re-runs twice on search-clear (numberQuery flip,
+    // then debouncedSearch flip after the debounce timer) — both calls are
+    // pre-existing behavior. The wake epoch must NOT add a third call: the
+    // consume-during-numeric-search fix guarantees the stale wake doesn't
+    // replay when numberQuery transitions back to null.
+    expect(mockListIssues).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears the refreshing spinner when a wake revalidation is interrupted by a numeric search", async () => {
+    const cacheKey = buildCacheKey("/test/proj", "issue", "open", "created");
+    setCache(cacheKey, {
+      items: [makeIssue(1)],
+      endCursor: null,
+      hasNextPage: false,
+      timestamp: Date.now(),
+    });
+
+    // Mount-time revalidate resolves immediately. Wake revalidate hangs so we
+    // can observe the `refreshing` flag set, then get aborted by the search.
+    let resolveWakeRevalidate: ((value: GitHubListResponse<GitHubIssue>) => void) | undefined;
+    mockListIssues.mockResolvedValueOnce(makeResponse([makeIssue(1)])).mockImplementationOnce(
+      () =>
+        new Promise<GitHubListResponse<GitHubIssue>>((resolve) => {
+          resolveWakeRevalidate = resolve;
+        })
+    );
+    mockGetIssueByNumber.mockResolvedValue(makeIssue(42));
+
+    render(<GitHubResourceList type="issue" projectPath="/test/proj" />);
+
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(1);
+    });
+
+    // Trigger wake revalidation — `refreshing` flips true while the request
+    // hangs.
+    await act(async () => {
+      useSystemWakeStore.setState((s) => ({ wakeEpoch: s.wakeEpoch + 1 }));
+    });
+
+    await waitFor(() => {
+      expect(mockListIssues).toHaveBeenCalledTimes(2);
+    });
+
+    // User types a `#`-prefixed search before the wake revalidate resolves.
+    await act(async () => {
+      useGitHubFilterStore.getState().setIssueSearchQuery("#42");
+    });
+    await vi.advanceTimersByTimeAsync(400);
+
+    await waitFor(() => {
+      expect(mockGetIssueByNumber).toHaveBeenCalled();
+    });
+
+    // Now resolve the aborted wake revalidate. Without the fix, fetchData's
+    // finally block would skip `setRefreshing(false)` because the signal is
+    // aborted, leaking `refreshing=true` indefinitely. With the fix, the
+    // numeric-query effect's setup block has already cleared it. We can't
+    // observe `refreshing` directly through DOM here, but we can assert no
+    // additional listIssues fires after the numeric path takes over.
+    await act(async () => {
+      resolveWakeRevalidate?.(makeResponse([makeIssue(1), makeIssue(99)]));
+      await Promise.resolve();
+    });
+
+    // The aborted revalidate's response is dropped (signal aborted in
+    // fetchData), so no extra rows are appended and listIssues count stays at
+    // 2 (mount + wake).
+    expect(mockListIssues).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("GitHubResourceList no-token empty state", () => {

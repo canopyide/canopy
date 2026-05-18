@@ -515,9 +515,12 @@ export function useGitHubResourceListSWR({
   const wakeEpoch = useSystemWakeStore((s) => s.wakeEpoch);
   const lastSeenWakeEpochRef = useRef(useSystemWakeStore.getState().wakeEpoch);
   useEffect(() => {
-    if (numberQuery !== null) return;
     if (wakeEpoch <= lastSeenWakeEpochRef.current) return;
+    // Always consume the epoch — even when a numeric search is active and we
+    // skip the list refetch — so the next time the user clears the search,
+    // the now-stale wake doesn't replay as a spurious revalidation.
     lastSeenWakeEpochRef.current = wakeEpoch;
+    if (numberQuery !== null) return;
     const abortController = new AbortController();
     const gen = nextGeneration(cacheKey);
     void fetchData(null, false, abortController.signal, {
@@ -556,6 +559,11 @@ export function useGitHubResourceListSWR({
     setError(null);
     setLoadMoreError(null);
     setLoadingMore(false);
+    // Clear any in-flight background refresh indicator. A wake-coordinated
+    // revalidate that was running when the user typed `#<n>` will be aborted
+    // and skip its own `setRefreshing(false)` in fetchData's finally block;
+    // without this, the dropdown header keeps spinning until unmount.
+    setRefreshing(false);
     setExactNumberNotFound(null);
     setData([]);
     setCursor(null);
