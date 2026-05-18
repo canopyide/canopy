@@ -1346,7 +1346,7 @@ export function DevPreviewPane({
                             }
                           }}
                           placeholder="npm run dev"
-                          className="w-full px-2.5 py-1.5 text-xs font-mono bg-overlay-subtle border border-overlay/30 rounded text-daintree-text/70 placeholder:text-daintree-text/30 focus:outline-none focus:border-overlay/50 transition-[border-color,box-shadow]"
+                          className="w-full px-2.5 py-1.5 text-xs font-mono bg-overlay-subtle border border-overlay/30 rounded text-daintree-text/70 placeholder:text-daintree-text/30 focus:outline-hidden focus:border-overlay/50 transition-[border-color,box-shadow]"
                         />
                         <Button
                           onClick={() => void handleSaveCommand()}
