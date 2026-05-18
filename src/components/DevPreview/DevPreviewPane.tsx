@@ -941,12 +941,9 @@ export function DevPreviewPane({
 
   useWebviewThrottle(id, location, isEvicted ? null : webviewElement, isWebviewReady && !isEvicted);
 
-  // Apply UA + device emulation when the viewport preset changes on an
-  // already-ready webview. No reload: enableDeviceEmulation drives real
-  // layout (CSS media queries, window.innerWidth) without discarding page
-  // state, and the lifecycle hook re-applies both on did-finish-load for
-  // navigation. Initialize to undefined so restored presets trigger the
-  // effect on first render.
+  // Apply the UA override (renderer-side, synchronous) when the viewport
+  // preset changes on an already-ready webview. Device emulation is applied
+  // separately below, after panel registration — see the registration note.
   const prevViewportPresetRef = useRef<ViewportPresetId | undefined>(undefined);
   useEffect(() => {
     if (!isWebviewReady || !webviewElement) return;
@@ -967,20 +964,34 @@ export function DevPreviewPane({
       if (viewportPreset) {
         const preset = getViewportPreset(viewportPreset);
         wc.setUserAgent(preset.userAgent);
-      } else if (previousPreset !== undefined) {
-        // Only restore if we previously overrode (not first mount with no preset)
-        wc.setUserAgent(originalUaRef.current!);
+      } else if (previousPreset !== undefined && originalUaRef.current !== null) {
+        // Only restore if we previously overrode and the original UA was
+        // successfully captured (getWebContents may have thrown before).
+        wc.setUserAgent(originalUaRef.current);
       }
     } catch {
       // WebContents not available (webview detached)
     }
-    applyViewportEmulation(webviewElement, id, viewportPreset);
   }, [viewportPreset, isWebviewReady, webviewElement, id]);
   const { currentDialog, handleDialogRespond } = useWebviewDialog(
     id,
     isEvicted ? null : webviewElement,
     isWebviewReady && !isEvicted
   );
+
+  // Apply device emulation AFTER useWebviewDialog above, which registers this
+  // panel's webContentsId with the main process. handleSetDeviceEmulation
+  // validates ownership and silently drops the call if the panel isn't
+  // registered yet — so this effect must be declared after the registration
+  // effect to guarantee the registerPanel IPC is dispatched first within the
+  // same commit. enableDeviceEmulation drives real layout (CSS media queries,
+  // window.innerWidth) without a reload; the lifecycle hook re-applies it on
+  // did-finish-load for cross-origin navigation (registration persists across
+  // same-webview navigation, so that path is race-free).
+  useEffect(() => {
+    if (!isWebviewReady || !webviewElement) return;
+    applyViewportEmulation(webviewElement, id, viewportPreset);
+  }, [viewportPreset, isWebviewReady, webviewElement, id]);
   const findInPage = useFindInPage(
     id,
     isEvicted ? null : webviewElement,
