@@ -109,6 +109,9 @@ export class WorktreeMonitor {
   private prLastUpdatedAt: number | undefined;
   private issueLastUpdatedAt: number | undefined;
 
+  // Provider-agnostic forge linkage (populated alongside legacy fields)
+  private _linked: import("../../shared/types/plugin.js").PluginWorktreeLinked | null = null;
+
   // Polling state
   private pollingTimer: NodeJS.Timeout | null = null;
   private resumeTimer: NodeJS.Timeout | null = null;
@@ -544,6 +547,14 @@ export class WorktreeMonitor {
     this.prLastUpdatedAt = undefined;
   }
 
+  setLinked(linked: import("../../shared/types/plugin.js").PluginWorktreeLinked | null): void {
+    this._linked = linked;
+  }
+
+  clearLinked(): void {
+    this._linked = null;
+  }
+
   setCreatedAt(ms: number | undefined): void {
     this._createdAt = ms;
   }
@@ -885,6 +896,7 @@ export class WorktreeMonitor {
       wslGitEligible: this._wslGitEligible || undefined,
       wslGitOptIn: this._wslGitOptIn || undefined,
       wslGitDismissed: this._wslGitDismissed || undefined,
+      linked: this._linked,
     };
 
     return ensureSerializable(snapshot) as WorktreeSnapshot;

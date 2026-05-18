@@ -33,9 +33,11 @@ export interface PRIntegrationCallbacks {
       issueLastUpdatedAt?: number;
       /** Branch the lookup was initiated against — used by the renderer to drop stale overlays. */
       branchName?: string;
+      /** Provider that resolved the PR (e.g. "builtin.github"). */
+      providerId?: string;
     }
   ): void;
-  onPRCleared(worktreeId: string, data: { branchName?: string }): void;
+  onPRCleared(worktreeId: string, data: { branchName?: string; providerId?: string }): void;
   onIssueDetected(
     worktreeId: string,
     data: {
@@ -44,6 +46,8 @@ export interface PRIntegrationCallbacks {
       issueLastUpdatedAt?: number;
       /** Branch the lookup was initiated against — used by the renderer to drop stale overlays. */
       branchName?: string;
+      /** Provider that resolved the issue (e.g. "builtin.github"). */
+      providerId?: string;
     }
   ): void;
   onIssueNotFound(worktreeId: string, issueNumber: number): void;
@@ -96,6 +100,7 @@ export class PRIntegrationService {
           prLastUpdatedAt: Date.now(),
           issueLastUpdatedAt: data.issueTitle !== undefined ? Date.now() : undefined,
           branchName: data.branchName,
+          providerId: data.providerId,
         });
       })
     );
@@ -107,6 +112,7 @@ export class PRIntegrationService {
           issueTitle: data.issueTitle,
           issueLastUpdatedAt: Date.now(),
           branchName: data.branchName,
+          providerId: data.providerId,
         });
       })
     );
@@ -119,7 +125,10 @@ export class PRIntegrationService {
 
     this.prEventUnsubscribers.push(
       this.eventBus.on("sys:pr:cleared", (data) => {
-        this.callbacks.onPRCleared(data.worktreeId, { branchName: data.branchName });
+        this.callbacks.onPRCleared(data.worktreeId, {
+          branchName: data.branchName,
+          providerId: data.providerId,
+        });
       })
     );
 

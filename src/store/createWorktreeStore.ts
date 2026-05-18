@@ -366,7 +366,8 @@ function snapshotsEqual(a: WorktreeSnapshot, b: WorktreeSnapshot): boolean {
     a.wslGitDismissed === b.wslGitDismissed &&
     resourceStatusEqual(a.resourceStatus, b.resourceStatus) &&
     worktreeChangesEqual(a.worktreeChanges, b.worktreeChanges) &&
-    lifecycleStatusEqual(a.lifecycleStatus, b.lifecycleStatus)
+    lifecycleStatusEqual(a.lifecycleStatus, b.lifecycleStatus) &&
+    linkedEqual(a.linked ?? null, b.linked ?? null)
   );
 }
 
@@ -421,5 +422,22 @@ function lifecycleStatusEqual(
     a.startedAt === b.startedAt &&
     a.completedAt === b.completedAt &&
     a.error === b.error
+  );
+}
+
+function linkedEqual(
+  a: import("../../shared/types/plugin.js").PluginWorktreeLinked | null,
+  b: import("../../shared/types/plugin.js").PluginWorktreeLinked | null
+): boolean {
+  if (a === b) return true;
+  if (a == null || b == null) return false;
+  return (
+    a.providerId === b.providerId &&
+    a.pr?.ref.number === b.pr?.ref.number &&
+    a.pr?.state === b.pr?.state &&
+    a.pr?.url === b.pr?.url &&
+    a.pr?.title === b.pr?.title &&
+    a.issue?.ref.number === b.issue?.ref.number &&
+    a.issue?.title === b.issue?.title
   );
 }

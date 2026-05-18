@@ -132,10 +132,6 @@ export class WorkspaceService {
       onPRDetected: (worktreeId, data) => {
         const monitor = this.monitors.get(worktreeId);
         if (!monitor) return;
-        // Drop stale overlays whose lookup branch no longer matches the
-        // monitor's current branch. Without this, monitor.setPRInfo +
-        // emitUpdate would bake the stale PR into the worktree-update
-        // snapshot — bypassing the renderer's branch guard (#8074).
         if (
           data.branchName !== undefined &&
           monitor.branch !== undefined &&
@@ -154,6 +150,40 @@ export class WorkspaceService {
           prLastUpdatedAt: data.prLastUpdatedAt,
           issueLastUpdatedAt: data.issueLastUpdatedAt,
         });
+
+        // Populate provider-agnostic linked projection alongside legacy fields
+        if (data.providerId) {
+          monitor.setLinked({
+            providerId: data.providerId,
+            pr: {
+              ref: {
+                providerId: data.providerId,
+                owner: "",
+                repo: "",
+                number: data.prNumber,
+                rawData: null,
+              },
+              title: data.prTitle,
+              url: data.prUrl,
+              state: data.prState,
+            },
+            ...(data.issueNumber && data.issueTitle
+              ? {
+                  issue: {
+                    ref: {
+                      providerId: data.providerId,
+                      owner: "",
+                      repo: "",
+                      number: data.issueNumber,
+                      rawData: null,
+                    },
+                    title: data.issueTitle,
+                  },
+                }
+              : {}),
+          });
+        }
+
         if (monitor.hasInitialStatus) {
           this.emitUpdate(monitor);
         }
@@ -171,15 +201,12 @@ export class WorkspaceService {
           prLastUpdatedAt: data.prLastUpdatedAt,
           issueLastUpdatedAt: data.issueLastUpdatedAt,
           branchName: data.branchName,
+          providerId: data.providerId,
         });
       },
       onPRCleared: (worktreeId, data) => {
         const monitor = this.monitors.get(worktreeId);
         if (!monitor) return;
-        // Drop stale clears whose lookup branch no longer matches the
-        // monitor's current branch — see #8074. Same bypass concern as
-        // onPRDetected: emitUpdate would otherwise clear the new branch's
-        // valid PR via the worktree-update snapshot.
         if (
           data.branchName !== undefined &&
           monitor.branch !== undefined &&
@@ -189,6 +216,7 @@ export class WorkspaceService {
         }
 
         monitor.clearPRInfo();
+        monitor.clearLinked();
         if (monitor.hasInitialStatus) {
           this.emitUpdate(monitor);
         }
@@ -197,14 +225,12 @@ export class WorkspaceService {
           type: "pr-cleared",
           worktreeId,
           branchName: data.branchName,
+          providerId: data.providerId,
         });
       },
       onIssueDetected: (worktreeId, data) => {
         const monitor = this.monitors.get(worktreeId);
         if (!monitor) return;
-        // Drop stale overlays whose lookup branch no longer matches the
-        // monitor's current branch — see #8074. emitUpdate would otherwise
-        // carry the stale issue title into the worktree-update snapshot.
         if (
           data.branchName !== undefined &&
           monitor.branch !== undefined &&
@@ -217,6 +243,28 @@ export class WorkspaceService {
         if (data.issueLastUpdatedAt !== undefined) {
           monitor.setIssueLastUpdatedAt(data.issueLastUpdatedAt);
         }
+
+        // Update linked.issue if we have provider info
+        if (data.providerId) {
+          const snapshot = monitor.getSnapshot();
+          const existingLinked = snapshot.linked ?? null;
+          monitor.setLinked({
+            providerId: data.providerId,
+            issue: {
+              ref: {
+                providerId: data.providerId,
+                owner: "",
+                repo: "",
+                number: data.issueNumber,
+                rawData: null,
+              },
+              title: data.issueTitle,
+            },
+            // Preserve existing PR linkage if present
+            ...(existingLinked?.pr ? { pr: existingLinked.pr } : {}),
+          });
+        }
+
         if (monitor.hasInitialStatus) {
           this.emitUpdate(monitor);
         }
@@ -228,6 +276,7 @@ export class WorkspaceService {
           issueTitle: data.issueTitle,
           issueLastUpdatedAt: data.issueLastUpdatedAt,
           branchName: data.branchName,
+          providerId: data.providerId,
         });
       },
       onIssueNotFound: (worktreeId, issueNumber) => {
@@ -237,6 +286,18 @@ export class WorkspaceService {
 
         monitor.setIssueNumber(undefined);
         monitor.setIssueTitle(undefined);
+
+        // Clear the linked.issue projection but preserve any PR linkage
+        const snapshot = monitor.getSnapshot();
+        const existingLinked = snapshot.linked ?? null;
+        if (existingLinked?.issue) {
+          monitor.setLinked(
+            existingLinked.pr
+              ? { providerId: existingLinked.providerId, pr: existingLinked.pr }
+              : null
+          );
+        }
+
         if (monitor.hasInitialStatus) {
           this.emitUpdate(monitor);
         }
@@ -437,6 +498,7 @@ export class WorkspaceService {
           // Bundle the PR clear into this same branch-change emit so the
           // renderer never renders the new branch with the old PR (#8079).
           existingMonitor.clearPRInfo();
+          existingMonitor.clearLinked();
           if (existingMonitor.hasInitialStatus) {
             this.emitUpdate(existingMonitor);
           }
@@ -444,6 +506,7 @@ export class WorkspaceService {
           existingMonitor.setIssueNumber(undefined);
           existingMonitor.setIssueTitle(undefined);
           existingMonitor.clearPRInfo();
+          existingMonitor.clearLinked();
           if (existingMonitor.hasInitialStatus) {
             this.emitUpdate(existingMonitor);
           }

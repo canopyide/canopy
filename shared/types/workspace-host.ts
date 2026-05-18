@@ -24,6 +24,7 @@ import type {
   WorktreeResourceStatus,
 } from "./worktree.js";
 import type { GitHubPRCIStatus } from "./github.js";
+import type { PluginWorktreeLinked } from "./plugin.js";
 import type {
   CopyTreeOptions,
   CopyTreeProgress,
@@ -123,6 +124,14 @@ export interface WorktreeSnapshot {
 
   /** True when origin's fetch URL points at github.com (HTTPS or SSH form). */
   isGitHubRemote?: boolean;
+
+  /**
+   * Provider-agnostic projection of the worktree's linked forge resources
+   * (issue and/or PR). Populated by PRIntegrationService through the forge
+   * provider. Replaces the legacy flat `prNumber` / `prState` / `issueNumber`
+   * / `issueTitle` fields, which remain populated for backward compatibility.
+   */
+  linked?: PluginWorktreeLinked | null;
 
   /** Resource status from the last manual status check */
   resourceStatus?: WorktreeResourceStatus;
@@ -410,12 +419,16 @@ export type WorkspaceHostEvent =
       issueLastUpdatedAt?: number;
       /** Branch the lookup was initiated against — receiver drops the overlay if the worktree's branch has since changed. */
       branchName?: string;
+      /** Provider that resolved the PR (e.g. "builtin.github"). */
+      providerId?: string;
     }
   | {
       type: "pr-cleared";
       worktreeId: string;
       /** Branch the clear was initiated against — receiver drops the overlay if the worktree's branch has since changed. */
       branchName?: string;
+      /** Provider whose linkage was cleared. */
+      providerId?: string;
     }
   | {
       /** Service-wide PR detection circuit breaker tripped (paused) or recovered. */
@@ -431,6 +444,8 @@ export type WorkspaceHostEvent =
       issueLastUpdatedAt?: number;
       /** Branch the lookup was initiated against — receiver drops the overlay if the worktree's branch has since changed. */
       branchName?: string;
+      /** Provider that resolved the issue (e.g. "builtin.github"). */
+      providerId?: string;
     }
   | {
       type: "issue-not-found";

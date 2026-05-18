@@ -449,12 +449,16 @@ export type DaintreeEventMap = {
     issueTitle?: string;
     /** Branch the lookup was initiated against; receivers drop the overlay if the worktree's branch has changed. */
     branchName?: string;
+    /** Provider that resolved the PR (e.g. "builtin.github"). */
+    providerId?: string;
     timestamp: number;
   };
   "sys:pr:cleared": {
     worktreeId: string;
     /** Branch the clear was initiated against; receivers drop the overlay if the worktree's branch has changed. */
     branchName?: string;
+    /** Provider whose linkage was cleared. */
+    providerId?: string;
     timestamp: number;
   };
   "sys:pr:detection-state": {
@@ -469,6 +473,8 @@ export type DaintreeEventMap = {
     issueTitle: string;
     /** Branch the lookup was initiated against; receivers drop the overlay if the worktree's branch has changed. */
     branchName?: string;
+    /** Provider that resolved the issue (e.g. "builtin.github"). */
+    providerId?: string;
     timestamp: number;
   };
 

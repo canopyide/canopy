@@ -1,14 +1,14 @@
 import { events } from "./events.js";
-import {
-  batchCheckLinkedPRs,
-  clearPRCaches,
-  type PRCheckCandidate,
-  type LinkedPR,
-} from "./GitHubService.js";
+import { clearPRCaches } from "./GitHubService.js";
 import { gitHubRateLimitService } from "./github/index.js";
 import { logInfo, logWarn, logDebug } from "../utils/logger.js";
 import type { WorktreeSnapshot as WorktreeState } from "../../shared/types/workspace-host.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
+import { resolveForgeProvider } from "./forgeProviderResolver.js";
+import { getForgeProviderImpl } from "./forgeProviderRegistry.js";
+import { generateProjectId } from "./projectStorePaths.js";
+import { createHardenedGit } from "../utils/hardenedGit.js";
+import type { ForgeProviderImpl, RepoRef, PR as ForgePR } from "../../shared/types/forge.js";
 
 // Focus-aware polling cadence: faster when any Daintree window is focused so
 // users see PR transitions promptly, slower when fully blurred to conserve the
@@ -69,11 +69,38 @@ interface WorktreeContext {
   branchName?: string;
 }
 
+interface InternalLinkedPR {
+  number: number;
+  title: string;
+  url: string;
+  state: "open" | "closed" | "merged";
+  isDraft?: boolean;
+  ciStatus?: import("../../shared/types/github.js").GitHubPRCIStatus;
+  providerId: string;
+}
+
 export interface PRDetectionResult {
   worktreeId: string;
   prNumber: number;
   prUrl: string;
   prState: "open" | "merged" | "closed";
+}
+
+async function mapWithConcurrencyLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let index = 0;
+  async function worker(): Promise<void> {
+    while (index < items.length) {
+      const i = index++;
+      results[i] = await fn(items[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
+  return results;
 }
 
 function isCandidateBranch(branchName: string | undefined): boolean {
@@ -107,9 +134,17 @@ class PullRequestService {
 
   private candidates = new Map<string, WorktreeContext>();
   private resolvedWorktrees = new Set<string>();
-  private detectedPRs = new Map<string, LinkedPR>();
+  private detectedPRs = new Map<string, InternalLinkedPR>();
   private updateDebounceTimer: NodeJS.Timeout | null = null;
   private unsubscribers: (() => void)[] = [];
+
+  // Forge provider resolution (resolved once on init, invalidated on refresh)
+  private projectId: string | null = null;
+  private providerNamespacedId: string | null = null;
+  private providerImpl: ForgeProviderImpl | null = null;
+  private repoRef: RepoRef | null = null;
+  // In-flight dedup: keyed by branch name
+  private inFlightBranchLookups = new Map<string, Promise<ForgePR | null>>();
 
   constructor() {
     this.unsubscribers.push(events.on("sys:worktree:update", this.handleWorktreeUpdate.bind(this)));
@@ -163,15 +198,19 @@ class PullRequestService {
         });
       }
 
+      // Read providerId BEFORE deleting so the clear event carries the
+      // correct provider reference. Compare with handleWorktreeRemove below.
+      const clearedProviderId = this.detectedPRs.get(state.worktreeId)?.providerId;
       this.resolvedWorktrees.delete(state.worktreeId);
       this.detectedPRs.delete(state.worktreeId);
 
-      // Tag the clear with the OLD branch so the renderer drops it if the
-      // worktree's branch has since moved on again — the clear is only valid
+      // Tag the clear with the OLD branch and provider so the renderer drops it
+      // if the worktree's branch has since moved on again — the clear is only valid
       // for the branch identity at the time it was decided.
       events.emit("sys:pr:cleared", {
         worktreeId: state.worktreeId,
         branchName: currentContext.branchName,
+        providerId: clearedProviderId,
         timestamp: Date.now(),
       });
     }
@@ -194,11 +233,17 @@ class PullRequestService {
   private handleWorktreeRemove({ worktreeId }: { worktreeId: string }): void {
     if (this.candidates.has(worktreeId) || this.detectedPRs.has(worktreeId)) {
       const branchName = this.candidates.get(worktreeId)?.branchName;
+      const clearedProviderId = this.detectedPRs.get(worktreeId)?.providerId;
       this.candidates.delete(worktreeId);
       this.resolvedWorktrees.delete(worktreeId);
       this.detectedPRs.delete(worktreeId);
 
-      events.emit("sys:pr:cleared", { worktreeId, branchName, timestamp: Date.now() });
+      events.emit("sys:pr:cleared", {
+        worktreeId,
+        branchName,
+        providerId: clearedProviderId,
+        timestamp: Date.now(),
+      });
 
       logDebug("Worktree removed - cleared PR state", { worktreeId });
     }
@@ -259,7 +304,66 @@ class PullRequestService {
 
   public initialize(cwd: string): void {
     this.cwd = cwd;
-    logInfo("PullRequestService initialized", { cwd });
+    this.projectId = generateProjectId(cwd);
+    logInfo("PullRequestService initialized", { cwd, projectId: this.projectId });
+  }
+
+  private async resolveProvider(): Promise<void> {
+    if (!this.projectId) return;
+    try {
+      const registered = await resolveForgeProvider(this.projectId);
+      if (!registered) {
+        this.providerNamespacedId = null;
+        this.providerImpl = null;
+        this.repoRef = null;
+        return;
+      }
+      const namespacedId = `${registered.pluginId}.${registered.contribution.id}`;
+      const impl = getForgeProviderImpl(namespacedId);
+      if (!impl) {
+        this.providerNamespacedId = null;
+        this.providerImpl = null;
+        this.repoRef = null;
+        return;
+      }
+      const git = createHardenedGit(this.cwd);
+      const rawUrl = await git.getConfig("remote.origin.url").catch(() => null);
+      if (!rawUrl || typeof rawUrl !== "string") {
+        this.providerNamespacedId = null;
+        this.providerImpl = null;
+        this.repoRef = null;
+        return;
+      }
+      const remoteUrl: string = rawUrl;
+      const repo = impl.parseRemote(remoteUrl.trim());
+      if (!repo) {
+        this.providerNamespacedId = null;
+        this.providerImpl = null;
+        this.repoRef = null;
+        return;
+      }
+      this.providerNamespacedId = namespacedId;
+      this.providerImpl = impl;
+      this.repoRef = repo;
+      logInfo("PullRequestService resolved forge provider", {
+        namespacedId,
+        owner: repo.owner,
+        repo: repo.repo,
+      });
+    } catch (error) {
+      logWarn("PullRequestService provider resolution failed", {
+        error: formatErrorMessage(error, "Provider resolution failed"),
+      });
+      this.providerNamespacedId = null;
+      this.providerImpl = null;
+      this.repoRef = null;
+    }
+  }
+
+  private invalidateProvider(): void {
+    this.providerNamespacedId = null;
+    this.providerImpl = null;
+    this.repoRef = null;
   }
 
   /**
@@ -307,10 +411,12 @@ class PullRequestService {
   }
 
   private runInitialCheck(): Promise<void> {
-    return this.checkForPRs().finally(() => {
-      this.scheduleNextPoll();
-      this.scheduleRevalidation();
-    });
+    return this.resolveProvider().then(() =>
+      this.checkForPRs().finally(() => {
+        this.scheduleNextPoll();
+        this.scheduleRevalidation();
+      })
+    );
   }
 
   private clearStartupDelay(): void {
@@ -373,6 +479,10 @@ class PullRequestService {
     // their CI status — which contradicts the "I want fresh data now"
     // semantics of a manual refresh.
     this.resolvedWorktrees.clear();
+    // Re-resolve the forge provider on manual refresh so token changes
+    // and provider installs/uninstalls take effect immediately.
+    this.invalidateProvider();
+    await this.resolveProvider();
     // Manual refresh is an explicit "I want fresh data now" — bypass the 5s
     // floor by clearing the throttle clock before the direct checkForPRs().
     this.lastCheckAt = Number.NEGATIVE_INFINITY;
@@ -402,6 +512,8 @@ class PullRequestService {
     this.setDetectionState(false);
     this.boostExpiresAt = null;
     this.lastCheckAt = Number.NEGATIVE_INFINITY;
+    this.inFlightBranchLookups.clear();
+    this.invalidateProvider();
   }
 
   /**
@@ -610,113 +722,106 @@ class PullRequestService {
     const rateLimitBlock = gitHubRateLimitService.shouldBlockRequest();
     if (rateLimitBlock.blocked && rateLimitBlock.resumeAt) {
       this.nextRetryAt = rateLimitBlock.resumeAt;
-      logDebug("Skipping PR revalidation — GitHub rate limit active", {
+      logDebug("Skipping PR revalidation — rate limit active", {
         reason: rateLimitBlock.reason,
         resumeAt: rateLimitBlock.resumeAt,
       });
       return;
     }
 
-    // Collect resolved worktrees that need revalidation. Always include the
-    // detected PR number so GitHubService can use ETag conditional requests
-    // to skip GraphQL when nothing has changed.
-    const candidatesToRevalidate: PRCheckCandidate[] = [];
-    // Snapshot the lookup-time branch per worktree so a branch change during
-    // the in-flight check doesn't let a stale overlay override the new state.
+    const provider = this.providerImpl;
+    const repo = this.repoRef;
+    const providerId = this.providerNamespacedId;
+    if (!provider || !repo || !providerId) return;
+
+    // Collect resolved worktrees that need revalidation
     const lookupBranchByWorktreeId = new Map<string, string | undefined>();
+    const uniquePRNumbers = new Set<number>();
     for (const worktreeId of this.resolvedWorktrees) {
       const context = this.candidates.get(worktreeId);
       const detectedPR = this.detectedPRs.get(worktreeId);
       if (context && detectedPR) {
-        candidatesToRevalidate.push({
-          worktreeId,
-          issueNumber: context.issueNumber,
-          branchName: context.branchName,
-          knownPRNumber: detectedPR.number,
-        });
         lookupBranchByWorktreeId.set(worktreeId, context.branchName);
+        uniquePRNumbers.add(detectedPR.number);
       }
     }
 
-    if (candidatesToRevalidate.length === 0) {
-      return;
-    }
-
-    logDebug("Revalidating resolved PRs", { count: candidatesToRevalidate.length });
+    if (uniquePRNumbers.size === 0) return;
+    logDebug("Revalidating resolved PRs", { count: uniquePRNumbers.size });
 
     try {
-      const result = await batchCheckLinkedPRs(this.cwd, candidatesToRevalidate);
-
-      if (result.error) {
-        logWarn("Revalidation check failed", { error: result.error });
-        return;
-      }
-
-      for (const [worktreeId, checkResult] of result.results) {
-        const existingPR = this.detectedPRs.get(worktreeId);
-        const newPR = checkResult.pr;
-
-        if (!newPR) {
-          // PR no longer exists (deleted?) - clear state
-          this.resolvedWorktrees.delete(worktreeId);
-          this.detectedPRs.delete(worktreeId);
-
-          logInfo("PR no longer found during revalidation - clearing state", { worktreeId });
-          events.emit("sys:pr:cleared", {
-            worktreeId,
-            branchName: lookupBranchByWorktreeId.get(worktreeId),
-            timestamp: Date.now(),
-          });
-          continue;
+      // Revalidate each known PR by number via provider.getPR.
+      // Transient errors (network, 5xx) are captured as `error: true` and
+      // skipped so a flaky API call doesn't clear valid PR state.
+      const prNumbers = [...uniquePRNumbers];
+      const results = await mapWithConcurrencyLimit(prNumbers, 5, async (prNumber) => {
+        try {
+          const pr = await provider.getPR(repo, prNumber);
+          return { prNumber, pr, error: false };
+        } catch {
+          return { prNumber, pr: null, error: true };
         }
+      });
 
-        // Check if PR metadata changed (state, number, title, url, or CI status)
-        const prChanged =
-          existingPR &&
-          (existingPR.state !== newPR.state ||
-            existingPR.number !== newPR.number ||
-            existingPR.title !== newPR.title ||
-            existingPR.url !== newPR.url ||
-            existingPR.ciStatus !== newPR.ciStatus);
+      for (const { prNumber, pr, error } of results) {
+        // Skip transient errors — a single flaky API call must not wipe PR state.
+        if (error) continue;
 
-        if (prChanged) {
-          logInfo("PR metadata changed during revalidation", {
-            worktreeId,
-            prNumber: newPR.number,
-            changes: {
-              state:
-                existingPR.state !== newPR.state
-                  ? `${existingPR.state} → ${newPR.state}`
-                  : undefined,
-              number:
-                existingPR.number !== newPR.number
-                  ? `${existingPR.number} → ${newPR.number}`
-                  : undefined,
-              title: existingPR.title !== newPR.title ? true : undefined,
-              url: existingPR.url !== newPR.url ? true : undefined,
-              ciStatus:
-                existingPR.ciStatus !== newPR.ciStatus
-                  ? `${existingPR.ciStatus ?? "none"} → ${newPR.ciStatus ?? "none"}`
-                  : undefined,
-            },
-          });
+        // Find all worktrees that have this PR
+        for (const [worktreeId, detectedPR] of this.detectedPRs) {
+          if (detectedPR.number !== prNumber) continue;
 
-          this.detectedPRs.set(worktreeId, newPR);
+          if (!pr) {
+            this.resolvedWorktrees.delete(worktreeId);
+            this.detectedPRs.delete(worktreeId);
+            logInfo("PR no longer found during revalidation - clearing state", { worktreeId });
+            events.emit("sys:pr:cleared", {
+              worktreeId,
+              branchName: lookupBranchByWorktreeId.get(worktreeId),
+              providerId: detectedPR.providerId,
+              timestamp: Date.now(),
+            });
+            continue;
+          }
 
-          const issueNumber =
-            checkResult.issueNumber ?? this.candidates.get(worktreeId)?.issueNumber;
-          events.emit("sys:pr:detected", {
-            worktreeId,
-            prNumber: newPR.number,
-            prUrl: newPR.url,
-            prState: newPR.state,
-            prCiStatus: newPR.ciStatus,
-            prTitle: newPR.title,
-            issueNumber,
-            issueTitle: checkResult.issueTitle,
-            branchName: lookupBranchByWorktreeId.get(worktreeId),
-            timestamp: Date.now(),
-          });
+          const newState = pr.state === "declined" ? "closed" : pr.state;
+          const prChanged =
+            detectedPR.state !== newState ||
+            detectedPR.number !== pr.number ||
+            detectedPR.title !== pr.title ||
+            detectedPR.url !== pr.url;
+
+          if (prChanged) {
+            const oldState = detectedPR.state;
+            detectedPR.state = newState;
+            detectedPR.title = pr.title;
+            detectedPR.url = pr.url;
+
+            logInfo("PR metadata changed during revalidation", {
+              worktreeId,
+              prNumber: pr.number,
+              changes: {
+                state: oldState !== newState ? `${oldState} → ${newState}` : undefined,
+                title: detectedPR.title !== pr.title ? true : undefined,
+              },
+            });
+
+            events.emit("sys:pr:detected", {
+              worktreeId,
+              prNumber: pr.number,
+              prUrl: pr.url,
+              prState: newState,
+              prCiStatus: detectedPR.ciStatus,
+              prTitle: pr.title,
+              issueNumber: this.candidates.get(worktreeId)?.issueNumber,
+              branchName: lookupBranchByWorktreeId.get(worktreeId),
+              providerId: detectedPR.providerId,
+              timestamp: Date.now(),
+            });
+          }
+
+          // Revalidate CI status (best-effort, non-blocking)
+          this.enrichPRWithCIStatus(detectedPR, repo, provider);
         }
       }
 
@@ -731,13 +836,8 @@ class PullRequestService {
   private async checkForPRs(): Promise<void> {
     const rateLimitBlock = gitHubRateLimitService.shouldBlockRequest();
     if (rateLimitBlock.blocked && rateLimitBlock.resumeAt) {
-      // Park polling at the known resume time without incrementing the
-      // circuit breaker. GitHub docs explicitly warn that retrying through a
-      // secondary rate limit can escalate to a permanent ban, so even for
-      // secondary limits we use the same one-shot resume pattern rather than
-      // touching `consecutiveErrors`.
       this.nextRetryAt = rateLimitBlock.resumeAt;
-      logDebug("Skipping PR check — GitHub rate limit active", {
+      logDebug("Skipping PR check — rate limit active", {
         reason: rateLimitBlock.reason,
         resumeAt: rateLimitBlock.resumeAt,
         waitMs: rateLimitBlock.resumeAt - Date.now(),
@@ -745,9 +845,11 @@ class PullRequestService {
       return;
     }
 
-    const activeCandidates: PRCheckCandidate[] = [];
-    // Snapshot the lookup-time branch per worktree so a branch change during
-    // the in-flight check doesn't let a stale overlay override the new state.
+    const activeCandidates: Array<{
+      worktreeId: string;
+      issueNumber?: number;
+      branchName?: string;
+    }> = [];
     const lookupBranchByWorktreeId = new Map<string, string | undefined>();
     for (const [worktreeId, context] of this.candidates) {
       if (!this.resolvedWorktrees.has(worktreeId)) {
@@ -765,11 +867,6 @@ class PullRequestService {
       return;
     }
 
-    // Shared 5s floor across all automatic trigger paths (startup, poll,
-    // backoff, focus catch-up, debounced branch-change). Manual refresh()
-    // bypasses by resetting lastCheckAt first. The clock advances only here —
-    // on an admitted real batch attempt — so skipped calls never push the
-    // window forward.
     const waitMs = this.msUntilCheckAllowed();
     if (waitMs > 0) {
       logDebug("Skipping PR check — within throttle window", { waitMs });
@@ -779,65 +876,184 @@ class PullRequestService {
 
     logDebug("Checking PRs for candidates", { count: activeCandidates.length });
 
-    try {
-      const result = await batchCheckLinkedPRs(this.cwd, activeCandidates);
+    const provider = this.providerImpl;
+    const repo = this.repoRef;
+    const providerId = this.providerNamespacedId;
 
-      if (result.error) {
-        this.handleError(result.error, result.rateLimit);
-        return;
+    if (!provider || !repo || !providerId) {
+      // No forge provider resolved — all candidates get null linkage.
+      // No error, no toast, no log spam (per issue spec).
+      logDebug("Skipping PR check — no forge provider resolved");
+      return;
+    }
+
+    try {
+      // Dedup by branch: each unique branch gets one findPRByBranch call.
+      const uniqueBranches = new Map<string, string[]>();
+      for (const c of activeCandidates) {
+        const branch = c.branchName;
+        if (!branch) continue;
+        const existing = uniqueBranches.get(branch);
+        if (existing) {
+          existing.push(c.worktreeId);
+        } else {
+          uniqueBranches.set(branch, [c.worktreeId]);
+        }
       }
+
+      // Issue lookups (independent of PR lookups, run in parallel per candidate)
+      const issueLookups: Promise<void>[] = [];
+      for (const c of activeCandidates) {
+        const issueNumber = c.issueNumber ?? this.candidates.get(c.worktreeId)?.issueNumber;
+        if (!issueNumber || typeof issueNumber !== "number") continue;
+        const lookupBranch = lookupBranchByWorktreeId.get(c.worktreeId);
+        issueLookups.push(
+          provider
+            .getIssue(repo, issueNumber)
+            .then((issue) => {
+              if (issue) {
+                events.emit("sys:issue:detected", {
+                  worktreeId: c.worktreeId,
+                  issueNumber,
+                  issueTitle: issue.title,
+                  branchName: lookupBranch,
+                  providerId,
+                  timestamp: Date.now(),
+                });
+              } else {
+                events.emit("sys:issue:not-found", {
+                  worktreeId: c.worktreeId,
+                  issueNumber,
+                  timestamp: Date.now(),
+                });
+              }
+            })
+            .catch(() => {
+              // Issue lookup failure is silent — not an error worth surfacing
+            })
+        );
+      }
+
+      // Per-branch PR lookups with concurrency limit
+      const branches = [...uniqueBranches.keys()];
+      const prResults = await mapWithConcurrencyLimit(
+        branches,
+        5,
+        (branch): Promise<{ branch: string; pr: ForgePR | null }> => {
+          const existing = this.inFlightBranchLookups.get(branch);
+          if (existing) {
+            return existing.then((pr) => ({ branch, pr }));
+          }
+          const promise = provider.findPRByBranch(repo, branch).catch(() => null);
+          this.inFlightBranchLookups.set(branch, promise);
+          promise.finally(() => {
+            this.inFlightBranchLookups.delete(branch);
+          });
+          return promise.then((pr) => ({ branch, pr }));
+        }
+      );
+
+      // Fire issue lookups in parallel with PR lookups
+      await Promise.allSettled(issueLookups);
 
       this.consecutiveErrors = 0;
 
-      for (const [worktreeId, checkResult] of result.results) {
-        const lookupBranch = lookupBranchByWorktreeId.get(worktreeId);
-        // Emit issue metadata if we have a title (regardless of PR)
-        const issueNumber = checkResult.issueNumber ?? this.candidates.get(worktreeId)?.issueNumber;
-        if (issueNumber && checkResult.issueTitle) {
-          events.emit("sys:issue:detected", {
-            worktreeId,
-            issueNumber,
-            issueTitle: checkResult.issueTitle,
-            branchName: lookupBranch,
-            timestamp: Date.now(),
-          });
-        } else if (issueNumber && !checkResult.issueTitle) {
-          events.emit("sys:issue:not-found", {
-            worktreeId,
-            issueNumber,
-            timestamp: Date.now(),
-          });
-        }
+      for (const { branch, pr } of prResults) {
+        const worktreeIds = uniqueBranches.get(branch);
+        if (!worktreeIds) continue;
 
-        if (checkResult.pr) {
+        if (!pr) continue;
+
+        const internalPR: InternalLinkedPR = {
+          number: pr.number,
+          title: pr.title,
+          url: pr.url,
+          state: pr.state === "declined" ? "closed" : pr.state,
+          isDraft: pr.isDraft,
+          providerId,
+        };
+
+        for (const worktreeId of worktreeIds) {
           this.resolvedWorktrees.add(worktreeId);
-          this.detectedPRs.set(worktreeId, checkResult.pr);
+          this.detectedPRs.set(worktreeId, internalPR);
+
+          const lookupBranch = lookupBranchByWorktreeId.get(worktreeId);
+          const issueNumber = this.candidates.get(worktreeId)?.issueNumber;
 
           logInfo("PR detected for worktree", {
             worktreeId,
-            prNumber: checkResult.pr.number,
-            prState: checkResult.pr.state,
+            prNumber: pr.number,
+            prState: internalPR.state,
+            providerId,
           });
 
           events.emit("sys:pr:detected", {
             worktreeId,
-            prNumber: checkResult.pr.number,
-            prUrl: checkResult.pr.url,
-            prState: checkResult.pr.state,
-            prCiStatus: checkResult.pr.ciStatus,
-            prTitle: checkResult.pr.title,
+            prNumber: pr.number,
+            prUrl: pr.url,
+            prState: internalPR.state,
+            prTitle: pr.title,
             issueNumber,
-            issueTitle: checkResult.issueTitle,
             branchName: lookupBranch,
+            providerId,
             timestamp: Date.now(),
           });
         }
+
+        // Fire-and-forget CI status enrichment
+        this.enrichPRWithCIStatus(internalPR, repo, provider);
       }
 
       this.updateBoostFromDetectedPRs();
     } catch (error) {
       this.handleError(formatErrorMessage(error, "PR check failed"));
     }
+  }
+
+  /**
+   * Fire CI status lookup as a non-blocking tail after PR detection.
+   * On success, updates the detectedPRs entry and re-emits sys:pr:detected
+   * with the enriched CI status so the renderer can update the badge.
+   */
+  private enrichPRWithCIStatus(
+    pr: InternalLinkedPR,
+    repo: RepoRef,
+    provider: ForgeProviderImpl
+  ): void {
+    provider
+      .getCIStatus(repo, pr.number)
+      .then((ciStatus) => {
+        if (!ciStatus) return;
+        pr.ciStatus =
+          ciStatus.state === "success"
+            ? "SUCCESS"
+            : ciStatus.state === "failure"
+              ? "FAILURE"
+              : ciStatus.state === "pending"
+                ? "PENDING"
+                : undefined;
+        // Re-emit for each worktree that has this PR
+        for (const [worktreeId, detected] of this.detectedPRs) {
+          if (detected.number === pr.number) {
+            events.emit("sys:pr:detected", {
+              worktreeId,
+              prNumber: pr.number,
+              prUrl: pr.url,
+              prState: pr.state,
+              prCiStatus: pr.ciStatus,
+              prTitle: pr.title,
+              issueNumber: this.candidates.get(worktreeId)?.issueNumber,
+              branchName: this.candidates.get(worktreeId)?.branchName,
+              providerId: pr.providerId,
+              timestamp: Date.now(),
+            });
+          }
+        }
+        this.updateBoostFromDetectedPRs();
+      })
+      .catch(() => {
+        // CI status fetch is best-effort; failure does not invalidate the PR detection
+      });
   }
 
   private handleError(
