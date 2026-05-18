@@ -109,6 +109,29 @@ describe("color system contract", () => {
     );
   });
 
+  it("defines --dock-shadow with alpha-pinned relative color (visible on light themes)", () => {
+    // Regression for #8156: color-mix multiplied --theme-shadow-color's own
+    // alpha (0.12 on light themes) toward transparent, making the dock shadow
+    // effectively invisible. Relative color syntax strips the input alpha and
+    // pins it at a visible value across all 14 themes.
+    expect(indexCss).toMatch(
+      /--dock-shadow:\s*0 -2px 12px rgb\(from var\(--theme-shadow-color\) r g b \/ 0\.35\)/
+    );
+    expect(indexCss).not.toMatch(/--dock-shadow:[^;]*color-mix/);
+  });
+
+  it("declares the waiting dock-item state tokens consumed by docked items", () => {
+    // Regression for #8156: DockedTerminalItem/DockedTabGroup read these tokens
+    // for the waiting-agent highlight, but they were never declared, so the
+    // waiting state was visually identical to idle on every theme.
+    expect(indexCss).toMatch(
+      /--dock-item-bg-waiting:\s*color-mix\(in oklab, var\(--color-activity-waiting\) 10%, transparent\)/
+    );
+    expect(indexCss).toMatch(
+      /--dock-item-border-waiting:\s*rgb\(from var\(--color-activity-waiting\) r g b \/ 0\.3\)/
+    );
+  });
+
   it("wires :root --background to --theme-surface-canvas", () => {
     expect(indexCss).toMatch(/--background:\s*var\(--theme-surface-canvas\)/);
   });
