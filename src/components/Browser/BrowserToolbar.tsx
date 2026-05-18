@@ -205,7 +205,7 @@ export function BrowserToolbar({
       if (buttons.length === 0) return;
 
       const currentIndex = buttons.findIndex((b) => b === document.activeElement);
-      let nextIndex = currentIndex;
+      let nextIndex: number;
 
       if (e.key === "ArrowRight" || e.key === "ArrowDown") {
         e.preventDefault();
