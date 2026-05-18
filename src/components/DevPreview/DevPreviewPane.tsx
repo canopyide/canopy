@@ -874,7 +874,7 @@ export function DevPreviewPane({
     const cleanup = window.electron.webview.onNavigationBlocked((data) => {
       if (data.panelId !== id) return;
 
-      let hostname = "";
+      let hostname: string;
       try {
         hostname = new URL(data.url).hostname;
       } catch {

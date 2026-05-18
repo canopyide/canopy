@@ -161,12 +161,13 @@ export function BlockedNavBanner({
   onRetryOAuth,
 }: BlockedNavBannerProps) {
   const [copied, setCopied] = useState(false);
+  const COPY_FEEDBACK_MS = 2000;
 
   const handleCopyUrl = useCallback(async () => {
     try {
       await window.electron.clipboard.writeText(blockedNav.url);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
     } catch {
       // Clipboard unavailable
     }

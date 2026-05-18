@@ -212,9 +212,8 @@ function cleanup(panelId: string): void {
 
   // Node 24: closeAllConnections() terminates idle keep-alive connections before close()
   try {
-    if (typeof (session.server as Record<string, unknown>).closeAllConnections === "function") {
-      (session.server as Record<string, unknown>).closeAllConnections();
-    }
+    const srv = session.server as unknown as { closeAllConnections?: () => void };
+    srv.closeAllConnections?.();
   } catch {
     // closeAllConnections may throw if server is already closed
   }

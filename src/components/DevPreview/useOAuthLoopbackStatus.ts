@@ -17,6 +17,7 @@ export function useOAuthLoopbackStatus(panelId: string) {
       if (payload.generation < generationRef.current) return;
 
       generationRef.current = payload.generation;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- push channel payload shape matches OAuthPhase discriminants
       setState({
         phase: payload as OAuthPhase,
         generation: payload.generation,
@@ -34,6 +35,7 @@ export function useOAuthLoopbackStatus(panelId: string) {
     ) => {
       let wcId: number | undefined;
       try {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Electron.WebviewTag getWebContentsId is not in public types yet
         wcId = (webviewElement as unknown as { getWebContentsId(): number })?.getWebContentsId();
       } catch {
         /* webview not ready */
