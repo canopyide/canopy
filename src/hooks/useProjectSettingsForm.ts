@@ -240,23 +240,20 @@ export function useProjectSettingsForm({ projectId, isOpen }: UseProjectSettings
     const initialNotificationOverrides = projectSettings.notificationOverrides ?? {};
     const initialGithubRemote = projectSettings.githubRemote;
     const initialForgeProviderOverride = projectSettings.forgeProviderOverride ?? null;
-    // Migration: convert old singular resourceEnvironment to resourceEnvironments
-    let initialResourceEnvironments: Record<string, ResourceEnvironment> | undefined;
-    let initialActiveResourceEnvironment: string | undefined;
-    if (projectSettings.resourceEnvironments) {
-      initialResourceEnvironments = projectSettings.resourceEnvironments;
-      initialActiveResourceEnvironment = projectSettings.activeResourceEnvironment;
-      // Validate activeResourceEnvironment points to existing key
-      if (
-        initialActiveResourceEnvironment &&
-        !initialResourceEnvironments[initialActiveResourceEnvironment]
-      ) {
-        const keys = Object.keys(initialResourceEnvironments);
-        initialActiveResourceEnvironment = keys.length > 0 ? keys[0] : "default";
-      }
-    } else if (projectSettings.resourceEnvironment) {
-      initialResourceEnvironments = { default: projectSettings.resourceEnvironment };
-      initialActiveResourceEnvironment = "default";
+    // resourceEnvironment → resourceEnvironments migration is owned by the
+    // main-process codec (electron/services/projectSettingsCodec.ts), so by
+    // the time settings reach the renderer they are already canonical.
+    const initialResourceEnvironments: Record<string, ResourceEnvironment> | undefined =
+      projectSettings.resourceEnvironments;
+    let initialActiveResourceEnvironment: string | undefined =
+      projectSettings.activeResourceEnvironment;
+    if (
+      initialResourceEnvironments &&
+      initialActiveResourceEnvironment &&
+      !initialResourceEnvironments[initialActiveResourceEnvironment]
+    ) {
+      const keys = Object.keys(initialResourceEnvironments);
+      initialActiveResourceEnvironment = keys.length > 0 ? keys[0] : "default";
     }
     const initialDefaultWorktreeMode = projectSettings.defaultWorktreeMode;
 
