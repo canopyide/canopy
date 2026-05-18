@@ -17,6 +17,9 @@ export function createDevPreviewDefaults(
     devPreviewConsoleOpen: options.devPreviewConsoleOpen,
     exitBehavior: options.exitBehavior,
     viewportPreset: options.viewportPreset,
+    viewportRotated: options.viewportRotated ?? false,
+    viewportDpr: options.viewportDpr ?? 1,
+    viewportFit: options.viewportFit ?? false,
     devPreviewScrollPosition: options.devPreviewScrollPosition,
   };
 }

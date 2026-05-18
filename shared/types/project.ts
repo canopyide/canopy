@@ -93,6 +93,12 @@ export interface PanelSnapshot {
   devPreviewConsoleOpen?: boolean;
   /** Active viewport preset for dev-preview responsive emulation */
   viewportPreset?: ViewportPresetId;
+  /** Whether the active dev-preview viewport preset is rotated to landscape */
+  viewportRotated?: boolean;
+  /** Device-pixel-ratio override for the active dev-preview viewport preset */
+  viewportDpr?: 1 | 2 | 3;
+  /** Whether the dev-preview viewport is scaled to fit the available pane */
+  viewportFit?: boolean;
   /** Last captured dev-preview scroll position, paired with URL for stale-scroll prevention */
   devPreviewScrollPosition?: { url: string; scrollY: number };
   /** Behavior when terminal exits */

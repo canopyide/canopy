@@ -378,6 +378,12 @@ export interface DevPreviewPanelData extends BasePanelData {
   exitBehavior?: PanelExitBehavior;
   /** Active viewport preset (undefined = fill/full-width) */
   viewportPreset?: ViewportPresetId;
+  /** Whether the active viewport preset is rotated to landscape (width/height swapped) */
+  viewportRotated?: boolean;
+  /** Device-pixel-ratio override for the active viewport preset (visual change deferred to #8278) */
+  viewportDpr?: 1 | 2 | 3;
+  /** Whether the viewport is scaled down to fit the available pane (zoom-to-fit) */
+  viewportFit?: boolean;
   /** Last captured scroll position, paired with URL for stale-scroll prevention */
   devPreviewScrollPosition?: { url: string; scrollY: number };
 }
@@ -496,6 +502,12 @@ export interface TerminalInstance {
   devPreviewConsoleOpen?: boolean;
   /** Active viewport preset for dev-preview responsive emulation (undefined = fill) */
   viewportPreset?: ViewportPresetId;
+  /** Whether the active dev-preview viewport preset is rotated to landscape */
+  viewportRotated?: boolean;
+  /** Device-pixel-ratio override for the active dev-preview viewport preset */
+  viewportDpr?: 1 | 2 | 3;
+  /** Whether the dev-preview viewport is scaled to fit the available pane */
+  viewportFit?: boolean;
   /** Last captured dev-preview scroll position, paired with URL for stale-scroll prevention */
   devPreviewScrollPosition?: { url: string; scrollY: number };
   /** Behavior when terminal exits: "keep" preserves for review, "trash" sends to trash, "remove" deletes completely */

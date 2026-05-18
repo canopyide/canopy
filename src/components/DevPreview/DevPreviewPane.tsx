@@ -45,7 +45,11 @@ import { WebviewDialog } from "../Browser/WebviewDialog";
 import { FindBar } from "../Browser/FindBar";
 import { useFindInPage } from "@/hooks/useFindInPage";
 import { safeFireAndForget } from "@/utils/safeFireAndForget";
-import { getViewportPreset } from "@/panels/dev-preview/viewportPresets";
+import {
+  getViewportPreset,
+  getEffectiveViewportSize,
+  computeFitScale,
+} from "@/panels/dev-preview/viewportPresets";
 import type { ViewportPresetId } from "@shared/types/panel";
 import { logError } from "@/utils/logger";
 import { loadWebviewUrl } from "./loadWebviewUrl";
@@ -298,6 +302,9 @@ export function DevPreviewPane({
   const setBrowserZoom = usePanelStore((state) => state.setBrowserZoom);
   const setDevPreviewConsoleOpen = usePanelStore((state) => state.setDevPreviewConsoleOpen);
   const setViewportPreset = usePanelStore((state) => state.setViewportPreset);
+  const setViewportRotated = usePanelStore((state) => state.setViewportRotated);
+  const setViewportDpr = usePanelStore((state) => state.setViewportDpr);
+  const setViewportFit = usePanelStore((state) => state.setViewportFit);
   const setDevPreviewScrollPosition = usePanelStore((state) => state.setDevPreviewScrollPosition);
   const currentProjectId = useProjectStore((state) => state.currentProject?.id);
   const projectSettings = useProjectSettingsStore((state) => state.settings);
@@ -308,6 +315,12 @@ export function DevPreviewPane({
   const devCommand =
     terminal?.devCommand?.trim() || projectSettings?.devServerCommand?.trim() || "";
   const viewportPreset = terminal?.viewportPreset;
+  const viewportRotated = terminal?.viewportRotated ?? false;
+  const viewportDpr = terminal?.viewportDpr ?? 1;
+  const viewportFit = terminal?.viewportFit ?? false;
+  const effectiveViewport = viewportPreset
+    ? getEffectiveViewportSize(viewportPreset, viewportRotated)
+    : null;
 
   const {
     status,
@@ -784,6 +797,58 @@ export function DevPreviewPane({
     [id, setViewportPreset]
   );
 
+  const handleViewportRotateToggle = useCallback(() => {
+    setViewportRotated(id, !viewportRotated);
+  }, [id, setViewportRotated, viewportRotated]);
+
+  const handleViewportDprChange = useCallback(
+    (dpr: 1 | 2 | 3) => {
+      setViewportDpr(id, dpr);
+      // TODO(#8278): once the enableDeviceEmulation IPC bridge lands, apply the
+      // deviceScaleFactor to the live webview here. Until then this only
+      // persists the preference so the toolbar shape is stable when #8278 ships.
+    },
+    [id, setViewportDpr]
+  );
+
+  const handleViewportFitToggle = useCallback(() => {
+    setViewportFit(id, !viewportFit);
+  }, [id, setViewportFit, viewportFit]);
+
+  // Measure the available preview area so zoom-to-fit can scale the device
+  // frame down to fit both pane dimensions. A static scale would break on
+  // pane resize, so this tracks the container via ResizeObserver.
+  // Callback ref (not useRef) so the observer effect re-runs when the
+  // fit-container div mounts for the first time — it lives in the webview
+  // branch, which only renders once the dev server reaches "running", long
+  // after viewportFit/viewportPreset may have been set.
+  const [fitContainerEl, setFitContainerEl] = useState<HTMLDivElement | null>(null);
+  const [fitContainerSize, setFitContainerSize] = useState<{ w: number; h: number }>({
+    w: 0,
+    h: 0,
+  });
+  useEffect(() => {
+    if (!viewportFit || !viewportPreset || !fitContainerEl) return;
+    const el = fitContainerEl;
+    const measure = () => {
+      setFitContainerSize({ w: el.clientWidth, h: el.clientHeight });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [viewportFit, viewportPreset, fitContainerEl]);
+
+  const fitScale =
+    viewportFit && effectiveViewport
+      ? computeFitScale(
+          fitContainerSize.w,
+          fitContainerSize.h,
+          effectiveViewport.width,
+          effectiveViewport.height
+        )
+      : 1;
+
   useEffect(() => {
     if (isWebviewReady && currentUrl && currentUrl !== lastSetUrlRef.current) {
       lastSetUrlRef.current = currentUrl;
@@ -958,6 +1023,9 @@ export function DevPreviewPane({
           isWebviewReady={isWebviewReady}
           isConsoleOpen={isConsoleOpen}
           viewportPreset={viewportPreset}
+          viewportRotated={viewportRotated}
+          viewportDpr={viewportDpr}
+          viewportFit={viewportFit}
           onNavigate={handleNavigate}
           onBack={handleBack}
           onForward={handleForward}
@@ -969,6 +1037,9 @@ export function DevPreviewPane({
           onToggleDevTools={handleToggleDevTools}
           onToggleConsole={handleToggleConsole}
           onViewportPresetChange={handleViewportPresetChange}
+          onViewportRotateToggle={handleViewportRotateToggle}
+          onViewportDprChange={handleViewportDprChange}
+          onViewportFitToggle={handleViewportFitToggle}
         />
 
         {stuckTier >= 2 && (
@@ -981,11 +1052,17 @@ export function DevPreviewPane({
           />
         )}
 
-        <div className="relative flex-1 min-h-0 bg-surface-canvas overflow-auto">
-          {viewportPreset && (
+        <div
+          className={cn(
+            "relative flex-1 min-h-0 bg-surface-canvas",
+            viewportPreset && viewportFit ? "overflow-hidden" : "overflow-auto"
+          )}
+        >
+          {viewportPreset && effectiveViewport && (
             <div className="absolute top-1 left-1/2 -translate-x-1/2 z-10 px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface/90 text-daintree-text/60 border border-overlay/50">
-              {getViewportPreset(viewportPreset).label} · {getViewportPreset(viewportPreset).width}×
-              {getViewportPreset(viewportPreset).height}
+              {getViewportPreset(viewportPreset).label} · {effectiveViewport.width}×
+              {effectiveViewport.height}
+              {viewportFit && fitScale < 1 && ` · ${Math.round(fitScale * 100)}%`}
             </div>
           )}
           {isRestarting || status === "starting" || status === "installing" ? (
@@ -1119,7 +1196,16 @@ export function DevPreviewPane({
               </p>
             </div>
           ) : (
-            <div className={cn("h-full", viewportPreset && "flex items-start justify-center pt-5")}>
+            <div
+              ref={setFitContainerEl}
+              className={cn(
+                "h-full",
+                viewportPreset &&
+                  (viewportFit
+                    ? "flex items-center justify-center"
+                    : "flex items-start justify-center pt-5")
+              )}
+            >
               <div
                 className={cn(
                   "relative",
@@ -1128,12 +1214,17 @@ export function DevPreviewPane({
                     : "h-full"
                 )}
                 style={
-                  viewportPreset
-                    ? {
-                        maxWidth: getViewportPreset(viewportPreset).width,
-                        width: "100%",
-                        aspectRatio: `${getViewportPreset(viewportPreset).width} / ${getViewportPreset(viewportPreset).height}`,
-                      }
+                  viewportPreset && effectiveViewport
+                    ? viewportFit
+                      ? {
+                          width: effectiveViewport.width * fitScale,
+                          height: effectiveViewport.height * fitScale,
+                        }
+                      : {
+                          maxWidth: effectiveViewport.width,
+                          width: "100%",
+                          aspectRatio: `${effectiveViewport.width} / ${effectiveViewport.height}`,
+                        }
                     : undefined
                 }
               >
@@ -1232,17 +1323,37 @@ export function DevPreviewPane({
                   )}
                   {isDragging && <div className="absolute inset-0 z-10 bg-transparent" />}
                   {findInPage.isOpen && <FindBar find={findInPage} />}
-                  <webview
-                    ref={setWebviewNode}
-                    src={currentUrl}
-                    partition={webviewPartition}
-                    // @ts-expect-error React 19 requires "" to emit the attribute; boolean true is silently dropped
-                    allowpopups=""
-                    className={cn(
-                      "w-full h-full border-0",
-                      isDragging && "invisible pointer-events-none"
-                    )}
-                  />
+                  {/* Only the webview is scaled by zoom-to-fit; overlays above
+                        stay at full size relative to the outer container so
+                        their action buttons remain readable and clickable. */}
+                  <div
+                    className={
+                      viewportPreset && viewportFit
+                        ? "absolute top-0 left-0 origin-top-left"
+                        : "w-full h-full"
+                    }
+                    style={
+                      viewportPreset && viewportFit && effectiveViewport
+                        ? {
+                            width: effectiveViewport.width,
+                            height: effectiveViewport.height,
+                            transform: `scale(${fitScale})`,
+                          }
+                        : undefined
+                    }
+                  >
+                    <webview
+                      ref={setWebviewNode}
+                      src={currentUrl}
+                      partition={webviewPartition}
+                      // @ts-expect-error React 19 requires "" to emit the attribute; boolean true is silently dropped
+                      allowpopups=""
+                      className={cn(
+                        "w-full h-full border-0",
+                        isDragging && "invisible pointer-events-none"
+                      )}
+                    />
+                  </div>
                   <WebviewDialog dialog={currentDialog} onRespond={handleDialogRespond} />
                 </>
               </div>
