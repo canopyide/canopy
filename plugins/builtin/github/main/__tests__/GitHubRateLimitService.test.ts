@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { gitHubRateLimitService } from "../GitHubRateLimitService.js";
-import type { GitHubRateLimitPayload } from "../../../../shared/types/ipc/github.js";
+import type { GitHubRateLimitPayload } from "../../../../../shared/types/ipc/github.js";
 
 function makeHeaders(entries: Record<string, string>): Headers {
   return new Headers(entries);

@@ -6,7 +6,7 @@ import { rateLimitMessage, parseGitHubError } from "./GitHubErrors.js";
 import { getRepoContext, isRepoNotFoundError } from "./GitHubRepoContext.js";
 import { repoContextCache, projectHealthCache } from "./GitHubCaches.js";
 import type { CIStatus, ProjectHealth, ProjectHealthResult } from "./types.js";
-import type { ProjectHealthData } from "../../types/index.js";
+import type { ProjectHealthData } from "../../../../electron/types/index.js";
 
 export function buildEmptyProjectHealthData(
   opts: { error?: string; hasRemote?: boolean } = {}

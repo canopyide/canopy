@@ -21,8 +21,9 @@ vi.mock("../ProjectStore.js", () => ({
   },
 }));
 
-vi.mock("../github/GitHubAuth.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../github/GitHubAuth.js")>();
+vi.mock("../../../plugins/builtin/github/main/GitHubAuth.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../../plugins/builtin/github/main/GitHubAuth.js")>();
   return {
     ...actual,
     GitHubAuth: {
@@ -38,19 +39,25 @@ vi.mock("../github/GitHubAuth.js", async (importOriginal) => {
   };
 });
 
-vi.mock("../github/GitHubRateLimitService.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../github/GitHubRateLimitService.js")>();
-  return {
-    ...actual,
-    gitHubRateLimitService: {
-      shouldBlockRequest: () => ({ blocked: false }),
-      update: () => {},
-      updateFromGraphQL: () => {},
-      getState: () => ({ blocked: false }),
-      onStateChange: () => () => {},
-    },
-  };
-});
+vi.mock(
+  "../../../plugins/builtin/github/main/GitHubRateLimitService.js",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../../plugins/builtin/github/main/GitHubRateLimitService.js")
+      >();
+    return {
+      ...actual,
+      gitHubRateLimitService: {
+        shouldBlockRequest: () => ({ blocked: false }),
+        update: () => {},
+        updateFromGraphQL: () => {},
+        getState: () => ({ blocked: false }),
+        onStateChange: () => () => {},
+      },
+    };
+  }
+);
 
 vi.mock("../GitHubStatsCache.js", () => ({
   GitHubStatsCache: {
@@ -63,7 +70,7 @@ vi.mock("../GitHubStatsCache.js", () => ({
   },
 }));
 
-import { getProjectHealth, clearGitHubCaches } from "../github/index.js";
+import { getProjectHealth, clearGitHubCaches } from "../../../plugins/builtin/github/main/index.js";
 
 beforeEach(() => {
   clearGitHubCaches();

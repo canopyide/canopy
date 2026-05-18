@@ -5,7 +5,7 @@ import { gitHubRateLimitService } from "./GitHubRateLimitService.js";
 import { parseGitHubError } from "./GitHubErrors.js";
 import { withRepoContextRetry } from "./GitHubRepoContext.js";
 import { repoStatsCache, issueListCache, issueTooltipCache } from "./GitHubCaches.js";
-import { GitHubStatsCache } from "../GitHubStatsCache.js";
+import { GitHubStatsCache } from "../../../../electron/services/GitHubStatsCache.js";
 import { buildListCacheKey, updateRepoStatsCount } from "./GitHubPRs.js";
 import { truncateBody } from "./GitHubCaches.js";
 import type {
@@ -15,8 +15,8 @@ import type {
   GitHubListResponse,
   IssueTooltipData,
   LinkedPRInfo,
-} from "../../../shared/types/github.js";
-import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
+} from "../../../../shared/types/github.js";
+import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
 
 export function extractLinkedPR(
   timelineItems:

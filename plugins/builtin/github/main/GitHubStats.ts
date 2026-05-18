@@ -8,13 +8,16 @@ import { rateLimitMessage } from "./GitHubErrors.js";
 import { parseGitHubError } from "./GitHubErrors.js";
 import { getRepoContext, isRepoNotFoundError } from "./GitHubRepoContext.js";
 import { repoContextCache, repoStatsCache, issueListCache, prListCache } from "./GitHubCaches.js";
-import { GitHubStatsCache } from "../GitHubStatsCache.js";
-import { GitHubFirstPageCache } from "../GitHubFirstPageCache.js";
+import { GitHubStatsCache } from "../../../../electron/services/GitHubStatsCache.js";
+import { GitHubFirstPageCache } from "../../../../electron/services/GitHubFirstPageCache.js";
 import type { RepoStats, RepoStatsResult } from "./types.js";
-import type { GitHubIssue, GitHubPR } from "../../../shared/types/github.js";
+import type { GitHubIssue, GitHubPR } from "../../../../shared/types/github.js";
 import { parseIssueNode } from "./GitHubIssues.js";
 import { parsePRNode, buildListCacheKey } from "./GitHubPRs.js";
-import type { RepositoryStats, GitHubFirstPageCachePayload } from "../../types/index.js";
+import type {
+  RepositoryStats,
+  GitHubFirstPageCachePayload,
+} from "../../../../electron/types/index.js";
 
 export async function getRepoStats(
   cwd: string,
@@ -457,7 +460,7 @@ export async function getRepoStatsComplete(
   cwd: string,
   bypassCache = false
 ): Promise<RepoStatsCompleteResult> {
-  const { getCommitCount } = await import("../../utils/git.js");
+  const { getCommitCount } = await import("../../../../electron/utils/git.js");
 
   try {
     const resolved = path.resolve(cwd);
@@ -499,7 +502,7 @@ export async function getRepoStatsComplete(
       stale: statsResult.stats?.stale,
     };
   } catch (err) {
-    const { formatErrorMessage } = await import("../../../shared/utils/errorMessage.js");
+    const { formatErrorMessage } = await import("../../../../shared/utils/errorMessage.js");
     const message = formatErrorMessage(err, "Failed to fetch GitHub repo stats");
     return {
       stats: {

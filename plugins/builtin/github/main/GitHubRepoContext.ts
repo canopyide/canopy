@@ -1,7 +1,7 @@
-import { GitService } from "../GitService.js";
+import { GitService } from "../../../../electron/services/GitService.js";
 import { repoContextCache } from "./GitHubCaches.js";
 import type { RepoContext } from "./types.js";
-import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
+import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
 
 export function parseGitHubRepoUrl(url: string): { owner: string; repo: string } | null {
   const normalized = url.replace(/^git@github\.com:/, "https://github.com/");
@@ -40,7 +40,7 @@ export async function getRepoContext(cwd: string): Promise<RepoContext | null> {
     let fetchUrl: string | null = null;
 
     try {
-      const { projectStore } = await import("../ProjectStore.js");
+      const { projectStore } = await import("../../../../electron/services/ProjectStore.js");
       const repoRoot = await gitService.getRepositoryRoot(cwd);
       const project = await projectStore.getProjectByPath(repoRoot);
       if (project) {

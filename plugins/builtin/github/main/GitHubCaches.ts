@@ -1,6 +1,6 @@
-import { Cache } from "../../utils/cache.js";
-import { GitHubFirstPageCache } from "../GitHubFirstPageCache.js";
-import { GitHubStatsCache } from "../GitHubStatsCache.js";
+import { Cache } from "../../../../electron/utils/cache.js";
+import { GitHubFirstPageCache } from "../../../../electron/services/GitHubFirstPageCache.js";
+import { GitHubStatsCache } from "../../../../electron/services/GitHubStatsCache.js";
 import type {
   GitHubIssue,
   GitHubPR,
@@ -9,7 +9,7 @@ import type {
   GitHubListResponse,
   IssueTooltipData,
   PRTooltipData,
-} from "../../../shared/types/github.js";
+} from "../../../../shared/types/github.js";
 import type { RepoContext, RepoStats } from "./types.js";
 
 export const repoContextCache = new Cache<string, RepoContext>({ defaultTTL: 300000 });
