@@ -685,16 +685,6 @@ export function DevPreviewPane({
     setDevPreviewConsoleOpen(id, !isConsoleOpen);
   }, [id, isConsoleOpen, setDevPreviewConsoleOpen]);
 
-  const handleToggleDevTools = useCallback(() => {
-    const webview = webviewRef.current;
-    if (!webview || !isWebviewReady) return;
-    if (webview.isDevToolsOpened()) {
-      webview.closeDevTools();
-    } else {
-      webview.openDevTools();
-    }
-  }, [isWebviewReady]);
-
   const handleOpenExternal = useCallback(() => {
     if (currentUrl) {
       safeFireAndForget(window.electron.system.openExternal(currentUrl), {
