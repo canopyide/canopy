@@ -128,6 +128,21 @@ export class ActionBreadcrumbService {
       return;
     }
 
+    const hasHigher = existingRing.some((e) => PRIORITY[e.danger] > incomingPrio);
+    if (hasHigher) {
+      // Mixed ring: evict the newest same-tier entry so higher-priority
+      // entries are never displaced. Search excludes the just-pushed entry.
+      for (let i = this.ring.length - 2; i >= 0; i--) {
+        if (PRIORITY[this.ring[i]!.danger] === incomingPrio) {
+          this.ring.splice(i, 1);
+          return;
+        }
+      }
+      // Defensive: no same-tier entry found — drop incoming.
+      this.ring.pop();
+      return;
+    }
+
     // All entries are the same priority as incoming — standard FIFO.
     this.ring.shift();
   }

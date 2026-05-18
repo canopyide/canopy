@@ -275,6 +275,25 @@ describe("ActionBreadcrumbService", () => {
       expect(recent[0]!.danger).toBe("confirm");
     });
 
+    it("never evicts a higher-priority entry from a mixed ring (FIFO fix regression)", () => {
+      // One confirm at index 0 (e.g., worktree.delete early in session),
+      // 49 safe entries filling the rest.
+      emit({ actionId: "worktree.delete", danger: "confirm", timestamp: 1 });
+      for (let i = 0; i < 49; i++) {
+        emit({ actionId: `safe.${i}`, danger: "safe", timestamp: 2 + i * 1000 });
+      }
+      expect(service.getRecentActions()).toHaveLength(50);
+      expect(service.getRecentActions()[0]!.actionId).toBe("worktree.delete");
+
+      // Incoming safe — must NOT evict the confirm entry via FIFO shift.
+      emit({ actionId: "safe.49", danger: "safe", timestamp: 60_000 });
+
+      const after = service.getRecentActions();
+      expect(after).toHaveLength(50);
+      expect(after[0]!.actionId).toBe("worktree.delete");
+      expect(after[0]!.danger).toBe("confirm");
+    });
+
     it("treats restricted as higher priority than confirm", () => {
       // Fill with 50 confirm entries
       for (let i = 0; i < 50; i++) {
