@@ -466,7 +466,7 @@ export class DevPreviewSessionService {
     if (updates.isRestarting !== undefined) session.isRestarting = updates.isRestarting;
     if (updates.worktreeId !== undefined) session.worktreeId = updates.worktreeId;
     if (updates.generation !== undefined) session.generation = updates.generation;
-    if (updates.forceKilled !== undefined) session.forceKilled = updates.forceKilled;
+    if ("forceKilled" in updates) session.forceKilled = updates.forceKilled;
     session.updatedAt = Date.now();
     session.updatedAtPerformanceMs = performance.now();
     this.onStateChanged(this.toPublicState(session));
