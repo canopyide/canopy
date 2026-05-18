@@ -12,12 +12,19 @@
  * with the Daintree "Reduce UI animations" toggle (`body[data-reduce-animations="true"]`).
  * Use as `@variant reduce-motion { ... }` to write a single rule that applies
  * under either trigger; preserves the same selector specificity as the
- * pre-consolidation `body[data-reduce-animations="true"] X` mirror block. */
+ * pre-consolidation `body[data-reduce-animations="true"] X` mirror block.
+ *
+ * The body-attribute branch is written WITHOUT `&` so CSS nesting
+ * auto-prepends the ancestor — the slot content becomes a descendant of
+ * `body[data-reduce-animations="true"]`. Forms using `&` (either
+ * `body[...] &` or `&:is(body[...] *)`) misbehave when the `@variant`
+ * block is used at top level: `&` desugars to `:scope` and the resulting
+ * `:scope:is(body[...] *) .foo` selectors never match in production. */
 @custom-variant reduce-motion {
   @media (prefers-reduced-motion: reduce) {
     @slot;
   }
-  body[data-reduce-animations="true"] & {
+  body[data-reduce-animations="true"] {
     @slot;
   }
 }
@@ -2423,12 +2430,16 @@ body[data-performance-mode="true"] .animate-hint-fade-in {
   opacity: 1 !important;
 }
 
-/* The global wildcard above strips the 400ms transition-delay; without an
- * explicit opacity reset stale surfaces would stay at 0.5 if they were
- * mid-stale when performance mode kicked in. */
+/* Stale surfaces use a 150ms opacity transition with a 400ms delay (see
+ * `.palette-results-stale` definition). The narrowed perf-mode wildcard
+ * preserves the `opacity` transition-property, so the delay would still
+ * apply — `opacity: 1 !important` alone would wait 400ms before resetting.
+ * Kill the transition outright on this scoped selector so the reset is
+ * instant when performance mode kicks in mid-stale. */
 body[data-performance-mode="true"] .palette-results-stale,
 body[data-performance-mode="true"] .surface-stale {
   opacity: 1 !important;
+  transition: none !important;
 }
 
 /* The global wildcard above kills the shimmer animation but the ::after

@@ -515,7 +515,13 @@ describe("animate-hint-fade-in CSS contract", () => {
   it("declares the reduce-motion custom variant", () => {
     expect(css).toMatch(/@custom-variant\s+reduce-motion\s*\{/);
     expect(css).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)/);
-    expect(css).toMatch(/body\[data-reduce-animations="true"\]\s*&/);
+    // The body-attribute branch must NOT use `&` — at top-level `@variant`
+    // usage, `&` desugars to `:scope` and the resulting selectors never
+    // match. CSS nesting auto-prepends the ancestor. See the
+    // @custom-variant definition comment in src/index.css.
+    expect(css).toMatch(
+      /@custom-variant\s+reduce-motion[\s\S]*?body\[data-reduce-animations="true"\]\s*\{\s*@slot/
+    );
   });
 
   it("disables the fade under @variant reduce-motion (OS + app toggle)", () => {
