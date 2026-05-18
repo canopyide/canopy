@@ -47,8 +47,9 @@ export function parseQuery(raw: string): ParsedQuery {
   // Use a global version to strip all occurrences
   let cleanQuery = raw;
   if (filterModified) {
-    cleanQuery = raw.replace(/(?:^|\s)@mod(?:ified)?(?=\s|$)/gi, " ").trim();
+    cleanQuery = raw.replace(/(?:^|\s)@mod(?:ified)?(?=\s|$)/gi, " ");
   }
+  cleanQuery = cleanQuery.trim();
   const tokens = cleanQuery.toLowerCase().split(/\s+/).filter(Boolean);
   return { cleanQuery, tokens, filterModified };
 }
@@ -57,11 +58,11 @@ export interface FilterSettingsOptions {
   modifiedTabs?: ReadonlySet<SettingsTab>;
   /**
    * The user's currently-active scope. When a text query is present this
-   * acts as a *ranking boost* — same-scope entries score +2 to win close
-   * ties but cross-scope results still appear, so searching "branch prefix"
-   * from the global scope still surfaces the project-scope entry. For
-   * `@modified`-only queries this remains a hard filter, since the
-   * empty-state copy is scope-specific.
+   * acts as a *ranking boost* — same-scope entries earn `SAME_SCOPE_BOOST`
+   * to win close ties but cross-scope results still appear, so searching
+   * "branch prefix" from the global scope still surfaces the project-scope
+   * entry. For `@modified`-only queries this remains a hard filter, since
+   * the empty-state copy is scope-specific.
    */
   scope?: SettingsScope;
   /**

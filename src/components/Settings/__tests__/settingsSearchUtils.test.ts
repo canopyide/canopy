@@ -646,20 +646,37 @@ describe("cross-scope search merging", () => {
     expect(results.some((r) => r.scope === "global")).toBe(true);
   });
 
-  it("boosts same-scope results to win close-quality ties", () => {
-    // Both scopes have a "notifications" tab nav entry; the active scope's
-    // entry should rank in the top 2 thanks to the +2 boost.
+  it("same-scope tab-nav ranks strictly above the cross-scope tab-nav for the same label", () => {
+    // The central invariant of the merge: when both scopes own an
+    // identically-labeled tab (e.g. "Notifications"), the user's active
+    // scope's tab-nav must come first — otherwise the project entry
+    // appears at #1 when the user is browsing global settings.
     const globalResults = filterSettings(SETTINGS_SEARCH_INDEX, "notifications", {
       scope: "global",
     });
-    const top2Global = globalResults.slice(0, 2);
-    expect(top2Global.some((r) => r.scope === "global")).toBe(true);
+    const globalIdx = globalResults.findIndex((r) => r.id === "tab-nav-notifications");
+    const projectIdx = globalResults.findIndex((r) => r.id === "tab-nav-project:notifications");
+    expect(globalIdx).toBeGreaterThanOrEqual(0);
+    expect(projectIdx).toBeGreaterThanOrEqual(0);
+    expect(globalIdx).toBeLessThan(projectIdx);
 
     const projectResults = filterSettings(SETTINGS_SEARCH_INDEX, "notifications", {
       scope: "project",
     });
-    const top2Project = projectResults.slice(0, 2);
-    expect(top2Project.some((r) => r.scope === "project")).toBe(true);
+    const projectIdx2 = projectResults.findIndex((r) => r.id === "tab-nav-project:notifications");
+    const globalIdx2 = projectResults.findIndex((r) => r.id === "tab-nav-notifications");
+    expect(projectIdx2).toBeGreaterThanOrEqual(0);
+    expect(globalIdx2).toBeGreaterThanOrEqual(0);
+    expect(projectIdx2).toBeLessThan(globalIdx2);
+  });
+
+  it("padded query still earns the tab-label exact-match bonus", () => {
+    // Pre-fix, cleanQuery = raw was returned untrimmed for non-@modified
+    // queries, which caused the exact tab-label match path to silently
+    // miss when input had stray whitespace.
+    const tight = filterSettings(SETTINGS_SEARCH_INDEX, "notifications", { scope: "global" });
+    const padded = filterSettings(SETTINGS_SEARCH_INDEX, "  notifications  ", { scope: "global" });
+    expect(padded[0]?.id).toBe(tight[0]?.id);
   });
 
   it("merges scopes by default when no scope is set", () => {
