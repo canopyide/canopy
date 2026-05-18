@@ -91,6 +91,136 @@ describe("computeOverflow", () => {
     expect(result.overflowIds).toEqual(["browser"]);
     expect(result.visibleIds).toEqual(["terminal"]);
   });
+
+  describe("pinnedIds — issue #8158", () => {
+    it("keeps a pinned item visible even when the container is too narrow", () => {
+      const ordered: ToolbarButtonId[] = ["voice-recording", "settings", "copy-tree"];
+      const widths = makeWidths(ordered, 40);
+      // Container 10 → would normally overflow everything. Pin voice-recording.
+      // Removable = settings, copy-tree → removable width 80. target = 10-0-8 = 2.
+      // Remove both: 80→40→0 ≤ 2. voice-recording survives unconditionally.
+      const result = computeOverflow(
+        10,
+        widths,
+        ordered,
+        TOOLBAR_BUTTON_PRIORITIES,
+        new Set<ToolbarButtonId>(["voice-recording"])
+      );
+      expect(result.visibleIds).toContain("voice-recording");
+      expect(result.overflowIds).not.toContain("voice-recording");
+    });
+
+    it("non-pinned items still overflow normally when pinned IDs are present", () => {
+      const ordered: ToolbarButtonId[] = ["voice-recording", "terminal", "settings", "copy-tree"];
+      const widths = makeWidths(ordered, 40);
+      // Pinned 40 → availableWidth = 120-40 = 80. Removable = terminal, settings,
+      // copy-tree → 120 > 80. target = 80 - 0 - 8 = 72.
+      // Sorted by priority: copy-tree(5), settings(5), terminal(3).
+      // Remove copy-tree → 80, remove settings → 40 ≤ 72. terminal survives.
+      const result = computeOverflow(
+        120,
+        widths,
+        ordered,
+        TOOLBAR_BUTTON_PRIORITIES,
+        new Set<ToolbarButtonId>(["voice-recording"])
+      );
+      expect(result.visibleIds).toEqual(["voice-recording", "terminal"]);
+      expect(result.overflowIds).toEqual(["settings", "copy-tree"]);
+    });
+
+    it("subtracts pinned width from the budget so removable items overflow when space is tight", () => {
+      // Pinned items take real DOM space; they reduce the room available
+      // for removable items. With pinned width 36 + removable width 36 in a
+      // 50px container, the removable item must overflow (36 > 50-36 = 14).
+      const ordered: ToolbarButtonId[] = ["voice-recording", "settings"];
+      const widths = makeWidths(ordered, 36);
+      const result = computeOverflow(
+        50,
+        widths,
+        ordered,
+        TOOLBAR_BUTTON_PRIORITIES,
+        new Set<ToolbarButtonId>(["voice-recording"])
+      );
+      expect(result.visibleIds).toEqual(["voice-recording"]);
+      expect(result.overflowIds).toEqual(["settings"]);
+    });
+
+    it("all removable items overflow when pinned item alone exceeds the container", () => {
+      const ordered: ToolbarButtonId[] = ["voice-recording", "settings", "copy-tree"];
+      const widths = new Map<string, number>([
+        ["voice-recording", 200],
+        ["settings", 36],
+        ["copy-tree", 36],
+      ]);
+      // Container 60, pinned 200 → availableWidth = -140. All removable must
+      // overflow; voice-recording survives unconditionally (pinned).
+      const result = computeOverflow(
+        60,
+        widths,
+        ordered,
+        TOOLBAR_BUTTON_PRIORITIES,
+        new Set<ToolbarButtonId>(["voice-recording"])
+      );
+      expect(result.visibleIds).toEqual(["voice-recording"]);
+      expect(result.overflowIds).toEqual(["settings", "copy-tree"]);
+    });
+
+    it("pins voice-recording when placed on the left side too", () => {
+      // The user may move voice-recording into the left group; pinning must
+      // honor whichever side it lives on (the same pinnedIds set is passed
+      // for both sides in Toolbar.tsx).
+      const ordered: ToolbarButtonId[] = ["voice-recording", "terminal", "settings"];
+      const widths = makeWidths(ordered, 40);
+      // Container 50, pinned 40 → availableWidth = 10. terminal(40)+settings(40)
+      // both overflow; voice-recording stays visible.
+      const result = computeOverflow(
+        50,
+        widths,
+        ordered,
+        TOOLBAR_BUTTON_PRIORITIES,
+        new Set<ToolbarButtonId>(["voice-recording"])
+      );
+      expect(result.visibleIds).toEqual(["voice-recording"]);
+      expect(result.overflowIds).toEqual(["terminal", "settings"]);
+    });
+
+    it("pinned ID absent from orderedIds is a no-op", () => {
+      // Passing a pinned set whose ID isn't on this side must produce the
+      // same result as no pinning — guards against silent width arithmetic
+      // when the same pinnedIds set is passed to both left and right calls.
+      const widths = makeWidths(ids, 36);
+      const without = computeOverflow(179, widths, ids, TOOLBAR_BUTTON_PRIORITIES);
+      const foreignPinSet = new Set(["voice-recording"]) as Set<ToolbarButtonId>;
+      const withForeignPin = computeOverflow(
+        179,
+        widths,
+        ids,
+        TOOLBAR_BUTTON_PRIORITIES,
+        foreignPinSet
+      );
+      expect(withForeignPin).toEqual(without);
+    });
+
+    it("undefined pinnedIds preserves prior behavior", () => {
+      const widths = makeWidths(ids, 36);
+      const without = computeOverflow(500, widths, ids, TOOLBAR_BUTTON_PRIORITIES);
+      const withUndefined = computeOverflow(500, widths, ids, TOOLBAR_BUTTON_PRIORITIES, undefined);
+      expect(withUndefined).toEqual(without);
+    });
+
+    it("empty pinnedIds set preserves prior behavior", () => {
+      const widths = makeWidths(ids, 36);
+      const without = computeOverflow(179, widths, ids, TOOLBAR_BUTTON_PRIORITIES);
+      const withEmpty = computeOverflow(
+        179,
+        widths,
+        ids,
+        TOOLBAR_BUTTON_PRIORITIES,
+        new Set<ToolbarButtonId>()
+      );
+      expect(withEmpty).toEqual(without);
+    });
+  });
 });
 
 describe("computeGuardedOverflow", () => {
