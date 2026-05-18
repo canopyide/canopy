@@ -4,8 +4,6 @@ import {
   Trash2,
   ChevronUp,
   ChevronDown,
-  AlertTriangle,
-  Play,
   GitBranch,
   Folders,
   PanelBottom,
@@ -16,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SCROLLBACK_MIN, SCROLLBACK_MAX } from "@shared/config/scrollback";
 import { validatePathPattern, previewPathPattern } from "@shared/utils/pathPattern";
-import type { RunCommand, TerminalRecipe } from "@/types";
+import type { RunCommand } from "@/types";
 import type { Project, ResourceEnvironment } from "@shared/types/project";
 import { ResourceEnvironmentsSection } from "@/components/Settings/ResourceEnvironmentsSection";
 import { useSettingsTabValidation } from "@/components/Settings/SettingsValidationRegistry";
@@ -25,8 +23,6 @@ interface AutomationTabProps {
   currentProject: Project | undefined;
   runCommands: RunCommand[];
   onRunCommandsChange: (value: RunCommand[]) => void;
-  defaultWorktreeRecipeId: string | undefined;
-  onDefaultWorktreeRecipeIdChange: (value: string | undefined) => void;
   branchPrefixMode: "none" | "username" | "custom";
   onBranchPrefixModeChange: (value: "none" | "username" | "custom") => void;
   branchPrefixCustom: string;
@@ -41,9 +37,6 @@ interface AutomationTabProps {
   onTerminalDefaultCwdChange: (value: string) => void;
   terminalScrollback: string;
   onTerminalScrollbackChange: (value: string) => void;
-  recipes: TerminalRecipe[];
-  recipesLoading: boolean;
-  onNavigateToRecipes: () => void;
   resourceEnvironments?: Record<string, ResourceEnvironment>;
   onResourceEnvironmentsChange?: (envs: Record<string, ResourceEnvironment>) => void;
   activeResourceEnvironment?: string;
@@ -57,8 +50,6 @@ export function AutomationTab({
   currentProject,
   runCommands,
   onRunCommandsChange,
-  defaultWorktreeRecipeId,
-  onDefaultWorktreeRecipeIdChange,
   branchPrefixMode,
   onBranchPrefixModeChange,
   branchPrefixCustom,
@@ -73,9 +64,6 @@ export function AutomationTab({
   onTerminalDefaultCwdChange,
   terminalScrollback,
   onTerminalScrollbackChange,
-  recipes,
-  recipesLoading,
-  onNavigateToRecipes,
   resourceEnvironments,
   onResourceEnvironmentsChange,
   activeResourceEnvironment,
@@ -261,90 +249,6 @@ export function AutomationTab({
             Add Command
           </Button>
         </div>
-      </div>
-
-      <div className="mb-6 pb-6 border-b border-daintree-border">
-        <h3 className="text-sm font-semibold text-daintree-text/80 mb-2 flex items-center gap-2">
-          <Play className="h-4 w-4" />
-          Default Worktree Recipe
-        </h3>
-        <p className="text-xs text-daintree-text/60 mb-4">
-          Automatically run a recipe when creating new worktrees.
-        </p>
-
-        {(() => {
-          const globalRecipes = recipes.filter((r) => !r.worktreeId);
-          const selectedRecipe = globalRecipes.find((r) => r.id === defaultWorktreeRecipeId);
-          const recipeNotFound = defaultWorktreeRecipeId && !selectedRecipe && !recipesLoading;
-
-          return (
-            <div className="space-y-3">
-              {recipesLoading ? (
-                <div className="text-sm text-daintree-text/60 text-center py-4 border border-dashed border-daintree-border rounded-[var(--radius-md)]">
-                  Loading recipes...
-                </div>
-              ) : globalRecipes.length === 0 ? (
-                <div className="text-sm text-daintree-text/60 text-center py-4 border border-dashed border-daintree-border rounded-[var(--radius-md)]">
-                  No global recipes available.{" "}
-                  <button
-                    onClick={onNavigateToRecipes}
-                    className="text-text-secondary hover:text-daintree-text underline-offset-2 hover:underline"
-                  >
-                    Create a recipe
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <select
-                    value={defaultWorktreeRecipeId || ""}
-                    onChange={(e) => onDefaultWorktreeRecipeIdChange(e.target.value || undefined)}
-                    className="w-full px-3 py-2 bg-daintree-bg border border-daintree-border rounded-[var(--radius-md)] text-sm text-daintree-text focus:outline-hidden focus:ring-2 focus:ring-daintree-accent"
-                  >
-                    <option value="">No default recipe</option>
-                    {globalRecipes.map((recipe) => (
-                      <option key={recipe.id} value={recipe.id}>
-                        {recipe.name} ({recipe.terminals.length} terminal
-                        {recipe.terminals.length !== 1 ? "s" : ""})
-                      </option>
-                    ))}
-                  </select>
-
-                  {selectedRecipe && (
-                    <div className="p-3 rounded-[var(--radius-md)] bg-daintree-bg/50 border border-daintree-border">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-medium text-daintree-text">
-                          {selectedRecipe.name}
-                        </span>
-                        <span className="text-xs text-daintree-text/60 bg-daintree-sidebar px-2 py-0.5 rounded">
-                          {selectedRecipe.terminals.length} terminal
-                          {selectedRecipe.terminals.length !== 1 ? "s" : ""}
-                        </span>
-                      </div>
-                      <p className="text-xs text-daintree-text/60">
-                        Will run automatically when creating new worktrees
-                      </p>
-                    </div>
-                  )}
-
-                  {recipeNotFound && (
-                    <div className="flex items-start gap-2 p-3 rounded-[var(--radius-md)] bg-status-warning/10 border border-status-warning/20">
-                      <AlertTriangle className="h-4 w-4 text-status-warning mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-sm text-status-warning">
-                          Selected recipe no longer exists
-                        </p>
-                        <p className="text-xs text-daintree-text/60 mt-1">
-                          The previously selected recipe was deleted. Please select a new default or
-                          clear the selection.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          );
-        })()}
       </div>
 
       <div className="pt-2">

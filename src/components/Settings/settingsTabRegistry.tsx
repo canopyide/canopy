@@ -1465,7 +1465,6 @@ export const SETTINGS_REGISTRY = [
     importer: importProjectAutomationTab,
     LazyComponent: LazyProjectAutomationTab,
     needsProjectForm: true,
-    needsOnNavigateToTab: true,
   } satisfies LazySettingsTabEntry,
 
   {
@@ -1645,8 +1644,17 @@ export const PROJECT_SETTINGS_SECTIONS: Readonly<
   },
   "project:recipes": {
     tabLabel: "Recipes",
-    searchNavDescription: "Manage terminal recipes for the project",
-    searchNavKeywords: ["project", "recipes", "template", "terminal"],
+    searchNavDescription: "Manage terminal recipes and pin a default recipe for new worktrees",
+    searchNavKeywords: ["project", "recipes", "template", "terminal", "default", "worktree", "pin"],
+    sections: [
+      {
+        id: "project-default-recipe",
+        section: "Terminal Recipes",
+        title: "Default worktree recipe",
+        description: "Pin a recipe to run automatically when creating new worktrees",
+        keywords: ["default", "recipe", "worktree", "auto", "launch", "startup", "pin"],
+      },
+    ],
   },
   "project:commands": {
     tabLabel: "Commands",
