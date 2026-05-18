@@ -177,6 +177,9 @@ export function useDevServer({
 
   const applyInvokeError = useCallback((err: unknown) => {
     if (!isMountedRef.current) return;
+    // IPC rejections are opaque — formatErrorMessage produces a user-facing
+    // string; if the main process ever sends structured DevServerError rejects,
+    // this path would need deserialization to preserve type/port/module.
     const message = formatErrorMessage(err, "Dev server request failed");
     latestSessionRef.current = {
       status: "error",

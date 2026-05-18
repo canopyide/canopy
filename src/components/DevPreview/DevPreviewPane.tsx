@@ -1138,7 +1138,11 @@ export function DevPreviewPane({
                             ? "Load cancelled"
                             : webviewLoadError.code === "connection_refused"
                               ? "Dev server unreachable"
-                              : "Page load failed"}
+                              : webviewLoadError.code === "name_not_resolved"
+                                ? "Couldn't resolve address"
+                                : webviewLoadError.code === "internet_disconnected"
+                                  ? "No internet connection"
+                                  : "Page load failed"}
                       </h3>
                       <p className="text-xs text-daintree-text/50 text-center mb-3 max-w-md">
                         {webviewLoadError.message}

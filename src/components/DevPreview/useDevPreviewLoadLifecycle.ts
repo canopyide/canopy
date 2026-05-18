@@ -154,6 +154,11 @@ export function useDevPreviewLoadLifecycle({
       if (loadTimeoutRef.current) {
         clearTimeout(loadTimeoutRef.current);
       }
+      if (failLoadRetryRef.current) {
+        clearTimeout(failLoadRetryRef.current);
+        failLoadRetryRef.current = null;
+      }
+      failLoadRetryCountRef.current = 0;
       slowLoadTimeoutRef.current = setTimeout(() => {
         try {
           if (webview.isLoading()) {
@@ -219,6 +224,9 @@ export function useDevPreviewLoadLifecycle({
       if (e.errorCode === -3) return;
       // Ignore cancellations
       if (e.errorCode === -6) return;
+      // Ignore subframe failures — they don't affect the main-frame load state
+      if (!e.isMainFrame) return;
+
       setIsLoading(false);
       setIsSlowLoad(false);
       if (slowLoadTimeoutRef.current) {
@@ -237,7 +245,7 @@ export function useDevPreviewLoadLifecycle({
       const ERR_CONNECTION_TIMED_OUT = -118;
 
       // Non-retryable errors: surface directly with friendly messages
-      if (e.isMainFrame && e.errorCode === ERR_NAME_NOT_RESOLVED && e.validatedURL) {
+      if (e.errorCode === ERR_NAME_NOT_RESOLVED && e.validatedURL) {
         let hostname = e.validatedURL;
         try {
           hostname = new URL(e.validatedURL).hostname;
@@ -251,14 +259,14 @@ export function useDevPreviewLoadLifecycle({
         });
         return;
       }
-      if (e.isMainFrame && e.errorCode === ERR_INTERNET_DISCONNECTED) {
+      if (e.errorCode === ERR_INTERNET_DISCONNECTED) {
         setWebviewLoadError({
           code: "internet_disconnected",
           message: "No internet connection. Check your network.",
         });
         return;
       }
-      if (e.isMainFrame && e.errorCode === ERR_CONNECTION_TIMED_OUT && e.validatedURL) {
+      if (e.errorCode === ERR_CONNECTION_TIMED_OUT && e.validatedURL) {
         setWebviewLoadError({
           code: "timeout",
           message: `Connection to ${e.validatedURL} timed out. The server may be unreachable.`,
@@ -269,10 +277,7 @@ export function useDevPreviewLoadLifecycle({
 
       // Retry on connection-refused errors: the readiness check may have passed
       // a moment before the server was fully reachable from the webview.
-      if (
-        e.isMainFrame &&
-        (e.errorCode === ERR_CONNECTION_REFUSED || e.errorCode === ERR_CONNECTION_RESET)
-      ) {
+      if (e.errorCode === ERR_CONNECTION_REFUSED || e.errorCode === ERR_CONNECTION_RESET) {
         const MAX_RETRIES = 5;
         const retryCount = failLoadRetryCountRef.current;
         if (retryCount >= MAX_RETRIES) {
@@ -312,15 +317,13 @@ export function useDevPreviewLoadLifecycle({
       // Catch-all for unhandled error codes (-2 ERR_FAILED, -7 ERR_TIMED_OUT,
       // -104 ERR_CONNECTION_FAILED, and any other unexpected codes).
       // Without this branch the webview shows a blank white screen with no error.
-      if (e.isMainFrame) {
-        const desc = e.errorDescription || `Error code ${e.errorCode}`;
-        setWebviewLoadError({
-          code: "failed",
-          message: `Page failed to load: ${desc}.`,
-          errorCode: e.errorCode,
-          validatedURL: e.validatedURL || undefined,
-        });
-      }
+      const desc = e.errorDescription || `Error code ${e.errorCode}`;
+      setWebviewLoadError({
+        code: "failed",
+        message: `Page failed to load: ${desc}.`,
+        errorCode: e.errorCode,
+        validatedURL: e.validatedURL || undefined,
+      });
     };
 
     const handleDidNavigate = (e: Electron.DidNavigateEvent) => {
