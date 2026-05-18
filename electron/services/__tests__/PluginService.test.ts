@@ -1821,6 +1821,30 @@ describe("Plugin action registry", () => {
     expect(action?.effectiveDanger).toBe("confirm"); // host raised it
   });
 
+  it.each(["shell:exec", "git:write", "fs:project-write", "fs:user-data-write", "agent:invoke"])(
+    "raises a self-declared 'safe' action to confirm when the manifest grants %s",
+    async (permission) => {
+      const name = `acme.perm-${permission.replace(/[^a-z]/g, "-")}`;
+      await writePlugin(`perm-${permission.replace(/[^a-z]/g, "-")}`, {
+        name,
+        version: "1.0.0",
+        permissions: [permission],
+      });
+      const svc = new PluginService(tmpDir);
+      await svc.initialize();
+
+      svc.registerPluginAction(name, {
+        ...validContribution(),
+        id: `${name}.doThing`,
+        danger: "safe" as const,
+      });
+
+      expect(svc.listPluginActions().find((a) => a.id === `${name}.doThing`)?.effectiveDanger).toBe(
+        "confirm"
+      );
+    }
+  );
+
   it("does not raise effectiveDanger for read-only / reversible permissions", async () => {
     await writePlugin("readonly", {
       name: "acme.readonly",
