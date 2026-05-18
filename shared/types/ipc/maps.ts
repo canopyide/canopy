@@ -2293,6 +2293,16 @@ export interface IpcEventMap {
     message?: string;
   };
 
+  // Webview render process became unresponsive (>30s no input processing)
+  "webview:unresponsive": {
+    panelId: string;
+  };
+
+  // Webview render process recovered from unresponsive state
+  "webview:responsive": {
+    panelId: string;
+  };
+
   // Voice input events
   "voice-input:transcription-delta": string;
   "voice-input:transcription-complete": { text: string; willCorrect: boolean };

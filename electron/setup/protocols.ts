@@ -457,6 +457,31 @@ export function setupWebviewCSP(): void {
         }
       );
 
+      // Surface render-process hang to the renderer when the guest stops processing
+      // input events for >30s. Auto-clears when `responsive` fires.
+      const notifyUnresponsive = () => {
+        if (contents.isDestroyed()) return;
+        const panelId = getWebviewDialogService().getPanelId(contents.id);
+        if (!panelId) return;
+        const parentWindow = getWindowForWebContents(contents.hostWebContents ?? contents);
+        if (parentWindow && !parentWindow.isDestroyed()) {
+          getAppWebContents(parentWindow).send(CHANNELS.WEBVIEW_UNRESPONSIVE, { panelId });
+        }
+      };
+
+      const notifyResponsive = () => {
+        if (contents.isDestroyed()) return;
+        const panelId = getWebviewDialogService().getPanelId(contents.id);
+        if (!panelId) return;
+        const parentWindow = getWindowForWebContents(contents.hostWebContents ?? contents);
+        if (parentWindow && !parentWindow.isDestroyed()) {
+          getAppWebContents(parentWindow).send(CHANNELS.WEBVIEW_RESPONSIVE, { panelId });
+        }
+      };
+
+      contents.on("unresponsive", notifyUnresponsive);
+      contents.on("responsive", notifyResponsive);
+
       // Intercept find-in-page shortcuts (Cmd/Ctrl+F, Cmd/Ctrl+G, Escape) from webview guests
       contents.on("before-input-event", (event, input) => {
         if (input.type !== "keyDown") return;
