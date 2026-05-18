@@ -8,6 +8,7 @@ import { BUILT_IN_ACTION_IDS } from "@shared/config/actionIds";
 import type { ActionId } from "@shared/types/actions";
 import type { ActionRegistry, ActionCallbacks } from "../actionTypes";
 import { validateDefinitionInvariants } from "../../ActionService";
+import { DEFAULT_KEYBINDINGS } from "../../defaultKeybindings";
 
 /**
  * Action IDs that exist in BuiltInKeyAction but are intentionally NOT in the
@@ -165,6 +166,19 @@ describe("registry-vs-union drift", () => {
       }
     }
     expect(missing.sort()).toEqual([]);
+  });
+
+  it("every DEFAULT_KEYBINDINGS actionId has a registry entry (or is a key-only action)", async () => {
+    const { registry } = await createRegistryWithAudit();
+
+    const missing: Array<{ actionId: string; combo: string }> = [];
+    for (const binding of DEFAULT_KEYBINDINGS) {
+      const id = binding.actionId;
+      if (KEY_ONLY_ACTIONS.has(id)) continue;
+      if (registry.has(id as ActionId)) continue;
+      missing.push({ actionId: id, combo: binding.combo });
+    }
+    expect(missing).toEqual([]);
   });
 });
 

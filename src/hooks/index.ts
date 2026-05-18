@@ -37,7 +37,11 @@ export {
 } from "./useKeybinding";
 export { useGlobalKeybindings, usePendingChord } from "./useGlobalKeybindings";
 export { keybindingService } from "../services/KeybindingService";
-export type { KeyScope, KeybindingConfig } from "../services/KeybindingService";
+export type {
+  KeyScope,
+  KeybindingConfig,
+  RegisteredKeybindingConfig,
+} from "../services/KeybindingService";
 
 export { useProjectSettings } from "./useProjectSettings";
 export { useProjectSettingsForm } from "./useProjectSettingsForm";

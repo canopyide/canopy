@@ -145,13 +145,9 @@ export function useGlobalKeybindings(enabled: boolean = true): void {
 
           // Dispatch through ActionService
           void actionService
-            .dispatch(
-              result.match.actionId as Parameters<typeof actionService.dispatch>[0],
-              undefined,
-              {
-                source: "keybinding",
-              }
-            )
+            .dispatch(result.match.actionId, undefined, {
+              source: "keybinding",
+            })
             .then((dispatchResult) => {
               if (!dispatchResult.ok) {
                 logError(
