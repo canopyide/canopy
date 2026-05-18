@@ -492,7 +492,7 @@ export function DevPreviewPane({
   }, []);
 
   const handleRetry = useCallback(() => {
-    start();
+    void start();
   }, [start]);
 
   const handleHardRestart = useCallback(() => {
