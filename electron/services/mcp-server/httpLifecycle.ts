@@ -11,7 +11,12 @@ import { formatErrorMessage } from "../../../shared/utils/errorMessage.js";
 import { summarizeMcpArgs } from "../../../shared/utils/mcpArgsSummary.js";
 import { scrubSecrets } from "../../utils/secretScrubber.js";
 import { sanitizePath } from "../../utils/pathScrubber.js";
-import type { HelpTokenValidator, HelpSessionWebContentsResolver, McpTier } from "./shared.js";
+import type {
+  HelpTokenValidator,
+  HelpSessionWebContentsResolver,
+  HelpSessionActionContextResolver,
+  McpTier,
+} from "./shared.js";
 import {
   extractBearerToken,
   isAuthorized,
@@ -53,7 +58,8 @@ export interface HttpLifecycleDeps {
     id: number,
     actionId: string,
     args: unknown,
-    confirmed?: boolean
+    confirmed?: boolean,
+    contextOverride?: import("../../../shared/types/actions.js").ActionContext
   ) => Promise<import("./shared.js").DispatchEnvelope>;
   handleWaitUntilIdle: (
     rawArgs: unknown,
@@ -88,6 +94,7 @@ export class HttpLifecycle {
   private stopPromise: Promise<void> | null = null;
   private helpTokenValidator: HelpTokenValidator | null = null;
   private helpSessionWebContentsResolver: HelpSessionWebContentsResolver | null = null;
+  private helpSessionActionContextResolver: HelpSessionActionContextResolver | null = null;
   private lastError: string | null = null;
   private intentionalStop = false;
   private restartAttempts = 0;
@@ -141,6 +148,10 @@ export class HttpLifecycle {
     this.helpSessionWebContentsResolver = resolver;
   }
 
+  setHelpSessionActionContextResolver(resolver: HelpSessionActionContextResolver | null): void {
+    this.helpSessionActionContextResolver = resolver;
+  }
+
   /**
    * Parses a Bearer header and asks the help-session resolver for the
    * pinned WebContents id. Returns null for non-help bearers (api-key /
@@ -152,6 +163,21 @@ export class HttpLifecycle {
     const token = extractBearerToken(authHeader);
     if (!token) return null;
     return this.helpSessionWebContentsResolver(token);
+  }
+
+  /**
+   * Parses a Bearer header and asks the help-session resolver for the
+   * `ActionContext` snapshot bound to it at provision time (#8317). Returns
+   * null for non-help bearers so external/api-key sessions keep their live
+   * focused-window context in `buildSessionServerDeps`.
+   */
+  private resolveActionContext(
+    authHeader: string
+  ): import("../../../shared/types/actions.js").ActionContext | null {
+    if (!this.helpSessionActionContextResolver) return null;
+    const token = extractBearerToken(authHeader);
+    if (!token) return null;
+    return this.helpSessionActionContextResolver(token);
   }
 
   private getConfig() {
@@ -493,6 +519,11 @@ export class HttpLifecycle {
         this.deps.sessionStore.sessionWebContentsMap.set(sessionId, pinnedWebContentsId);
       }
 
+      const boundActionContext = this.resolveActionContext(authHeader);
+      if (boundActionContext !== null) {
+        this.deps.sessionStore.sessionContextMap.set(sessionId, boundActionContext);
+      }
+
       const deps = this.buildSessionServerDeps(sessionId);
       const server = createSessionServer(sessionId, deps);
 
@@ -506,6 +537,7 @@ export class HttpLifecycle {
         }
         this.deps.sessionStore.sessionTierMap.delete(sessionId);
         this.deps.sessionStore.sessionWebContentsMap.delete(sessionId);
+        this.deps.sessionStore.sessionContextMap.delete(sessionId);
         cleanupResourceSubscriptions(sessionId, this.deps.sessionStore);
       };
 
@@ -516,6 +548,7 @@ export class HttpLifecycle {
         this.deps.sessionStore.sessions.delete(sessionId);
         this.deps.sessionStore.sessionTierMap.delete(sessionId);
         this.deps.sessionStore.sessionWebContentsMap.delete(sessionId);
+        this.deps.sessionStore.sessionContextMap.delete(sessionId);
         transport.onclose = undefined;
         await transport.close().catch(() => {});
         throw err;
@@ -582,6 +615,11 @@ export class HttpLifecycle {
       this.deps.sessionStore.sessionWebContentsMap.set(newSessionId, pinnedWebContentsId);
     }
 
+    const boundActionContext = this.resolveActionContext(authHeader);
+    if (boundActionContext !== null) {
+      this.deps.sessionStore.sessionContextMap.set(newSessionId, boundActionContext);
+    }
+
     const deps = this.buildSessionServerDeps(newSessionId);
     const server = createSessionServer(newSessionId, deps);
     const allowedHosts = [`127.0.0.1:${this.port}`, `localhost:${this.port}`];
@@ -615,6 +653,7 @@ export class HttpLifecycle {
       }
       this.deps.sessionStore.sessionTierMap.delete(id);
       this.deps.sessionStore.sessionWebContentsMap.delete(id);
+      this.deps.sessionStore.sessionContextMap.delete(id);
       cleanupResourceSubscriptions(id, this.deps.sessionStore);
     };
 
@@ -632,10 +671,12 @@ export class HttpLifecycle {
         }
         this.deps.sessionStore.sessionTierMap.delete(id);
         this.deps.sessionStore.sessionWebContentsMap.delete(id);
+        this.deps.sessionStore.sessionContextMap.delete(id);
         cleanupResourceSubscriptions(id, this.deps.sessionStore);
       } else {
         this.deps.sessionStore.sessionTierMap.delete(newSessionId);
         this.deps.sessionStore.sessionWebContentsMap.delete(newSessionId);
+        this.deps.sessionStore.sessionContextMap.delete(newSessionId);
         cleanupResourceSubscriptions(newSessionId, this.deps.sessionStore);
       }
       await transport.close().catch(() => {});
@@ -676,7 +717,13 @@ export class HttpLifecycle {
     ) => {
       const id = this.deps.sessionStore.sessionWebContentsMap.get(sessionId);
       if (id !== undefined && pinnedDispatch) {
-        return pinnedDispatch(id, actionId, args, confirmed);
+        // Replay the provision-time context snapshot so the assistant's
+        // tool call targets the worktree/terminal the user had focused
+        // when they launched it — not wherever focus drifted to during
+        // the model's turn (#8317). Absent for context-less sessions, in
+        // which case pinned dispatch falls back to live renderer context.
+        const boundContext = this.deps.sessionStore.sessionContextMap.get(sessionId);
+        return pinnedDispatch(id, actionId, args, confirmed, boundContext);
       }
       return this.deps.dispatchAction(actionId, args, confirmed);
     };

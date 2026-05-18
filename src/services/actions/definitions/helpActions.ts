@@ -53,6 +53,13 @@ export function registerHelpActions(actions: ActionRegistry, callbacks: ActionCa
     keywords: ["assistant", "support", "docs", "guide"],
     argsSchema: z.object({ agentId: AgentIdSchema.optional() }).optional(),
     run: async (args?: unknown) => {
+      // Snapshot the renderer's action context BEFORE any await. This is
+      // bound to the MCP session at provision and replayed as the
+      // contextOverride on every assistant tool call, so a focus shift
+      // during the model's turn can't retarget actions onto the wrong
+      // worktree/terminal (#8317). Capturing after an await would
+      // reintroduce the exact stale-read race this fixes (lesson #5087).
+      const capturedContext = actionService.getContext();
       const folderPath = await window.electron.help.getFolderPath();
       if (!folderPath) {
         // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
@@ -97,6 +104,7 @@ export function registerHelpActions(actions: ActionRegistry, callbacks: ActionCa
           projectId: project.id,
           projectPath: project.path,
           agentId,
+          context: capturedContext,
         });
       } catch (err) {
         logError("Failed to provision help session", err);

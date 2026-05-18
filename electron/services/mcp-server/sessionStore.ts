@@ -1,3 +1,4 @@
+import type { ActionContext } from "../../../shared/types/actions.js";
 import type { McpTier, McpSseSession, McpHttpSession } from "./shared.js";
 import { MCP_SSE_IDLE_TIMEOUT_MS } from "./shared.js";
 import type { CallToolResultLike, DedupCacheEntry } from "./sessionDedup.js";
@@ -10,6 +11,12 @@ export class SessionStore {
   // for help-session bearers; api-key / pane-token sessions stay absent and
   // fall through to the focused-window dispatch path. See #7002.
   readonly sessionWebContentsMap = new Map<string, number>();
+  // sessionId → ActionContext snapshot captured in the renderer at provision
+  // time and bound at handshake. Populated only for help-session bearers, in
+  // exact lockstep with sessionWebContentsMap. Pinned dispatch passes this as
+  // `contextOverride` so a focus shift between the model's tool call and the
+  // dispatch can't retarget the action. See #8317.
+  readonly sessionContextMap = new Map<string, ActionContext>();
   readonly resourceSubscriptions = new Map<string, Map<string, () => void>>();
   // Per-session idempotency dedup state for the MCP creation-tool allowlist.
   // Two phases: in-flight singleflight (same-moment duplicates share the
@@ -36,6 +43,7 @@ export class SessionStore {
       this.sessions.delete(sessionId);
       this.sessionTierMap.delete(sessionId);
       this.sessionWebContentsMap.delete(sessionId);
+      this.sessionContextMap.delete(sessionId);
       this.clearDedupState(sessionId);
       this.cleanupResourceSubscriptionsFn(sessionId);
       session.transport.close().catch(() => {
@@ -60,6 +68,7 @@ export class SessionStore {
       this.httpSessions.delete(sessionId);
       this.sessionTierMap.delete(sessionId);
       this.sessionWebContentsMap.delete(sessionId);
+      this.sessionContextMap.delete(sessionId);
       this.clearDedupState(sessionId);
       this.cleanupResourceSubscriptionsFn(sessionId);
       session.transport.close().catch(() => {
@@ -113,6 +122,7 @@ export class SessionStore {
     this.httpSessions.clear();
     this.sessionTierMap.clear();
     this.sessionWebContentsMap.clear();
+    this.sessionContextMap.clear();
 
     for (const bucket of this.resourceSubscriptions.values()) {
       for (const unsub of bucket.values()) {

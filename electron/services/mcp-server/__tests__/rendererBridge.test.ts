@@ -157,6 +157,52 @@ describe("rendererBridge — per-session pinned dispatch (#7002)", () => {
     expect(wcB.send).not.toHaveBeenCalled();
   });
 
+  it("threads the bound ActionContext into the pinned dispatch IPC payload (#8317)", async () => {
+    const wc = makeWebContents(701);
+    mockWebContentsRegistry.set(701, wc);
+
+    let sentPayload: { requestId: string; context?: unknown } | undefined;
+    wc.send.mockImplementation((channel: string, payload: { requestId: string }) => {
+      if (channel !== CHANNELS.MCP_SERVER_DISPATCH_ACTION_REQUEST) return;
+      sentPayload = payload as { requestId: string; context?: unknown };
+      queueMicrotask(() => {
+        mockIpcMain.emit(
+          CHANNELS.MCP_SERVER_DISPATCH_ACTION_RESPONSE,
+          { sender: { id: 701 } },
+          { requestId: payload.requestId, result: { ok: true, result: "ok" } }
+        );
+      });
+    });
+
+    const boundContext = { focusedWorktreeId: "wt-1", focusedTerminalId: "term-9" };
+    await bridge.dispatchActionForWebContents(701, "terminal.inject", {}, false, boundContext);
+
+    expect(sentPayload?.context).toEqual(boundContext);
+  });
+
+  it("sends context: undefined when no override is supplied — unpinned path is untouched (#8317)", async () => {
+    const wc = makeWebContents(702);
+    mockWebContentsRegistry.set(702, wc);
+
+    let sentPayload: { requestId: string; context?: unknown } | undefined;
+    wc.send.mockImplementation((channel: string, payload: { requestId: string }) => {
+      if (channel !== CHANNELS.MCP_SERVER_DISPATCH_ACTION_REQUEST) return;
+      sentPayload = payload as { requestId: string; context?: unknown };
+      queueMicrotask(() => {
+        mockIpcMain.emit(
+          CHANNELS.MCP_SERVER_DISPATCH_ACTION_RESPONSE,
+          { sender: { id: 702 } },
+          { requestId: payload.requestId, result: { ok: true, result: "ok" } }
+        );
+      });
+    });
+
+    await bridge.dispatchActionForWebContents(702, "actions.list", {}, false);
+
+    expect(sentPayload).toBeDefined();
+    expect(sentPayload?.context).toBeUndefined();
+  });
+
   it("fails closed when the pinned view has been destroyed (#7002 — never silently re-routes)", async () => {
     // No entry for id=999 → webContents.fromId returns undefined.
     await expect(bridge.requestManifestForWebContents(999)).rejects.toThrow(

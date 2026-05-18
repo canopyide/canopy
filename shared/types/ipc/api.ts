@@ -1407,6 +1407,12 @@ export interface ElectronAPI {
         actionId: string;
         args?: unknown;
         confirmed?: boolean;
+        /**
+         * Provision-time `ActionContext` snapshot bound to pinned
+         * help-session dispatch (#8317). Undefined for unpinned
+         * external/api-key dispatch, which keeps live renderer context.
+         */
+        context?: ActionContext;
       }) => void
     ): () => void;
     /** Send action dispatch result to main process */
@@ -1473,7 +1479,12 @@ export interface ElectronAPI {
     getFolderPath(): Promise<string | null>;
     markTerminal(terminalId: string): Promise<void>;
     unmarkTerminal(terminalId: string): Promise<void>;
-    provisionSession(input: { projectId: string; projectPath: string; agentId: string }): Promise<{
+    provisionSession(input: {
+      projectId: string;
+      projectPath: string;
+      agentId: string;
+      context?: ActionContext;
+    }): Promise<{
       sessionId: string;
       sessionPath: string;
       token: string;

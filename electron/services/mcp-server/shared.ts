@@ -1,6 +1,10 @@
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import type { ActionDispatchResult, BuiltInActionId } from "../../../shared/types/actions.js";
+import type {
+  ActionContext,
+  ActionDispatchResult,
+  BuiltInActionId,
+} from "../../../shared/types/actions.js";
 import type {
   McpAuditRecord,
   McpAuditResult,
@@ -44,6 +48,17 @@ export type HelpTokenValidator = (token: string) => HelpAssistantTier | false;
  * pane tokens), which keep the existing focused-window semantics.
  */
 export type HelpSessionWebContentsResolver = (token: string) => number | null;
+/**
+ * Resolver used at MCP transport handshake to bind a help-session bearer to
+ * the `ActionContext` snapshot captured in the renderer at provision time
+ * (#8317). Returning a non-null context causes `httpLifecycle` to record it
+ * in `sessionContextMap` so every tool call from that session dispatches
+ * against the worktree/terminal the user had focused when they launched the
+ * assistant — not whatever they happen to be looking at when the model's
+ * tool call lands. Returns null for non-help bearers (api-key / pane
+ * tokens), which intentionally keep the live focused-window context.
+ */
+export type HelpSessionActionContextResolver = (token: string) => ActionContext | null;
 export type { HelpAssistantTier };
 
 export const MCP_SERVER_KEY = "daintree";
