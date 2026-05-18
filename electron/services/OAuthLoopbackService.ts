@@ -7,8 +7,10 @@
 
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "http";
 import { app, shell } from "electron";
+import type { OAuthLoopbackPhase } from "../../shared/types/ipc/maps.js";
 
 export { looksLikeOAuthUrl } from "../../shared/utils/urlUtils.js";
+export type { OAuthLoopbackPhase } from "../../shared/types/ipc/maps.js";
 
 const CALLBACK_PATH = "/oauth/callback";
 const TIMEOUT_MS = 300_000; // 5 minutes
@@ -26,6 +28,7 @@ interface LoopbackSession {
   server: Server;
   timeout: NodeJS.Timeout;
   settle: (value: string | null) => void;
+  generation: number;
 }
 
 /** Active loopback sessions keyed by panelId */
@@ -36,6 +39,7 @@ const activeSessions = new Map<string, LoopbackSession>();
  *
  * @param authUrl - The original OAuth authorization URL (blocked by dev-preview)
  * @param panelId - The dev-preview panel ID (prevents duplicate flows)
+ * @param onPhase - Callback for phase transitions (pushed to renderer via IPC)
  * @returns The original callback URL, the loopback URI used, and the original redirect_uri — or null
  */
 export interface OAuthLoopbackResult {
@@ -46,9 +50,14 @@ export interface OAuthLoopbackResult {
 
 export function startOAuthLoopback(
   authUrl: string,
-  panelId: string
+  panelId: string,
+  onPhase?: (phase: OAuthLoopbackPhase, generation: number) => void
 ): Promise<OAuthLoopbackResult | null> {
-  cancelOAuthLoopback(panelId);
+  const prior = activeSessions.get(panelId);
+  if (prior) {
+    cancelOAuthLoopback(panelId);
+  }
+  const generation = (prior?.generation ?? -1) + 1;
 
   const parsed = new URL(authUrl);
   const originalRedirectUri = parsed.searchParams.get("redirect_uri");
@@ -61,6 +70,11 @@ export function startOAuthLoopback(
   return new Promise((resolve) => {
     let settled = false;
     let capturedLoopbackUri = "";
+
+    const emit = (phase: OAuthLoopbackPhase) => {
+      if (settled) return;
+      onPhase?.(phase, generation);
+    };
 
     const settle = (callbackUrl: string | null) => {
       if (settled) return;
@@ -109,12 +123,13 @@ export function startOAuthLoopback(
           `</body></html>`
       );
 
-      // Forward to the webview regardless — the app handles error params itself
+      emit({ phase: "completed", callbackUrl: originalCallback.toString() });
       settle(originalCallback.toString());
     });
 
     server.on("error", (err) => {
       console.error("[OAuthLoopback] Server error:", err);
+      emit({ phase: "error", message: "Loopback server error" });
       settle(null);
     });
 
@@ -125,6 +140,7 @@ export function startOAuthLoopback(
       const address = server.address();
       if (!address || typeof address === "string") {
         console.error("[OAuthLoopback] Failed to get server address");
+        emit({ phase: "error", message: "Failed to start loopback server" });
         settle(null);
         return;
       }
@@ -139,18 +155,25 @@ export function startOAuthLoopback(
           `Original redirect: ${originalRedirectUri} → Loopback: ${capturedLoopbackUri}`
       );
 
-      void shell.openExternal(parsed.toString()).catch((err) => {
-        console.error("[OAuthLoopback] Failed to open system browser:", err);
-        settle(null);
-      });
+      void shell
+        .openExternal(parsed.toString())
+        .then(() => {
+          emit({ phase: "started" });
+        })
+        .catch((err) => {
+          console.error("[OAuthLoopback] Failed to open system browser:", err);
+          emit({ phase: "error", message: "Failed to open system browser" });
+          settle(null);
+        });
     });
 
     const timeout = setTimeout(() => {
       console.warn(`[OAuthLoopback] Timed out after ${TIMEOUT_MS}ms for panel ${panelId}`);
+      emit({ phase: "timed-out" });
       settle(null);
     }, TIMEOUT_MS);
 
-    activeSessions.set(panelId, { server, timeout, settle });
+    activeSessions.set(panelId, { server, timeout, settle, generation });
   });
 }
 
@@ -179,6 +202,15 @@ function cleanup(panelId: string): void {
 
   activeSessions.delete(panelId);
   clearTimeout(session.timeout);
+
+  // Node 24: closeAllConnections() terminates idle keep-alive connections before close()
+  try {
+    if (typeof (session.server as Record<string, unknown>).closeAllConnections === "function") {
+      (session.server as Record<string, unknown>).closeAllConnections();
+    }
+  } catch {
+    // closeAllConnections may throw if server is already closed
+  }
 
   try {
     session.server.close();

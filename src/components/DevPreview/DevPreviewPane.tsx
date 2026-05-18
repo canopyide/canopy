@@ -9,6 +9,8 @@ import {
   WandSparkles,
   OctagonAlert,
 } from "lucide-react";
+import { BlockedNavBanner } from "./BlockedNavBanner";
+import { useOAuthLoopbackStatus } from "./useOAuthLoopbackStatus";
 import { Spinner } from "@/components/ui/Spinner";
 import { Button } from "@/components/ui/button";
 import { usePanelStore } from "@/store";
@@ -94,93 +96,6 @@ async function captureWebviewSessionStorage(
   } catch {
     return [];
   }
-}
-
-function BlockedNavBanner({
-  blockedNav,
-  panelId,
-  webviewElement,
-  onDismiss,
-}: {
-  blockedNav: {
-    url: string;
-    canOpenExternal: boolean;
-    sessionStorageSnapshot: SessionStorageEntry[];
-  };
-  panelId: string;
-  webviewElement: Electron.WebviewTag | null;
-  onDismiss: () => void;
-}) {
-  const isOAuth = looksLikeOAuthUrl(blockedNav.url);
-  const hostname = (() => {
-    try {
-      return new URL(blockedNav.url).hostname;
-    } catch {
-      return blockedNav.url;
-    }
-  })();
-
-  return (
-    <div className="flex items-center gap-2 px-3 py-1.5 text-xs bg-status-warning/10 border-b border-status-warning/20 text-daintree-text/80">
-      <ExternalLink className="h-3.5 w-3.5 shrink-0 text-status-warning" />
-      <span className="truncate flex-1">Navigation to external site blocked: {hostname}</span>
-      {isOAuth ? (
-        <button
-          type="button"
-          onClick={async () => {
-            const url = blockedNav.url;
-            onDismiss();
-            // Get webContentsId for CDP interception of the token exchange
-            let wcId: number | undefined;
-            try {
-              wcId = (
-                webviewElement as unknown as { getWebContentsId(): number }
-              )?.getWebContentsId();
-            } catch {
-              /* webview not ready */
-            }
-            if (wcId != null) {
-              try {
-                await window.electron.webview.startOAuthLoopback(
-                  url,
-                  panelId,
-                  wcId,
-                  blockedNav.sessionStorageSnapshot
-                );
-              } catch {
-                // OAuth loopback may fail if the webview is gone or CDP setup
-                // breaks; silently fall through — the dialog has been dismissed.
-              }
-            }
-          }}
-          className="shrink-0 px-2 py-0.5 rounded text-xs bg-status-warning/20 hover:bg-status-warning/30 text-daintree-text/90 transition-colors"
-        >
-          Sign in via browser
-        </button>
-      ) : blockedNav.canOpenExternal ? (
-        <button
-          type="button"
-          onClick={() => {
-            safeFireAndForget(window.electron.system.openExternal(blockedNav.url), {
-              context: "Opening blocked dev preview URL externally",
-            });
-            onDismiss();
-          }}
-          className="shrink-0 px-2 py-0.5 rounded text-xs bg-status-warning/20 hover:bg-status-warning/30 text-daintree-text/90 transition-colors"
-        >
-          Open in external browser
-        </button>
-      ) : null}
-      <button
-        type="button"
-        onClick={onDismiss}
-        className="shrink-0 text-daintree-text/40 hover:text-daintree-text/70 transition-colors"
-        aria-label="Dismiss"
-      >
-        ×
-      </button>
-    </div>
-  );
 }
 
 export interface DevPreviewPaneProps extends BasePanelProps {
@@ -369,6 +284,7 @@ export function DevPreviewPane({
 
   const [blockedNav, setBlockedNav] = useState<DevPreviewBlockedNav | null>(null);
   const blockedNavTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const { phase: oauthPhase, startOAuth, cancelOAuth, dismissOAuth } = useOAuthLoopbackStatus(id);
   const lastSetUrlRef = useRef<string>("");
   const [consoleTerminalId, setConsoleTerminalId] = useState<string | null>(terminalId);
   // Generation token to invalidate in-flight async scroll captures when the
@@ -950,25 +866,58 @@ export function DevPreviewPane({
     isFocused
   );
 
-  // Listen for blocked navigation events from main process
+  // Listen for blocked navigation events from main process.
+  // Debounce 150ms, coalescing by hostname so a redirect chain doesn't stack banners.
   useEffect(() => {
     let disposed = false;
+    const lastHostnameRef = { current: "" };
     const cleanup = window.electron.webview.onNavigationBlocked((data) => {
       if (data.panelId !== id) return;
+
+      let hostname = "";
+      try {
+        hostname = new URL(data.url).hostname;
+      } catch {
+        hostname = data.url;
+      }
+
       const sessionStorageSnapshotPromise = looksLikeOAuthUrl(data.url)
         ? captureWebviewSessionStorage(webviewElement)
         : Promise.resolve<SessionStorageEntry[]>([]);
+
       if (blockedNavTimerRef.current) {
         clearTimeout(blockedNavTimerRef.current);
       }
+      lastHostnameRef.current = hostname;
+
       blockedNavTimerRef.current = setTimeout(() => {
         void sessionStorageSnapshotPromise
           .then((sessionStorageSnapshot) => {
             if (disposed) return;
-            setBlockedNav({
-              url: data.url,
-              canOpenExternal: data.canOpenExternal,
-              sessionStorageSnapshot,
+            setBlockedNav((prev) => {
+              // If the current banner shows the same hostname, replace (coalesce)
+              let prevHostname = "";
+              if (prev) {
+                try {
+                  prevHostname = new URL(prev.url).hostname;
+                } catch {
+                  prevHostname = prev.url;
+                }
+              }
+              if (prev && prevHostname === lastHostnameRef.current) {
+                return {
+                  url: data.url,
+                  canOpenExternal: data.canOpenExternal,
+                  sessionStorageSnapshot,
+                };
+              }
+              // Don't replace if a different hostname banner is already showing
+              if (prev) return prev;
+              return {
+                url: data.url,
+                canOpenExternal: data.canOpenExternal,
+                sessionStorageSnapshot,
+              };
             });
             blockedNavTimerRef.current = null;
           })
@@ -987,12 +936,23 @@ export function DevPreviewPane({
     };
   }, [id, webviewElement]);
 
-  // Auto-dismiss blocked navigation notification after 10 seconds
+  // Listen for action-driven hard-reload events
   useEffect(() => {
-    if (!blockedNav) return;
-    const timer = setTimeout(() => setBlockedNav(null), 10_000);
-    return () => clearTimeout(timer);
-  }, [blockedNav]);
+    const handleHardReloadEvent = (e: Event) => {
+      if (!(e instanceof CustomEvent)) return;
+      const detail = e.detail as unknown;
+      if (!detail || typeof (detail as { id?: unknown }).id !== "string") return;
+      if ((detail as { id: string }).id === id) {
+        handleHardReload();
+      }
+    };
+
+    const controller = new AbortController();
+    window.addEventListener("daintree:hard-reload-browser", handleHardReloadEvent, {
+      signal: controller.signal,
+    });
+    return () => controller.abort();
+  }, [id, handleHardReload]);
 
   return (
     <ContentPanel
@@ -1291,7 +1251,26 @@ export function DevPreviewPane({
                       blockedNav={blockedNav}
                       panelId={id}
                       webviewElement={webviewElement}
-                      onDismiss={() => setBlockedNav(null)}
+                      oauthPhase={oauthPhase}
+                      onDismiss={() => {
+                        dismissOAuth();
+                        setBlockedNav(null);
+                      }}
+                      onStartOAuth={() => {
+                        startOAuth(
+                          blockedNav.url,
+                          webviewElement,
+                          blockedNav.sessionStorageSnapshot
+                        );
+                      }}
+                      onCancelOAuth={cancelOAuth}
+                      onRetryOAuth={() => {
+                        startOAuth(
+                          blockedNav.url,
+                          webviewElement,
+                          blockedNav.sessionStorageSnapshot
+                        );
+                      }}
                     />
                   )}
                   {isLoading && (

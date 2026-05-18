@@ -1,5 +1,6 @@
 /* eslint-disable no-control-regex */
 import ipaddr from "ipaddr.js";
+import { getDomain, getSubdomain } from "tldts";
 
 const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "::1"];
 const ALLOWED_PROTOCOLS = ["http:", "https:"];
@@ -197,6 +198,49 @@ export function extractLocalhostUrls(text: string): string[] {
   }
 
   return [...new Set(normalized)];
+}
+
+export interface ExtractedUrlParts {
+  fullUrl: string;
+  hostname: string;
+  subdomain: string;
+  registrableDomain: string;
+  isIp: boolean;
+}
+
+export function extractUrlParts(url: string): ExtractedUrlParts | null {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname;
+    if (!hostname) return null;
+
+    // Try tldts for eTLD+1 extraction; fall back to raw hostname
+    let subdomain = "";
+    let registrableDomain = hostname;
+    let isIp = false;
+
+    try {
+      const domain = getDomain(url);
+      if (domain) {
+        registrableDomain = domain;
+        subdomain = getSubdomain(url) || "";
+      }
+    } catch {
+      // tldts unavailable — fall back to displaying full hostname as eTLD+1
+    }
+
+    // Check if hostname is an IP address (v4 or v6)
+    try {
+      ipaddr.parse(hostname);
+      isIp = true;
+    } catch {
+      // not an IP
+    }
+
+    return { fullUrl: url, hostname, subdomain, registrableDomain, isIp };
+  } catch {
+    return null;
+  }
 }
 
 export function looksLikeOAuthUrl(url: string): boolean {

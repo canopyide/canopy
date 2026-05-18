@@ -2,9 +2,16 @@ import { BrowserWindow, webContents } from "electron";
 import { getWindowForWebContents } from "../../window/webContentsRegistry.js";
 import { CHANNELS } from "../channels.js";
 import { getWebviewDialogService } from "../../services/WebviewDialogService.js";
-import { broadcastToRenderer, sendToRenderer, typedHandle } from "../utils.js";
-import { startOAuthLoopback } from "../../services/OAuthLoopbackService.js";
-import type { HandlerDependencies } from "../types.js";
+import {
+  broadcastToRenderer,
+  sendToRenderer,
+  sendToRendererContext,
+  typedHandle,
+  typedHandleWithContext,
+} from "../utils.js";
+import { startOAuthLoopback, cancelOAuthLoopback } from "../../services/OAuthLoopbackService.js";
+import type { OAuthLoopbackPhase } from "../../services/OAuthLoopbackService.js";
+import type { HandlerDependencies, IpcContext } from "../types.js";
 import type {
   CdpRemoteArg,
   CdpStackTrace,
@@ -691,6 +698,7 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
   };
 
   const handleOAuthLoopback = async (
+    ctx: IpcContext,
     authUrl: unknown,
     panelId: unknown,
     webContentsId: unknown,
@@ -766,8 +774,19 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
       }
     }
 
-    // Step 2: Start loopback server, open system browser, wait for callback
-    const loopbackResult = await startOAuthLoopback(authUrl, panelId);
+    // Step 2: Start loopback server, open system browser, wait for callback.
+    // Push phase transitions to the renderer so the banner stays open and
+    // surfaces progress during the (up to 5-minute) flow.
+    let loopbackGeneration = 0;
+    const pushPhase = (phase: OAuthLoopbackPhase, generation: number) => {
+      loopbackGeneration = generation;
+      sendToRendererContext(ctx, CHANNELS.WEBVIEW_OAUTH_LOOPBACK_STATUS, {
+        panelId,
+        generation,
+        ...phase,
+      } as Record<string, unknown> as never);
+    };
+    const loopbackResult = await startOAuthLoopback(authUrl, panelId, pushPhase);
     if (!loopbackResult) return null;
 
     const { callbackUrl, loopbackRedirectUri, originalRedirectUri } = loopbackResult;
@@ -882,6 +901,7 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
           );
 
           const didRewrite = rewrittenBody !== originalBody;
+          pushPhase({ phase: "token-exchange-intercepted" }, loopbackGeneration);
           console.log(
             `[OAuthLoopback] CDP intercepted token exchange POST to ${p.request.url}. ` +
               `Redirect_uri rewrite: ${didRewrite ? "applied" : "not needed"}`
@@ -964,6 +984,13 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
     return { success: true };
   };
 
+  const handleCancelOAuthLoopback = async (panelId: unknown): Promise<void> => {
+    if (typeof panelId !== "string") {
+      throw new Error("Invalid arguments: panelId must be string");
+    }
+    cancelOAuthLoopback(panelId);
+  };
+
   const handleReloadIgnoringCache = async (
     webContentsId: unknown,
     panelId: unknown
@@ -1023,7 +1050,8 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
     typedHandle(CHANNELS.WEBVIEW_CLEAR_CONSOLE_CAPTURE, handleClearConsoleCapture),
     typedHandle(CHANNELS.WEBVIEW_GET_CONSOLE_PROPERTIES, handleGetConsoleProperties),
     // @ts-expect-error: result type contains {success} | null — pending migration to throw AppError. See #6020.
-    typedHandle(CHANNELS.WEBVIEW_OAUTH_LOOPBACK, handleOAuthLoopback),
+    typedHandleWithContext(CHANNELS.WEBVIEW_OAUTH_LOOPBACK, handleOAuthLoopback as never),
+    typedHandle(CHANNELS.WEBVIEW_OAUTH_LOOPBACK_CANCEL, handleCancelOAuthLoopback),
     typedHandle(CHANNELS.WEBVIEW_RELOAD_IGNORING_CACHE, handleReloadIgnoringCache),
     typedHandle(CHANNELS.WEBVIEW_GET_SCROLL_POSITION, handleGetScrollPosition),
   ];

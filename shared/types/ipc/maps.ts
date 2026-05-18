@@ -24,6 +24,17 @@ import type {
   VoiceInputSettings,
 } from "./api.js";
 
+/**
+ * Phases emitted during the RFC 8252 OAuth loopback flow.
+ * Pushed from main to renderer via `WEBVIEW_OAUTH_LOOPBACK_STATUS`.
+ */
+export type OAuthLoopbackPhase =
+  | { phase: "started" }
+  | { phase: "token-exchange-intercepted" }
+  | { phase: "completed"; callbackUrl: string }
+  | { phase: "timed-out" }
+  | { phase: "error"; message: string };
+
 import type {
   WorktreeSetActivePayload,
   WorktreeDeletePayload,
@@ -2038,6 +2049,10 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
     /** Resolves with `{ success: true }` on success or `null` if the loopback was aborted. Throws `AppError` on hard failure. */
     result: { success: true } | null;
   };
+  "webview:oauth-loopback-cancel": {
+    args: [panelId: string];
+    result: void;
+  };
 
   // Additional worktree channels
   "worktree:fetch-pr-branch": {
@@ -2258,6 +2273,12 @@ export interface IpcEventMap {
     url: string;
     canOpenExternal: boolean;
   };
+
+  // OAuth loopback phase transitions pushed from main to renderer
+  "webview:oauth-loopback-status": {
+    panelId: string;
+    generation: number;
+  } & OAuthLoopbackPhase;
 
   // Voice input events
   "voice-input:transcription-delta": string;
