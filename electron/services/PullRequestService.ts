@@ -86,6 +86,7 @@ interface InternalLinkedPR {
   state: "open" | "closed" | "merged";
   isDraft?: boolean;
   ciStatus?: import("../../shared/types/github.js").GitHubPRCIStatus;
+  _ciStatus?: import("../../shared/types/forge.js").CIStatus;
   providerId: string;
 }
 
@@ -1102,6 +1103,7 @@ class PullRequestService {
               : ciStatus.state === "pending"
                 ? "PENDING"
                 : undefined;
+        pr._ciStatus = ciStatus;
         // Re-emit for each worktree that has this PR
         for (const [worktreeId, detected] of this.detectedPRs) {
           if (detected.number === pr.number) {
@@ -1115,6 +1117,7 @@ class PullRequestService {
               issueNumber: this.candidates.get(worktreeId)?.issueNumber,
               branchName: this.candidates.get(worktreeId)?.branchName,
               providerId: pr.providerId,
+              ciStatus: pr._ciStatus,
               timestamp: Date.now(),
             });
           }

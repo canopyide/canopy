@@ -110,7 +110,7 @@ export function buildFleetBroadcastRecipeContext(terminalId: string): RecipeCont
   if (!worktree) return null;
   return {
     issueNumber: worktree.issueNumber,
-    prNumber: worktree.prNumber,
+    prNumber: worktree.linked?.pr?.ref.number,
     worktreePath: worktree.path,
     branchName: worktree.branch ?? worktree.name,
   };

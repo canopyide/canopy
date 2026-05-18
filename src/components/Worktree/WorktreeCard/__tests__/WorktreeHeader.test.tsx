@@ -43,6 +43,19 @@ vi.mock("@/services/ActionService", () => ({
 
 const noop = () => {};
 
+function prLinked(num: number, state: "open" | "merged" | "closed" | "declined" = "open") {
+  return {
+    linked: {
+      providerId: "builtin.github",
+      pr: {
+        ref: { providerId: "builtin.github", owner: "", repo: "", number: num, rawData: null },
+        state,
+        url: `https://github.com/test/repo/pull/${num}`,
+      },
+    },
+  };
+}
+
 const baseWorktree: WorktreeState = {
   id: "test-wt",
   worktreeId: "test-wt",
@@ -220,6 +233,7 @@ describe("WorktreeHeader issue title headline", () => {
         issueTitle: "Fix the thing",
         prNumber: 101,
         prState: "open",
+        ...prLinked(101),
       },
       badges: { onOpenIssue: noop, onOpenPR: noop },
     });
@@ -488,7 +502,7 @@ describe("WorktreeHeader click bubbling", () => {
   it("PR badge click on inactive card bubbles to parent but does NOT call onOpenPR", () => {
     const onOpenPR = vi.fn();
     const { onParentClick } = renderHeaderInWrapper({
-      worktree: { ...baseWorktree, prNumber: 101, prState: "open" },
+      worktree: { ...baseWorktree, ...prLinked(101), prNumber: 101, prState: "open" },
       badges: { onOpenPR },
       isActive: false,
     });
@@ -502,7 +516,7 @@ describe("WorktreeHeader click bubbling", () => {
   it("PR badge click on active card calls onOpenPR and bubbles to parent", () => {
     const onOpenPR = vi.fn();
     const { onParentClick } = renderHeaderInWrapper({
-      worktree: { ...baseWorktree, prNumber: 101, prState: "open" },
+      worktree: { ...baseWorktree, ...prLinked(101), prNumber: 101, prState: "open" },
       badges: { onOpenPR },
       isActive: true,
     });
@@ -549,6 +563,7 @@ describe("WorktreeHeader click bubbling", () => {
         issueTitle: "Test issue",
         prNumber: 101,
         prState: "open",
+        ...prLinked(101),
         hasPlanFile: true,
         planFilePath: "TODO.md",
       },
@@ -572,6 +587,7 @@ describe("WorktreeHeader click bubbling", () => {
         issueTitle: "Test issue",
         prNumber: 101,
         prState: "open",
+        ...prLinked(101),
         hasPlanFile: true,
         planFilePath: "TODO.md",
       },
@@ -635,7 +651,7 @@ describe("WorktreeHeader decorative elements", () => {
 
 describe("WorktreeHeader hover:underline on badges", () => {
   const issueWt = { ...baseWorktree, issueNumber: 42, issueTitle: "Test issue" };
-  const prWt = { ...baseWorktree, prNumber: 101, prState: "open" as const };
+  const prWt = { ...baseWorktree, ...prLinked(101), prNumber: 101, prState: "open" as const };
   const planWt = { ...baseWorktree, hasPlanFile: true, planFilePath: "TODO.md" };
 
   function getIssueSpan(container: HTMLElement) {
@@ -678,6 +694,7 @@ describe("WorktreeHeader hover:underline on badges", () => {
         ...issueWt,
         prNumber: 101,
         prState: "open",
+        ...prLinked(101),
         hasPlanFile: true,
         planFilePath: "TODO.md",
       },
@@ -694,6 +711,7 @@ describe("WorktreeHeader hover:underline on badges", () => {
         ...issueWt,
         prNumber: 101,
         prState: "open",
+        ...prLinked(101),
         hasPlanFile: true,
         planFilePath: "TODO.md",
       },
@@ -982,7 +1000,7 @@ describe("WorktreeHeader token-missing badge behavior", () => {
   it("PR badge shows token-missing aria-label when no token configured", () => {
     mockMissingToken = true;
     renderHeader({
-      worktree: { ...baseWorktree, prNumber: 101, prState: "open" },
+      worktree: { ...baseWorktree, ...prLinked(101), prNumber: 101, prState: "open" },
       badges: { onOpenPR: noop },
       isActive: true,
     });
@@ -1001,7 +1019,7 @@ describe("WorktreeHeader token-missing badge behavior", () => {
     mockMissingToken = true;
     const onOpenPR = vi.fn();
     renderHeader({
-      worktree: { ...baseWorktree, prNumber: 101, prState: "open" },
+      worktree: { ...baseWorktree, ...prLinked(101), prNumber: 101, prState: "open" },
       badges: { onOpenPR },
       isActive: true,
     });
@@ -1143,6 +1161,7 @@ describe("WorktreeHeader upstream sync indicator", () => {
         behindCount: 2,
         fetchAuthFailed: true,
         isGitHubRemote: true,
+        linked: { providerId: "builtin.github" },
       },
     });
     const indicator = screen.getByTestId("upstream-sync-indicator");
@@ -1164,6 +1183,7 @@ describe("WorktreeHeader upstream sync indicator", () => {
         behindCount: 0,
         fetchAuthFailed: true,
         isGitHubRemote: true,
+        linked: { providerId: "builtin.github" },
       },
     });
     const indicator = screen.getByTestId("upstream-sync-indicator");
@@ -1201,6 +1221,7 @@ describe("WorktreeHeader upstream sync indicator", () => {
         aheadCount: 1,
         fetchAuthFailed: true,
         isGitHubRemote: true,
+        linked: { providerId: "builtin.github" },
       },
     });
     const indicator = screen.getByTestId("upstream-sync-indicator");
@@ -1254,6 +1275,7 @@ describe("WorktreeHeader upstream sync indicator", () => {
         fetchAuthFailed: true,
         fetchNetworkFailed: true,
         isGitHubRemote: true,
+        linked: { providerId: "builtin.github" },
       },
     });
     const indicator = screen.getByTestId("upstream-sync-indicator");

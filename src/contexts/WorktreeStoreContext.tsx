@@ -6,6 +6,7 @@ import {
 } from "@/store/createWorktreeStore";
 import type { WorktreeSnapshot } from "@shared/types";
 import type { GitHubPR, GitHubPRCIStatus } from "@shared/types/github";
+import type { PluginWorktreeLinked } from "@shared/types/plugin";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { usePanelStore } from "@/store/panelStore";
 import { usePulseStore } from "@/store/pulseStore";
@@ -40,6 +41,8 @@ interface PRDetectedEvent {
   prLastUpdatedAt?: number;
   issueLastUpdatedAt?: number;
   branchName?: string;
+  providerId?: string;
+  linked?: PluginWorktreeLinked | null;
 }
 
 interface PRClearedEvent {
@@ -267,6 +270,7 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
             issueTitle: event.issueTitle ?? existing.issueTitle,
             prLastUpdatedAt: event.prLastUpdatedAt ?? existing.prLastUpdatedAt,
             issueLastUpdatedAt: event.issueLastUpdatedAt ?? existing.issueLastUpdatedAt,
+            linked: event.linked ?? existing.linked,
           },
           store.getState().nextVersion()
         );
@@ -339,6 +343,7 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
             prTitle: undefined,
             prLastUpdatedAt: undefined,
             issueLastUpdatedAt: undefined,
+            linked: null,
           },
           store.getState().nextVersion()
         );

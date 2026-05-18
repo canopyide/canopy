@@ -166,6 +166,7 @@ export class WorkspaceService {
               title: data.prTitle,
               url: data.prUrl,
               state: data.prState,
+              ...(data.ciStatus ? { ciStatus: data.ciStatus } : {}),
             },
             ...(data.issueNumber && data.issueTitle
               ? {
@@ -202,6 +203,38 @@ export class WorkspaceService {
           issueLastUpdatedAt: data.issueLastUpdatedAt,
           branchName: data.branchName,
           providerId: data.providerId,
+          linked: data.providerId
+            ? {
+                providerId: data.providerId,
+                pr: {
+                  ref: {
+                    providerId: data.providerId,
+                    owner: "",
+                    repo: "",
+                    number: data.prNumber,
+                    rawData: null,
+                  },
+                  title: data.prTitle,
+                  url: data.prUrl,
+                  state: data.prState,
+                  ...(data.ciStatus ? { ciStatus: data.ciStatus } : {}),
+                },
+                ...(data.issueNumber && data.issueTitle
+                  ? {
+                      issue: {
+                        ref: {
+                          providerId: data.providerId,
+                          owner: "",
+                          repo: "",
+                          number: data.issueNumber,
+                          rawData: null,
+                        },
+                        title: data.issueTitle,
+                      },
+                    }
+                  : {}),
+              }
+            : undefined,
         });
       },
       onPRCleared: (worktreeId, data) => {

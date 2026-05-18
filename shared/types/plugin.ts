@@ -145,6 +145,7 @@ export interface PluginWorktreeLinkedPR {
   readonly title?: string;
   readonly url: string;
   readonly state: NormalizedPRState;
+  readonly ciStatus?: import("./forge.js").CIStatus;
 }
 
 export interface PluginWorktreeLinked {

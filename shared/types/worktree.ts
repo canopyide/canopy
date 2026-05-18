@@ -1,5 +1,6 @@
 import type { FileChangeDetail, WorktreeChanges } from "./git.js";
 import type { GitHubPRCIStatus } from "./github.js";
+import type { PluginWorktreeLinked } from "./plugin.js";
 
 /** Worktree mood indicator */
 export type WorktreeMood = "stable" | "active" | "stale" | "error";
@@ -204,6 +205,13 @@ export interface Worktree {
    * so we don't surface a GitHub-token CTA for non-GitHub remotes.
    */
   isGitHubRemote?: boolean;
+
+  /**
+   * Provider-agnostic projection of the worktree's linked forge resources
+   * (issue and/or PR). Replaces the legacy flat `prNumber` / `prState` /
+   * `issueNumber` / `issueTitle` fields.
+   */
+  linked?: PluginWorktreeLinked | null;
 
   /** Resource status from the last manual status check */
   resourceStatus?: WorktreeResourceStatus;

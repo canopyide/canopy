@@ -49,20 +49,22 @@ export function NonMainSecondaryRow({
           rowLastUpdatedAt={worktree.issueLastUpdatedAt}
         />
       )}
-      {worktree.prNumber && worktree.prState !== "closed" && (
-        <PRBadge
-          prNumber={worktree.prNumber}
-          prState={worktree.prState}
-          prCiStatus={worktree.prCiStatus}
-          isSubordinate={!!worktree.issueNumber}
-          worktreePath={worktree.path}
-          onOpen={badges.onOpenPR}
-          isActive={isActive}
-          underlineOnHover={underlineOnHover}
-          rowLastUpdatedAt={worktree.prLastUpdatedAt}
-          prDetectionPaused={prDetectionPaused}
-        />
-      )}
+      {worktree.linked?.pr &&
+        worktree.linked.pr.state !== "closed" &&
+        worktree.linked.pr.state !== "declined" && (
+          <PRBadge
+            prNumber={worktree.linked.pr.ref.number}
+            prState={worktree.linked.pr.state}
+            prCiStatus={worktree.linked.pr.ciStatus}
+            isSubordinate={!!worktree.issueNumber}
+            worktreePath={worktree.path}
+            onOpen={badges.onOpenPR}
+            isActive={isActive}
+            underlineOnHover={underlineOnHover}
+            rowLastUpdatedAt={worktree.prLastUpdatedAt}
+            prDetectionPaused={prDetectionPaused}
+          />
+        )}
       {(hasUpstreamDelta || hasAuthFailedSignIn) && (
         <UpstreamSyncBadge
           aheadCount={worktree.aheadCount}
@@ -71,7 +73,7 @@ export function NonMainSecondaryRow({
           lastFetchedAt={worktree.lastFetchedAt}
           fetchAuthFailed={Boolean(worktree.fetchAuthFailed)}
           fetchNetworkFailed={Boolean(worktree.fetchNetworkFailed)}
-          isGitHubRemote={Boolean(worktree.isGitHubRemote)}
+          isGitHubProvider={worktree.linked?.providerId === "builtin.github"}
           containerGapClass="gap-1.5"
         />
       )}

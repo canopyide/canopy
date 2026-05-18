@@ -197,7 +197,7 @@ export function WorktreeMenuItems({
   onResourceTeardown,
 }: WorktreeMenuItemsProps) {
   const hasIssueSub = Boolean(worktree.issueNumber && (onOpenIssuePortal || onOpenIssueExternal));
-  const hasPRSub = Boolean(worktree.prNumber && (onOpenPRPortal || onOpenPRExternal));
+  const hasPRSub = Boolean(worktree.linked?.pr && (onOpenPRPortal || onOpenPRExternal));
   const hasIssueOrPrSection = hasIssueSub || hasPRSub;
   const hasRecipes = recipes.length > 0;
   const hasRecipeSection = hasRecipes || (onSaveLayout && counts.active > 0);
@@ -525,7 +525,7 @@ export function WorktreeMenuItems({
         <C.Sub>
           <C.SubTrigger>
             <GitPullRequest className="w-3.5 h-3.5 mr-2" />
-            Open PR #{worktree.prNumber}
+            Open PR #{worktree.linked?.pr?.ref.number}
           </C.SubTrigger>
           <C.SubContent>
             {onOpenPRPortal && <C.Item onSelect={onOpenPRPortal}>In Portal</C.Item>}

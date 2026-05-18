@@ -154,7 +154,9 @@ export function WorktreeHeader({
   const hasUpstreamDelta =
     (worktree.aheadCount !== undefined && worktree.aheadCount > 0) ||
     (worktree.behindCount !== undefined && worktree.behindCount > 0);
-  const hasAuthFailedSignIn = Boolean(worktree.fetchAuthFailed && worktree.isGitHubRemote);
+  const hasAuthFailedSignIn = Boolean(
+    worktree.fetchAuthFailed && worktree.linked?.providerId === "builtin.github"
+  );
   const isMainStandardLayout = !!(isMainOnStandardBranch && !hasIssueTitle);
 
   const { visibleStates, sessionAriaLabel } = useMemo(() => {
@@ -295,7 +297,7 @@ export function WorktreeHeader({
           lastFetchedAt={worktree.lastFetchedAt}
           fetchAuthFailed={Boolean(worktree.fetchAuthFailed)}
           fetchNetworkFailed={Boolean(worktree.fetchNetworkFailed)}
-          isGitHubRemote={Boolean(worktree.isGitHubRemote)}
+          isGitHubProvider={worktree.linked?.providerId === "builtin.github"}
           aggregateCounts={aggregateCounts}
         />
       )}
@@ -304,7 +306,9 @@ export function WorktreeHeader({
         !isMainStandardLayout &&
         (hasIssueTitle ||
           (worktree.issueNumber && !hasIssueTitle) ||
-          (worktree.prNumber && worktree.prState !== "closed") ||
+          (worktree.linked?.pr &&
+            worktree.linked.pr.state !== "closed" &&
+            worktree.linked.pr.state !== "declined") ||
           hasUpstreamDelta ||
           hasAuthFailedSignIn ||
           hasPlanFile) && (

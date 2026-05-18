@@ -480,15 +480,15 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       const hasChanges = (worktree.worktreeChanges?.changedFileCount ?? 0) > 0;
       const isComplete =
         !!worktree.issueNumber &&
-        !!worktree.prNumber &&
+        !!worktree.linked?.pr &&
         !hasChanges &&
         worktree.worktreeChanges !== null;
 
       let lifecycleStage: "in-review" | "merged" | "ready-for-cleanup" | null = null;
       if (!worktree.isMainWorktree && worktree.worktreeChanges !== null) {
-        if (worktree.prState === "merged") {
+        if (worktree.linked?.pr?.state === "merged") {
           lifecycleStage = worktree.issueNumber ? "ready-for-cleanup" : "merged";
-        } else if (worktree.prState === "open") {
+        } else if (worktree.linked?.pr?.state === "open") {
           lifecycleStage = "in-review";
         }
       }
@@ -901,7 +901,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     if (!query) return true;
     const exactNum = parseExactNumber(query);
     if (exactNum !== null) {
-      return w.issueNumber === exactNum || w.prNumber === exactNum;
+      return w.issueNumber === exactNum || w.linked?.pr?.ref.number === exactNum;
     }
     return scoreWorktree(w, query) > 0;
   };
