@@ -110,6 +110,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
       if (loading) {
         event.preventDefault();
+        event.stopPropagation();
         return;
       }
       onClick?.(event);
@@ -136,10 +137,12 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={disabled}
         onClick={handleClick}
+        {...props}
+        // Component-owned loading state — placed after the prop spread so a
+        // consumer can't silently desync the announced ARIA state.
         aria-busy={loading || undefined}
         aria-disabled={loading || disabled || undefined}
         data-loading={loading || undefined}
-        {...props}
       >
         {spinner}
         {/* asChild + loading: overlay renders alongside the slotted child;

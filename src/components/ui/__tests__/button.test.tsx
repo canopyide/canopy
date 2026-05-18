@@ -141,4 +141,68 @@ describe("Button loading state", () => {
     expect(anchor.getAttribute("aria-busy")).toBe("true");
     expect(container.querySelector('[data-slot="button-spinner"]')).toBeTruthy();
   });
+
+  it("does not let a consumer override the loading ARIA state", () => {
+    const { container } = render(
+      <Button loading aria-busy={false} aria-disabled={false}>
+        Save
+      </Button>
+    );
+    const button = container.querySelector("button")!;
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("clears all loading affordances when rerendered to not loading", () => {
+    const { container, rerender } = render(<Button loading>Save</Button>);
+    expect(container.querySelector('[data-slot="button-spinner"]')).toBeTruthy();
+
+    rerender(<Button>Save</Button>);
+    const button = container.querySelector("button")!;
+    expect(container.querySelector('[data-slot="button-spinner"]')).toBeNull();
+    expect(button.hasAttribute("aria-busy")).toBe(false);
+    expect(button.hasAttribute("aria-disabled")).toBe(false);
+    expect(button.hasAttribute("data-loading")).toBe(false);
+    expect(container.querySelector('[data-slot="button-content"]')!.className).not.toContain(
+      "opacity-30"
+    );
+  });
+
+  it("preserves the accessible name on an icon-only loading button", () => {
+    const { getByRole } = render(
+      <Button loading size="icon" aria-label="Delete">
+        <svg />
+      </Button>
+    );
+    expect(getByRole("button", { name: "Delete" })).toBeTruthy();
+  });
+
+  it("does not submit a form while loading via click or keyboard", () => {
+    const onSubmit = vi.fn((e: { preventDefault: () => void }) => e.preventDefault());
+    const { container } = render(
+      <form onSubmit={onSubmit}>
+        <Button type="submit" loading>
+          Save
+        </Button>
+      </form>
+    );
+    const button = container.querySelector("button")!;
+    fireEvent.click(button);
+    fireEvent.keyDown(button, { key: "Enter" });
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("renders a spinner for every size variant", () => {
+    const sizes = ["default", "sm", "xs", "lg", "icon", "icon-sm", "icon-xs"] as const;
+    for (const size of sizes) {
+      const { container } = render(
+        <Button loading size={size}>
+          Go
+        </Button>
+      );
+      const spinner = container.querySelector('[data-slot="button-spinner"]')!;
+      expect(spinner).toBeTruthy();
+      expect(spinner.querySelector("svg")).toBeTruthy();
+    }
+  });
 });
