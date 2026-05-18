@@ -10,10 +10,9 @@ const argsSchema = z
   })
   .optional();
 
-type DevPreviewArgs = { panelId?: string; projectId?: string };
-
 function resolveTarget(args: unknown, ctx: ActionContext): { panelId: string; projectId: string } {
-  const { panelId, projectId } = (args as DevPreviewArgs | undefined) ?? {};
+  const parsed = argsSchema.parse(args);
+  const { panelId, projectId } = parsed ?? {};
   const targetPanelId = panelId ?? usePanelStore.getState().focusedId;
   const targetProjectId = projectId ?? ctx.projectId;
   if (!targetPanelId) {
@@ -39,7 +38,8 @@ export function registerDevPreviewActions(
     scope: "renderer",
     argsSchema,
     run: async (args: unknown) => {
-      const { panelId } = (args as DevPreviewArgs | undefined) ?? {};
+      const parsed = argsSchema.parse(args);
+      const { panelId } = parsed ?? {};
       const targetId = panelId ?? usePanelStore.getState().focusedId;
       if (targetId) {
         window.dispatchEvent(
