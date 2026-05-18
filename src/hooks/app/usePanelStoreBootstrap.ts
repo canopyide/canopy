@@ -9,6 +9,7 @@
 import { useEffect } from "react";
 import { setupTerminalStoreListeners } from "../../store/panelStore";
 import { setupProjectStatsListeners } from "../../store/projectStatsStore";
+import { setupSystemWakeListeners } from "../../store/systemWakeStore";
 import { useCachedProjectViewsStore } from "../../store/cachedProjectViewsStore";
 import { useResourceMonitoringStore } from "../../store/resourceMonitoringStore";
 import { isElectronAvailable } from "../useElectron";
@@ -26,6 +27,7 @@ export function usePanelStoreBootstrap() {
     if (!isElectronAvailable()) return;
     const cleanupTerminalStore = setupTerminalStoreListeners();
     const cleanupProjectStats = setupProjectStatsListeners();
+    const cleanupSystemWake = setupSystemWakeListeners();
 
     // Hydrate resource monitoring preference and activate backend if enabled
     window.electron.terminalConfig.get().then((config) => {
@@ -50,6 +52,7 @@ export function usePanelStoreBootstrap() {
     return () => {
       cleanupTerminalStore();
       cleanupProjectStats();
+      cleanupSystemWake();
     };
   }, []);
 

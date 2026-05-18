@@ -3,7 +3,6 @@ export { useProjectSwitchRehydration } from "./useProjectSwitchRehydration";
 export { useShortcutHints } from "./useShortcutHints";
 export { usePanelStoreBootstrap } from "./usePanelStoreBootstrap";
 export { useSemanticWorkerLifecycle } from "./useSemanticWorkerLifecycle";
-export { useSystemWakeHandler } from "./useSystemWakeHandler";
 export { useCloudSyncWarning } from "./useCloudSyncWarning";
 export { useAccessibilityAnnouncements } from "./useAccessibilityAnnouncements";
 export { useGettingStartedChecklist } from "./useGettingStartedChecklist";
