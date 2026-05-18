@@ -43,7 +43,7 @@ export async function waitForServerReady(
           (res) => {
             res.resume();
             const status = res.statusCode ?? 0;
-            if (status >= 100 && status < 600) {
+            if (status >= 200 && status < 500) {
               settle(true);
             } else {
               settle(false);

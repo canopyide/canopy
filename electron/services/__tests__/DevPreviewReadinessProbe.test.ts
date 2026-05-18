@@ -37,6 +37,17 @@ function mockSuccessResponse() {
   return req;
 }
 
+function mockResponseWithStatus(statusCode: number) {
+  const req: MockRequest = { on: vi.fn(), end: vi.fn(), destroy: vi.fn() };
+  mockRequest.mockImplementation(
+    (_url: string, _options: Record<string, unknown>, callback: RequestCallback) => {
+      callback({ statusCode, resume: vi.fn() });
+      return req;
+    }
+  );
+  return req;
+}
+
 function mockConnectionRefused() {
   const req: MockRequest = { on: vi.fn(), end: vi.fn(), destroy: vi.fn() };
   mockRequest.mockImplementation(
@@ -84,6 +95,22 @@ describe("waitForServerReady", () => {
     const signal = new AbortController().signal;
     const result = await waitForServerReady("http://localhost:3000", signal, 100);
     expect(result).toBe(false);
+  });
+
+  describe("accepted status range (200–499)", () => {
+    it.each([200, 204, 301, 401, 404, 499])("returns true on HTTP %i", async (status) => {
+      mockResponseWithStatus(status);
+      const signal = new AbortController().signal;
+      const result = await waitForServerReady("http://localhost:3000", signal, 100);
+      expect(result).toBe(true);
+    });
+
+    it.each([100, 199, 500, 502, 503, 599])("returns false on HTTP %i", async (status) => {
+      mockResponseWithStatus(status);
+      const signal = new AbortController().signal;
+      const result = await waitForServerReady("http://localhost:3000", signal, 100);
+      expect(result).toBe(false);
+    });
   });
 });
 

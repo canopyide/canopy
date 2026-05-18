@@ -359,8 +359,32 @@ describe("DevPreviewSessionService", () => {
     });
   });
 
-  it("treats HTTP 5xx responses as ready once the server is reachable", async () => {
-    mockHttpResponse(500);
+  it("does not treat HTTP 5xx responses as ready", async () => {
+    vi.useFakeTimers();
+    mockHttpResponse(503);
+
+    const started = await service.ensure(baseRequest);
+    expect(started.terminalId).toBeTruthy();
+
+    ptyClient.emitData(started.terminalId!, "ready at http://localhost:4173\n");
+
+    const during = service.getState({
+      panelId: baseRequest.panelId,
+      projectId: baseRequest.projectId,
+    });
+    expect(during.status).toBe("starting");
+
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    const after = service.getState({
+      panelId: baseRequest.panelId,
+      projectId: baseRequest.projectId,
+    });
+    expect(after.status).toBe("error");
+  });
+
+  it("treats HTTP 4xx responses as ready (server is reachable)", async () => {
+    mockHttpResponse(404);
 
     const started = await service.ensure(baseRequest);
     expect(started.terminalId).toBeTruthy();
