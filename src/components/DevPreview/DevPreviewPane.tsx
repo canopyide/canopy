@@ -27,7 +27,6 @@ import {
 } from "../Browser/historyUtils";
 import { useDevServer, type UseDevServerReturn } from "@/hooks/useDevServer";
 import { ConsoleDrawer } from "./ConsoleDrawer";
-import { InlineStatusBanner } from "@/components/Terminal/InlineStatusBanner";
 import { useIsDragging } from "@/components/DragDrop";
 import { cn } from "@/lib/utils";
 import { computeDevServerUrl } from "./urlSync";
