@@ -455,6 +455,31 @@ describe("ProjectSettingsManager caching", () => {
     expect(payload).toMatchObject({ type: "error", title: "Project settings corrupted" });
   });
 
+  it("forces _schemaVersion to the codec's authoritative value when a caller injects one", async () => {
+    // A malicious or buggy caller cannot trick the manager into writing a
+    // future _schemaVersion that would self-quarantine on next load — the
+    // codec strips the injected key and stamps its own version.
+    await manager.saveProjectSettings(projectId, {
+      runCommands: [],
+      _schemaVersion: 999,
+    } as unknown as Parameters<typeof manager.saveProjectSettings>[1]);
+
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    const onDisk = JSON.parse(await fs.readFile(settingsPath, "utf-8"));
+    expect(onDisk._schemaVersion).toBe(PROJECT_SETTINGS_SCHEMA_VERSION);
+  });
+
+  it("strips agentInstructions so it never persists to disk", async () => {
+    await manager.saveProjectSettings(projectId, {
+      runCommands: [],
+      agentInstructions: "should-not-persist",
+    } as unknown as Parameters<typeof manager.saveProjectSettings>[1]);
+
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    const onDisk = JSON.parse(await fs.readFile(settingsPath, "utf-8"));
+    expect(onDisk.agentInstructions).toBeUndefined();
+  });
+
   it("quarantines and broadcasts on a future-version envelope without overwriting the file", async () => {
     const settingsPath = path.join(tempDir, projectId, "settings.json");
     await fs.writeFile(

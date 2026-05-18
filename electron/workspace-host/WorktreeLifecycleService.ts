@@ -401,9 +401,11 @@ export class WorktreeLifecycleService {
       const raw = await readJsonFile(settingsPath);
       if (!raw || typeof raw !== "object") continue;
       const settings = raw as Record<string, unknown>;
-      // resourceEnvironment (singular) → resourceEnvironments (plural)
-      // migration is owned by projectSettingsCodec on the main-process read
-      // path, so by the time we get here only the plural form needs handling.
+      // resourceEnvironment (singular) → resourceEnvironments (plural) is
+      // canonicalised by projectSettingsCodec on the main-process read path,
+      // but the workspace-host reads the raw settings.json file directly
+      // (not through the codec) so the fallback stays here for the window
+      // between an upgrade and the user's first settings interaction.
       if (settings.resourceEnvironments && typeof settings.resourceEnvironments === "object") {
         const result: Record<string, ResourceConfig> = {};
         for (const [key, value] of Object.entries(
@@ -413,6 +415,12 @@ export class WorktreeLifecycleService {
           if (parsed.success) result[key] = parsed.data;
         }
         if (Object.keys(result).length > 0) return result;
+      }
+      if (settings.resourceEnvironment && typeof settings.resourceEnvironment === "object") {
+        const parsed = ResourceConfigSchema.safeParse(settings.resourceEnvironment);
+        if (parsed.success) {
+          return { default: parsed.data };
+        }
       }
     }
     return null;

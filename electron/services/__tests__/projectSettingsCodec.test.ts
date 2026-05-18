@@ -129,6 +129,27 @@ describe("encodeEnvelope", () => {
     expect(enc.exposeDaintreeMcpToAgents).toBeUndefined();
   });
 
+  it("strips agentInstructions so the runtime helper never reaches disk", () => {
+    const enc = encodeEnvelope({
+      runCommands: [],
+      // Cast through unknown — `agentInstructions` is a runtime-only field
+      // not in the public ProjectSettings interface but documented as
+      // strippable on save.
+      agentInstructions: "do the thing",
+    } as unknown as Parameters<typeof encodeEnvelope>[0]);
+    expect(enc.agentInstructions).toBeUndefined();
+  });
+
+  it("forces _schemaVersion to the codec's value even if the caller injected one", () => {
+    const enc = encodeEnvelope({
+      runCommands: [],
+      // Caller-supplied _schemaVersion must NEVER survive — the encoder is
+      // the single authority for the on-disk version.
+      _schemaVersion: 999,
+    } as unknown as Parameters<typeof encodeEnvelope>[0]);
+    expect(enc._schemaVersion).toBe(PROJECT_SETTINGS_SCHEMA_VERSION);
+  });
+
   it("preserves canonical fields", () => {
     const enc = encodeEnvelope({
       runCommands: [{ id: "r1", name: "n", command: "c" }],
@@ -241,6 +262,27 @@ describe("ProjectSettingsSaveSchema", () => {
     if (result.success) {
       expect((result.data as Record<string, unknown>).futureField).toEqual({ foo: "bar" });
     }
+  });
+
+  it("rejects caller-supplied _schemaVersion in IPC payloads", () => {
+    const result = ProjectSettingsSaveSchema.safeParse({
+      runCommands: [],
+      _schemaVersion: 999,
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("malformed _schemaVersion values", () => {
+  it.each([
+    ["string version", "999"],
+    ["float version", 1.5],
+    ["negative version", -1],
+    ["NaN version", Number.NaN],
+    ["Infinity version", Number.POSITIVE_INFINITY],
+  ])("treats %s as legacy v0 rather than future-version", (_, version) => {
+    const result = decode({ _schemaVersion: version, runCommands: [] });
+    expect(result.ok).toBe(true);
   });
 });
 

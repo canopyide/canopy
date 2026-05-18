@@ -394,17 +394,19 @@ export function decode(raw: unknown): ProjectSettingsDecodeResult {
  * counterparts at decode time.
  */
 export function encodeEnvelope(settings: ProjectSettings): Record<string, unknown> {
-  const {
-    insecureEnvironmentVariables: _insecure,
-    unresolvedSecureEnvironmentVariables: _unresolved,
-    resourceEnvironment: _legacyResourceEnv,
-    exposeDaintreeMcpToAgents: _legacyExposeMcp,
-    ...persistable
-  } = settings;
-  void _insecure;
-  void _unresolved;
-  void _legacyResourceEnv;
-  void _legacyExposeMcp;
+  // Strip transient runtime fields, both legacy migration fields, the
+  // optional `agentInstructions` runtime helper, and any caller-supplied
+  // `_schemaVersion` (which would otherwise survive `.passthrough()` from
+  // the IPC save schema and overwrite the codec's authoritative version).
+  // The destructure mirrors the security boundary: this is the last code
+  // path before bytes hit disk.
+  const persistable = { ...settings } as Record<string, unknown>;
+  delete persistable.insecureEnvironmentVariables;
+  delete persistable.unresolvedSecureEnvironmentVariables;
+  delete persistable.resourceEnvironment;
+  delete persistable.exposeDaintreeMcpToAgents;
+  delete persistable.agentInstructions;
+  delete persistable._schemaVersion;
 
   return {
     _schemaVersion: PROJECT_SETTINGS_SCHEMA_VERSION,
@@ -461,7 +463,13 @@ export const ProjectSettingsSaveSchema = z
     browserAllowedHosts: z.array(z.string()).optional(),
     agentInstructions: z.unknown().optional(),
   })
-  .passthrough();
+  .passthrough()
+  // Defense-in-depth: even though `encodeEnvelope` strips `_schemaVersion`
+  // before write, reject any caller-supplied envelope key at the IPC
+  // boundary so a renderer can't spoof versions or trigger quarantine.
+  .refine((value) => !Object.prototype.hasOwnProperty.call(value, "_schemaVersion"), {
+    message: "_schemaVersion is reserved",
+  });
 
 /** Internal helpers exported only for unit tests. */
 export const __internal = {
