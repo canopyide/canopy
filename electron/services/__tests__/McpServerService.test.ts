@@ -20,6 +20,11 @@ import type {
 import { CHANNELS } from "../../ipc/channels.js";
 import { ACTIONS_LIST_TOOL } from "../mcp-server/shared.js";
 import {
+  ACTION_TIER_ADDONS,
+  SYSTEM_TIER_ADDONS,
+  WORKBENCH_TIER_TOOLS as WORKBENCH_TIER_TOOLS_LIST,
+} from "../../../shared/config/helpAssistantTierAllowlists.js";
+import {
   WAIT_UNTIL_IDLE_DESCRIPTION,
   WAIT_UNTIL_IDLE_INPUT_SCHEMA,
   WAIT_UNTIL_IDLE_OUTPUT_SCHEMA,
@@ -2519,47 +2524,102 @@ describe("McpServerService", () => {
         title: "Mute Project Notifications",
         description: "Suppress future agent notifications for a project",
       }),
+      // Additional entries needed for full ACTION_TIER_ADDONS coverage.
+      createManifestEntry({
+        id: "worktree.setActive" as ActionId,
+        title: "Set Active Worktree",
+        description: "Set the active worktree for a project",
+      }),
+      createManifestEntry({
+        id: "worktree.refresh" as ActionId,
+        title: "Refresh Worktrees",
+        description: "Refresh worktree status from disk",
+      }),
+      createManifestEntry({
+        id: "terminal.inject" as ActionId,
+        title: "Inject Terminal Input",
+        description: "Inject text into a terminal",
+      }),
+      createManifestEntry({
+        id: "terminal.new" as ActionId,
+        title: "New Terminal",
+        description: "Create a new terminal",
+      }),
+      waitUntilIdleManifestEntry(),
+      createManifestEntry({
+        id: "recipe.list" as ActionId,
+        title: "List Recipes",
+        description: "List available recipes",
+      }),
+      createManifestEntry({
+        id: "recipe.run" as ActionId,
+        title: "Run Recipe",
+        description: "Execute a recipe",
+      }),
+      createManifestEntry({
+        id: "copyTree.injectToTerminal" as ActionId,
+        title: "Inject CopyTree to Terminal",
+        description: "Inject generated context into a terminal",
+      }),
+      createManifestEntry({
+        id: "file.openInEditor" as ActionId,
+        title: "Open File in Editor",
+        description: "Open a file in the system editor",
+      }),
+      // Additional entries needed for full SYSTEM_TIER_ADDONS coverage.
+      createManifestEntry({
+        id: "git.stageFile" as ActionId,
+        title: "Stage File",
+        description: "Stage a file for commit",
+      }),
+      createManifestEntry({
+        id: "git.unstageFile" as ActionId,
+        title: "Unstage File",
+        description: "Unstage a file",
+      }),
+      createManifestEntry({
+        id: "git.stageAll" as ActionId,
+        title: "Stage All",
+        description: "Stage all changed files",
+      }),
+      createManifestEntry({
+        id: "git.unstageAll" as ActionId,
+        title: "Unstage All",
+        description: "Unstage all files",
+      }),
+      createManifestEntry({
+        id: "git.snapshotRevert" as ActionId,
+        title: "Revert Snapshot",
+        description: "Revert to a git snapshot",
+      }),
+      createManifestEntry({
+        id: "git.snapshotDelete" as ActionId,
+        title: "Delete Snapshot",
+        description: "Delete a git snapshot",
+      }),
+      createManifestEntry({
+        id: "forge.openIssue" as ActionId,
+        title: "Open Issue (Forge)",
+        description: "Open an issue via the forge provider",
+      }),
+      createManifestEntry({
+        id: "github.openPR" as ActionId,
+        title: "Open PR",
+        description: "Open a pull request on GitHub",
+      }),
     ];
 
-    // Action tier owns full in-app orchestration: spawn agents, send prompts,
-    // close terminals, the workflow macro, theme/focus shortcuts. System tier
-    // is reserved for filesystem-destructive operations (worktree.delete),
-    // git mutations (commit/push/stage/snapshot), externally-visible writes
-    // (OS clipboard, GitHub issue/PR creation). See ACTION_TIER_ADDONS and
-    // SYSTEM_TIER_ADDONS in shared/config/helpAssistantTierAllowlists.ts.
-    const ACTION_TIER_TOOLS = [
-      "agent.launch",
-      "agent.terminal",
-      "agent.focusNextWaiting",
-      "agent.focusNextWorking",
-      "agent.focusNextAgent",
-      "agent.focusPreviousAgent",
-      "terminal.sendCommand",
-      "terminal.close",
-      "terminal.closeAll",
-      "terminal.kill",
-      "terminal.killAll",
-      "workflow.startWorkOnIssue",
-      "workflow.focusNextAttention",
-      "app.theme.pick",
-      "app.theme.browser.open",
-      "app.theme.toggle",
-      "project.update",
-      "project.saveSettings",
-      "project.muteNotifications",
-    ] as const;
+    // Tier action/addon sets are sourced from the production allowlists so a
+    // rename in shared/config/helpAssistantTierAllowlists.ts or actionIds.ts
+    // produces a test failure here instead of silent drift.
+    // The workbench spot-check array is deliberately minimal — the manifest
+    // only contains a subset of workbench entries. Action and system addon
+    // sets iterate all production entries (manifest gaps filled above).
 
-    const WORKBENCH_TIER_TOOLS = [
-      "workflow.prepBranchForReview",
-      "agentSettings.get",
-      "keybinding.getOverrides",
-    ] as const;
-
-    const SYSTEM_ONLY_TOOLS = [
-      "git.commit",
-      "git.push",
-      "worktree.delete",
-      "copyTree.generateAndCopyFile",
+    const WORKBENCH_SPOT_CHECKS = [
+      WORKBENCH_TIER_TOOLS_LIST.find((id) => id === "workflow.prepBranchForReview")!,
+      WORKBENCH_TIER_TOOLS_LIST.find((id) => id === "agentSettings.get")!,
+      WORKBENCH_TIER_TOOLS_LIST.find((id) => id === "keybinding.getOverrides")!,
     ] as const;
 
     // Fleet-broadcast primitives are renderer-only — they remain available
@@ -2597,16 +2657,16 @@ describe("McpServerService", () => {
       const ids = (await client.listTools()).tools.map((tool) => tool.name);
       expect(ids).toContain("actions.list");
       expect(ids).toContain("worktree.list");
-      for (const id of WORKBENCH_TIER_TOOLS) {
+      for (const id of WORKBENCH_SPOT_CHECKS) {
         expect(ids).toContain(id);
       }
       expect(ids).not.toContain("worktree.create");
       expect(ids).not.toContain("git.commit");
       expect(ids).not.toContain("copyTree.isAvailable");
-      for (const id of ACTION_TIER_TOOLS) {
+      for (const id of ACTION_TIER_ADDONS) {
         expect(ids).not.toContain(id);
       }
-      for (const id of SYSTEM_ONLY_TOOLS) {
+      for (const id of SYSTEM_TIER_ADDONS) {
         expect(ids).not.toContain(id);
       }
       for (const id of NEVER_EXPOSED_VIA_MCP) {
@@ -2628,10 +2688,10 @@ describe("McpServerService", () => {
       expect(ids).toContain("worktree.list");
       expect(ids).not.toContain("worktree.create");
       expect(ids).toContain("worktree.createWithRecipe");
-      for (const id of ACTION_TIER_TOOLS) {
+      for (const id of ACTION_TIER_ADDONS) {
         expect(ids).toContain(id);
       }
-      for (const id of SYSTEM_ONLY_TOOLS) {
+      for (const id of SYSTEM_TIER_ADDONS) {
         expect(ids).not.toContain(id);
       }
       for (const id of NEVER_EXPOSED_VIA_MCP) {
@@ -2653,10 +2713,10 @@ describe("McpServerService", () => {
       expect(ids).toContain("worktree.list");
       expect(ids).not.toContain("worktree.create");
       expect(ids).toContain("worktree.createWithRecipe");
-      for (const id of ACTION_TIER_TOOLS) {
+      for (const id of ACTION_TIER_ADDONS) {
         expect(ids).toContain(id);
       }
-      for (const id of SYSTEM_ONLY_TOOLS) {
+      for (const id of SYSTEM_TIER_ADDONS) {
         expect(ids).toContain(id);
       }
       for (const id of NEVER_EXPOSED_VIA_MCP) {

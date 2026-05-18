@@ -1,6 +1,6 @@
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import type { ActionDispatchResult } from "../../../shared/types/actions.js";
+import type { ActionDispatchResult, BuiltInActionId } from "../../../shared/types/actions.js";
 import type {
   McpAuditRecord,
   McpAuditResult,
@@ -192,7 +192,7 @@ export function unionSet(...sets: ReadonlySet<string>[]): ReadonlySet<string> {
   return out;
 }
 
-const MCP_TOOL_ALLOWLIST: ReadonlySet<string> = new Set([
+const MCP_TOOL_ALLOWLIST_ENTRIES = [
   ACTIONS_LIST_TOOL,
   "actions.getContext",
 
@@ -212,6 +212,8 @@ const MCP_TOOL_ALLOWLIST: ReadonlySet<string> = new Set([
   "git.push",
   "git.snapshotGet",
   "git.snapshotList",
+  "git.snapshotRevert",
+  "git.snapshotDelete",
 
   "github.checkCli",
   "github.getRepoStats",
@@ -267,7 +269,9 @@ const MCP_TOOL_ALLOWLIST: ReadonlySet<string> = new Set([
 
   "system.checkCommand",
   "system.checkDirectory",
-]);
+] as const satisfies readonly BuiltInActionId[];
+
+const MCP_TOOL_ALLOWLIST: ReadonlySet<string> = new Set(MCP_TOOL_ALLOWLIST_ENTRIES);
 
 export const TIER_ALLOWLISTS: Readonly<Record<McpTier, ReadonlySet<string>>> = {
   workbench: WORKBENCH_TOOLS,
