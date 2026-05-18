@@ -703,7 +703,11 @@ export class DevPreviewSessionService {
     session.lastErrorKey = null;
 
     try {
-      this.ptyClient.kill(terminalId, `dev-preview:${context}`, { escalationDelayMs });
+      if (escalationDelayMs !== undefined) {
+        this.ptyClient.kill(terminalId, `dev-preview:${context}`, { escalationDelayMs });
+      } else {
+        this.ptyClient.kill(terminalId, `dev-preview:${context}`);
+      }
     } catch (err) {
       const message = formatErrorMessage(err, "Failed to kill dev preview terminal");
       if (!this.isBenignMissingTerminalError(message)) {
