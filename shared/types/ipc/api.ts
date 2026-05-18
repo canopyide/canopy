@@ -1265,6 +1265,14 @@ export interface ElectronAPI {
      * on the next call without restart.
      */
     getProviders(): Promise<ForgeProviderEntry[]>;
+    /**
+     * Resolve the active forge provider for the given project, applying the
+     * per-project override → global default → first hostname match precedence
+     * chain. Returns `null` when no rule resolves (override or default points
+     * at an unavailable provider, no hostname match). Consumers treat `null`
+     * the same as "no provider registered".
+     */
+    resolveProvider(projectId: string): Promise<ForgeProviderEntry | null>;
   };
   voiceInput: {
     getSettings(): Promise<VoiceInputSettings>;

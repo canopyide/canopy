@@ -1610,6 +1610,10 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
     args: [];
     result: ForgeProviderEntry[];
   };
+  "forge:resolve-provider": {
+    args: [projectId: string];
+    result: ForgeProviderEntry | null;
+  };
 
   // Shortcut Hints
   "shortcut-hints:get-counts": {

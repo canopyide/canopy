@@ -27,6 +27,14 @@ const registryMock = vi.hoisted(() => ({
 
 vi.mock("../../../services/forgeProviderRegistry.js", () => registryMock);
 
+const resolverMock = vi.hoisted(() => ({
+  resolveForgeProvider: vi.fn<(projectId: string) => Promise<ForgeProviderEntry | null>>(
+    async () => null
+  ),
+}));
+
+vi.mock("../../../services/forgeProviderResolver.js", () => resolverMock);
+
 import { registerForgeSettingsHandlers } from "../forgeSettings.js";
 
 function findHandler(channel: string): (...args: unknown[]) => unknown {
@@ -44,15 +52,16 @@ describe("registerForgeSettingsHandlers", () => {
     registryMock.getRegisteredForgeProviders.mockReturnValue([]);
   });
 
-  it("registers three IPC handlers", () => {
+  it("registers four IPC handlers", () => {
     const cleanup = registerForgeSettingsHandlers();
-    expect(ipcMainMock.handle).toHaveBeenCalledTimes(3);
+    expect(ipcMainMock.handle).toHaveBeenCalledTimes(4);
     expect(ipcMainMock.handle).toHaveBeenCalledWith("forge:get-settings", expect.any(Function));
     expect(ipcMainMock.handle).toHaveBeenCalledWith(
       "forge:set-default-provider",
       expect.any(Function)
     );
     expect(ipcMainMock.handle).toHaveBeenCalledWith("forge:get-providers", expect.any(Function));
+    expect(ipcMainMock.handle).toHaveBeenCalledWith("forge:resolve-provider", expect.any(Function));
     cleanup();
   });
 
@@ -122,9 +131,30 @@ describe("registerForgeSettingsHandlers", () => {
     expect(getProviders(null)).toEqual(entries);
   });
 
-  it("cleanup removes all three handlers", () => {
+  it("cleanup removes all four handlers", () => {
     const cleanup = registerForgeSettingsHandlers();
     cleanup();
-    expect(ipcMainMock.removeHandler).toHaveBeenCalledTimes(3);
+    expect(ipcMainMock.removeHandler).toHaveBeenCalledTimes(4);
+  });
+
+  it("resolveProvider delegates to the resolver and forwards its return value", async () => {
+    const entry: ForgeProviderEntry = {
+      pluginId: "builtin",
+      contribution: { id: "github", name: "GitHub", matches: ["github.com"] },
+    };
+    resolverMock.resolveForgeProvider.mockResolvedValueOnce(entry);
+    registerForgeSettingsHandlers();
+    const resolveProvider = findHandler("forge:resolve-provider");
+    await expect(resolveProvider(null, "project-1")).resolves.toEqual(entry);
+    expect(resolverMock.resolveForgeProvider).toHaveBeenCalledWith("project-1");
+  });
+
+  it("resolveProvider returns null for invalid projectId payloads without calling the resolver", async () => {
+    registerForgeSettingsHandlers();
+    const resolveProvider = findHandler("forge:resolve-provider");
+    await expect(resolveProvider(null, "")).resolves.toBeNull();
+    await expect(resolveProvider(null, 42)).resolves.toBeNull();
+    await expect(resolveProvider(null, undefined)).resolves.toBeNull();
+    expect(resolverMock.resolveForgeProvider).not.toHaveBeenCalled();
   });
 });

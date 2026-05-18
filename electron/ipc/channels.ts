@@ -674,6 +674,7 @@ export const CHANNELS = {
   FORGE_GET_SETTINGS: "forge:get-settings",
   FORGE_SET_DEFAULT_PROVIDER: "forge:set-default-provider",
   FORGE_GET_PROVIDERS: "forge:get-providers",
+  FORGE_RESOLVE_PROVIDER: "forge:resolve-provider",
 
   // Plugin channels
   PLUGIN_LIST: "plugin:list",
