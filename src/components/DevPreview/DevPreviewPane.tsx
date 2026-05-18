@@ -386,7 +386,10 @@ export function DevPreviewPane({
   const isMountedRef = useRef(true);
   const prevStatusRef = useRef(status);
 
-  // Phase label debounce (600ms) — prevents three-label slot machine on warm-cache boots
+  const PHASE_DEBOUNCE_MS = 600;
+  const STALL_DETECTION_MS = 15_000;
+
+  // Phase label debounce — prevents three-label slot machine on warm-cache boots
   const lastPhaseChangeAtRef = useRef<number>(0);
   const phaseDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [debouncedPhaseLabel, setDebouncedPhaseLabel] = useState<string | null>(null);
@@ -398,10 +401,10 @@ export function DevPreviewPane({
     }
     lastPhaseChangeAtRef.current = Date.now();
     phaseDebounceTimerRef.current = setTimeout(() => {
-      if (Date.now() - lastPhaseChangeAtRef.current >= 600) {
+      if (Date.now() - lastPhaseChangeAtRef.current >= PHASE_DEBOUNCE_MS) {
         setDebouncedPhaseLabel(phaseLabel);
       }
-    }, 600);
+    }, PHASE_DEBOUNCE_MS);
     return () => {
       if (phaseDebounceTimerRef.current) {
         clearTimeout(phaseDebounceTimerRef.current);
@@ -411,7 +414,7 @@ export function DevPreviewPane({
   }, [phaseLabel]);
 
   // Bypass debounce on deliberate transitions (e.g. restart) so the user sees
-  // the label even when the backend replaces it within the 600ms window.
+  // the label even when the backend replaces it within the debounce window.
   useEffect(() => {
     if (isRestarting) {
       lastPhaseChangeAtRef.current = 0;
@@ -457,7 +460,7 @@ export function DevPreviewPane({
           hasAutoOpenedConsoleRef.current = true;
           setDevPreviewConsoleOpen(id, true);
         }
-      }, 15000);
+      }, STALL_DETECTION_MS);
     }
 
     return () => {
