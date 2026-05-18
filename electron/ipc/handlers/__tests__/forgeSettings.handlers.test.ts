@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { ForgeProviderEntry } from "../../../../shared/types/forge.js";
+import type {
+  ForgeProviderEntry,
+  ResolvedForgeProvider,
+} from "../../../../shared/types/forge.js";
 
 const ipcMainMock = vi.hoisted(() => ({
   handle: vi.fn(),
@@ -28,9 +31,9 @@ const registryMock = vi.hoisted(() => ({
 vi.mock("../../../services/forgeProviderRegistry.js", () => registryMock);
 
 const resolverMock = vi.hoisted(() => ({
-  resolveForgeProvider: vi.fn<(projectId: string) => Promise<ForgeProviderEntry | null>>(
-    async () => null
-  ),
+  resolveForgeProvider: vi.fn<
+    (projectId: string, remoteUrl?: string) => Promise<ResolvedForgeProvider>
+  >(async () => ({ entry: null, resolvedVia: null })),
 }));
 
 vi.mock("../../../services/forgeProviderResolver.js", () => resolverMock);
@@ -142,19 +145,48 @@ describe("registerForgeSettingsHandlers", () => {
       pluginId: "builtin",
       contribution: { id: "github", name: "GitHub", matches: ["github.com"] },
     };
-    resolverMock.resolveForgeProvider.mockResolvedValueOnce(entry);
+    const resolved: ResolvedForgeProvider = { entry, resolvedVia: "hostname" };
+    resolverMock.resolveForgeProvider.mockResolvedValueOnce(resolved);
     registerForgeSettingsHandlers();
     const resolveProvider = findHandler("forge:resolve-provider");
-    await expect(resolveProvider(null, "project-1")).resolves.toEqual(entry);
-    expect(resolverMock.resolveForgeProvider).toHaveBeenCalledWith("project-1");
+    await expect(resolveProvider(null, "project-1")).resolves.toEqual(resolved);
+    expect(resolverMock.resolveForgeProvider).toHaveBeenCalledWith("project-1", undefined);
   });
 
-  it("resolveProvider returns null for invalid projectId payloads without calling the resolver", async () => {
+  it("resolveProvider forwards the optional remoteUrl when provided", async () => {
+    const entry: ForgeProviderEntry = {
+      pluginId: "acme.gitea",
+      contribution: { id: "gitea", name: "Gitea", matches: ["gitea.example.com"] },
+    };
+    const resolved: ResolvedForgeProvider = { entry, resolvedVia: "hostname" };
+    resolverMock.resolveForgeProvider.mockResolvedValueOnce(resolved);
     registerForgeSettingsHandlers();
     const resolveProvider = findHandler("forge:resolve-provider");
-    await expect(resolveProvider(null, "")).resolves.toBeNull();
-    await expect(resolveProvider(null, 42)).resolves.toBeNull();
-    await expect(resolveProvider(null, undefined)).resolves.toBeNull();
+    await expect(
+      resolveProvider(null, "project-1", "git@gitea.example.com:owner/repo.git")
+    ).resolves.toEqual(resolved);
+    expect(resolverMock.resolveForgeProvider).toHaveBeenCalledWith(
+      "project-1",
+      "git@gitea.example.com:owner/repo.git"
+    );
+  });
+
+  it("resolveProvider treats a non-string remoteUrl as undefined", async () => {
+    const resolved: ResolvedForgeProvider = { entry: null, resolvedVia: null };
+    resolverMock.resolveForgeProvider.mockResolvedValueOnce(resolved);
+    registerForgeSettingsHandlers();
+    const resolveProvider = findHandler("forge:resolve-provider");
+    await expect(resolveProvider(null, "project-1", 42)).resolves.toEqual(resolved);
+    expect(resolverMock.resolveForgeProvider).toHaveBeenCalledWith("project-1", undefined);
+  });
+
+  it("resolveProvider returns no-match for invalid projectId payloads without calling the resolver", async () => {
+    registerForgeSettingsHandlers();
+    const resolveProvider = findHandler("forge:resolve-provider");
+    const noMatch = { entry: null, resolvedVia: null };
+    await expect(resolveProvider(null, "")).resolves.toEqual(noMatch);
+    await expect(resolveProvider(null, 42)).resolves.toEqual(noMatch);
+    await expect(resolveProvider(null, undefined)).resolves.toEqual(noMatch);
     expect(resolverMock.resolveForgeProvider).not.toHaveBeenCalled();
   });
 });
