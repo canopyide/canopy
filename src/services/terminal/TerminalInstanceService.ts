@@ -746,16 +746,36 @@ class TerminalInstanceService {
   }
 
   /**
-   * Inject a visible discontinuity marker into the xterm buffer at the point
-   * where the PTY host discarded bytes from the IPC fallback queue. The
-   * leading `\x18` (CAN) cancels any partial in-progress escape sequence so
-   * the styled marker renders correctly mid-stream.
+   * Signal a PTY data-loss discontinuity at the point where the pty-host
+   * discarded bytes from the IPC fallback queue. Instead of writing a styled
+   * ANSI line directly (which embeds presentation in the wire format and can't
+   * be asserted in WebGL-disabled E2E), this writes a structured private-use
+   * OSC 57301 sequence carrying the dropped byte count and a reason code. The
+   * handler registered in `TerminalParserHandler` parses it and fires the
+   * `onDataLoss` callback wired in `getOrCreate`, which draws the yellow
+   * marker. The leading `\x18` (CAN) cancels any partial in-progress escape
+   * sequence so the OSC parses cleanly mid-stream.
    */
   injectDataLossMarker(id: string, droppedBytes: number): void {
     const managed = this.instances.get(id);
     if (!managed || managed.isHibernated) return;
-    const label = droppedBytes > 0 ? `~${droppedBytes} bytes` : "output";
-    managed.terminal.write(`\x18\r\n\x1b[33m⚠ Output dropped (${label})\x1b[0m\r\n`);
+    managed.terminal.write(`\x18\x1b]57301;${droppedBytes};backpressure\x07`);
+  }
+
+  /**
+   * Draw the user-visible yellow data-loss marker. Deferred via
+   * `queueMicrotask` because it is reached from inside the OSC 57301 parse
+   * callback — calling `terminal.write` synchronously during parsing would be
+   * reentrant. Re-checks instance state because hibernation can occur between
+   * the OSC write and this microtask.
+   */
+  private drawDataLossMarker(id: string, droppedBytes: number): void {
+    queueMicrotask(() => {
+      const managed = this.instances.get(id);
+      if (!managed || managed.isHibernated) return;
+      const label = droppedBytes > 0 ? `~${droppedBytes} bytes` : "output";
+      managed.terminal.write(`\r\n\x1b[33m⚠ Output dropped (${label})\x1b[0m\r\n`);
+    });
   }
 
   getOrCreate(
@@ -892,9 +912,15 @@ class TerminalInstanceService {
       onInput,
     };
 
-    managed.parserHandler = new TerminalParserHandler(managed, () => {
-      this.resizeController.applyDeferredResize(id);
-    });
+    managed.parserHandler = new TerminalParserHandler(
+      managed,
+      () => {
+        this.resizeController.applyDeferredResize(id);
+      },
+      (droppedBytes) => {
+        this.drawDataLossMarker(id, droppedBytes);
+      }
+    );
 
     installTerminalBoundListeners(terminal, managed, id, this.makeListenerInstallDeps());
 
