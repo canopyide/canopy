@@ -70,6 +70,7 @@ export class TerminalOutputIngestService {
     const queue = this.queues.get(id);
     if (!queue) return;
     queue.inFlightBytes = Math.max(0, queue.inFlightBytes - bytes);
+    if (this.isBackgrounded(id)) return;
     if (queue.inFlightBytes <= RENDERER_LOW_WATERMARK_BYTES && queue.chunks.length > 0) {
       this.tryDrain(id, queue);
     }
@@ -78,6 +79,7 @@ export class TerminalOutputIngestService {
   public notifyParsed(id: string): void {
     const queue = this.queues.get(id);
     if (!queue || queue.chunks.length === 0 || queue.drainScheduled) return;
+    if (this.isBackgrounded(id)) return;
     this.tryDrain(id, queue);
   }
 
@@ -88,6 +90,7 @@ export class TerminalOutputIngestService {
    * single multi-MB xterm.write() on wake would block the main thread (#4853).
    */
   public resumeFlush(id: string): void {
+    if (this.isBackgrounded(id)) return;
     const queue = this.queues.get(id);
     if (!queue || queue.chunks.length === 0) return;
     this.tryDrain(id, queue);
@@ -131,6 +134,10 @@ export class TerminalOutputIngestService {
     }, 50);
   }
 
+  private isBackgrounded(id: string): boolean {
+    return this.getTier?.(id) === TerminalRefreshTier.BACKGROUND;
+  }
+
   private markTerminalDataReceived(id: string, data: string | Uint8Array): void {
     this.perfSampleCounter += 1;
     if (this.perfSampleCounter % 64 !== 0) return;
@@ -171,7 +178,7 @@ export class TerminalOutputIngestService {
     // in-flight MessagePort batches still arrive after backgrounding; parsing
     // them burns renderer main-thread CPU for a pane the user can't see. The
     // queue is flushed via resumeFlush() when the tier upgrades back to active.
-    if (this.getTier?.(id) === TerminalRefreshTier.BACKGROUND) {
+    if (this.isBackgrounded(id)) {
       return;
     }
 

@@ -909,6 +909,11 @@ class TerminalInstanceService {
     // lastAppliedTier so that a later promotion is seen as an upgrade.
     if (initialTier === TerminalRefreshTier.BACKGROUND) {
       managed.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
+      // Seed the renderer-policy backend tier so the first promotion is seen
+      // as a real BACKGROUND→active transition. Without this, lastBackendTier
+      // is unset, prevBackendTier defaults to "active", and the wake/flush
+      // path is skipped — bytes held by the background gate would never drain.
+      this.rendererPolicy.initializeBackendTier(id, "background");
       try {
         managed.imageAddon?.dispose();
       } catch {

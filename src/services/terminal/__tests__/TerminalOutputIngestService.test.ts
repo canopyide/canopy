@@ -544,6 +544,76 @@ describe("TerminalOutputIngestService", () => {
       expect(writeToTerminal).not.toHaveBeenCalled();
     });
 
+    it("notifyWriteComplete does not drain while tier is BACKGROUND", () => {
+      const writeToTerminal = vi.fn();
+      const tiers = new Map<string, TerminalRefreshTier>([["term-1", TerminalRefreshTier.FOCUSED]]);
+      const service = new TerminalOutputIngestService(
+        writeToTerminal,
+        (id) => tiers.get(id) ?? TerminalRefreshTier.FOCUSED
+      );
+
+      // Active large write pushes inFlightBytes over the high watermark.
+      const largeData = "x".repeat(140_000);
+      service.bufferData("term-1", largeData);
+      expect(writeToTerminal).toHaveBeenCalledTimes(1);
+
+      // Tier flips to BACKGROUND; subsequent data is held.
+      tiers.set("term-1", TerminalRefreshTier.BACKGROUND);
+      service.bufferData("term-1", "held-while-bg");
+      expect(writeToTerminal).toHaveBeenCalledTimes(1);
+
+      // Acknowledging the in-flight write must NOT drain the held bytes.
+      service.notifyWriteComplete("term-1", 140_000);
+      expect(writeToTerminal).toHaveBeenCalledTimes(1);
+
+      // Back to active + resume → held bytes flush.
+      tiers.set("term-1", TerminalRefreshTier.FOCUSED);
+      service.resumeFlush("term-1");
+      expect(writeToTerminal).toHaveBeenCalledTimes(2);
+      expect(writeToTerminal).toHaveBeenCalledWith("term-1", "held-while-bg");
+    });
+
+    it("notifyParsed does not bypass the background gate", () => {
+      const writeToTerminal = vi.fn();
+      const service = new TerminalOutputIngestService(
+        writeToTerminal,
+        () => TerminalRefreshTier.BACKGROUND
+      );
+
+      service.bufferData("term-1", "queued-bg");
+      service.notifyParsed("term-1");
+      expect(writeToTerminal).not.toHaveBeenCalled();
+    });
+
+    it("scheduled ink-erase drain does not fire while backgrounded", () => {
+      vi.useFakeTimers();
+      const writeToTerminal = vi.fn();
+      const tiers = new Map<string, TerminalRefreshTier>([["term-1", TerminalRefreshTier.FOCUSED]]);
+      const service = new TerminalOutputIngestService(
+        writeToTerminal,
+        (id) => tiers.get(id) ?? TerminalRefreshTier.FOCUSED
+      );
+
+      // Active ink-erase first half → drain scheduled via setTimeout.
+      service.bufferData("term-1", "\x1b[2K");
+      expect(writeToTerminal).toHaveBeenCalledTimes(1);
+      service.notifyWriteComplete("term-1", 4);
+
+      // Tier flips to BACKGROUND before the deferred drain fires.
+      tiers.set("term-1", TerminalRefreshTier.BACKGROUND);
+      service.bufferData("term-1", "\x1b[1Acontent");
+      vi.advanceTimersByTime(0);
+      expect(writeToTerminal).toHaveBeenCalledTimes(1);
+
+      // Back to active + resume → held bytes flush.
+      tiers.set("term-1", TerminalRefreshTier.FOCUSED);
+      service.resumeFlush("term-1");
+      expect(writeToTerminal).toHaveBeenCalledTimes(2);
+      expect(writeToTerminal).toHaveBeenCalledWith("term-1", "\x1b[1Acontent");
+
+      vi.useRealTimers();
+    });
+
     it("isolates the background gate per terminal", () => {
       const writeToTerminal = vi.fn();
       const tiers = new Map<string, TerminalRefreshTier>([

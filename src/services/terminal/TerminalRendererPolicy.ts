@@ -103,6 +103,12 @@ export class TerminalRendererPolicy {
     this.setBackendTier(id, backendTier);
 
     if (backendTier === "background" && prevBackendTier === "active") {
+      // Invalidate any in-flight wake: if a BACKGROUND→active wake is still
+      // pending when the terminal is re-backgrounded, its resolved callback
+      // must not refresh/flush into a now-hidden pane (reintroduces the CPU
+      // burn this gate eliminates). The next real activation starts a fresh
+      // generation.
+      this.bumpWakeGeneration(id);
       managed.needsWake = true;
     }
 
