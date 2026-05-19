@@ -8,6 +8,7 @@ import type {
   Worktree,
   WorktreeMood,
   WorktreeLifecycleStatus,
+  WorktreeLifecyclePhaseResult,
 } from "../../shared/types/worktree.js";
 import type { GitHubPRCIStatus } from "../../shared/types/github.js";
 import type { WorktreeSnapshot } from "../../shared/types/workspace-host.js";
@@ -170,6 +171,10 @@ export class WorktreeMonitor {
   // Extra state
   private _createdAt: number | undefined;
   private _lifecycleStatus: WorktreeLifecycleStatus | undefined;
+  // Accumulated per-phase teardown results. Lifecycle owned by
+  // WorktreeLifecycleService.runLifecycleTeardown (cleared at run start, upserted
+  // per phase) so a later phase no longer overwrites an earlier phase's outcome.
+  private _lifecyclePhaseResults: WorktreeLifecyclePhaseResult[] = [];
 
   // Resource state
   private _resourceStatus:
@@ -614,6 +619,29 @@ export class WorktreeMonitor {
     this._lifecycleStatus = status;
   }
 
+  get lifecyclePhaseResults(): readonly WorktreeLifecyclePhaseResult[] {
+    return this._lifecyclePhaseResults;
+  }
+
+  /** Reset the per-phase accumulator. Called at the start of a teardown run. */
+  clearLifecyclePhaseResults(): void {
+    this._lifecyclePhaseResults = [];
+  }
+
+  /**
+   * Record a settled phase result. Upserts by `phase` so a re-entered phase
+   * replaces its prior entry rather than duplicating, while distinct phases
+   * (resource-teardown then teardown) both accumulate.
+   */
+  recordLifecyclePhaseResult(result: WorktreeLifecyclePhaseResult): void {
+    const idx = this._lifecyclePhaseResults.findIndex((r) => r.phase === result.phase);
+    if (idx >= 0) {
+      this._lifecyclePhaseResults[idx] = result;
+    } else {
+      this._lifecyclePhaseResults.push(result);
+    }
+  }
+
   get resourceStatus():
     | import("../../shared/types/worktree.js").WorktreeResourceStatus
     | undefined {
@@ -947,6 +975,8 @@ export class WorktreeMonitor {
       worktreeId: this.id,
       timestamp: Date.now(),
       lifecycleStatus: this._lifecycleStatus,
+      lifecyclePhaseResults:
+        this._lifecyclePhaseResults.length > 0 ? [...this._lifecyclePhaseResults] : undefined,
       resourceStatus,
       resourceConnectCommand: this._resourceConnectCommand,
       hasResourceConfig: this._hasResourceConfig || undefined,

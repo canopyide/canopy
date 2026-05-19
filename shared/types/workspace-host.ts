@@ -21,6 +21,7 @@ import type {
   Worktree,
   WorktreeMood,
   WorktreeLifecycleStatus,
+  WorktreeLifecyclePhaseResult,
   WorktreeResourceStatus,
 } from "./worktree.js";
 import type { Credentials } from "./forge.js";
@@ -111,6 +112,14 @@ export interface WorktreeSnapshot {
   timestamp?: number;
   /** Current or last completed lifecycle script status */
   lifecycleStatus?: WorktreeLifecycleStatus;
+
+  /**
+   * Per-phase teardown results, accumulated across a multi-phase teardown run
+   * (resource-teardown then teardown). Distinct from `lifecycleStatus`, which
+   * only reflects the last-active phase — a later phase no longer overwrites an
+   * earlier phase's outcome here. Omitted when no teardown has run.
+   */
+  lifecyclePhaseResults?: WorktreeLifecyclePhaseResult[];
 
   /** Whether a plan file (TODO.md, PLAN.md, etc.) exists in the worktree root */
   hasPlanFile?: boolean;

@@ -45,6 +45,36 @@ export interface WorktreeLifecycleStatus {
   logPath?: string;
 }
 
+/**
+ * Failure-severity classification for a settled lifecycle phase.
+ * `billing-critical` — the failure may leave cloud resources running and
+ * billing (resource teardown). `cosmetic` — local cleanup failed but the
+ * worktree directory is about to be deleted anyway.
+ */
+export type WorktreeLifecyclePhaseCategory = "billing-critical" | "cosmetic";
+
+/**
+ * Settled result for a single lifecycle phase, accumulated across multi-phase
+ * runs (resource-teardown then teardown) so a later phase no longer overwrites
+ * an earlier phase's outcome. All fields are primitives for structured-clone
+ * IPC transport. `exitCode`/`signalName` capture the child-process `close`
+ * event structurally — a SIGKILL after timeout escalation is categorically
+ * different from a self-inflicted non-zero exit.
+ */
+export interface WorktreeLifecyclePhaseResult {
+  phase: WorktreeLifecyclePhase;
+  state: WorktreeLifecycleState;
+  category: WorktreeLifecyclePhaseCategory;
+  exitCode: number | null;
+  signalName: string | null;
+  output?: string;
+  error?: string;
+  startedAt: number;
+  completedAt: number;
+  timedOut?: boolean;
+  aborted?: boolean;
+}
+
 /** Resource status from the last manual status check */
 export interface WorktreeResourceStatus {
   /** Raw status string from CLI output (e.g., "ready", "paused", "running") */

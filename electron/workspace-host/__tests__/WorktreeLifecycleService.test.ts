@@ -1132,6 +1132,8 @@ describe("WorktreeLifecycleService", () => {
   describe("runLifecycleTeardown — log persistence wiring", () => {
     function makeTeardownMonitor(opts: { hasResourceConfig?: boolean } = {}) {
       const statuses: unknown[] = [];
+      const phaseResults: import("../../../shared/types/worktree.js").WorktreeLifecyclePhaseResult[] =
+        [];
       return {
         name: "wt-1",
         branch: "feature/x",
@@ -1145,6 +1147,19 @@ describe("WorktreeLifecycleService", () => {
         resourceStatus: undefined,
         setLifecycleStatus(s: unknown) {
           statuses.push(s);
+        },
+        get lifecyclePhaseResults() {
+          return phaseResults;
+        },
+        clearLifecyclePhaseResults() {
+          phaseResults.length = 0;
+        },
+        recordLifecyclePhaseResult(
+          r: import("../../../shared/types/worktree.js").WorktreeLifecyclePhaseResult
+        ) {
+          const idx = phaseResults.findIndex((x) => x.phase === r.phase);
+          if (idx >= 0) phaseResults[idx] = r;
+          else phaseResults.push(r);
         },
       };
     }
@@ -1256,6 +1271,243 @@ describe("WorktreeLifecycleService", () => {
       // Colon in the path must not appear in the persisted directory.
       expect(finalStatus.logPath).not.toContain("my:app");
       expect(n(finalStatus.logPath ?? "")).toContain("/_projects_my_app/teardown-logs/wt-1/");
+    });
+  });
+
+  describe("signal capture and abort/timeout markers", () => {
+    function makeManualChild(pid: number | undefined = 12345) {
+      const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
+      const child = {
+        pid,
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+          (listeners[event] ??= []).push(cb);
+        }),
+        kill: vi.fn(),
+      };
+      const fireClose = (code: number | null, signal?: string) =>
+        listeners["close"]?.forEach((cb) => cb(code, signal));
+      return { child, fireClose };
+    }
+
+    it("captures the OS signal name from the close event (not flattened into exit code)", async () => {
+      const { child, fireClose } = makeManualChild();
+      mockSpawn.mockReturnValue(child as never);
+
+      const p = service.runCommands(["slow-cmd"], { cwd: "/t", env: {}, onProgress: vi.fn() });
+      await Promise.resolve();
+      fireClose(null, "SIGTERM");
+      const result = await p;
+
+      expect(result.success).toBe(false);
+      expect(result.exitCode).toBeNull();
+      expect(result.signalName).toBe("SIGTERM");
+      expect(result.error).toContain("killed by SIGTERM");
+    });
+
+    it("captures exit code with a null signal on a normal non-zero exit", async () => {
+      const { child, fireClose } = makeManualChild();
+      mockSpawn.mockReturnValue(child as never);
+
+      const p = service.runCommands(["bad-cmd"], { cwd: "/t", env: {}, onProgress: vi.fn() });
+      await Promise.resolve();
+      fireClose(3);
+      const result = await p;
+
+      expect(result.exitCode).toBe(3);
+      expect(result.signalName).toBeNull();
+      expect(result.error).not.toContain("killed by");
+    });
+
+    it("appends a timeout marker to the captured output before killing", async () => {
+      vi.useFakeTimers();
+      try {
+        const { child, fireClose } = makeManualChild();
+        mockSpawn.mockReturnValue(child as never);
+
+        const p = service.runCommands(["slow-cmd"], {
+          cwd: "/t",
+          env: {},
+          timeoutMs: 1000,
+          onProgress: vi.fn(),
+        });
+        vi.advanceTimersByTime(1001);
+        fireClose(null, "SIGKILL");
+        const result = await p;
+
+        expect(result.timedOut).toBe(true);
+        expect(result.signalName).toBe("SIGKILL");
+        expect(result.output).toContain("[Process timed out after 1000ms");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("appends an abort marker to the captured output", async () => {
+      const ac = new AbortController();
+      const { child, fireClose } = makeManualChild();
+      mockSpawn.mockReturnValue(child as never);
+
+      const p = service.runCommands(["slow-cmd"], {
+        cwd: "/t",
+        env: {},
+        signal: ac.signal,
+        onProgress: vi.fn(),
+      });
+      await Promise.resolve();
+      ac.abort();
+      fireClose(null, "SIGTERM");
+      const result = await p;
+
+      expect(result.aborted).toBe(true);
+      expect(result.output).toContain("[Process aborted:");
+    });
+  });
+
+  describe("runLifecycleTeardown — phase result accumulation", () => {
+    function makeTeardownMonitor() {
+      const phaseResults: import("../../../shared/types/worktree.js").WorktreeLifecyclePhaseResult[] =
+        [];
+      let lifecycleStatus: unknown;
+      return {
+        name: "wt-1",
+        branch: "feature/x",
+        path: "/wt",
+        worktreeMode: "local",
+        hasResourceConfig: true,
+        resourceStatus: undefined,
+        get lifecycleStatus() {
+          return lifecycleStatus;
+        },
+        setLifecycleStatus(s: unknown) {
+          lifecycleStatus = s;
+        },
+        get lifecyclePhaseResults() {
+          return phaseResults;
+        },
+        clearLifecyclePhaseResults() {
+          phaseResults.length = 0;
+        },
+        recordLifecyclePhaseResult(
+          r: import("../../../shared/types/worktree.js").WorktreeLifecyclePhaseResult
+        ) {
+          const idx = phaseResults.findIndex((x) => x.phase === r.phase);
+          if (idx >= 0) phaseResults[idx] = r;
+          else phaseResults.push(r);
+        },
+      };
+    }
+
+    function makeCtx(monitor: ReturnType<typeof makeTeardownMonitor>) {
+      return {
+        projectRootPath: "/root",
+        projectEnvVars: {},
+        getMonitor: () => monitor as unknown,
+        emitUpdate: vi.fn(),
+      } as unknown as import("../WorktreeLifecycleService.js").WorkspaceHostContext;
+    }
+
+    it("accumulates both phases without the later phase overwriting the earlier failure", async () => {
+      const config = {
+        teardown: ["cleanup.sh"],
+        resource: { teardown: ["terraform destroy"], provider: "akash" },
+      };
+      mockAccess.mockImplementation(async (p: unknown) => {
+        if (n(p as string).endsWith("/root/.daintree/config.json")) return undefined;
+        throw new Error("ENOENT");
+      });
+      mockReadFile.mockResolvedValue(JSON.stringify(config) as never);
+
+      // First spawn (resource-teardown) fails; second (local teardown) succeeds.
+      let call = 0;
+      mockSpawn.mockImplementation(() => {
+        call++;
+        const exit = call === 1 ? 1 : 0;
+        const listeners: Record<string, ((...a: unknown[]) => void)[]> = {};
+        const child = {
+          pid: 1234,
+          stdout: { on: vi.fn() },
+          stderr: { on: vi.fn() },
+          on: vi.fn((event: string, cb: (...a: unknown[]) => void) => {
+            (listeners[event] ??= []).push(cb);
+            if (event === "close") setTimeout(() => cb(exit), 0);
+          }),
+          kill: vi.fn(),
+        };
+        return child as never;
+      });
+
+      const monitor = makeTeardownMonitor();
+      await service.runLifecycleTeardown("wt-1", monitor as never, false, makeCtx(monitor));
+
+      const results = monitor.lifecyclePhaseResults;
+      expect(results).toHaveLength(2);
+      expect(results[0]).toMatchObject({
+        phase: "resource-teardown",
+        state: "failed",
+        category: "billing-critical",
+        exitCode: 1,
+      });
+      expect(results[1]).toMatchObject({
+        phase: "teardown",
+        state: "success",
+        category: "cosmetic",
+        exitCode: 0,
+      });
+    });
+
+    it("records only the billing-critical phase for a resource-only teardown", async () => {
+      const config = { resource: { teardown: ["terraform destroy"], provider: "akash" } };
+      mockAccess.mockImplementation(async (p: unknown) => {
+        if (n(p as string).endsWith("/root/.daintree/config.json")) return undefined;
+        throw new Error("ENOENT");
+      });
+      mockReadFile.mockResolvedValue(JSON.stringify(config) as never);
+      mockSpawn.mockImplementation(() => {
+        const listeners: Record<string, ((...a: unknown[]) => void)[]> = {};
+        const child = {
+          pid: 1234,
+          stdout: { on: vi.fn() },
+          stderr: { on: vi.fn() },
+          on: vi.fn((event: string, cb: (...a: unknown[]) => void) => {
+            (listeners[event] ??= []).push(cb);
+            if (event === "close") setTimeout(() => cb(0), 0);
+          }),
+          kill: vi.fn(),
+        };
+        return child as never;
+      });
+
+      const monitor = makeTeardownMonitor();
+      await service.runLifecycleTeardown("wt-1", monitor as never, false, makeCtx(monitor));
+
+      const results = monitor.lifecyclePhaseResults;
+      expect(results).toHaveLength(1);
+      expect(results[0]).toMatchObject({
+        phase: "resource-teardown",
+        category: "billing-critical",
+      });
+    });
+
+    it("clears stale results when a re-invocation has no teardown configured", async () => {
+      const monitor = makeTeardownMonitor();
+      monitor.recordLifecyclePhaseResult({
+        phase: "resource-teardown",
+        state: "failed",
+        category: "billing-critical",
+        exitCode: 1,
+        signalName: null,
+        startedAt: 1,
+        completedAt: 2,
+      });
+
+      // No config file exists this time → early-return path.
+      mockAccess.mockRejectedValue(new Error("ENOENT"));
+
+      await service.runLifecycleTeardown("wt-1", monitor as never, false, makeCtx(monitor));
+
+      expect(monitor.lifecyclePhaseResults).toHaveLength(0);
     });
   });
 });

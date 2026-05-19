@@ -296,6 +296,68 @@ describe("WorktreeMonitor", () => {
     );
   });
 
+  describe("lifecycle phase results accumulator", () => {
+    function phaseResult(
+      overrides: Partial<import("../../../shared/types/worktree.js").WorktreeLifecyclePhaseResult>
+    ): import("../../../shared/types/worktree.js").WorktreeLifecyclePhaseResult {
+      return {
+        phase: "resource-teardown",
+        state: "success",
+        category: "billing-critical",
+        exitCode: 0,
+        signalName: null,
+        startedAt: 1,
+        completedAt: 2,
+        ...overrides,
+      };
+    }
+
+    it("omits lifecyclePhaseResults from the snapshot when empty", () => {
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, makeCallbacks(), "main");
+      expect(monitor.getSnapshot().lifecyclePhaseResults).toBeUndefined();
+    });
+
+    it("records phase results and surfaces a copy in the snapshot", () => {
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, makeCallbacks(), "main");
+      monitor.recordLifecyclePhaseResult(
+        phaseResult({ phase: "resource-teardown", state: "failed", exitCode: 1 })
+      );
+      monitor.recordLifecyclePhaseResult(
+        phaseResult({ phase: "teardown", state: "success", category: "cosmetic" })
+      );
+
+      const results = monitor.getSnapshot().lifecyclePhaseResults;
+      expect(results).toHaveLength(2);
+      expect(results?.[0]).toMatchObject({
+        phase: "resource-teardown",
+        state: "failed",
+        category: "billing-critical",
+        exitCode: 1,
+      });
+      expect(results?.[1]).toMatchObject({ phase: "teardown", category: "cosmetic" });
+      // Snapshot must be a copy — mutating internal state later must not leak.
+      monitor.clearLifecyclePhaseResults();
+      expect(results).toHaveLength(2);
+    });
+
+    it("upserts by phase rather than duplicating", () => {
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, makeCallbacks(), "main");
+      monitor.recordLifecyclePhaseResult(phaseResult({ phase: "resource-teardown", exitCode: 1 }));
+      monitor.recordLifecyclePhaseResult(phaseResult({ phase: "resource-teardown", exitCode: 0 }));
+
+      const results = monitor.getSnapshot().lifecyclePhaseResults;
+      expect(results).toHaveLength(1);
+      expect(results?.[0].exitCode).toBe(0);
+    });
+
+    it("clearLifecyclePhaseResults resets the accumulator", () => {
+      const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, makeCallbacks(), "main");
+      monitor.recordLifecyclePhaseResult(phaseResult({}));
+      monitor.clearLifecyclePhaseResults();
+      expect(monitor.getSnapshot().lifecyclePhaseResults).toBeUndefined();
+    });
+  });
+
   it("includes prTitle and issueTitle in snapshot after setPRInfo", () => {
     const callbacks = makeCallbacks();
     const monitor = new WorktreeMonitor(TEST_WORKTREE, TEST_CONFIG, callbacks, "main");
