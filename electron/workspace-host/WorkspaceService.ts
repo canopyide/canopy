@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import PQueue from "p-queue";
 import { existsSync } from "fs";
 import { stat, readFile, access, mkdir } from "fs/promises";
-import { resolve as pathResolve, isAbsolute, dirname } from "path";
+import { resolve as pathResolve, isAbsolute, dirname, basename } from "path";
 import { validateBranchName } from "../../shared/utils/pathPattern.js";
 import { generateProjectId, settingsFilePath } from "../services/projectStorePaths.js";
 import { SimpleGit, BranchSummary } from "simple-git";
@@ -110,7 +110,18 @@ export class WorkspaceService {
   private topologyWatcherSubscription = new MutableDisposable();
   private topologyReconcileQueue = new PQueue({ concurrency: 1 });
   private topologyReconcilePending = false;
-  private topologyWatchSuppressUntil = 0;
+  // App-owned worktree create/delete register the metadata-subdir basename
+  // here so the watcher event their own `git worktree add/remove` produces is
+  // recognized and dropped — instead of blanket-suppressing *all* watcher
+  // events for a fixed window, which silently swallowed concurrent external
+  // `git worktree remove` calls (#8412). External events whose basename isn't
+  // pending still flow through to reconciliation.
+  private topologyPendingCreate = new Set<string>();
+  private topologyPendingDelete = new Set<string>();
+  private topologyPendingSafetyTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  // Events accumulate here across the 300ms debounce window and are filtered
+  // against the pending sets at drain time, preserving burst coalescing.
+  private topologyEventBuffer: Array<{ path: string }> = [];
   private topologyWatchCooldownUntil = 0;
   private topologyWatchCooldownDirty = false;
   private topologyDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -948,14 +959,20 @@ export class WorkspaceService {
     if (!existsSync(metadataDir)) return;
 
     const generation = ++this.topologyWatcherGeneration;
-    const schedule = () => this.scheduleTopologyReconcile();
+    const drain = () => this.drainTopologyEventBuffer();
 
     parcelWatcher
-      .subscribe(metadataDir, (_err, _events) => {
+      .subscribe(metadataDir, (_err, events) => {
+        if (Array.isArray(events)) {
+          for (const ev of events) {
+            const path = (ev as { path?: unknown } | null)?.path;
+            if (typeof path === "string") this.topologyEventBuffer.push({ path });
+          }
+        }
         if (this.topologyDebounceTimer) {
           clearTimeout(this.topologyDebounceTimer);
         }
-        this.topologyDebounceTimer = setTimeout(schedule, 300);
+        this.topologyDebounceTimer = setTimeout(drain, 300);
       })
       .then((subscription) => {
         if (generation !== this.topologyWatcherGeneration) {
@@ -985,14 +1002,73 @@ export class WorkspaceService {
       clearTimeout(this.topologyDebounceTimer);
       this.topologyDebounceTimer = null;
     }
+    this.topologyEventBuffer = [];
     this.topologyReconcilePending = false;
     this.topologyWatchCooldownDirty = false;
+  }
+
+  // The basename of `.git/worktrees/<name>` is exactly what @parcel/watcher
+  // reports for the create/delete of the metadata subdir, so it's the key we
+  // match watcher events against. Resolve first so a trailing slash or a
+  // relative path normalizes to the same leaf as the event path.
+  private topologyMetadataKey(worktreePath: string): string {
+    return basename(pathResolve(worktreePath));
+  }
+
+  private topologyMarkPending(key: string, set: Set<string>): void {
+    set.add(key);
+    const existing = this.topologyPendingSafetyTimers.get(key);
+    if (existing) clearTimeout(existing);
+    // Safety valve: if the watcher event never arrives (slow FS, missed
+    // event), the entry must not suppress a later real external change
+    // indefinitely. Clear-only — the cooldown/dirty path already reschedules
+    // any reconcile genuinely needed.
+    const timer = setTimeout(() => {
+      this.topologyPendingCreate.delete(key);
+      this.topologyPendingDelete.delete(key);
+      this.topologyPendingSafetyTimers.delete(key);
+    }, 5000);
+    timer.unref?.();
+    this.topologyPendingSafetyTimers.set(key, timer);
+  }
+
+  private topologyClearPending(key: string): void {
+    this.topologyPendingCreate.delete(key);
+    this.topologyPendingDelete.delete(key);
+    const timer = this.topologyPendingSafetyTimers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      this.topologyPendingSafetyTimers.delete(key);
+    }
+  }
+
+  private drainTopologyEventBuffer(): void {
+    const events = this.topologyEventBuffer;
+    this.topologyEventBuffer = [];
+
+    let hasUnmatched = false;
+    for (const ev of events) {
+      const key = basename(ev.path);
+      if (this.topologyPendingCreate.has(key) || this.topologyPendingDelete.has(key)) {
+        // App-owned op produced this event — drain the pending entry (and
+        // cancel its safety valve) so a *subsequent* external change to the
+        // same name is no longer treated as ours.
+        this.topologyClearPending(key);
+      } else {
+        hasUnmatched = true;
+      }
+    }
+
+    // Empty payloads can't be classified, so fall back to the pre-fix
+    // behavior of always reconciling rather than risk dropping a real change.
+    if (events.length === 0 || hasUnmatched) {
+      this.scheduleTopologyReconcile();
+    }
   }
 
   private scheduleTopologyReconcile(): void {
     if (!this.topologyWatcherEnabled) return;
     if (!this.pollingEnabled) return;
-    if (Date.now() < this.topologyWatchSuppressUntil) return;
     if (Date.now() < this.topologyWatchCooldownUntil) {
       this.topologyWatchCooldownDirty = true;
       return;
@@ -1278,6 +1354,9 @@ export class WorkspaceService {
     rootPath: string,
     options: CreateWorktreeOptions
   ): Promise<void> {
+    // Hoisted so the catch can clear the pending entry even though
+    // absoluteCreatePath is block-scoped to the try.
+    let pendingCreateKey: string | null = null;
     try {
       const git = createHardenedGit(rootPath);
       const { baseBranch, path } = options;
@@ -1366,10 +1445,11 @@ export class WorkspaceService {
       // `--end-of-options` after the subcommand flags so any leading-dash ref
       // or path that slipped past validation is treated as positional.
 
-      // Suppress the topology watcher during app-owned worktree creation so
-      // the `.git/worktrees/<name>/` directory creation doesn't trigger a
-      // redundant discoverAndSyncWorktrees pass.
-      this.topologyWatchSuppressUntil = Date.now() + 60000;
+      // Mark the metadata-subdir basename pending so the watcher event our own
+      // `git worktree add` produces is recognized and dropped — without
+      // blanket-suppressing concurrent external `git worktree remove` events.
+      pendingCreateKey = this.topologyMetadataKey(absoluteCreatePath);
+      this.topologyMarkPending(pendingCreateKey, this.topologyPendingCreate);
 
       if (useExistingBranch) {
         await git.raw(["worktree", "add", "--end-of-options", path, newBranch]);
@@ -1444,10 +1524,11 @@ export class WorkspaceService {
       // authoritative and would remove every other non-main monitor.
       await this.addNewWorktreeMonitor(createdWorktree, isActive, true);
 
-      // Reset suppression: the monitor is registered, metadata writes will
-      // settle within 500ms. The short post-op window absorbs any remaining
-      // filesystem events from the git worktree add.
-      this.topologyWatchSuppressUntil = Date.now() + 500;
+      // Monitor is registered. Drop the pending entry now: any still-buffered
+      // create event for this name will be matched by the next drain (the
+      // safety valve is cancelled here so the happy path can't spuriously
+      // reconcile 5s later).
+      this.topologyClearPending(pendingCreateKey);
 
       if (options.worktreeMode && options.worktreeMode !== "local") {
         const m = this.monitors.get(canonicalWorktreeId);
@@ -1487,7 +1568,9 @@ export class WorkspaceService {
         console.warn("[WorkspaceHost] createWorktree async tail failed:", err);
       });
     } catch (error) {
-      this.topologyWatchSuppressUntil = Date.now() + 500;
+      // Create failed — drop any pending entry so a real external change to
+      // that name isn't masked, and cancel its safety valve.
+      if (pendingCreateKey) this.topologyClearPending(pendingCreateKey);
       this.sendEvent({
         type: "create-worktree-result",
         requestId,
@@ -1552,6 +1635,9 @@ export class WorkspaceService {
     force: boolean = false,
     deleteBranch: boolean = false
   ): Promise<void> {
+    // Hoisted so the catch can clear the pending entry even though `monitor`
+    // is block-scoped to the try.
+    let pendingDeleteKey: string | null = null;
     try {
       const monitor = this.monitors.get(worktreeId);
       if (!monitor) {
@@ -1600,10 +1686,11 @@ export class WorkspaceService {
 
       await this.runLifecycleTeardown(worktreeId, monitor, force);
 
-      // Suppress the topology watcher during app-owned worktree deletion so
-      // the `.git/worktrees/<name>/` directory removal doesn't trigger a
-      // redundant discoverAndSyncWorktrees pass.
-      this.topologyWatchSuppressUntil = Date.now() + 60000;
+      // Mark the metadata-subdir basename pending so the watcher event our own
+      // `git worktree remove` produces is recognized and dropped — without
+      // blanket-suppressing concurrent external worktree changes.
+      pendingDeleteKey = this.topologyMetadataKey(monitor.path);
+      this.topologyMarkPending(pendingDeleteKey, this.topologyPendingDelete);
 
       if (this.git) {
         // #6669: if the directory is already gone (deleted externally), skip
@@ -1667,9 +1754,10 @@ export class WorkspaceService {
       monitor.stop();
       this.monitors.delete(worktreeId);
 
-      // Reset suppression: monitor is cleaned up, metadata writes will settle
-      // within 500ms.
-      this.topologyWatchSuppressUntil = Date.now() + 500;
+      // Monitor is cleaned up. Drop the pending entry now (cancelling its
+      // safety valve): any still-buffered delete event for this name is
+      // matched by the next drain.
+      this.topologyClearPending(pendingDeleteKey);
 
       this.sendEvent({
         type: "worktree-removed",
@@ -1702,7 +1790,9 @@ export class WorkspaceService {
 
       this.sendEvent({ type: "delete-worktree-result", requestId, success: true });
     } catch (error) {
-      this.topologyWatchSuppressUntil = Date.now() + 500;
+      // Delete failed — drop any pending entry so a real external change to
+      // that name isn't masked, and cancel its safety valve.
+      if (pendingDeleteKey) this.topologyClearPending(pendingDeleteKey);
       this.sendEvent({
         type: "delete-worktree-result",
         requestId,
@@ -2168,6 +2258,12 @@ ${lines.map((l) => "+" + l).join("\n")}`;
   dispose(): void {
     this._shutdownController.abort();
     this.stopTopologyWatcher();
+    for (const timer of this.topologyPendingSafetyTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.topologyPendingSafetyTimers.clear();
+    this.topologyPendingCreate.clear();
+    this.topologyPendingDelete.clear();
     this.topologyReconcileQueue.clear();
     this.prService.cleanup();
     this.resourceActionExecutor.dispose();
