@@ -566,123 +566,126 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     };
   }, [deferredWorktrees.length, integrationWorktree, quickStateCounts]);
 
-  const { filteredWorktrees, groupedSections, hasResultsWithoutQuickState } = useMemo(() => {
-    const filters: FilterState = {
+  const { filteredWorktrees, groupedSections, hasResultsWithoutQuickState, totalCount } =
+    useMemo(() => {
+      const filters: FilterState = {
+        query,
+        statusFilters,
+        typeFilters,
+        githubFilters,
+        sessionFilters,
+        activityFilters,
+      };
+
+      // Filter non-main worktrees only (exclude main and integration by ID)
+      const nonMain = deferredWorktrees.filter(
+        (w) => w.id !== mainWorktree?.id && w.id !== integrationWorktree?.id
+      );
+      let withoutQuickStateMatch = false;
+      const filtered = nonMain.filter((worktree) => {
+        const derived = derivedMetaMap.get(worktree.id) ?? {
+          terminalCount: 0,
+          hasWorkingAgent: false,
+          hasWaitingAgent: false,
+          hasCompletedAgent: false,
+          hasExitedAgent: false,
+          hasMergeConflict: false,
+          chipState: null,
+        };
+        const isActive = worktree.id === activeWorktreeId;
+        const hasActiveQuery = query.trim().length > 0;
+
+        // Counterfactual: would this worktree be visible if the quick state
+        // filter were "all"? Mirrors the same precedence below (active /
+        // waiting bypasses → matchesFilters), with quickStateFilter forced
+        // to "all". Short-circuit once we find any match — only the boolean
+        // matters for the empty-state branch.
+        if (!withoutQuickStateMatch && quickStateFilter !== "all") {
+          if (alwaysShowActive && isActive && !hasActiveQuery && !hasFacetFiltersActive) {
+            withoutQuickStateMatch = true;
+          } else if (
+            alwaysShowWaiting &&
+            derived.hasWaitingAgent &&
+            !hasActiveQuery &&
+            !hasFacetFiltersActive
+          ) {
+            withoutQuickStateMatch = true;
+          } else if (matchesFilters(worktree, filters, derived, isActive)) {
+            withoutQuickStateMatch = true;
+          }
+        }
+
+        if (
+          alwaysShowActive &&
+          isActive &&
+          !hasActiveQuery &&
+          quickStateFilter === "all" &&
+          !hasFacetFiltersActive
+        ) {
+          return true;
+        }
+
+        if (
+          alwaysShowWaiting &&
+          derived.hasWaitingAgent &&
+          !hasActiveQuery &&
+          quickStateFilter === "all" &&
+          !hasFacetFiltersActive
+        ) {
+          return true;
+        }
+
+        if (quickStateFilter !== "all" && !matchesQuickStateFilter(quickStateFilter, derived)) {
+          return false;
+        }
+
+        return matchesFilters(worktree, filters, derived, isActive);
+      });
+
+      const existingWorktreeIds = new Set(deferredWorktrees.map((w) => w.id));
+      const validPinnedWorktrees = pinnedWorktrees.filter((id) => existingWorktreeIds.has(id));
+
+      const hasQuery = query.trim().length > 0;
+      const sorted = hasQuery
+        ? sortWorktreesByRelevance(filtered, query, orderBy, validPinnedWorktrees, manualOrder)
+        : sortWorktrees(filtered, orderBy, validPinnedWorktrees, manualOrder);
+
+      if (isGroupedByType && !hasQuery) {
+        return {
+          filteredWorktrees: sorted,
+          groupedSections: groupByType(sorted, orderBy, validPinnedWorktrees),
+          hasResultsWithoutQuickState: withoutQuickStateMatch,
+          totalCount: nonMain.length,
+        };
+      }
+
+      return {
+        filteredWorktrees: sorted,
+        groupedSections: null,
+        hasResultsWithoutQuickState: withoutQuickStateMatch,
+        totalCount: nonMain.length,
+      };
+    }, [
+      deferredWorktrees,
       query,
+      orderBy,
+      isGroupedByType,
       statusFilters,
       typeFilters,
       githubFilters,
       sessionFilters,
       activityFilters,
-    };
-
-    // Filter non-main worktrees only (exclude main and integration by ID)
-    const nonMain = deferredWorktrees.filter(
-      (w) => w.id !== mainWorktree?.id && w.id !== integrationWorktree?.id
-    );
-    let withoutQuickStateMatch = false;
-    const filtered = nonMain.filter((worktree) => {
-      const derived = derivedMetaMap.get(worktree.id) ?? {
-        terminalCount: 0,
-        hasWorkingAgent: false,
-        hasWaitingAgent: false,
-        hasCompletedAgent: false,
-        hasExitedAgent: false,
-        hasMergeConflict: false,
-        chipState: null,
-      };
-      const isActive = worktree.id === activeWorktreeId;
-      const hasActiveQuery = query.trim().length > 0;
-
-      // Counterfactual: would this worktree be visible if the quick state
-      // filter were "all"? Mirrors the same precedence below (active /
-      // waiting bypasses → matchesFilters), with quickStateFilter forced
-      // to "all". Short-circuit once we find any match — only the boolean
-      // matters for the empty-state branch.
-      if (!withoutQuickStateMatch && quickStateFilter !== "all") {
-        if (alwaysShowActive && isActive && !hasActiveQuery && !hasFacetFiltersActive) {
-          withoutQuickStateMatch = true;
-        } else if (
-          alwaysShowWaiting &&
-          derived.hasWaitingAgent &&
-          !hasActiveQuery &&
-          !hasFacetFiltersActive
-        ) {
-          withoutQuickStateMatch = true;
-        } else if (matchesFilters(worktree, filters, derived, isActive)) {
-          withoutQuickStateMatch = true;
-        }
-      }
-
-      if (
-        alwaysShowActive &&
-        isActive &&
-        !hasActiveQuery &&
-        quickStateFilter === "all" &&
-        !hasFacetFiltersActive
-      ) {
-        return true;
-      }
-
-      if (
-        alwaysShowWaiting &&
-        derived.hasWaitingAgent &&
-        !hasActiveQuery &&
-        quickStateFilter === "all" &&
-        !hasFacetFiltersActive
-      ) {
-        return true;
-      }
-
-      if (quickStateFilter !== "all" && !matchesQuickStateFilter(quickStateFilter, derived)) {
-        return false;
-      }
-
-      return matchesFilters(worktree, filters, derived, isActive);
-    });
-
-    const existingWorktreeIds = new Set(deferredWorktrees.map((w) => w.id));
-    const validPinnedWorktrees = pinnedWorktrees.filter((id) => existingWorktreeIds.has(id));
-
-    const hasQuery = query.trim().length > 0;
-    const sorted = hasQuery
-      ? sortWorktreesByRelevance(filtered, query, orderBy, validPinnedWorktrees, manualOrder)
-      : sortWorktrees(filtered, orderBy, validPinnedWorktrees, manualOrder);
-
-    if (isGroupedByType && !hasQuery) {
-      return {
-        filteredWorktrees: sorted,
-        groupedSections: groupByType(sorted, orderBy, validPinnedWorktrees),
-        hasResultsWithoutQuickState: withoutQuickStateMatch,
-      };
-    }
-
-    return {
-      filteredWorktrees: sorted,
-      groupedSections: null,
-      hasResultsWithoutQuickState: withoutQuickStateMatch,
-    };
-  }, [
-    deferredWorktrees,
-    query,
-    orderBy,
-    isGroupedByType,
-    statusFilters,
-    typeFilters,
-    githubFilters,
-    sessionFilters,
-    activityFilters,
-    alwaysShowActive,
-    alwaysShowWaiting,
-    pinnedWorktrees,
-    manualOrder,
-    mainWorktree,
-    integrationWorktree,
-    derivedMetaMap,
-    activeWorktreeId,
-    quickStateFilter,
-    hasFacetFiltersActive,
-  ]);
+      alwaysShowActive,
+      alwaysShowWaiting,
+      pinnedWorktrees,
+      manualOrder,
+      mainWorktree,
+      integrationWorktree,
+      derivedMetaMap,
+      activeWorktreeId,
+      quickStateFilter,
+      hasFacetFiltersActive,
+    ]);
 
   const { hiddenAbove, hiddenBelow, scrollToTop, scrollToBottom } = useScrollIndicator({
     scrollContainerRef,
@@ -977,6 +980,14 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const isSortDisabled = isGroupedByType || hasQuery;
   isSortDisabledRef.current = isSortDisabled;
 
+  const filteredCount = filteredWorktrees.length;
+  const showScope = hasActiveFilters() && filteredCount !== totalCount;
+  const dragDisabledReason = hasQuery
+    ? "Sorting disabled while searching"
+    : isGroupedByType
+      ? "Sorting disabled while grouped by type"
+      : null;
+
   // 1-based aria-rowindex slots for the pinned rows.
   const mainRowIndex = mainVisible ? 1 : 0;
   const integrationRowIndex = integrationVisible ? mainRowIndex + 1 : mainRowIndex;
@@ -1061,6 +1072,26 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
             <Plus className="w-3.5 h-3.5" />
           </button>
         </div>
+      </div>
+
+      {/* Filter scope and sort-disabled status */}
+      <div className="px-4 min-h-5 shrink-0">
+        {(showScope || dragDisabledReason) && (
+          <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className="text-xs text-daintree-text/50 leading-5"
+          >
+            {showScope && (
+              <span>
+                {filteredCount} of {totalCount} worktrees
+              </span>
+            )}
+            {showScope && dragDisabledReason && <span> · </span>}
+            {dragDisabledReason && <span>{dragDisabledReason}</span>}
+          </div>
+        )}
       </div>
 
       {/* Inline search bar — only when there are non-main worktrees */}
