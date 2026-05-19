@@ -308,4 +308,36 @@ describe("ActionBreadcrumbService", () => {
       expect(after[49]!.danger).toBe("restricted");
     });
   });
+
+  describe("confirmed", () => {
+    it("stores confirmed:true in the breadcrumb and forwards it to Sentry", () => {
+      emit({ actionId: "worktree.delete", confirmed: true });
+      const recent = service.getRecentActions();
+      expect(recent[0]!.confirmed).toBe(true);
+      expect(addBreadcrumbMock).toHaveBeenCalledTimes(1);
+      expect(addBreadcrumbMock.mock.calls[0]![0].confirmed).toBe(true);
+    });
+
+    it("stores confirmed:false — not dropped by truthiness", () => {
+      emit({ actionId: "worktree.delete", confirmed: false });
+      const recent = service.getRecentActions();
+      expect(recent[0]!.confirmed).toBe(false);
+    });
+
+    it("keeps confirmed absent when not provided", () => {
+      emit({ actionId: "safe.action" });
+      const recent = service.getRecentActions();
+      expect(recent[0]!.confirmed).toBeUndefined();
+    });
+
+    it("does not dedup same actionId with different confirmed values", () => {
+      const t = 10_000;
+      emit({ actionId: "worktree.delete", timestamp: t, confirmed: true });
+      emit({ actionId: "worktree.delete", timestamp: t + 50, confirmed: false });
+      const recent = service.getRecentActions();
+      expect(recent).toHaveLength(2);
+      expect(recent[0]!.confirmed).toBe(true);
+      expect(recent[1]!.confirmed).toBe(false);
+    });
+  });
 });

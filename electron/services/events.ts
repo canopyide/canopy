@@ -638,6 +638,8 @@ export type DaintreeEventMap = {
     category: string;
     durationMs: number;
     danger: "safe" | "confirm" | "restricted";
+    /** True when an agent explicitly confirmed a danger:"confirm" action. Absent for user-source and safe actions. */
+    confirmed?: boolean;
   };
 
   // Terminal Trash Events
