@@ -364,7 +364,7 @@ describe("worktreeStore", () => {
     expect(wakeMock).toHaveBeenCalledWith("term-a");
   });
 
-  it("applies renderer policy synchronously per selection, leaving the latest winner correct", () => {
+  it("applies renderer policy synchronously per selection, leaving the latest winner correct", async () => {
     setMockTerminals([
       { id: "term-a", worktreeId: "wt-a", location: "grid" },
       { id: "term-b", worktreeId: "wt-b", location: "grid" },
@@ -386,6 +386,16 @@ describe("worktreeStore", () => {
     ]);
     // The final wake reflects the winning selection.
     expect(wakeMock.mock.calls).toEqual([["term-a"], ["term-b"]]);
+
+    // Proof-by-drain: the old dynamic import left deferred work on the
+    // microtask queue. Flushing must produce no additional policy/focus
+    // calls — confirming nothing is queued post-#8402.
+    const policyCallsBeforeDrain = applyRendererPolicyMock.mock.calls.length;
+    const setFocusedCallsBeforeDrain = setFocusedMock.mock.calls.length;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(applyRendererPolicyMock.mock.calls.length).toBe(policyCallsBeforeDrain);
+    expect(setFocusedMock.mock.calls.length).toBe(setFocusedCallsBeforeDrain);
   });
 
   it("wakes active worktree PTY terminals even when policy tier is already visible", () => {
@@ -596,7 +606,7 @@ describe("worktreeStore", () => {
       expect(terminalStoreState.preMaximizeLayout).toBeNull();
     });
 
-    it("enterFleetScope clears maximize in-tick so a later user maximize is preserved", () => {
+    it("enterFleetScope clears maximize in-tick so a later user maximize is preserved", async () => {
       useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-race" });
       const token = useWorktreeSelectionStore.getState().enterFleetScope();
       // Post-#8402 the maximize-clear is synchronous — it has already fired by
@@ -608,7 +618,11 @@ describe("worktreeStore", () => {
       terminalStoreState.maximizeTarget = { type: "panel", id: "term-user-maxed" };
       panelSetStateMock.mockClear();
 
-      // Nothing runs later, so the user's new maximize is never wiped.
+      // Proof-by-drain: flush the microtask queue to prove no deferred .then()
+      // from the old dynamic-import path is still pending to wipe the maximize.
+      await Promise.resolve();
+      await Promise.resolve();
+
       expect(panelSetStateMock).not.toHaveBeenCalledWith(
         expect.objectContaining({ maximizedId: null })
       );
