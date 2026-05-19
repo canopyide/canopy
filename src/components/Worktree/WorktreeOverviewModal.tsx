@@ -26,6 +26,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { isAgentTerminal } from "@/utils/terminalType";
 import { isTerminalVisible } from "@/lib/terminalVisibility";
 import { useWorktreeIds } from "@/hooks/useTerminalSelectors";
+import { computeChipState } from "@/components/Worktree/utils/computeChipState";
 
 interface OverviewWorktreeCardProps {
   worktreeId: string;
@@ -227,6 +228,7 @@ export function WorktreeOverviewModal({
     const map = new Map<string, DerivedWorktreeMeta>();
     for (const worktree of worktrees) {
       let terminalCount = 0;
+      let waitingTerminalCount = 0;
       let hasWorkingAgent = false;
       let hasWaitingAgent = false;
       let hasCompletedAgent = false;
@@ -238,10 +240,33 @@ export function WorktreeOverviewModal({
         terminalCount++;
         if (!isAgentTerminal(t)) continue;
         if (t.agentState === "working") hasWorkingAgent = true;
-        if (t.agentState === "waiting") hasWaitingAgent = true;
+        if (t.agentState === "waiting") {
+          hasWaitingAgent = true;
+          waitingTerminalCount++;
+        }
         if (t.agentState === "completed") hasCompletedAgent = true;
         if (t.agentState === "exited") hasExitedAgent = true;
       }
+      const hasChanges = (worktree.worktreeChanges?.changedFileCount ?? 0) > 0;
+      const isComplete =
+        !!worktree.issueNumber &&
+        !!worktree.linked?.pr &&
+        !hasChanges &&
+        worktree.worktreeChanges !== null;
+      let lifecycleStage: "in-review" | "merged" | "ready-for-cleanup" | null = null;
+      if (!worktree.isMainWorktree && worktree.worktreeChanges !== null) {
+        if (worktree.linked?.pr?.state === "merged") {
+          lifecycleStage = worktree.issueNumber ? "ready-for-cleanup" : "merged";
+        } else if (worktree.linked?.pr?.state === "open") {
+          lifecycleStage = "in-review";
+        }
+      }
+      const chipState = computeChipState({
+        waitingTerminalCount,
+        lifecycleStage,
+        isComplete,
+        hasActiveAgent: hasWorkingAgent,
+      });
       map.set(worktree.id, {
         terminalCount,
         hasWorkingAgent,
@@ -250,7 +275,7 @@ export function WorktreeOverviewModal({
         hasExitedAgent,
         hasMergeConflict:
           worktree.worktreeChanges?.changes.some((c) => c.status === "conflicted") ?? false,
-        chipState: null,
+        chipState,
       });
     }
     return map;
