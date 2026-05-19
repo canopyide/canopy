@@ -353,6 +353,8 @@ export const CHANNELS = {
   WEBVIEW_DIALOG_RESPONSE: "webview:dialog-response",
   WEBVIEW_FIND_SHORTCUT: "webview:find-shortcut",
   WEBVIEW_NAVIGATION_BLOCKED: "webview:navigation-blocked",
+  WEBVIEW_UNRESPONSIVE: "webview:unresponsive",
+  WEBVIEW_RESPONSIVE: "webview:responsive",
   WEBVIEW_OAUTH_LOOPBACK: "webview:oauth-loopback",
   WEBVIEW_CANCEL_OAUTH_LOOPBACK: "webview:cancel-oauth-loopback",
   WEBVIEW_OAUTH_LOOPBACK_STATUS: "webview:oauth-loopback-status",

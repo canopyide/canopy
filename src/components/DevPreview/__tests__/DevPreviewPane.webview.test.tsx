@@ -335,6 +335,8 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         onConsoleMessage: vi.fn(() => vi.fn()),
         onConsoleContextCleared: vi.fn(() => vi.fn()),
         reloadIgnoringCache: vi.fn(() => Promise.resolve()),
+        onUnresponsive: vi.fn(() => vi.fn()),
+        onResponsive: vi.fn(() => vi.fn()),
       },
     };
   });
