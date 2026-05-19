@@ -197,14 +197,20 @@ describe("WorktreeLifecycleService", () => {
       );
     });
 
-    it("does not throw if cp fails", async () => {
+    it("propagates the error if cp fails so the caller can surface it", async () => {
+      // Per #8401, copyDaintreeDir no longer swallows its error — the caller
+      // (WorkspaceService createWorktree async tail) has `worktreeId` in scope
+      // and routes the failure through `notify-error` so the worktree card can
+      // show it instead of disappearing into `console.warn`.
       mockAccess.mockImplementation(async (p: string) => {
         if ((p as string).includes(path.join("/main/repo", ".daintree"))) return undefined;
         throw new Error("ENOENT");
       });
       mockCp.mockRejectedValue(new Error("Permission denied"));
 
-      await expect(service.copyDaintreeDir("/main/repo", "/new/worktree")).resolves.toBeUndefined();
+      await expect(service.copyDaintreeDir("/main/repo", "/new/worktree")).rejects.toThrow(
+        "Permission denied"
+      );
     });
   });
 
