@@ -12,6 +12,7 @@ import {
   forwardRef,
 } from "react";
 import { CircleDot, GitPullRequest, GitCommit, Clock, Unplug } from "lucide-react";
+import { PRDetectionPausedIndicator } from "./PRDetectionPausedIndicator";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -915,6 +916,7 @@ export const GitHubStatsToolbarButton = memo(
                 </TooltipContent>
               </Tooltip>
             ) : null}
+            <PRDetectionPausedIndicator />
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="max-h-[var(--radix-context-menu-content-available-height)] overflow-y-auto">
