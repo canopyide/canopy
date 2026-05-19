@@ -107,7 +107,8 @@ interface ForgeProviderImpl {
   buildIssueUrl(repo: RepoRef, number: number): string;
   buildPRUrl(repo: RepoRef, number: number): string;
 
-  // Optional capabilities — host checks via `in` operator at runtime.
+  // Optional capabilities — host checks via a truthiness guard at runtime
+  // (`if (provider.reviews)`), not the `in` operator; see Capability discovery.
   reviews?: ReviewCapability;
   approvals?: ApprovalCapability;
   releases?: ReleaseCapability;

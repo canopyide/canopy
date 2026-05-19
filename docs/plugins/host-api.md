@@ -196,7 +196,7 @@ Subscriptions registered during `activate` — before Daintree's worktree servic
 Binds a runtime `ForgeProviderImpl` to a descriptor declared in `contributes.forgeProviders`.
 
 ```ts
-const dispose = host.registerForgeProvider({ id: "linear", label: "Linear" }, impl);
+const dispose = host.registerForgeProvider({ id: "linear", name: "Linear" }, impl);
 ```
 
 **Rules:**
@@ -205,6 +205,8 @@ const dispose = host.registerForgeProvider({ id: "linear", label: "Linear" }, im
 - `descriptor.id` must match an entry in `contributes.forgeProviders`; undeclared ids are rejected so the impl can't drift away from the manifest's routing table. At runtime the id is namespaced to `{pluginId}.{descriptor.id}`.
 - Returns a disposer that unbinds the single impl. Calling `registerForgeProvider` again with the same `descriptor.id` overwrites the prior binding; the older disposer becomes inert.
 - All bindings are automatically removed on plugin unload.
+
+For the end-to-end walkthrough — manifest entry, implementing `ForgeProviderImpl`, state normalization, capabilities, and tests — see [Implementing a forge provider](./forge-provider.md).
 
 ## `settings` — _Planned_
 
