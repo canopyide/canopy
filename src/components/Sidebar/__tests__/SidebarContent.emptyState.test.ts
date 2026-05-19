@@ -428,12 +428,25 @@ describe("SidebarContent workspace error banner — issue #8394", () => {
     expect(branch).toContain("{errorBanner}");
   });
 
-  it("keeps ConfirmDialog in the main return path, not inside an early return", () => {
+  it("mounts the Restart Service ConfirmDialog in both the zero-worktree branch and the main return path", () => {
+    // The dialog must be reachable in both code paths so that clicking
+    // "Restart Service" from the errorBanner works whether the first snapshot
+    // has hydrated (main return) or `setFatalError` fired before it
+    // (zero-worktree early return). The shared `restartConfirmDialog` variable
+    // is the single source of truth — defined once above both early returns
+    // and rendered in each path.
+    expect(source).toContain("const restartConfirmDialog =");
+    expect(source).toContain('title="Restart workspace service?"');
+    expect(source).toContain("isOpen={isRestartConfirmOpen}");
+
+    const branchStart = source.indexOf("if (worktrees.length === 0) {");
+    const branchEnd = source.indexOf("const hasNonMainWorktrees", branchStart);
+    const zeroBranch = source.slice(branchStart, branchEnd);
+    expect(zeroBranch).toContain("{restartConfirmDialog}");
+
     const mainReturnStart = source.lastIndexOf("return (");
     const afterMainReturn = source.slice(mainReturnStart);
-    expect(afterMainReturn).toContain("<ConfirmDialog");
-    expect(afterMainReturn).toContain('title="Restart workspace service?"');
-    expect(afterMainReturn).toContain("isRestartConfirmOpen");
+    expect(afterMainReturn).toContain("{restartConfirmDialog}");
   });
 });
 

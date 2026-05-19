@@ -823,6 +823,24 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       />
     ) : null;
 
+  // Mounted in both the zero-worktree early return and the main return path so
+  // the errorBanner's "Restart Service" action stays reachable when
+  // `setFatalError` fires before the first snapshot hydrates.
+  const restartConfirmDialog = (
+    <ConfirmDialog
+      isOpen={isRestartConfirmOpen}
+      onClose={() => setIsRestartConfirmOpen(false)}
+      title="Restart workspace service?"
+      description="Restarts the workspace monitoring process. Git status and worktree data will be temporarily unavailable."
+      confirmLabel="Restart service"
+      variant="destructive"
+      onConfirm={() => {
+        void actionService.dispatch("worktree.restartService", undefined, { source: "user" });
+        setIsRestartConfirmOpen(false);
+      }}
+    />
+  );
+
   if (isLoading && worktrees.length === 0) {
     return (
       <div className="flex flex-col h-full">
@@ -878,6 +896,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
           )}
         </div>
         {newWorktreeDialogElement}
+        {restartConfirmDialog}
       </>
     );
   }
@@ -1445,18 +1464,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         <FleetPickerPalette isOpen={isFleetPickerOpen} onClose={closeFleetPicker} />
       </ErrorBoundary>
 
-      <ConfirmDialog
-        isOpen={isRestartConfirmOpen}
-        onClose={() => setIsRestartConfirmOpen(false)}
-        title="Restart workspace service?"
-        description="Restarts the workspace monitoring process. Git status and worktree data will be temporarily unavailable."
-        confirmLabel="Restart service"
-        variant="destructive"
-        onConfirm={() => {
-          void actionService.dispatch("worktree.restartService", undefined, { source: "user" });
-          setIsRestartConfirmOpen(false);
-        }}
-      />
+      {restartConfirmDialog}
     </div>
   );
 }
