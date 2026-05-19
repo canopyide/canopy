@@ -21,6 +21,7 @@ import { useWorktreeFilterStore } from "../../store/worktreeFilterStore";
 import { errorsClient, worktreeClient } from "@/clients";
 import { actionService } from "@/services/ActionService";
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
+import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import { cn } from "../../lib/utils";
 import { getAgentConfig, getAgentIds } from "@/config/agents";
 import { getAgentSettingsEntry } from "@/types";
@@ -28,7 +29,10 @@ import type { UseAgentLauncherReturn } from "@/hooks/useAgentLauncher";
 import { isAgentLaunchable } from "../../../shared/utils/agentAvailability";
 import { isAgentPinned } from "../../../shared/utils/agentPinned";
 import { FocusedSubLine } from "./WorktreeCard/FocusedSubLine";
-import { WorktreeDetailsSection } from "./WorktreeCard/WorktreeDetailsSection";
+import {
+  WorktreeDetailsSection,
+  WorktreeDeleteErrorBanner,
+} from "./WorktreeCard/WorktreeDetailsSection";
 import { WorktreeDialogs } from "./WorktreeCard/WorktreeDialogs";
 import { WorktreeHeader } from "./WorktreeCard/WorktreeHeader";
 import { WorktreeTerminalSection } from "./WorktreeCard/WorktreeTerminalSection";
@@ -244,6 +248,17 @@ export function WorktreeCard({
   );
   const dismissError = useErrorStore((state) => state.dismissError);
   const removeError = useErrorStore((state) => state.removeError);
+
+  const isBeingDeleted = useWorktreeStore((state) => state.deletingIds.has(worktree.id));
+  const deleteError = useWorktreeStore((state) => state.deleteErrors.get(worktree.id) ?? null);
+
+  const handleRetryDelete = () => {
+    getCurrentViewStore().getState().retryDelete(worktree.id);
+  };
+
+  const handleDismissDeleteError = () => {
+    getCurrentViewStore().getState().clearDeleteError(worktree.id);
+  };
 
   const handleErrorRetry = async (
     errorId: string,
@@ -637,7 +652,8 @@ export function WorktreeCard({
             isFocused && !isActive && variant === "grid" && "bg-overlay-soft",
             isOver && !isActive && "ring-2 ring-inset ring-border-default",
             worktree.isCurrent &&
-              "before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-daintree-accent before:content-['']"
+              "before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-r before:bg-daintree-accent before:content-['']",
+            isBeingDeleted && !deleteError && "opacity-50 pointer-events-none"
           )}
           data-active={isActive && variant === "sidebar" ? "true" : undefined}
           data-hoverable={!isActive && variant === "sidebar" ? "true" : undefined}
@@ -645,6 +661,8 @@ export function WorktreeCard({
           data-worktree-branch={branchLabel}
           data-worktree-is-main={isMainWorktree ? "true" : undefined}
           data-resource-status={resourceStatusLabel ?? undefined}
+          data-deleting={isBeingDeleted && !deleteError ? "true" : undefined}
+          aria-busy={isBeingDeleted && !deleteError ? "true" : undefined}
           role={variant === "grid" ? "group" : undefined}
           aria-current={variant === "grid" && isActive ? "true" : undefined}
           aria-label={`Worktree: ${worktree.issueTitle ?? branchLabel}${worktree.issueTitle ? ` (${branchLabel})` : ""}${worktree.isCurrent ? " (selected, current)" : ""}, Status: ${spineState}${gitStateIndicator ? `, ${gitStateIndicator.label}` : ""}${!gitStateIndicator && hasChanges ? ", has uncommitted changes" : ""}`}
@@ -908,6 +926,8 @@ export function WorktreeCard({
                     onOpenReviewHub={openReviewHubForThisWorktree}
                     isLifecycleRunning={isLifecycleRunning}
                     lifecycleLabel={lifecycleLabel}
+                    isBeingDeleted={isBeingDeleted}
+                    deleteError={deleteError}
                     hasResourceConfig={hasResourceConfig}
                     resourceStatus={worktree.resourceStatus?.lastStatus}
                     onResourceResume={hasResumeCommand ? handleResourceResume : undefined}
@@ -929,6 +949,14 @@ export function WorktreeCard({
                     onTerminalSelect={handleTerminalSelect}
                   />
                 </div>
+              )}
+
+              {deleteError && (
+                <WorktreeDeleteErrorBanner
+                  message={deleteError}
+                  onRetry={handleRetryDelete}
+                  onDismiss={handleDismissDeleteError}
+                />
               )}
 
               <WorktreeDialogs

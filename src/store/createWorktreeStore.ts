@@ -1,7 +1,11 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 import type { WorktreeSnapshot, WorktreeEventVersion } from "@shared/types";
 import { usePanelStore } from "./panelStore";
+import { worktreeClient } from "@/clients";
+import { closeTerminalsForWorktree } from "@/components/Worktree/worktreeDeleteHelper";
 import { logDebug } from "@/utils/logger";
+import { notify } from "@/lib/notify";
+import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 /**
  * How long a `worktree-removed` tombstone suppresses a late `worktree-update`
@@ -66,6 +70,17 @@ export interface ManualIssueAssociation {
   issueTitle?: string;
 }
 
+/**
+ * Options carried alongside a delete-in-flight so the card's "Retry" button
+ * can re-fire the original request without re-opening the dialog. The dialog
+ * confirms once; the card retries with the same intent.
+ */
+export interface WorktreeDeleteOptions {
+  force?: boolean;
+  deleteBranch?: boolean;
+  closeTerminals?: boolean;
+}
+
 export interface WorktreeViewState {
   worktrees: Map<string, WorktreeSnapshot>;
   manualAssociations: Map<string, ManualIssueAssociation>;
@@ -81,6 +96,15 @@ export interface WorktreeViewState {
    * on epoch transition; entries expire after {@link TOMBSTONE_TTL_MS}.
    */
   tombstones: Map<string, number>;
+  /**
+   * Worktrees with a delete currently in flight (renderer-local — no backend
+   * lifecycle phase exists for delete). Drives the card's reduced-opacity
+   * "Deleting…" state. Cleared on `worktree-removed` (via `applyRemove`) or
+   * on rejection (handled inside `runDeleteAsync`).
+   */
+  deletingIds: Set<string>;
+  deleteErrors: Map<string, string>;
+  deleteErrorArgs: Map<string, WorktreeDeleteOptions>;
   isLoading: boolean;
   error: string | null;
   isInitialized: boolean;
@@ -105,6 +129,9 @@ export interface WorktreeViewActions {
   applyRemove(worktreeId: string, version: WorktreeEventVersion): void;
   setManualAssociation(worktreeId: string, assoc: ManualIssueAssociation): void;
   clearManualAssociation(worktreeId: string): void;
+  startDelete(worktreeId: string, options: WorktreeDeleteOptions): void;
+  retryDelete(worktreeId: string): void;
+  clearDeleteError(worktreeId: string): void;
   setLoading(loading: boolean): void;
   setError(error: string | null): void;
   setFatalError(message: string): void;
@@ -121,6 +148,9 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
     manualAssociations: new Map(),
     version: { epoch: "", seq: 0 },
     tombstones: new Map(),
+    deletingIds: new Set(),
+    deleteErrors: new Map(),
+    deleteErrorArgs: new Map(),
     isLoading: true,
     error: null,
     isInitialized: false,
@@ -271,14 +301,80 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
       }
       tombstones.set(worktreeId, now);
 
-      const prev = prevState.worktrees;
-      if (!prev.has(worktreeId)) {
-        set({ version, tombstones });
-        return;
-      }
-      const next = new Map(prev);
-      next.delete(worktreeId);
-      set({ worktrees: next, version, tombstones });
+      const hadWorktree = prevState.worktrees.has(worktreeId);
+      const hadDeletingId = prevState.deletingIds.has(worktreeId);
+      const hadDeleteError = prevState.deleteErrors.has(worktreeId);
+      const hadDeleteErrorArgs = prevState.deleteErrorArgs.has(worktreeId);
+
+      const nextWorktrees = hadWorktree ? new Map(prevState.worktrees) : prevState.worktrees;
+      if (hadWorktree) nextWorktrees.delete(worktreeId);
+      const nextDeletingIds = hadDeletingId
+        ? new Set(prevState.deletingIds)
+        : prevState.deletingIds;
+      if (hadDeletingId) nextDeletingIds.delete(worktreeId);
+      const nextDeleteErrors = hadDeleteError
+        ? new Map(prevState.deleteErrors)
+        : prevState.deleteErrors;
+      if (hadDeleteError) nextDeleteErrors.delete(worktreeId);
+      const nextDeleteErrorArgs = hadDeleteErrorArgs
+        ? new Map(prevState.deleteErrorArgs)
+        : prevState.deleteErrorArgs;
+      if (hadDeleteErrorArgs) nextDeleteErrorArgs.delete(worktreeId);
+
+      set({
+        worktrees: nextWorktrees,
+        deletingIds: nextDeletingIds,
+        deleteErrors: nextDeleteErrors,
+        deleteErrorArgs: nextDeleteErrorArgs,
+        version,
+        tombstones,
+      });
+    },
+
+    startDelete(worktreeId: string, options: WorktreeDeleteOptions) {
+      const prev = get();
+      if (prev.deletingIds.has(worktreeId)) return;
+
+      const nextDeletingIds = new Set(prev.deletingIds);
+      nextDeletingIds.add(worktreeId);
+      const nextDeleteErrors = prev.deleteErrors.has(worktreeId)
+        ? new Map(prev.deleteErrors)
+        : prev.deleteErrors;
+      if (prev.deleteErrors.has(worktreeId)) nextDeleteErrors.delete(worktreeId);
+      const nextDeleteErrorArgs = new Map(prev.deleteErrorArgs);
+      nextDeleteErrorArgs.set(worktreeId, options);
+
+      set({
+        deletingIds: nextDeletingIds,
+        deleteErrors: nextDeleteErrors,
+        deleteErrorArgs: nextDeleteErrorArgs,
+      });
+
+      void runDeleteAsync(get, set, worktreeId, options);
+    },
+
+    retryDelete(worktreeId: string) {
+      const prev = get();
+      const args = prev.deleteErrorArgs.get(worktreeId);
+      if (!args) return;
+      // Re-fire with the original confirm-dialog options. `startDelete`
+      // clears the previous error and re-marks `deletingIds` atomically.
+      get().startDelete(worktreeId, args);
+    },
+
+    clearDeleteError(worktreeId: string) {
+      const prev = get();
+      const hadError = prev.deleteErrors.has(worktreeId);
+      const hadArgs = prev.deleteErrorArgs.has(worktreeId);
+      if (!hadError && !hadArgs) return;
+      const nextDeleteErrors = hadError ? new Map(prev.deleteErrors) : prev.deleteErrors;
+      if (hadError) nextDeleteErrors.delete(worktreeId);
+      const nextDeleteErrorArgs = hadArgs ? new Map(prev.deleteErrorArgs) : prev.deleteErrorArgs;
+      if (hadArgs) nextDeleteErrorArgs.delete(worktreeId);
+      set({
+        deleteErrors: nextDeleteErrors,
+        deleteErrorArgs: nextDeleteErrorArgs,
+      });
     },
 
     setLoading(loading: boolean) {
@@ -335,6 +431,62 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
       set((prev) => (prev.watcherDegraded === degraded ? prev : { watcherDegraded: degraded }));
     },
   }));
+}
+
+/**
+ * Fire-and-forget delete async chain. The dialog dismisses immediately after
+ * calling `startDelete`; this runs in the background driven by the store, so
+ * `get()` / `set()` must never close over component state. The success cleanup
+ * is handled by `applyRemove` (triggered by the `worktree-removed` IPC event),
+ * not here — the only thing we own is the failure path.
+ */
+async function runDeleteAsync(
+  get: () => WorktreeViewStore,
+  set: (
+    partial: Partial<WorktreeViewStore> | ((state: WorktreeViewStore) => Partial<WorktreeViewStore>)
+  ) => void,
+  worktreeId: string,
+  options: WorktreeDeleteOptions
+): Promise<void> {
+  try {
+    if (options.closeTerminals) {
+      await closeTerminalsForWorktree(worktreeId);
+    }
+    await worktreeClient.delete(worktreeId, options.force, options.deleteBranch);
+    // Success: `worktree-removed` will fire `applyRemove`, which clears
+    // `deletingIds` + delete-error maps. No-op here.
+  } catch (err) {
+    const message = formatErrorMessage(err, "Failed to delete worktree");
+    const prev = get();
+    // Partial-success path: the backend emits `worktree-removed` BEFORE the
+    // branch-delete step (WorkspaceService.deleteWorktree:1587 vs :1592), so a
+    // branch-delete failure arrives after `applyRemove` has already cleared
+    // the card. The card surface is gone — fall back to a toast so the user
+    // learns the branch was not cleaned up. Without this, the failure is
+    // silently swallowed (the original race guard's bug).
+    if (!prev.deletingIds.has(worktreeId) && !prev.worktrees.has(worktreeId)) {
+      // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
+      notify({
+        type: "error",
+        title: "Couldn't delete branch",
+        message,
+        priority: "high",
+        context: { worktreeId },
+      });
+      return;
+    }
+    const nextDeletingIds = new Set(prev.deletingIds);
+    nextDeletingIds.delete(worktreeId);
+    const nextDeleteErrors = new Map(prev.deleteErrors);
+    nextDeleteErrors.set(worktreeId, message);
+    const nextDeleteErrorArgs = new Map(prev.deleteErrorArgs);
+    nextDeleteErrorArgs.set(worktreeId, options);
+    set({
+      deletingIds: nextDeletingIds,
+      deleteErrors: nextDeleteErrors,
+      deleteErrorArgs: nextDeleteErrorArgs,
+    });
+  }
 }
 
 export function cleanupOrphanedTerminals(): void {

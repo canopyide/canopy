@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, fireEvent, waitFor, act } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import type { WorktreeState } from "@/types";
 import type { WorktreeChanges, GitStatus } from "shared/types/git";
 
@@ -15,15 +15,15 @@ vi.stubGlobal(
   }
 );
 
-const { dispatchMock, terminalCountsMock } = vi.hoisted(() => ({
-  dispatchMock: vi.fn().mockResolvedValue({ ok: true }),
+const { startDeleteMock, terminalCountsMock } = vi.hoisted(() => ({
+  startDeleteMock: vi.fn(),
   terminalCountsMock: { total: 0 },
 }));
 
-vi.mock("@/services/ActionService", () => ({
-  actionService: {
-    dispatch: dispatchMock,
-  },
+vi.mock("@/store/createWorktreeStore", () => ({
+  getCurrentViewStore: () => ({
+    getState: () => ({ startDelete: startDeleteMock }),
+  }),
 }));
 
 vi.mock("@/hooks/useWorktreeTerminals", () => ({
@@ -40,7 +40,6 @@ vi.mock("@/components/ui/AppDialog", () => {
     onClose?: () => void;
     size?: string;
     variant?: string;
-    dismissible?: boolean;
     "data-testid"?: string;
   }) => (isOpen ? <div data-testid="delete-worktree-dialog">{children}</div> : null);
   Dialog.Body = ({ children }: { children: React.ReactNode }) => <div>{children}</div>;
@@ -104,7 +103,6 @@ function makeChanges(files: Array<{ path: string; status: GitStatus }>): Worktre
 describe("WorktreeDeleteDialog — warning messages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    dispatchMock.mockResolvedValue({ ok: true });
     terminalCountsMock.total = 0;
   });
 
@@ -269,7 +267,6 @@ describe("WorktreeDeleteDialog — warning messages", () => {
 describe("WorktreeDeleteDialog — body copy", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    dispatchMock.mockResolvedValue({ ok: true });
     terminalCountsMock.total = 0;
   });
 
@@ -451,7 +448,6 @@ describe("WorktreeDeleteDialog — body copy", () => {
 describe("WorktreeDeleteDialog — medium tier (no name confirmation)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    dispatchMock.mockResolvedValue({ ok: true });
     terminalCountsMock.total = 0;
   });
 
@@ -460,9 +456,6 @@ describe("WorktreeDeleteDialog — medium tier (no name confirmation)", () => {
   });
 
   it("non-protected branch + force with only untracked files does not require name confirmation", () => {
-    // Untracked-only force-delete loses no committed/tracked work, so it stays
-    // medium tier — escalating here would train users to dismiss the gate
-    // (#4927: escalate on hasTrackedChanges, not hasChanges).
     const worktree = makeWorktree(makeChanges([{ path: "new.txt", status: "untracked" }]));
     render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
 
@@ -475,7 +468,7 @@ describe("WorktreeDeleteDialog — medium tier (no name confirmation)", () => {
     expect(button.textContent).toBe("Force delete worktree");
   });
 
-  it("dispatches delete on click without typing", async () => {
+  it("starts a delete on click and dismisses immediately", () => {
     const onClose = vi.fn();
     const worktree = makeWorktree(makeChanges([]));
     render(<WorktreeDeleteDialog isOpen={true} onClose={onClose} worktree={worktree} />);
@@ -483,38 +476,29 @@ describe("WorktreeDeleteDialog — medium tier (no name confirmation)", () => {
     const button = screen.getByTestId("delete-worktree-confirm");
     fireEvent.click(button);
 
-    await waitFor(() => {
-      expect(dispatchMock).toHaveBeenCalledTimes(1);
-    });
-    expect(dispatchMock).toHaveBeenCalledWith(
-      "worktree.delete",
-      { worktreeId: "wt-1", force: false, deleteBranch: false },
-      { source: "user" }
-    );
+    expect(startDeleteMock).toHaveBeenCalledTimes(1);
+    expect(startDeleteMock).toHaveBeenCalledWith("wt-1", { force: false, deleteBranch: false });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("asks the delete action to close associated terminals before deleting", async () => {
+  it("forwards closeTerminals when terminals are associated", () => {
     terminalCountsMock.total = 2;
     const worktree = makeWorktree(makeChanges([]));
     render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
 
     fireEvent.click(screen.getByTestId("delete-worktree-confirm"));
 
-    await waitFor(() => {
-      expect(dispatchMock).toHaveBeenCalledTimes(1);
+    expect(startDeleteMock).toHaveBeenCalledWith("wt-1", {
+      force: false,
+      deleteBranch: false,
+      closeTerminals: true,
     });
-    expect(dispatchMock).toHaveBeenCalledWith(
-      "worktree.delete",
-      { worktreeId: "wt-1", force: false, deleteBranch: false, closeTerminals: true },
-      { source: "user" }
-    );
   });
 });
 
 describe("WorktreeDeleteDialog — high tier (name confirmation)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    dispatchMock.mockResolvedValue({ ok: true });
     terminalCountsMock.total = 0;
   });
 
@@ -538,9 +522,6 @@ describe("WorktreeDeleteDialog — high tier (name confirmation)", () => {
   });
 
   it("renders type-to-confirm input when force-deleting with uncommitted tracked changes", () => {
-    // #8023: force-delete + tracked changes is catastrophic enough (loses
-    // uncommitted work git can't recover) to warrant the typed-name gate
-    // even on a non-protected, non-main worktree.
     const worktree = makeWorktree(makeChanges([{ path: "src/app.ts", status: "modified" }]), {
       branch: "feature/x",
       name: "feature/x",
@@ -662,8 +643,9 @@ describe("WorktreeDeleteDialog — high tier (name confirmation)", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => {
-      expect(dispatchMock).toHaveBeenCalledTimes(1);
+      expect(startDeleteMock).toHaveBeenCalledTimes(1);
     });
+    expect(onClose).toHaveBeenCalled();
   });
 
   it("does not submit on Enter when name is unmatched", () => {
@@ -675,11 +657,11 @@ describe("WorktreeDeleteDialog — high tier (name confirmation)", () => {
     fireEvent.change(input, { target: { value: "mai" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(dispatchMock).not.toHaveBeenCalled();
+    expect(startDeleteMock).not.toHaveBeenCalled();
   });
 });
 
-describe("WorktreeDeleteDialog — in-flight skeleton", () => {
+describe("WorktreeDeleteDialog — immediate dismiss", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     terminalCountsMock.total = 0;
@@ -689,38 +671,31 @@ describe("WorktreeDeleteDialog — in-flight skeleton", () => {
     cleanup();
   });
 
-  it("renders the skeleton and hides body copy while delete is in flight", async () => {
-    let resolveDispatch: (value: { ok: true }) => void = () => {};
-    dispatchMock.mockImplementationOnce(
-      () =>
-        new Promise<{ ok: true }>((resolve) => {
-          resolveDispatch = resolve;
-        })
-    );
+  it("does not render any in-modal skeleton after submit (progress surfaces on the card — #8417)", () => {
+    const onClose = vi.fn();
     const worktree = makeWorktree(makeChanges([]));
-    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+    render(<WorktreeDeleteDialog isOpen={true} onClose={onClose} worktree={worktree} />);
 
     fireEvent.click(screen.getByTestId("delete-worktree-confirm"));
 
-    await waitFor(() => {
-      expect(screen.getByTestId("delete-worktree-skeleton")).toBeDefined();
-    });
-    expect(screen.queryByText("Worktree directory will be deleted")).toBeNull();
+    expect(screen.queryByTestId("delete-worktree-skeleton")).toBeNull();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 
-    const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
-    expect(button.textContent).toBe("Deleting…");
+  it("never blocks dismissal — Cancel always closes (no isDeleting guard)", () => {
+    const onClose = vi.fn();
+    const worktree = makeWorktree(makeChanges([]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={onClose} worktree={worktree} />);
 
-    await act(async () => {
-      resolveDispatch({ ok: true });
-    });
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("WorktreeDeleteDialog — state reset", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    dispatchMock.mockResolvedValue({ ok: true });
     terminalCountsMock.total = 0;
   });
 
@@ -748,70 +723,5 @@ describe("WorktreeDeleteDialog — state reset", () => {
       name: /close all terminals/i,
     }) as HTMLInputElement;
     expect(reopened.checked).toBe(true);
-  });
-});
-
-describe("WorktreeDeleteDialog — error handling", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    terminalCountsMock.total = 0;
-  });
-
-  afterEach(() => {
-    cleanup();
-  });
-
-  it("renders error message and re-enables controls when dispatch fails", async () => {
-    dispatchMock.mockResolvedValueOnce({ ok: false, error: { message: "git error" } });
-    const onClose = vi.fn();
-    const worktree = makeWorktree(makeChanges([]));
-    render(<WorktreeDeleteDialog isOpen={true} onClose={onClose} worktree={worktree} />);
-
-    fireEvent.click(screen.getByTestId("delete-worktree-confirm"));
-
-    await waitFor(() => {
-      expect(screen.getByRole("alert").textContent).toContain("git error");
-    });
-    expect(screen.queryByTestId("delete-worktree-skeleton")).toBeNull();
-    const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
-    expect(button.disabled).toBe(false);
-    expect(onClose).not.toHaveBeenCalled();
-  });
-});
-
-describe("WorktreeDeleteDialog — reentrancy", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    terminalCountsMock.total = 0;
-  });
-
-  afterEach(() => {
-    cleanup();
-  });
-
-  it("dispatches at most once when the destructive button is clicked rapidly", async () => {
-    let resolveDispatch: (value: { ok: true }) => void = () => {};
-    dispatchMock.mockImplementationOnce(
-      () =>
-        new Promise<{ ok: true }>((resolve) => {
-          resolveDispatch = resolve;
-        })
-    );
-    const worktree = makeWorktree(makeChanges([]));
-    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
-
-    const button = screen.getByTestId("delete-worktree-confirm");
-    fireEvent.click(button);
-    fireEvent.click(button);
-    fireEvent.click(button);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("delete-worktree-skeleton")).toBeDefined();
-    });
-    expect(dispatchMock).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      resolveDispatch({ ok: true });
-    });
   });
 });
