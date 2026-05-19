@@ -492,6 +492,140 @@ describe("GitHubAuth", () => {
       );
       expect(_getGithubFetchSemaphoreForTests().active).toBe(before);
     });
+
+    it("re-checks the circuit breaker after acquiring a queued slot so a block registered while queued stops the dispatch", async () => {
+      // Fill all 8 slots with pending fetches we control, then queue 1 more.
+      // While the queued waiter is parked, register a secondary block.
+      // When a slot frees, the queued waiter must NOT dispatch — it must
+      // throw GitHubRateLimitError instead.
+      const pending: Array<{
+        resolve: (response: Response) => void;
+        reject: (err: unknown) => void;
+      }> = [];
+      const mockFetch = vi.fn().mockImplementation(
+        () =>
+          new Promise<Response>((resolve, reject) => {
+            pending.push({ resolve, reject });
+          })
+      );
+      (globalThis as unknown as { fetch: Mock }).fetch = mockFetch;
+
+      // Fill the semaphore.
+      const inflight: Array<Promise<Response>> = [];
+      for (let i = 0; i < GITHUB_FETCH_CONCURRENCY; i++) {
+        inflight.push(rateLimitAwareFetch(`https://api.github.com/user?n=${i}`));
+      }
+      // Wait for all 8 slots to be granted.
+      await vi.waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(GITHUB_FETCH_CONCURRENCY);
+      });
+
+      // Queue a 9th request — it will park in the semaphore queue.
+      const queuedPromise = rateLimitAwareFetch("https://api.github.com/user?queued=1");
+
+      // Service registers a block while the 9th request is parked.
+      gitHubRateLimitService.update(new Headers({ "retry-after": "30" }), 429);
+
+      // Release a slot. The post-acquire re-check must fire and throw.
+      pending[0]!.resolve(new Response(null, { status: 200 }));
+
+      await expect(queuedPromise).rejects.toBeInstanceOf(GitHubRateLimitError);
+      // mockFetch should NOT have been called a 9th time — the queued waiter
+      // bailed at the re-check rather than dispatching the network request.
+      expect(mockFetch).toHaveBeenCalledTimes(GITHUB_FETCH_CONCURRENCY);
+
+      // Drain the remaining in-flight to free the test cleanly.
+      for (let i = 1; i < pending.length; i++) {
+        pending[i]!.resolve(new Response(null, { status: 200 }));
+      }
+      await Promise.all(inflight);
+    });
+
+    it("synchronously registers a body-classified secondary block before releasing the slot, stopping queued waiters", async () => {
+      // First request returns a 403 with a secondary-limit body and no
+      // retry-after. The block must be registered BEFORE the slot is
+      // released, so the second queued request fails preflight at the
+      // post-acquire re-check rather than dispatching to GitHub.
+      const body = "You have exceeded a secondary rate limit. Please wait.";
+
+      let resolveA: ((response: Response) => void) | null = null;
+      let resolveB: ((response: Response) => void) | null = null;
+      const mockFetch = vi.fn().mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveA = resolve;
+          })
+      );
+      mockFetch.mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveB = resolve;
+          })
+      );
+      (globalThis as unknown as { fetch: Mock }).fetch = mockFetch;
+
+      // Fill the semaphore so that only one slot is left, then queue both
+      // calls. We'll resolve the first one with a 403 secondary-limit body.
+      // Using GITHUB_FETCH_CONCURRENCY = 1 here would be cleaner but the
+      // semaphore is a singleton — so we fill it to N-1 and let our two
+      // calls compete for the last slot + the queue.
+      const filler: Array<{
+        resolve: (response: Response) => void;
+      }> = [];
+      const fillerMock = vi.fn().mockImplementation(
+        () =>
+          new Promise<Response>((resolve) => {
+            filler.push({ resolve });
+          })
+      );
+      (globalThis as unknown as { fetch: Mock }).fetch = fillerMock;
+      const fillers: Array<Promise<Response>> = [];
+      for (let i = 0; i < GITHUB_FETCH_CONCURRENCY - 1; i++) {
+        fillers.push(rateLimitAwareFetch(`https://api.github.com/filler?n=${i}`));
+      }
+      await vi.waitFor(() => {
+        expect(fillerMock).toHaveBeenCalledTimes(GITHUB_FETCH_CONCURRENCY - 1);
+      });
+      // Swap in the real test mock for the next two calls.
+      (globalThis as unknown as { fetch: Mock }).fetch = mockFetch;
+
+      const callA = rateLimitAwareFetch("https://api.github.com/A");
+      const callB = rateLimitAwareFetch("https://api.github.com/B");
+
+      // Wait until call A has dispatched (slot 8 taken) — call B is queued.
+      await vi.waitFor(() => {
+        expect(resolveA).not.toBeNull();
+      });
+
+      // Resolve A with a 403 secondary-limit body (no retry-after header).
+      resolveA!(new Response(body, { status: 403 }));
+
+      // B must fail with GitHubRateLimitError because the body-classified
+      // secondary block was registered synchronously before A released.
+      await expect(callB).rejects.toBeInstanceOf(GitHubRateLimitError);
+      // The B fetch must NOT have been invoked — the post-acquire re-check
+      // tripped at the gate.
+      expect(resolveB).toBeNull();
+
+      // Cleanup fillers so the test exits cleanly.
+      for (const f of filler) f.resolve(new Response(null, { status: 200 }));
+      await Promise.all(fillers);
+      // Drain whatever's left for the test mock.
+      await callA;
+    });
+  });
+
+  it("validate() distinguishes a secondary-rate-limit 403 from a permissions 403", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response("You have exceeded a secondary rate limit. Please wait.", { status: 403 })
+    );
+    (globalThis as unknown as { fetch: Mock }).fetch = mockFetch;
+
+    const result = await GitHubAuth.validate("ghp_validtoken012345678901234567890123456789");
+    expect(result.valid).toBe(false);
+    // Must NOT report this as a permissions error.
+    expect(result.error).not.toBe("Token lacks required permissions");
+    expect(result.error).toMatch(/secondary rate limit/i);
   });
 
   it("validate returns empty scopes for fine-grained PAT with empty x-oauth-scopes header", async () => {

@@ -380,6 +380,29 @@ export class GitHubAuth {
           };
         }
         if (response.status === 403) {
+          // Distinguish a secondary-rate-limit 403 from a permissions 403 —
+          // both share status but mean very different things to the user.
+          // If `retry-after` is present the wrapper's Phase 1 already
+          // registered a secondary block; otherwise inspect the body.
+          const retryAfter = response.headers.get("retry-after");
+          let secondaryHit = retryAfter !== null && retryAfter !== "";
+          if (!secondaryHit) {
+            try {
+              const bodyText = await response.text();
+              const lower = bodyText.toLowerCase();
+              secondaryHit =
+                lower.includes("secondary rate limit") || lower.includes("abuse detection");
+            } catch {
+              // fall through to permissions error
+            }
+          }
+          if (secondaryHit) {
+            return {
+              valid: false,
+              scopes: [],
+              error: "GitHub secondary rate limit triggered. Please retry shortly.",
+            };
+          }
           return { valid: false, scopes: [], error: "Token lacks required permissions" };
         }
         if (response.status >= 500 && response.status <= 599) {
@@ -571,12 +594,23 @@ export async function rateLimitAwareFetch(
   const release = await githubFetchSemaphore.acquire();
   const versionAtStart = GitHubAuth.getTokenVersion();
   try {
+    // Post-acquire re-check: while this request was queued in the semaphore,
+    // another request may have completed and registered a block. Without
+    // this re-check, queued waiters would dispatch into an active block and
+    // amplify the rate-limit violation instead of stopping at the gate.
+    if (!skipPreflight) {
+      const reblock = gitHubRateLimitService.shouldBlockRequest();
+      if (reblock.blocked && reblock.reason && reblock.resumeAt) {
+        throw new GitHubRateLimitError(reblock.reason, reblock.resumeAt);
+      }
+    }
+
     const response = await globalThis.fetch(input, fetchInit);
 
     const requestId = response.headers.get("x-github-request-id") ?? undefined;
 
-    // Phase 1 — header-only classification runs immediately so the Response
-    // can flow back to Octokit without waiting on the body.
+    // Phase 1 — header-only classification runs immediately. Catches the
+    // retry-after path, the primary-limit path, and the 2xx clear path.
     try {
       gitHubRateLimitService.update(response.headers, response.status, undefined, requestId);
     } catch {
@@ -594,24 +628,20 @@ export async function rateLimitAwareFetch(
       }
     }
 
-    // Phase 2 — secondary-limit fallback classification when the 403/429
-    // response carries no `retry-after` but explains the block in its body.
-    // Scheduled off the hot path; any failures are swallowed.
+    // Phase 2 — body-text classification for 403/429 responses that GitHub
+    // reports via body text rather than a `retry-after` header. Runs
+    // *synchronously* before `release()` so the block is registered before
+    // any queued waiter can acquire the slot. The body of a 403/429 is
+    // small and already buffered after `fetch()` resolves, so this adds
+    // only microseconds of latency on the error path.
     if (!response.ok && (response.status === 403 || response.status === 429)) {
-      void response
-        .clone()
-        .text()
-        .then((bodyText) => {
-          try {
-            gitHubRateLimitService.update(response.headers, response.status, bodyText, requestId);
-          } catch {
-            // Swallow — see Phase 1 comment.
-          }
-        })
-        .catch(() => {
-          // Cloning can fail on aborted streams; header-only classification
-          // is already safe.
-        });
+      try {
+        const bodyText = await response.clone().text();
+        gitHubRateLimitService.update(response.headers, response.status, bodyText, requestId);
+      } catch {
+        // Cloning can fail on aborted streams; header-only classification
+        // already covered the headered case.
+      }
     }
 
     return response;
