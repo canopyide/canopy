@@ -9,9 +9,10 @@ import {
   useState,
   useTransition,
 } from "react";
-import { FolderOpen, LayoutGrid, Plus, RefreshCw, Zap } from "lucide-react";
+import { AlertTriangle, FolderOpen, LayoutGrid, Plus, RefreshCw, Zap } from "lucide-react";
 import { HollowCircle } from "@/components/icons";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { InlineStatusBanner } from "@/components/Terminal/InlineStatusBanner";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ScrollIndicator } from "@/components/Worktree/ScrollIndicator";
 import {
@@ -70,6 +71,7 @@ import { RecipeManager } from "@/components/TerminalRecipe/RecipeManager";
 import { isAgentTerminal } from "@/utils/terminalType";
 import { isTerminalVisible } from "@/lib/terminalVisibility";
 import { useWorktreeIds } from "@/hooks/useTerminalSelectors";
+import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import { logError } from "@/utils/logger";
 import { useWorktreeGridRovingFocus } from "./useWorktreeGridRovingFocus";
 
@@ -233,6 +235,8 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     },
   });
   const { worktrees, isLoading, isReconnecting, reconnectingAt, error, refresh } = useWorktrees();
+  const setError = useWorktreeStore((state) => state.setError);
+  const onBannerDismiss = useCallback(() => setError(null), [setError]);
   worktreesRef.current = worktrees;
 
   // 1Hz tick that drives the escalated "Reconnecting… last updated X ago"
@@ -813,38 +817,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     );
   }
 
-  if (error) {
-    return (
-      <div className="flex flex-col h-full">
-        {worktreeLoadErrorBanner}
-        <div className="flex items-center px-4 py-4 border-b border-divider shrink-0">
-          <h2 className="text-daintree-text font-semibold text-sm tracking-wide">Worktrees</h2>
-        </div>
-        <div className="px-4 py-4">
-          <div className="text-[var(--color-status-error)] text-sm mb-2">{error}</div>
-          <button
-            onClick={() => setIsRestartConfirmOpen(true)}
-            className="text-xs px-2 py-1 border border-divider rounded hover:bg-tint/[0.06] text-daintree-text"
-          >
-            Restart Service
-          </button>
-          <ConfirmDialog
-            isOpen={isRestartConfirmOpen}
-            onClose={() => setIsRestartConfirmOpen(false)}
-            title="Restart workspace service?"
-            description="Restarts the workspace monitoring process. Git status and worktree data will be temporarily unavailable."
-            confirmLabel="Restart service"
-            variant="destructive"
-            onConfirm={() => {
-              void actionService.dispatch("worktree.restartService", undefined, { source: "user" });
-              setIsRestartConfirmOpen(false);
-            }}
-          />
-        </div>
-      </div>
-    );
-  }
-
   if (worktrees.length === 0) {
     return (
       <>
@@ -1143,6 +1115,27 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         <WorktreeSidebarSearchBar inputRef={searchInputRef} chipCounts={chipCounts} />
       )}
 
+      {error && (
+        <InlineStatusBanner
+          icon={AlertTriangle}
+          title="Workspace service unavailable"
+          contextLine={error}
+          severity="warning"
+          role="status"
+          ariaLive="polite"
+          onClose={onBannerDismiss}
+          closeAriaLabel="Dismiss error"
+          actions={[
+            {
+              id: "restart-workspace-service",
+              label: "Restart Service",
+              variant: "primary",
+              onClick: () => setIsRestartConfirmOpen(true),
+            },
+          ]}
+        />
+      )}
+
       {/* SR-only live region for keyboard reorder announcements. dnd-kit's
           built-in announcer can't see external mutations like Alt+Arrow, so
           announce here. */}
@@ -1226,18 +1219,16 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                   trailing={armMatchingButton}
                 />
               )}
-              {showQuickStateEmptyState ? (
+              {showQuickStateEmptyState && !hasFacetFiltersActive ? (
+                <EmptyState variant="user-cleared" scale="sidebar" title="All caught up" />
+              ) : showQuickStateEmptyState && hasFacetFiltersActive ? (
                 <EmptyState
                   variant="filtered-empty"
                   scale="sidebar"
                   instant
-                  title={
-                    hasFacetFiltersActive && activeFacetFilterCount > 0
-                      ? `No worktrees match ${QUICK_STATE_LABELS[quickStateFilter]} with ${activeFacetFilterCount} ${
-                          activeFacetFilterCount === 1 ? "filter" : "filters"
-                        }`
-                      : `No ${quickStateFilter} worktrees`
-                  }
+                  title={`No worktrees match ${QUICK_STATE_LABELS[quickStateFilter]} with ${activeFacetFilterCount} ${
+                    activeFacetFilterCount === 1 ? "filter" : "filters"
+                  }`}
                   action={
                     <>
                       <button
@@ -1442,6 +1433,19 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       >
         <FleetPickerPalette isOpen={isFleetPickerOpen} onClose={closeFleetPicker} />
       </ErrorBoundary>
+
+      <ConfirmDialog
+        isOpen={isRestartConfirmOpen}
+        onClose={() => setIsRestartConfirmOpen(false)}
+        title="Restart workspace service?"
+        description="Restarts the workspace monitoring process. Git status and worktree data will be temporarily unavailable."
+        confirmLabel="Restart service"
+        variant="destructive"
+        onConfirm={() => {
+          void actionService.dispatch("worktree.restartService", undefined, { source: "user" });
+          setIsRestartConfirmOpen(false);
+        }}
+      />
     </div>
   );
 }

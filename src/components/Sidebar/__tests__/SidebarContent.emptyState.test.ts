@@ -77,32 +77,43 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
 
   describe("empty-state branch ordering and copy", () => {
     it("renders the quick-state empty state before the generic filter-mismatch branch", () => {
-      const quickStateIdx = source.indexOf("showQuickStateEmptyState ?");
+      const quickStateIdx = source.indexOf("showQuickStateEmptyState && !hasFacetFiltersActive ?");
       const genericIdx = source.indexOf(") : filteredWorktrees.length === 0 &&");
       expect(quickStateIdx).toBeGreaterThan(0);
       expect(genericIdx).toBeGreaterThan(0);
       expect(quickStateIdx).toBeLessThan(genericIdx);
     });
 
-    it("titles the quick-state empty state with the active filter label via the EmptyState primitive", () => {
-      // Single-axis fallback when no facet filters are active alongside the
-      // quick-state filter (still the default copy).
-      expect(source).toMatch(/: `No \$\{quickStateFilter\} worktrees`/);
+    it("uses the user-cleared variant when only quick-state filter is active (no facet filters)", () => {
+      // When the quick-state filter is the only active filter (no facet
+      // filters), zero results means the user genuinely cleared their
+      // working/waiting queue — route to the completion-oriented
+      // user-cleared variant with a single "All caught up" title.
+      const branchStart = source.indexOf("showQuickStateEmptyState && !hasFacetFiltersActive ?");
+      const branchEnd = source.indexOf(
+        ") : showQuickStateEmptyState && hasFacetFiltersActive ?",
+        branchStart
+      );
+      const branch = source.slice(branchStart, branchEnd);
+      expect(branch).toContain("<EmptyState");
+      expect(branch).toContain('variant="user-cleared"');
+      expect(branch).toContain('title="All caught up"');
+      expect(branch).not.toContain("action=");
     });
 
     it("names both axes when a facet filter is active alongside the quick-state — issue #7971", () => {
       // When the quick-state filter and one or more facet filters are active
       // together and produce zero results, the title must call out both axes
-      // (e.g. "No worktrees match Working with 2 filters") instead of picking
-      // only one. The fallback to "No {quickStateFilter} worktrees" stays for
-      // the quick-state-only case.
-      const branchStart = source.indexOf("showQuickStateEmptyState ?");
+      // (e.g. "No worktrees match Working with 2 filters"). The dual-axis
+      // branch is now gated on `showQuickStateEmptyState && hasFacetFiltersActive`
+      // (only entered when facet filters are active alongside quick-state).
+      const branchStart = source.indexOf("showQuickStateEmptyState && hasFacetFiltersActive ?");
       const branchEnd = source.indexOf(") : filteredWorktrees.length === 0 &&", branchStart);
       const branch = source.slice(branchStart, branchEnd);
-      expect(branch).toContain("hasFacetFiltersActive && activeFacetFilterCount > 0");
       expect(branch).toMatch(
         /`No worktrees match \$\{QUICK_STATE_LABELS\[quickStateFilter\]\} with \$\{activeFacetFilterCount\} \$\{[\s\S]*?activeFacetFilterCount === 1 \? "filter" : "filters"[\s\S]*?\}`/
       );
+      expect(branch).toContain('variant="filtered-empty"');
     });
 
     it("derives the active facet filter count from the five facet Set sizes — issue #7971", () => {
@@ -124,23 +135,25 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       );
     });
 
-    it("uses the EmptyState filtered-empty variant for the quick-state branch", () => {
-      // The quick-state empty state migrated from raw markup to the canonical
-      // EmptyState primitive (#6934). The variant carries role=status and
-      // aria-live=polite at the component level.
-      const branchStart = source.indexOf("showQuickStateEmptyState ?");
-      const branchEnd = source.indexOf(") : filteredWorktrees.length === 0 &&", branchStart);
-      const branch = source.slice(branchStart, branchEnd);
-      expect(branch).toContain("<EmptyState");
+    it("uses both user-cleared and filtered-empty variants in the quick-state branch", () => {
+      // When only the quick-state filter is active (no facet filters), the
+      // user-cleared variant celebrates completion. When facet filters are
+      // active alongside the quick-state, filtered-empty describes the
+      // absence.
+      const quickStateIdx = source.indexOf("showQuickStateEmptyState && !hasFacetFiltersActive ?");
+      const genericIdx = source.indexOf(") : filteredWorktrees.length === 0 &&");
+      const branch = source.slice(quickStateIdx, genericIdx);
+      expect(branch).toContain('variant="user-cleared"');
       expect(branch).toContain('variant="filtered-empty"');
     });
 
-    it("renders the quick-state empty state with dual recovery actions: clear filters and open overview — issue #8383", () => {
-      // #6934 collapsed the dual-CTA shape to a single button wired to
-      // clearAll(). #8383 intentionally restores a second action: "Open
-      // overview" gives users an alternative escape path to the full
-      // worktrees overview modal instead of clearing filters.
-      const branchStart = source.indexOf("showQuickStateEmptyState ?");
+    it("renders dual recovery actions in the facet-filtered branch: clear filters and open overview — issues #7971, #8383", () => {
+      // The user-cleared variant (only quick-state, no facets) forbids actions
+      // by design — completed-result states stay quiet per CLAUDE.md. The
+      // facet-filtered branch carries both recovery paths: "Show all
+      // worktrees" clears filters; "Open overview" gives an alternative
+      // escape to the full worktrees overview modal (#8383).
+      const branchStart = source.indexOf("showQuickStateEmptyState && hasFacetFiltersActive ?");
       const branchEnd = source.indexOf(") : filteredWorktrees.length === 0 &&", branchStart);
       const branch = source.slice(branchStart, branchEnd);
       expect(branch).toMatch(/onClick=\{clearAllFilters\}[\s\S]*?>\s*Show all worktrees\s*</);
@@ -160,13 +173,11 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       expect(source).toContain('title={formatButtonTitle("Open overview", overviewShortcut)}');
     });
 
-    it("does not render a description in the quick-state branch (single CTA conveys recovery)", () => {
-      // CLAUDE.md popover/sidebar empty-state rule: when the filter input above
-      // explains the cause and the title + CTA convey recovery, an additional
-      // description is redundant. The `description` prop is intentionally
-      // omitted; the visible filter chips above the empty state carry any
-      // additional active-filter signal.
-      const branchStart = source.indexOf("showQuickStateEmptyState ?");
+    it("does not render a description in the quick-state branch", () => {
+      // The user-cleared variant forbids description by design; the
+      // filtered-empty sidebar variant omits description per CLAUDE.md
+      // empty-state rules.
+      const branchStart = source.indexOf("showQuickStateEmptyState && !hasFacetFiltersActive ?");
       const branchEnd = source.indexOf(") : filteredWorktrees.length === 0 &&", branchStart);
       const branch = source.slice(branchStart, branchEnd);
       expect(branch).not.toMatch(/description=/);
@@ -320,7 +331,7 @@ describe("SidebarContent initial loading skeleton — issue #7215", () => {
 
   it("renders the Skeleton primitive in the initial-loading branch with a context-specific label", () => {
     const branchStart = source.indexOf("if (isLoading && worktrees.length === 0)");
-    const branchEnd = source.indexOf("if (error)", branchStart);
+    const branchEnd = source.indexOf("if (worktrees.length === 0)", branchStart);
     expect(branchStart).toBeGreaterThan(0);
     expect(branchEnd).toBeGreaterThan(branchStart);
     const branch = source.slice(branchStart, branchEnd);
@@ -330,7 +341,7 @@ describe("SidebarContent initial loading skeleton — issue #7215", () => {
 
   it("preserves the Worktrees header in the loading branch to avoid layout shift on reveal", () => {
     const branchStart = source.indexOf("if (isLoading && worktrees.length === 0)");
-    const branchEnd = source.indexOf("if (error)", branchStart);
+    const branchEnd = source.indexOf("if (worktrees.length === 0)", branchStart);
     const branch = source.slice(branchStart, branchEnd);
     expect(branch).toMatch(/<h2[^>]*>Worktrees<\/h2>/);
   });
@@ -340,7 +351,7 @@ describe("SidebarContent initial loading skeleton — issue #7215", () => {
     // animate-pulse-delayed enforces the gate automatically. Do not stack a
     // useDeferredLoading hook on top of it (double-gating).
     const branchStart = source.indexOf("if (isLoading && worktrees.length === 0)");
-    const branchEnd = source.indexOf("if (error)", branchStart);
+    const branchEnd = source.indexOf("if (worktrees.length === 0)", branchStart);
     const branch = source.slice(branchStart, branchEnd);
     expect(branch).toContain("animate-pulse-delayed");
     expect(branch).not.toContain("animate-pulse-immediate");
@@ -351,8 +362,75 @@ describe("SidebarContent initial loading skeleton — issue #7215", () => {
     // The wrapper carries role=status + aria-busy=true for the live-region
     // announcement; the placeholder bones must not pollute the AT tree.
     const branchStart = source.indexOf("if (isLoading && worktrees.length === 0)");
-    const branchEnd = source.indexOf("if (error)", branchStart);
+    const branchEnd = source.indexOf("if (worktrees.length === 0)", branchStart);
     const branch = source.slice(branchStart, branchEnd);
     expect(branch).toContain('aria-hidden="true"');
+  });
+});
+
+describe("SidebarContent workspace error banner — issue #8394", () => {
+  let source: string;
+
+  beforeAll(async () => {
+    source = await fs.readFile(SIDEBAR_CONTENT_PATH, "utf-8");
+  });
+
+  it("imports InlineStatusBanner from the Terminal directory", () => {
+    expect(source).toMatch(
+      /import \{ InlineStatusBanner \} from "@\/components\/Terminal\/InlineStatusBanner"/
+    );
+  });
+
+  it("imports AlertTriangle from lucide-react for the banner icon", () => {
+    const importLine = source.match(/import \{[^}]*\} from "lucide-react"/);
+    expect(importLine).not.toBeNull();
+    expect(importLine![0]).toContain("AlertTriangle");
+  });
+
+  it("does not have an if (error) early return that hides the worktree list", () => {
+    expect(source).not.toMatch(/if \(error\) \{\s*return/);
+  });
+
+  it("renders InlineStatusBanner with severity=warning, role=status, ariaLive=polite", () => {
+    expect(source).toContain('severity="warning"');
+    expect(source).toContain('role="status"');
+    expect(source).toContain('ariaLive="polite"');
+  });
+
+  it("wires the error text as contextLine and a Restart Service action", () => {
+    expect(source).toMatch(/contextLine=\{error\}/);
+    expect(source).toContain('"Restart Service"');
+    expect(source).toContain('id: "restart-workspace-service"');
+  });
+
+  it("wires dismiss to setError(null) via useWorktreeStore", () => {
+    expect(source).toContain("useWorktreeStore((state) => state.setError)");
+    expect(source).toMatch(/onClose=\{onBannerDismiss\}/);
+  });
+
+  it("keeps ConfirmDialog in the main return path, not inside an early return", () => {
+    const mainReturnStart = source.lastIndexOf("return (");
+    const afterMainReturn = source.slice(mainReturnStart);
+    expect(afterMainReturn).toContain("<ConfirmDialog");
+    expect(afterMainReturn).toContain('title="Restart workspace service?"');
+    expect(afterMainReturn).toContain("isRestartConfirmOpen");
+  });
+});
+
+describe("SidebarContent quick-state user-cleared variant — issue #8394", () => {
+  let source: string;
+
+  beforeAll(async () => {
+    source = await fs.readFile(SIDEBAR_CONTENT_PATH, "utf-8");
+  });
+
+  it("routes no-facet-filter zero to user-cleared with 'All caught up' title", () => {
+    expect(source).toContain('variant="user-cleared"');
+    expect(source).toContain('title="All caught up"');
+  });
+
+  it("keeps filtered-empty when facet filters are active alongside quick-state", () => {
+    expect(source).toContain("showQuickStateEmptyState && hasFacetFiltersActive ?");
+    expect(source).toContain('variant="filtered-empty"');
   });
 });
