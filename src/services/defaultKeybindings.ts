@@ -347,6 +347,14 @@ const CORE_KEYBINDINGS: KeybindingConfig[] = [
     category: "Agents",
   },
   {
+    actionId: "agent.focusNextWaitingGlobal",
+    combo: "Cmd+Shift+Alt+/",
+    scope: "global",
+    priority: 0,
+    description: "Jump to next waiting agent across all projects",
+    category: "Agents",
+  },
+  {
     actionId: "agent.focusNextWorking",
     combo: "Cmd+Alt+.",
     scope: "global",

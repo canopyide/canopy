@@ -25,7 +25,8 @@ export function registerProjectSwitchHandlers(deps: HandlerDependencies): () => 
   const handleProjectSwitch = async (
     ctx: import("../../types.js").IpcContext,
     projectId: string,
-    outgoingState?: ProjectSwitchOutgoingState
+    outgoingState?: ProjectSwitchOutgoingState,
+    options?: { focusIntent?: "focus-next-waiting" }
   ) => {
     if (typeof projectId !== "string" || !projectId) {
       throw new Error("Invalid project ID");
@@ -41,6 +42,13 @@ export function registerProjectSwitchHandlers(deps: HandlerDependencies): () => 
 
     const pvm = resolveProjectViewManager(deps, ctx.event);
     if (pvm) {
+      // Record the focus intent on the PVM instance BEFORE switchTo so the
+      // cached-view fast path can pick it up synchronously and the cold-start
+      // path can read it after the paint gate resolves. PVM owns the lifecycle
+      // (consumed exactly once or discarded on timeout/error).
+      if (options?.focusIntent) {
+        pvm.setPendingFocusIntent(projectId, options.focusIntent);
+      }
       await activateProjectView(deps, ctx.event, pvm, projectId, project, {
         logPrefix: "[ProjectSwitch]",
       });

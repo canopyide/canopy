@@ -466,6 +466,17 @@ function App() {
     });
     return () => cancelAnimationFrame(id);
   }, []);
+  // Subscribe BEFORE the paint signal can fire — must be unconditional and
+  // run on mount, not gated on `isStateLoaded`. The main process delivers a
+  // one-shot `project:focus-on-activate` after `agent.focusNextWaitingGlobal`
+  // switches projects; receiving it means the view just became visible and
+  // should run a local `agent.focusNextWaiting` cycle.
+  useEffect(() => {
+    return window.electron.project.onFocusOnActivate((payload) => {
+      if (payload?.intent !== "focus-next-waiting") return;
+      void actionService.dispatch("agent.focusNextWaiting");
+    });
+  }, []);
   // The skeleton is z-index 9999 and intercepts pointer events. The crash
   // recovery dialog is rendered before hydration completes, so without this
   // the dialog would be visible but unclickable until hydration finishes

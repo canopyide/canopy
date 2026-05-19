@@ -131,6 +131,14 @@ export class ProjectViewManager {
   private efficiencyFreezeTimer: NodeJS.Timeout | null = null;
   private pendingPaintGate: PaintGate | null = null;
   private paintGateTimeoutMs = PAINT_GATE_TIMEOUT_MS;
+  // One-shot focus intent consumed by the next switchTo for this projectId.
+  // Lives on the instance (not module) so multi-window does not cross-leak.
+  // Cleared after delivery or discard so a later unrelated switch can't
+  // re-trigger a stale focus jump (#4670 lesson).
+  private pendingFocusIntent: {
+    projectId: string;
+    intent: "focus-next-waiting";
+  } | null = null;
 
   constructor(win: BrowserWindow, opts: ProjectViewManagerOptions) {
     this.win = win;
@@ -220,6 +228,14 @@ export class ProjectViewManager {
     if (this.activeProjectId === projectId) {
       const existing = this.views.get(projectId);
       if (existing) {
+        // Consume any pending intent so it doesn't leak into a later switch.
+        // The renderer-side global action short-circuits same-project locally,
+        // so reaching here with an intent is unusual but possible (e.g. two
+        // concurrent switchTo calls); deliver immediately rather than drop.
+        const activeIntent = this.consumePendingFocusIntent(projectId);
+        if (activeIntent) {
+          this.deliverFocusIntent(existing.view, activeIntent);
+        }
         return { view: existing.view, isNew: false };
       }
     }
@@ -251,6 +267,10 @@ export class ProjectViewManager {
         this.evictionTimestamps.delete(projectId);
       }
       this.activateView(cached);
+      const cachedIntent = this.consumePendingFocusIntent(projectId);
+      if (cachedIntent) {
+        this.deliverFocusIntent(cached.view, cachedIntent);
+      }
       return { view: cached.view, isNew: false };
     }
 
@@ -330,6 +350,18 @@ export class ProjectViewManager {
         visibleMs: Math.round(visibleAt - coldStartAt),
         paintGateOutcome: gateResult,
       });
+
+      // Deliver pending focus intent only when the renderer has confirmed
+      // first paint. On timeout the renderer may be stuck or unresponsive —
+      // dropping the intent is safer than firing into a partially-mounted
+      // view (the subscriber is registered before `notifyViewPainted`, but
+      // a paint-gate timeout means we have no positive evidence of that).
+      // The intent is always consumed (cleared) regardless of outcome to
+      // prevent a later unrelated switch from picking up a stale focus.
+      const coldIntent = this.consumePendingFocusIntent(projectId);
+      if (coldIntent && gateResult === "signal") {
+        this.deliverFocusIntent(view, coldIntent);
+      }
     } catch (loadError) {
       // Cold-start failed before the swap happened — outgoing view is still
       // attached and visible. Tear down the failed incoming view, restore the
@@ -337,6 +369,9 @@ export class ProjectViewManager {
       // point at the failed view), and let the still-attached outgoing view
       // resume as the active view.
       this.clearPaintGate("cancelled");
+      // Discard any pending focus intent for the failed projectId so a later
+      // unrelated switch can't pick it up.
+      this.consumePendingFocusIntent(projectId);
       this.cleanupEntry(projectId);
 
       this.activeProjectId = previousProjectId;
@@ -421,6 +456,31 @@ export class ProjectViewManager {
     if (!gate) return;
     if (gate.webContentsId !== webContentsId) return;
     gate.resolve("signal");
+  }
+
+  /**
+   * Record a one-shot focus intent to deliver to the renderer after the next
+   * switch to `projectId` activates. Consumed exactly once: on cold-start
+   * activation (after the paint gate resolves with "signal") or immediately
+   * after a cached-view reactivation. Discarded on timeout/cancel/error so a
+   * later unrelated switch can't trigger a stale focus jump.
+   */
+  setPendingFocusIntent(projectId: string, intent: "focus-next-waiting"): void {
+    this.pendingFocusIntent = { projectId, intent };
+  }
+
+  private consumePendingFocusIntent(projectId: string): "focus-next-waiting" | null {
+    const pending = this.pendingFocusIntent;
+    if (!pending) return null;
+    this.pendingFocusIntent = null;
+    if (pending.projectId !== projectId) return null;
+    return pending.intent;
+  }
+
+  private deliverFocusIntent(view: WebContentsView, intent: "focus-next-waiting"): void {
+    if (view.webContents.isDestroyed()) return;
+    // Targeted send to the specific incoming view — never broadcast (#4641, #5010).
+    view.webContents.send(CHANNELS.PROJECT_FOCUS_ON_ACTIVATE, { intent });
   }
 
   getActiveProjectId(): string | null {

@@ -765,7 +765,11 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
     result: Project;
   };
   "project:switch": {
-    args: [projectId: string, outgoingState?: ProjectSwitchOutgoingState];
+    args: [
+      projectId: string,
+      outgoingState?: ProjectSwitchOutgoingState,
+      options?: { focusIntent?: "focus-next-waiting" },
+    ];
     result: Project;
   };
   "project:prefetch-hydrate": {
@@ -2204,6 +2208,7 @@ export interface IpcEventMap {
   // Project events
   "project:on-switch": ProjectSwitchPayload;
   "project:worktree-load-status": ProjectWorktreeLoadStatusPayload;
+  "project:focus-on-activate": { intent: "focus-next-waiting" };
   "project:stats-updated": ProjectStatusMap;
   "project:updated": Project;
   "project:removed": string;

@@ -3,6 +3,8 @@ import { AgentIdSchema, LaunchLocationSchema, TerminalSpawnSourceSchema } from "
 import { z } from "zod";
 import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
+import { useProjectStore } from "@/store/projectStore";
+import { useProjectStatsStore } from "@/store/projectStatsStore";
 import { getCurrentViewStore } from "@/store/createWorktreeStore";
 import { AGENT_REGISTRY } from "@/config/agents";
 import type { ActionId } from "@shared/types/actions";
@@ -213,6 +215,67 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
         if (wt.worktreeId) validWorktreeIds.add(wt.worktreeId);
       }
       state.focusNextWaiting(state.isInTrash, validWorktreeIds);
+    },
+  }));
+
+  actions.set("agent.focusNextWaitingGlobal", () => ({
+    id: "agent.focusNextWaitingGlobal",
+    title: "Focus Next Waiting Agent (All Projects)",
+    description:
+      "Jump to the next project with a waiting agent and focus it. Cycles across all projects in sidebar order, wrapping around.",
+    category: "agent",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    run: async () => {
+      const projectState = useProjectStore.getState();
+      const stats = useProjectStatsStore.getState().stats;
+      const projects = projectState.projects;
+      if (projects.length === 0) return;
+
+      const currentProjectId = projectState.currentProject?.id ?? null;
+      const currentIdx = currentProjectId
+        ? projects.findIndex((p) => p.id === currentProjectId)
+        : -1;
+
+      // Start the search at the position AFTER the current project so the
+      // first comparison hits the next candidate, not currentProject itself.
+      // When currentProject isn't in the list (stale state, recently removed),
+      // start from the head. Wrap around the full list so a single waiting
+      // agent in currentProject still resolves (to a local focus dispatch).
+      const startIdx = currentIdx >= 0 ? currentIdx + 1 : 0;
+      let target: { id: string } | null = null;
+      for (let i = 0; i < projects.length; i++) {
+        const idx = (startIdx + i) % projects.length;
+        const candidate = projects[idx];
+        if (!candidate) continue;
+        const waiting = stats[candidate.id]?.waitingAgentCount ?? 0;
+        if (waiting > 0) {
+          target = candidate;
+          break;
+        }
+      }
+
+      if (!target) return;
+
+      if (target.id === currentProjectId) {
+        // Same-project: just cycle within the active view.
+        const panelState = usePanelStore.getState();
+        const worktreeData = getCurrentViewStore().getState();
+        const validWorktreeIds = new Set<string>();
+        for (const [id, wt] of worktreeData.worktrees) {
+          validWorktreeIds.add(id);
+          if (wt.worktreeId) validWorktreeIds.add(wt.worktreeId);
+        }
+        panelState.focusNextWaiting(panelState.isInTrash, validWorktreeIds);
+        return;
+      }
+
+      // Cross-project: switch with a one-shot focus intent. The main process
+      // delivers `project:focus-on-activate` to the incoming view once the
+      // paint gate resolves (cold start) or immediately on cache hit, and
+      // the renderer subscriber dispatches local `agent.focusNextWaiting`.
+      await projectState.switchProject(target.id, { focusIntent: "focus-next-waiting" });
     },
   }));
 
