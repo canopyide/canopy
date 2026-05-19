@@ -180,6 +180,7 @@ Direct `window.electron.*` IPC calls that skip `ActionService`. These are the hi
 | File | Operation | Has UI confirm? |
 | --- | --- | --- |
 | `src/components/Worktree/WorktreeCard.tsx` | `git.snapshotRevert` (context menu) | **Yes** — `ConfirmDialog` via `useWorktreeActions` / `WorktreeDialogs` (#8242) |
+| `src/components/Worktree/WorktreeCard.tsx` | `git.snapshotDelete` (toolbar menu) | **Yes** — `ConfirmDialog` via `useWorktreeActions` / `WorktreeDialogs` (#8415) |
 | `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | `stageAll`, `unstageAll`, `stageFile`, `commit` block | Authored-message gate on commit; no top-level dialog |
 | `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | `handleCommitAndPush` (bundled `commit` + `push`) | **Yes** — `CommitPanel` push confirm with branch pill + commit message preview + per-worktree opt-out (#8025); only user-initiated remote push path |
 | `src/components/Worktree/ReviewHub/ReviewHubContent.tsx` | `pullRebase` | **Yes** — `ConfirmDialog` with ahead/behind divergence preview (#8242) |
