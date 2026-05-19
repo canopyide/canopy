@@ -208,9 +208,7 @@ describe("rendererBridge — per-session pinned dispatch (#7002)", () => {
     await expect(bridge.requestManifestForWebContents(999)).rejects.toBeInstanceOf(
       SessionBindingError
     );
-    await expect(bridge.requestManifestForWebContents(999)).rejects.toThrow(
-      /Do not retry/
-    );
+    await expect(bridge.requestManifestForWebContents(999)).rejects.toThrow(/Do not retry/);
     await expect(
       bridge.dispatchActionForWebContents(999, "actions.list", {}, false)
     ).rejects.toBeInstanceOf(SessionBindingError);
@@ -227,9 +225,7 @@ describe("rendererBridge — per-session pinned dispatch (#7002)", () => {
     await expect(bridge.requestManifestForWebContents(404)).rejects.toBeInstanceOf(
       SessionBindingError
     );
-    await expect(bridge.requestManifestForWebContents(404)).rejects.toThrow(
-      /Do not retry/
-    );
+    await expect(bridge.requestManifestForWebContents(404)).rejects.toThrow(/Do not retry/);
     await expect(
       bridge.dispatchActionForWebContents(404, "actions.list", {}, false)
     ).rejects.toBeInstanceOf(SessionBindingError);

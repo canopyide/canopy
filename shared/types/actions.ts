@@ -167,7 +167,8 @@ export type ActionErrorCode =
   | "EXECUTION_ERROR"
   | "USER_REJECTED"
   | "CONFIRMATION_TIMEOUT"
-  | "ELICITATION_FAILED";
+  | "ELICITATION_FAILED"
+  | "BINDING_STALE";
 
 export interface ActionError {
   code: ActionErrorCode;
