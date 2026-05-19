@@ -1166,15 +1166,18 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                   action={
                     <>
                       <button
+                        type="button"
                         onClick={clearAllFilters}
                         className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
                       >
                         Show all worktrees
                       </button>
                       <button
+                        type="button"
                         onClick={onOpenOverview}
                         className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors ml-1"
                         title={formatButtonTitle("Open overview", overviewShortcut)}
+                        aria-keyshortcuts={overviewAriaShortcut}
                       >
                         Open overview
                       </button>
@@ -1197,15 +1200,18 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                   action={
                     <>
                       <button
+                        type="button"
                         onClick={clearAllFilters}
                         className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
                       >
                         Show all worktrees
                       </button>
                       <button
+                        type="button"
                         onClick={onOpenOverview}
                         className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors ml-1"
                         title={formatButtonTitle("Open overview", overviewShortcut)}
+                        aria-keyshortcuts={overviewAriaShortcut}
                       >
                         Open overview
                       </button>

@@ -157,6 +157,7 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       // pre-#6934 dual-CTA shape must not reappear.
       expect(source).not.toContain("Show all states");
       expect(source).not.toContain("Clear all filters");
+      expect(source).toContain('title={formatButtonTitle("Open overview", overviewShortcut)}');
     });
 
     it("does not render a description in the quick-state branch (single CTA conveys recovery)", () => {
