@@ -96,6 +96,7 @@ export interface WorktreeHeaderProps {
     onOpenPanelPalette?: () => void;
     onDeleteWorktree?: () => void;
     onRevertAgentChanges?: () => void;
+    onDeleteSnapshot?: () => void;
     hasSnapshot?: boolean;
     hasResourceConfig?: boolean;
     worktreeMode?: string;

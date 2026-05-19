@@ -44,6 +44,7 @@ export interface UseWorktreeActionsResult {
 
   hasSnapshot: boolean;
   handleRevertAgentChanges: () => void;
+  handleDeleteSnapshot: () => void;
 }
 
 export function useWorktreeActions({
@@ -132,6 +133,39 @@ export function useWorktreeActions({
           })
           .catch((error) => {
             logError("Failed to revert agent changes", error);
+          });
+      },
+    });
+  }, [worktree.id, worktree.issueTitle, worktree.branch, worktree.name, snapshotCreatedAt]);
+
+  const handleDeleteSnapshot = useCallback(() => {
+    const label = worktree.issueTitle ?? worktree.branch ?? worktree.name;
+    const preview =
+      snapshotCreatedAt != null
+        ? createElement(
+            "p",
+            { className: "text-xs text-daintree-text/60" },
+            `Snapshot captured ${new Date(snapshotCreatedAt).toLocaleString()}.`
+          )
+        : undefined;
+    setConfirmDialog({
+      isOpen: true,
+      title: `Delete snapshot for '${label}'?`,
+      description:
+        "Deleting the pre-agent snapshot permanently removes the saved restore point. Your working tree is left unchanged, but you'll no longer be able to revert agent changes. This cannot be undone.",
+      confirmLabel: "Delete snapshot",
+      variant: "destructive",
+      children: preview,
+      onConfirm: () => {
+        setConfirmDialog({ isOpen: false });
+        window.electron.git
+          .snapshotDelete(worktree.id)
+          .then(() => {
+            setHasSnapshot(false);
+            setSnapshotCreatedAt(null);
+          })
+          .catch((error) => {
+            logError("Failed to delete snapshot", error);
           });
       },
     });
@@ -299,5 +333,6 @@ export function useWorktreeActions({
     handleSelectWorkingAgents,
     hasSnapshot,
     handleRevertAgentChanges,
+    handleDeleteSnapshot,
   };
 }

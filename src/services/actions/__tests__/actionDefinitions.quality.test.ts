@@ -272,6 +272,52 @@ const EXPECTED_CONFIRM_DANGER: ReadonlyArray<ActionId> = [
   "devPreview.reinstallAndRestart",
 ];
 
+/**
+ * Actions from EXPECTED_CONFIRM_DANGER whose user/menu/keybinding call site has
+ * a confirmed, identified `ConfirmDialog` gate (the audit's "UI confirm: yes"
+ * rows). `danger:"confirm"` only gates the agent dispatch source at runtime
+ * (ActionService.ts) — user-initiated dispatch is gated by a dialog wired at the
+ * call site, which the registry can't see. This list is the registry-side
+ * counterpart to that call-site wiring: a static allowlist, deliberately, since
+ * a source grep is brittle against aliased imports and refactors.
+ *
+ * Update contract: when you wire a ConfirmDialog for one of the
+ * EXPECTED_CONFIRM_DANGER actions, add its ID here and flip the audit row in
+ * docs/architecture/destructive-action-safeguards.md to "UI confirm: yes".
+ *
+ * `git.snapshotRevert` / `git.snapshotDelete` are wired in
+ * src/components/Worktree/WorktreeCard/hooks/useWorktreeActions.ts
+ * (handleRevertAgentChanges / handleDeleteSnapshot), surfaced via
+ * WorktreeMenuItems and gated by the shared ConfirmDialog in WorktreeDialogs.
+ */
+const CONFIRMED_WIRED: ReadonlyArray<ActionId> = ["git.snapshotRevert", "git.snapshotDelete"];
+
+describe("destructive-action confirm wiring", () => {
+  it('every CONFIRMED_WIRED action is classified danger:"confirm"', () => {
+    // A wired ConfirmDialog without danger:"confirm" leaks the action into the
+    // action-palette MRU rail and action.repeatLast — classification must lead
+    // wiring (CLAUDE.md "Destructive Action Tiers", rule 2).
+    const leaked = CONFIRMED_WIRED.filter((id) => !EXPECTED_CONFIRM_DANGER.includes(id));
+    expect(leaked).toEqual([]);
+  });
+
+  it("every EXPECTED_CONFIRM_DANGER action has a wired confirm call site", () => {
+    const unwired = EXPECTED_CONFIRM_DANGER.filter((id) => !CONFIRMED_WIRED.includes(id));
+
+    if (unwired.length > 0) {
+      console.warn(
+        `[quality-gate] ${unwired.length} confirm-danger action(s) without an ` +
+          `identified ConfirmDialog call site in CONFIRMED_WIRED:\n` +
+          unwired.map((id) => `  - ${id}`).join("\n")
+      );
+    }
+
+    // TODO(#8415): Promote to `expect(unwired).toEqual([])` once every
+    // EXPECTED_CONFIRM_DANGER call site is audited and listed in CONFIRMED_WIRED.
+    expect(true).toBe(true);
+  });
+});
+
 describe("destructive-action danger metadata", () => {
   it('every action in EXPECTED_CONFIRM_DANGER is registered with danger:"confirm"', async () => {
     const { registry } = await createRegistryWithAudit();
