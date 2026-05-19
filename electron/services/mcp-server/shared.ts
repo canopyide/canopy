@@ -209,15 +209,6 @@ export function buildToolError(input: {
   };
 }
 
-export const OPEN_WORLD_CATEGORIES: ReadonlySet<string> = new Set([
-  "browser",
-  "devServer",
-  "github",
-  "portal",
-  "voice",
-  "system",
-]);
-
 export type McpTier = "workbench" | "action" | "system" | "external";
 
 // Tier tool lists live in `shared/config/helpAssistantTierAllowlists.ts`
