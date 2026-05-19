@@ -89,6 +89,20 @@ export function registerMcpServerHandlers(): () => void {
   );
 
   handlers.push(
+    typedHandle(CHANNELS.MCP_SERVER_GET_TURN_OUTCOME_RECORDS, async () => {
+      const svc = await getMcpServerService();
+      return svc.getTurnOutcomeRecords();
+    })
+  );
+
+  handlers.push(
+    typedHandle(CHANNELS.MCP_SERVER_CLEAR_TURN_OUTCOME_LOG, async () => {
+      const svc = await getMcpServerService();
+      svc.clearTurnOutcomeLog();
+    })
+  );
+
+  handlers.push(
     typedHandle(CHANNELS.MCP_SERVER_SET_AUDIT_ENABLED, async (enabled: boolean) => {
       if (typeof enabled !== "boolean") throw new Error("enabled must be a boolean");
       const svc = await getMcpServerService();

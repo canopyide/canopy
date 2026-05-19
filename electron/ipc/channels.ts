@@ -543,6 +543,8 @@ export const CHANNELS = {
    * because pre-dispatch auth failures never reach the record ring buffer.
    */
   MCP_SERVER_GET_AUDIT_STATS: "mcp-server:get-audit-stats",
+  MCP_SERVER_GET_TURN_OUTCOME_RECORDS: "mcp-server:get-turn-outcome-records",
+  MCP_SERVER_CLEAR_TURN_OUTCOME_LOG: "mcp-server:clear-turn-outcome-log",
   /**
    * Mount-time hydration of the runtime-state snapshot. Distinct from
    * `MCP_SERVER_GET_STATUS` (which exposes config — enabled/port/apiKey)
