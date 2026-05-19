@@ -2603,6 +2603,31 @@ describe("McpServerService", () => {
         description: "Open an issue via the forge provider",
       }),
       createManifestEntry({
+        id: "forge.openIssues" as ActionId,
+        title: "Open Issues (Forge)",
+        description: "Open the issues list via the forge provider",
+      }),
+      createManifestEntry({
+        id: "forge.openPRs" as ActionId,
+        title: "Open PRs (Forge)",
+        description: "Open the pull requests list via the forge provider",
+      }),
+      createManifestEntry({
+        id: "forge.openCommits" as ActionId,
+        title: "Open Commits (Forge)",
+        description: "Open the commits view via the forge provider",
+      }),
+      createManifestEntry({
+        id: "forge.assignIssue" as ActionId,
+        title: "Assign Issue (Forge)",
+        description: "Assign an issue via the forge provider",
+      }),
+      createManifestEntry({
+        id: "forge.validateToken" as ActionId,
+        title: "Validate Token (Forge)",
+        description: "Validate credentials via the forge provider",
+      }),
+      createManifestEntry({
         id: "github.openPR" as ActionId,
         title: "Open PR",
         description: "Open a pull request on GitHub",
