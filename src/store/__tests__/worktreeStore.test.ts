@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TerminalRefreshTier } from "@shared/types/panel";
+import type { FleetScopeToken } from "@shared/types/worktree";
 
 const {
   appSetStateMock,
@@ -450,37 +451,83 @@ describe("worktreeStore", () => {
   });
 
   describe("fleet scope", () => {
-    it("starts inactive with no previous worktree captured", () => {
+    it("starts inactive with no previous worktree or token captured", () => {
       const state = useWorktreeSelectionStore.getState();
       expect(state.isFleetScopeActive).toBe(false);
       expect(state._previousActiveWorktreeId).toBeNull();
+      expect(state._fleetScopeToken).toBeNull();
     });
 
-    it("enterFleetScope captures current activeWorktreeId", () => {
+    it("enterFleetScope captures current activeWorktreeId and mints a token", () => {
       useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-active" });
-      useWorktreeSelectionStore.getState().enterFleetScope();
+      const token = useWorktreeSelectionStore.getState().enterFleetScope();
       const state = useWorktreeSelectionStore.getState();
       expect(state.isFleetScopeActive).toBe(true);
       expect(state._previousActiveWorktreeId).toBe("wt-active");
+      expect(typeof token).toBe("string");
+      expect(state._fleetScopeToken).toBe(token);
     });
 
-    it("enterFleetScope is idempotent — repeated calls preserve the original capture", () => {
+    it("enterFleetScope is idempotent — repeated calls preserve the capture and return the same token", () => {
       useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-original" });
-      useWorktreeSelectionStore.getState().enterFleetScope();
+      const token1 = useWorktreeSelectionStore.getState().enterFleetScope();
       useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-changed" });
-      useWorktreeSelectionStore.getState().enterFleetScope();
+      const token2 = useWorktreeSelectionStore.getState().enterFleetScope();
       expect(useWorktreeSelectionStore.getState()._previousActiveWorktreeId).toBe("wt-original");
+      expect(token2).toBe(token1);
     });
 
     it("exitFleetScope restores the previously captured activeWorktreeId", () => {
       useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-original" });
-      useWorktreeSelectionStore.getState().enterFleetScope();
+      const token = useWorktreeSelectionStore.getState().enterFleetScope();
       useWorktreeSelectionStore.setState({ activeWorktreeId: null });
-      useWorktreeSelectionStore.getState().exitFleetScope();
+      useWorktreeSelectionStore.getState().exitFleetScope(token);
       const state = useWorktreeSelectionStore.getState();
       expect(state.isFleetScopeActive).toBe(false);
       expect(state._previousActiveWorktreeId).toBeNull();
+      expect(state._fleetScopeToken).toBeNull();
       expect(state.activeWorktreeId).toBe("wt-original");
+    });
+
+    it("exitFleetScope with a stale token from a superseded scope is a no-op", () => {
+      useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-first" });
+      const staleToken = useWorktreeSelectionStore.getState().enterFleetScope();
+      useWorktreeSelectionStore.getState().exitFleetScope(staleToken);
+      // A fresh scope is entered, minting a new token.
+      useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-second" });
+      const liveToken = useWorktreeSelectionStore.getState().enterFleetScope();
+      expect(liveToken).not.toBe(staleToken);
+
+      // The stale exit (e.g. its async caller fired late) must not tear down
+      // the live scope or restore against the wrong worktree.
+      useWorktreeSelectionStore.setState({ activeWorktreeId: null });
+      useWorktreeSelectionStore.getState().exitFleetScope(staleToken);
+      const state = useWorktreeSelectionStore.getState();
+      expect(state.isFleetScopeActive).toBe(true);
+      expect(state._fleetScopeToken).toBe(liveToken);
+      expect(state.activeWorktreeId).toBeNull();
+    });
+
+    it("re-entering scope during a stale exit's async window does not restore focus", async () => {
+      setMockTerminals([
+        { id: "term-active", worktreeId: "wt-pre", location: "grid" },
+        { id: "term-primary", worktreeId: "wt-pre", location: "grid" },
+      ]);
+      useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-pre" });
+      const token1 = useWorktreeSelectionStore.getState().enterFleetScope();
+      lastArmedIdForFleet = "term-primary";
+      setFocusedMock.mockClear();
+
+      // Exit fires, then a new scope is entered before the deferred
+      // focus-restore microtask resolves. The non-null token guard must
+      // suppress the stale focus restore.
+      useWorktreeSelectionStore.getState().exitFleetScope(token1);
+      useWorktreeSelectionStore.getState().enterFleetScope();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(setFocusedMock).not.toHaveBeenCalledWith("term-primary");
+      lastArmedIdForFleet = null;
     });
 
     it("exitFleetScope persists the restored activeWorktreeId", async () => {
@@ -488,10 +535,10 @@ describe("worktreeStore", () => {
       // from earlier tests that touched "wt-original" via setActiveWorktree.
       const restoreId = "wt-fleet-exit-persist";
       useWorktreeSelectionStore.setState({ activeWorktreeId: restoreId });
-      useWorktreeSelectionStore.getState().enterFleetScope();
+      const token = useWorktreeSelectionStore.getState().enterFleetScope();
       useWorktreeSelectionStore.setState({ activeWorktreeId: null });
       appSetStateMock.mockClear();
-      useWorktreeSelectionStore.getState().exitFleetScope();
+      useWorktreeSelectionStore.getState().exitFleetScope(token);
       // persistActiveWorktree loads the clients module via dynamic import,
       // so the setState call is deferred to a microtask.
       await Promise.resolve();
@@ -505,10 +552,10 @@ describe("worktreeStore", () => {
         { id: "term-b", worktreeId: "wt-other", location: "grid" },
       ]);
       useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-original" });
-      useWorktreeSelectionStore.getState().enterFleetScope();
+      const token = useWorktreeSelectionStore.getState().enterFleetScope();
       useWorktreeSelectionStore.setState({ activeWorktreeId: null });
       applyRendererPolicyMock.mockClear();
-      useWorktreeSelectionStore.getState().exitFleetScope();
+      useWorktreeSelectionStore.getState().exitFleetScope(token);
       await Promise.resolve();
       await Promise.resolve();
       expect(applyRendererPolicyMock).toHaveBeenCalledWith("term-a", TerminalRefreshTier.VISIBLE);
@@ -520,7 +567,9 @@ describe("worktreeStore", () => {
 
     it("exitFleetScope is a no-op when scope is not active", () => {
       useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-current" });
-      useWorktreeSelectionStore.getState().exitFleetScope();
+      useWorktreeSelectionStore
+        .getState()
+        .exitFleetScope("orphan-token" as unknown as FleetScopeToken);
       const state = useWorktreeSelectionStore.getState();
       expect(state.isFleetScopeActive).toBe(false);
       expect(state.activeWorktreeId).toBe("wt-current");
@@ -533,6 +582,7 @@ describe("worktreeStore", () => {
       const state = useWorktreeSelectionStore.getState();
       expect(state.isFleetScopeActive).toBe(false);
       expect(state._previousActiveWorktreeId).toBeNull();
+      expect(state._fleetScopeToken).toBeNull();
     });
 
     it("enterFleetScope clears any active maximize so the scope grid is visible", async () => {
@@ -557,14 +607,14 @@ describe("worktreeStore", () => {
 
     it("exitFleetScope clears any lingering preMaximizeLayout snapshot", async () => {
       useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-pre-scope" });
-      useWorktreeSelectionStore.getState().enterFleetScope();
+      const token = useWorktreeSelectionStore.getState().enterFleetScope();
       await Promise.resolve();
       await Promise.resolve();
 
       terminalStoreState.preMaximizeLayout = { gridCols: 3 };
       panelSetStateMock.mockClear();
 
-      useWorktreeSelectionStore.getState().exitFleetScope();
+      useWorktreeSelectionStore.getState().exitFleetScope(token);
       await Promise.resolve();
       await Promise.resolve();
 
@@ -574,9 +624,9 @@ describe("worktreeStore", () => {
 
     it("enterFleetScope's deferred maximize-clear bails if scope was exited first", async () => {
       useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-race" });
-      useWorktreeSelectionStore.getState().enterFleetScope();
+      const token = useWorktreeSelectionStore.getState().enterFleetScope();
       // Exit scope synchronously before the deferred .then() resolves.
-      useWorktreeSelectionStore.getState().exitFleetScope();
+      useWorktreeSelectionStore.getState().exitFleetScope(token);
 
       // Simulate the user manually re-maximizing a panel after the exit.
       terminalStoreState.maximizedId = "term-user-maxed";
@@ -600,11 +650,11 @@ describe("worktreeStore", () => {
         { id: "term-primary", worktreeId: "wt-pre", location: "grid" },
       ]);
       useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-pre" });
-      useWorktreeSelectionStore.getState().enterFleetScope();
+      const token = useWorktreeSelectionStore.getState().enterFleetScope();
       lastArmedIdForFleet = "term-primary";
       setFocusedMock.mockClear();
 
-      useWorktreeSelectionStore.getState().exitFleetScope();
+      useWorktreeSelectionStore.getState().exitFleetScope(token);
       await Promise.resolve();
       await Promise.resolve();
 
@@ -615,11 +665,11 @@ describe("worktreeStore", () => {
     it("exitFleetScope does not call setFocused when lastArmedId is null", async () => {
       setMockTerminals([{ id: "term-active", worktreeId: "wt-pre", location: "grid" }]);
       useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-pre" });
-      useWorktreeSelectionStore.getState().enterFleetScope();
+      const token = useWorktreeSelectionStore.getState().enterFleetScope();
       lastArmedIdForFleet = null;
       setFocusedMock.mockClear();
 
-      useWorktreeSelectionStore.getState().exitFleetScope();
+      useWorktreeSelectionStore.getState().exitFleetScope(token);
       await Promise.resolve();
       await Promise.resolve();
 
@@ -636,11 +686,11 @@ describe("worktreeStore", () => {
         { id: "term-primary", worktreeId: "wt-other", location: "grid" },
       ]);
       useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-pre" });
-      useWorktreeSelectionStore.getState().enterFleetScope();
+      const token = useWorktreeSelectionStore.getState().enterFleetScope();
       lastArmedIdForFleet = "term-primary";
       setFocusedMock.mockClear();
 
-      useWorktreeSelectionStore.getState().exitFleetScope();
+      useWorktreeSelectionStore.getState().exitFleetScope(token);
       await Promise.resolve();
       await Promise.resolve();
 
@@ -654,11 +704,11 @@ describe("worktreeStore", () => {
         { id: "term-primary", worktreeId: "wt-pre", location: "trash" },
       ]);
       useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-pre" });
-      useWorktreeSelectionStore.getState().enterFleetScope();
+      const token = useWorktreeSelectionStore.getState().enterFleetScope();
       lastArmedIdForFleet = "term-primary";
       setFocusedMock.mockClear();
 
-      useWorktreeSelectionStore.getState().exitFleetScope();
+      useWorktreeSelectionStore.getState().exitFleetScope(token);
       await Promise.resolve();
       await Promise.resolve();
 
@@ -672,11 +722,11 @@ describe("worktreeStore", () => {
         { id: "term-primary", worktreeId: "wt-pre", location: "dock" },
       ]);
       useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-pre" });
-      useWorktreeSelectionStore.getState().enterFleetScope();
+      const token = useWorktreeSelectionStore.getState().enterFleetScope();
       lastArmedIdForFleet = "term-primary";
       setFocusedMock.mockClear();
 
-      useWorktreeSelectionStore.getState().exitFleetScope();
+      useWorktreeSelectionStore.getState().exitFleetScope(token);
       await Promise.resolve();
       await Promise.resolve();
 
@@ -690,11 +740,11 @@ describe("worktreeStore", () => {
         { id: "term-primary", worktreeId: "wt-pre", location: "grid" },
       ]);
       useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-pre" });
-      useWorktreeSelectionStore.getState().enterFleetScope();
+      const token = useWorktreeSelectionStore.getState().enterFleetScope();
       lastArmedIdForFleet = "term-primary";
       setFocusedMock.mockClear();
 
-      useWorktreeSelectionStore.getState().exitFleetScope();
+      useWorktreeSelectionStore.getState().exitFleetScope(token);
       // Simulate a newer store change (e.g. another worktree switch) that
       // bumps _policyGeneration before the deferred focus-restore resolves.
       useWorktreeSelectionStore.setState((s) => ({ _policyGeneration: s._policyGeneration + 5 }));
