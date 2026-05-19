@@ -47,6 +47,43 @@ vi.mock("../../../../utils/errorTypes.js", () => ({
       this.context = args.context;
     }
   },
+  // `gitClone.ts` now throws `GitOperationError` (extends GitError) for the
+  // non-cancellation failure path. The handler reads `reason` + `op` and the
+  // renderer duck-types `gitReason` across the IPC realm boundary; the mock
+  // mirrors that shape so assertions like `name: "GitOperationError"` work.
+  GitOperationError: class GitOperationError extends Error {
+    reason: string;
+    op?: string;
+    rawMessage: string;
+    context: unknown;
+    constructor(
+      reason: string,
+      message: string,
+      opts: { op?: string; cause?: unknown; context?: unknown } = {}
+    ) {
+      super(message);
+      this.name = "GitOperationError";
+      this.reason = reason;
+      this.op = opts.op;
+      this.rawMessage = message;
+      this.context = opts.context;
+    }
+  },
+}));
+
+vi.mock("../../../../../shared/utils/gitOperationErrors.js", () => ({
+  classifyGitError: () => "unknown",
+  extractGitErrorMessage: (err: unknown) => (err instanceof Error ? err.message : String(err)),
+}));
+
+vi.mock("../../../../services/github/index.js", () => ({
+  parseGitHubRepoUrl: (url: string) => {
+    // Only the github.com hosts the gh fast-path cares about. Returning null
+    // for anything else (or when parsing fails) keeps the simple-git path on,
+    // which is what these tests exercise.
+    const m = /^https?:\/\/github\.com\/([^/]+)\/([^/.]+)/i.exec(url);
+    return m ? { owner: m[1], repo: m[2] } : null;
+  },
 }));
 
 vi.mock("../../../../../shared/utils/errorMessage.js", () => ({
@@ -88,8 +125,24 @@ vi.mock("../../../../utils/hardenedGit.js", () => ({
 }));
 
 const spawnSyncMock = vi.fn();
+// `execFile` is the `gh auth status` probe in `probeGhAuth`. These tests
+// exercise the simple-git path, so the probe must report failure (calls back
+// with an Error) → the handler falls through to `createAuthenticatedGit`.
+// `spawn` is the `gh repo clone` fast path; it's never reached when the probe
+// fails, but the mock has to expose the export so the destructuring import in
+// `gitClone.ts` doesn't throw.
+const execFileMock = vi.fn(
+  (_cmd: string, _args: string[], _opts: unknown, cb: (err: Error | null) => void) => {
+    queueMicrotask(() => cb(new Error("not authed")));
+    return { kill: vi.fn() };
+  }
+);
+const spawnMock = vi.fn();
 vi.mock("child_process", () => ({
   spawnSync: (...args: unknown[]) => spawnSyncMock(...args),
+  execFile: (...args: unknown[]) =>
+    (execFileMock as unknown as (...a: unknown[]) => unknown)(...args),
+  spawn: (...args: unknown[]) => (spawnMock as unknown as (...a: unknown[]) => unknown)(...args),
 }));
 
 const statMock = vi.fn();
@@ -173,7 +226,8 @@ describe("registerGitCloneHandlers", () => {
     };
 
     await expect(capturedHandler!(ctx, VALID_OPTIONS)).rejects.toMatchObject({
-      code: "INTERNAL",
+      name: "GitOperationError",
+      op: "clone",
     });
 
     expect(spawnSyncMock).toHaveBeenCalledWith(

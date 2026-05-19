@@ -99,19 +99,38 @@ vi.mock("@/components/ui/Spinner", () => ({
   Spinner: () => <span data-testid="spinner">loading</span>,
 }));
 
+interface MockBannerAction {
+  id: string;
+  label: string;
+  onClick?: () => void;
+  ariaLabel?: string;
+}
+
 vi.mock("@/components/Terminal/InlineStatusBanner", () => ({
   InlineStatusBanner: ({
     title,
     description,
+    actions,
     onClose,
   }: {
     title: ReactNode;
     description?: ReactNode;
+    actions?: MockBannerAction[];
     onClose?: () => void;
   }) => (
     <div data-testid="cleanup-banner">
       <span>{title}</span>
       <span>{description}</span>
+      {actions?.map((action) => (
+        <button
+          key={action.id}
+          type="button"
+          aria-label={action.ariaLabel}
+          onClick={action.onClick}
+        >
+          {action.label}
+        </button>
+      ))}
       {onClose && (
         <button type="button" onClick={onClose}>
           banner-dismiss
