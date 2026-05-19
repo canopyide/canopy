@@ -8,6 +8,7 @@ import { type ProcessEntry, sendToEntryWindows } from "./types.js";
 import type { WorkspaceClientConfig } from "../../../shared/types/workspace-host.js";
 import { projectStore } from "../ProjectStore.js";
 import { generateProjectId } from "../projectStorePaths.js";
+import { normalizeProviderId } from "../../../shared/utils/forgeProviderIds.js";
 
 const CLEANUP_GRACE_MS = 180_000;
 const MAX_WARM_ENTRIES = 3;
@@ -30,8 +31,7 @@ async function readForgeSettingsForProject(projectPath: string): Promise<{
   } catch {
     forgeProviderOverride = null;
   }
-  const rawDefault = store.get("forgeDefaultProviderId");
-  const forgeDefaultProviderId = typeof rawDefault === "string" ? rawDefault : null;
+  const forgeDefaultProviderId = normalizeProviderId(store.get("forgeDefaultProviderId"));
   return { forgeProviderOverride, forgeDefaultProviderId };
 }
 

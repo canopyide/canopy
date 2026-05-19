@@ -150,6 +150,22 @@ describe("registerForgeSettingsHandlers", () => {
     expect(storeMock.set).toHaveBeenCalledWith("forgeDefaultProviderId", "acme.gitea");
   });
 
+  it("setDefaultProvider canonicalizes a legacy 'builtin.github' input before persisting (#8451)", () => {
+    registerForgeSettingsHandlers();
+    const setDefault = findHandler("forge:set-default-provider");
+    expect(setDefault(null, "builtin.github")).toEqual({
+      defaultProviderId: "daintree.github.github",
+    });
+    expect(storeMock.set).toHaveBeenCalledWith("forgeDefaultProviderId", "daintree.github.github");
+  });
+
+  it("setDefaultProvider canonicalizes a legacy bare 'github' input before persisting (#8451)", () => {
+    registerForgeSettingsHandlers();
+    const setDefault = findHandler("forge:set-default-provider");
+    expect(setDefault(null, "github")).toEqual({ defaultProviderId: "daintree.github.github" });
+    expect(storeMock.set).toHaveBeenCalledWith("forgeDefaultProviderId", "daintree.github.github");
+  });
+
   it("getSettings treats whitespace-only stored values as null", () => {
     storeMock._data["forgeDefaultProviderId"] = "   ";
     registerForgeSettingsHandlers();
