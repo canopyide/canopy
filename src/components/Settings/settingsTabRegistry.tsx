@@ -106,7 +106,7 @@ const importProjectAutomationTab = () => import("@/components/Project/Automation
 const importProjectRecipesTab = () => import("@/components/Project/RecipesTab");
 const importProjectCommandsTab = () => import("./CommandOverridesTab");
 const importProjectNotificationsTab = () => import("@/components/Project/ProjectNotificationsTab");
-const importProjectForgeProviderTab = () => import("@/components/Project/ForgeProviderTab");
+const importProjectCodeForgeTab = () => import("@/components/Project/CodeForgeTab");
 
 // ── Lazy components (module-level — React requires stable lazy() refs) ──
 
@@ -182,8 +182,8 @@ const LazyProjectCommandsTab = lazy(() =>
 const LazyProjectNotificationsTab = lazy(() =>
   importProjectNotificationsTab().then((m) => ({ default: m.ProjectNotificationsTab }))
 );
-const LazyProjectForgeProviderTab = lazy(() =>
-  importProjectForgeProviderTab().then((m) => ({ default: m.ForgeProviderTab }))
+const LazyProjectCodeForgeTab = lazy(() =>
+  importProjectCodeForgeTab().then((m) => ({ default: m.CodeForgeTab }))
 );
 
 // ── Voice requiresEnabled gates (referenced repeatedly) ─────────────────
@@ -1521,14 +1521,14 @@ export const SETTINGS_REGISTRY = [
   } satisfies LazySettingsTabEntry,
 
   {
-    id: "project:github",
+    id: "project:code-forge",
     scope: "project",
     group: "Project",
-    label: "GitHub",
-    icon: <Github className="w-4 h-4" />,
+    label: "Code Forge",
+    icon: <GitBranch className="w-4 h-4" />,
     importKind: "lazy",
-    importer: importProjectForgeProviderTab,
-    LazyComponent: LazyProjectForgeProviderTab,
+    importer: importProjectCodeForgeTab,
+    LazyComponent: LazyProjectCodeForgeTab,
     needsProjectForm: true,
   } satisfies LazySettingsTabEntry,
 ] as const satisfies readonly AnySettingsTabEntry[];
@@ -1683,11 +1683,12 @@ export const PROJECT_SETTINGS_SECTIONS: Readonly<
     searchNavDescription: "Project-specific notification overrides",
     searchNavKeywords: ["project", "notifications", "alerts", "sounds", "overrides"],
   },
-  "project:github": {
-    tabLabel: "GitHub",
-    searchNavDescription: "Per-project GitHub remote configuration for issues, PRs, and pulse data",
+  "project:code-forge": {
+    tabLabel: "Code Forge",
+    searchNavDescription: "Per-project forge remote configuration for issues, PRs, and pulse data",
     searchNavKeywords: [
       "project",
+      "forge",
       "github",
       "remote",
       "origin",
@@ -1697,11 +1698,11 @@ export const PROJECT_SETTINGS_SECTIONS: Readonly<
     ],
     sections: [
       {
-        id: "project-github-remote",
-        section: "GitHub Remote",
-        title: "GitHub Remote",
-        description: "Select which git remote to use for GitHub integration",
-        keywords: ["github", "remote", "origin", "git", "repository", "fetch", "push"],
+        id: "project-code-forge-remote",
+        section: "Forge Remote",
+        title: "Forge Remote",
+        description: "Select which git remote to use for forge integration",
+        keywords: ["forge", "github", "remote", "origin", "git", "repository", "fetch", "push"],
       },
     ],
   },
@@ -1760,7 +1761,7 @@ export const projectTabIcons: Record<ProjectSettingsTab, ReactNode> = {
   "project:recipes": <Workflow className="w-5 h-5 text-text-secondary" />,
   "project:commands": <Command className="w-5 h-5 text-text-secondary" />,
   "project:notifications": <Bell className="w-5 h-5 text-text-secondary" />,
-  "project:github": <Github className="w-5 h-5 text-text-secondary" />,
+  "project:code-forge": <GitBranch className="w-5 h-5 text-text-secondary" />,
 };
 
 export function scopeForTab(tab: SettingsTab): SettingsScope {

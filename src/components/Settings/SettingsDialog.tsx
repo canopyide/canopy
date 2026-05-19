@@ -1025,7 +1025,7 @@ function ProjectFormTabContent({
         />
       );
 
-    case "project:github":
+    case "project:code-forge":
       return (
         <LazyComp
           githubRemote={projectForm.githubRemote}

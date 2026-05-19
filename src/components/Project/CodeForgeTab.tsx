@@ -3,7 +3,7 @@ import { formatErrorMessage } from "@shared/utils/errorMessage";
 import type { RemoteInfo } from "@shared/types/ipc/github";
 import type { RegisteredForgeProvider } from "@shared/types/forge";
 
-interface ForgeProviderTabProps {
+interface CodeForgeTabProps {
   githubRemote: string | undefined;
   onGithubRemoteChange: (remote: string | undefined) => void;
   forgeProviderOverride: string | null;
@@ -11,13 +11,13 @@ interface ForgeProviderTabProps {
   projectPath: string | undefined;
 }
 
-export function ForgeProviderTab({
+export function CodeForgeTab({
   githubRemote,
   onGithubRemoteChange,
   forgeProviderOverride,
   onForgeProviderOverrideChange,
   projectPath,
-}: ForgeProviderTabProps) {
+}: CodeForgeTabProps) {
   const [remotes, setRemotes] = useState<RemoteInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,9 +87,9 @@ export function ForgeProviderTab({
   return (
     <div className="space-y-6">
       <div>
-        <label className="block text-sm font-medium text-daintree-text mb-1">GitHub Remote</label>
+        <label className="block text-sm font-medium text-daintree-text mb-1">Forge Remote</label>
         <p className="text-xs text-daintree-text/60 mb-2">
-          Select which git remote to use for GitHub integration (issues, PRs, and pulse data).
+          Select which git remote to use for forge integration (issues, PRs, and pulse data).
         </p>
         {loading ? (
           <div className="text-sm text-daintree-text/60">Loading remotes...</div>
@@ -115,7 +115,7 @@ export function ForgeProviderTab({
       <div>
         <label className="block text-sm font-medium text-daintree-text mb-1">Forge provider</label>
         <p className="text-xs text-daintree-text/60 mb-2">
-          Pin this project to a specific forge provider, overriding hostname auto-detection.
+          Pin this project to a specific forge provider. Defaults to GitHub when no override is set.
         </p>
         {providersLoading ? (
           <div className="text-sm text-daintree-text/60">Loading providers...</div>
@@ -129,7 +129,7 @@ export function ForgeProviderTab({
             }
             className="w-full px-3 py-2 bg-daintree-bg border border-daintree-border rounded-[var(--radius-md)] text-sm text-daintree-text focus:outline-hidden focus:ring-2 focus:ring-daintree-accent"
           >
-            <option value="">Auto-detect</option>
+            <option value="">Default (GitHub)</option>
             {providers.map((p) => (
               <option key={`${p.pluginId}:${p.contribution.id}`} value={p.contribution.id}>
                 {p.contribution.name}
