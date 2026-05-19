@@ -420,6 +420,34 @@ describe("PanelHeader", () => {
     });
   });
 
+  describe("Open in grid button", () => {
+    it("renders when location is dock and onRestore is provided", () => {
+      const onRestore = vi.fn();
+      render(<PanelHeader {...makeProps({ location: "dock", onRestore })} />);
+      const btn = screen.getByTestId("panel-open-in-grid");
+      expect(btn).toBeDefined();
+      expect(btn.getAttribute("aria-label")).toBe("Open in grid");
+    });
+
+    it("calls onRestore when clicked", () => {
+      const onRestore = vi.fn();
+      render(<PanelHeader {...makeProps({ location: "dock", onRestore })} />);
+      screen.getByTestId("panel-open-in-grid").click();
+      expect(onRestore).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not render when onRestore is not provided", () => {
+      render(<PanelHeader {...makeProps({ location: "dock", onMinimize: vi.fn() })} />);
+      expect(screen.queryByTestId("panel-open-in-grid")).toBeNull();
+    });
+
+    it("does not render when location is grid", () => {
+      const onRestore = vi.fn();
+      render(<PanelHeader {...makeProps({ location: "grid", onRestore })} />);
+      expect(screen.queryByTestId("panel-open-in-grid")).toBeNull();
+    });
+  });
+
   describe("Restore to Grid in overflow menu", () => {
     it("renders 'Restore to Grid' menu item when docked with onRestore", () => {
       render(<PanelHeader {...makeProps({ location: "dock", onRestore: vi.fn() })} />);
