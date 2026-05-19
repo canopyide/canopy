@@ -222,7 +222,7 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
     id: "agent.focusNextWaitingGlobal",
     title: "Focus Next Waiting Agent (All Projects)",
     description:
-      "Jump to the next project with a waiting agent and focus it. Cycles across all projects in sidebar order, wrapping around.",
+      "Jump to the next project with a waiting agent. Cycles across all projects in sidebar order, wrapping around.",
     category: "agent",
     kind: "command",
     danger: "safe",
