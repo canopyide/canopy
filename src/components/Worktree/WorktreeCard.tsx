@@ -576,9 +576,12 @@ export function WorktreeCard({
       return;
     }
     inFlightRevalidates.add(id);
-    void window.electron.worktree.refresh(id).finally(() => {
-      inFlightRevalidates.delete(id);
-    });
+    void worktreeClient
+      .refresh(id)
+      .finally(() => {
+        inFlightRevalidates.delete(id);
+      })
+      .catch(() => {});
   }, [isActive, worktree.lastGitStatusCheckedAt]);
 
   const handlePointerEnter = useCallback(() => {

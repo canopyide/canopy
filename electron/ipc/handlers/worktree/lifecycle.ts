@@ -40,7 +40,11 @@ export function registerWorktreeLifecycleHandlers(deps: HandlerDependencies): ()
     if (!deps.worktreeService) {
       return;
     }
-    await deps.worktreeService.refresh(undefined, worktreeId);
+    if (worktreeId) {
+      await deps.worktreeService.refresh("ipc-refresh", worktreeId);
+    } else {
+      await deps.worktreeService.refresh("ipc-refresh");
+    }
   };
   handlers.push(typedHandle(CHANNELS.WORKTREE_REFRESH, handleWorktreeRefresh));
 
