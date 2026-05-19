@@ -189,7 +189,14 @@ export interface GeneratedIpcInvokeMap {
     result: void;
   };
   "help:provision-session": {
-    args: [input: { projectId: string; projectPath: string; agentId: string }];
+    args: [
+      input: {
+        projectId: string;
+        projectPath: string;
+        agentId: string;
+        context?: import("../actions.js").ActionContext | undefined;
+      },
+    ];
     result: {
       sessionId: string;
       sessionPath: string;

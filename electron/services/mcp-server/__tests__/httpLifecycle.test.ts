@@ -48,6 +48,7 @@ function fakeDeps(overrides?: Partial<HttpLifecycleDeps>): HttpLifecycleDeps {
       httpSessions: new Map(),
       sessionTierMap: new Map(),
       sessionWebContentsMap: new Map(),
+      sessionContextMap: new Map(),
       resourceSubscriptions: new Map(),
       drain: vi.fn(),
       getTier: vi.fn(() => "workbench" as const),

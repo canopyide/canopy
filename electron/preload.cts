@@ -15,6 +15,7 @@ import { isIpcEnvelope } from "../shared/types/ipc/errors.js";
 import { deserializeError } from "../shared/utils/ipcErrorSerialization.js";
 import type { AppErrorCode } from "../shared/types/appError.js";
 import type { McpRuntimeSnapshot } from "../shared/types/ipc/mcpServer.js";
+import type { ActionContext } from "../shared/types/actions.js";
 import type { PushProgressEvent } from "../shared/types/ipc/gitPush.js";
 import type { HelpAssistantTier } from "../shared/types/ipc/maps.js";
 import { CHANNELS } from "./ipc/channels.js";
@@ -2450,11 +2451,18 @@ const api: ElectronAPI = {
         actionId: string;
         args?: unknown;
         confirmed?: boolean;
+        context?: ActionContext;
       }) => void
     ) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
-        payload: { requestId: string; actionId: string; args?: unknown; confirmed?: boolean }
+        payload: {
+          requestId: string;
+          actionId: string;
+          args?: unknown;
+          confirmed?: boolean;
+          context?: ActionContext;
+        }
       ) => callback(payload);
       ipcRenderer.on(CHANNELS.MCP_SERVER_DISPATCH_ACTION_REQUEST, handler);
       return () => ipcRenderer.removeListener(CHANNELS.MCP_SERVER_DISPATCH_ACTION_REQUEST, handler);

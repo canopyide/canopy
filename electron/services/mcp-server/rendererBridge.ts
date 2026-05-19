@@ -2,7 +2,7 @@ import { ipcMain, webContents as electronWebContents } from "electron";
 import { randomUUID } from "node:crypto";
 import type { WindowRegistry } from "../../window/WindowRegistry.js";
 import { getProjectViewManager } from "../../window/windowRef.js";
-import type { ActionManifestEntry } from "../../../shared/types/actions.js";
+import type { ActionContext, ActionManifestEntry } from "../../../shared/types/actions.js";
 import { CHANNELS } from "../../ipc/channels.js";
 import type { PendingRequest, DispatchEnvelope } from "./shared.js";
 import { MCP_MANIFEST_REQUEST_TIMEOUT_MS, MCP_DISPATCH_TIMEOUT_MS } from "./shared.js";
@@ -117,7 +117,8 @@ export function createRendererBridge(
     resolveWebContents: () => Electron.WebContents,
     actionId: string,
     args: unknown,
-    confirmed: boolean
+    confirmed: boolean,
+    contextOverride?: ActionContext
   ): Promise<DispatchEnvelope> {
     return new Promise((resolve, reject) => {
       let webContents: Electron.WebContents;
@@ -167,6 +168,10 @@ export function createRendererBridge(
           actionId,
           args,
           confirmed,
+          // Only pinned help-session dispatch passes a contextOverride; the
+          // unpinned external/api-key path leaves this undefined so the
+          // renderer keeps its live focused-window context (#8317).
+          context: contextOverride,
         });
       } catch (err) {
         clearTimeout(timer);
@@ -220,9 +225,16 @@ export function createRendererBridge(
     id: number,
     actionId: string,
     args: unknown,
-    confirmed = false
+    confirmed = false,
+    contextOverride?: ActionContext
   ): Promise<DispatchEnvelope> {
-    return sendDispatchRequest(() => getPinnedWebContents(id), actionId, args, confirmed);
+    return sendDispatchRequest(
+      () => getPinnedWebContents(id),
+      actionId,
+      args,
+      confirmed,
+      contextOverride
+    );
   }
 
   const manifestHandler = (

@@ -22,6 +22,7 @@ import type {
   DispatchEnvelope,
   HelpTokenValidator,
   HelpSessionWebContentsResolver,
+  HelpSessionActionContextResolver,
 } from "./mcp-server/shared.js";
 import type { ActionManifestEntry } from "../../shared/types/actions.js";
 import { events } from "./events.js";
@@ -122,8 +123,8 @@ export class McpServerService {
       dispatchAction: (actionId, args, confirmed) =>
         this.bridge.dispatchAction(actionId, args, confirmed),
       requestManifestForWebContents: (id) => this.bridge.requestManifestForWebContents(id),
-      dispatchActionForWebContents: (id, actionId, args, confirmed) =>
-        this.bridge.dispatchActionForWebContents(id, actionId, args, confirmed),
+      dispatchActionForWebContents: (id, actionId, args, confirmed, contextOverride) =>
+        this.bridge.dispatchActionForWebContents(id, actionId, args, confirmed, contextOverride),
       handleWaitUntilIdle: (rawArgs, signal) => handleWaitUntilIdle(rawArgs, signal),
       getCachedManifest: () => this.bridge.getCachedManifest(),
       clearCachedManifest: () => this.bridge.clearCache(),
@@ -169,6 +170,10 @@ export class McpServerService {
 
   setHelpSessionWebContentsResolver(resolver: HelpSessionWebContentsResolver | null): void {
     this.httpLifecycle.setHelpSessionWebContentsResolver(resolver);
+  }
+
+  setHelpSessionActionContextResolver(resolver: HelpSessionActionContextResolver | null): void {
+    this.httpLifecycle.setHelpSessionActionContextResolver(resolver);
   }
 
   private emitStatusChange(): void {
