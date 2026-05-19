@@ -2,7 +2,16 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type React from "react";
 import type { VirtuosoHandle } from "react-virtuoso";
 
-export type SidebarRowItemRef = { kind: "row"; worktreeId: string };
+export type SidebarRowItemRef = {
+  kind: "row";
+  worktreeId: string;
+  /**
+   * Pinned rows (main worktree, integration branch) live outside the
+   * virtualized list — they're always mounted, so navigating to one must
+   * NOT call `virtuosoRef.scrollToIndex`.
+   */
+  isPinned?: boolean;
+};
 export type SidebarHeaderItemRef = { kind: "header" };
 export type SidebarKeyboardItem = SidebarRowItemRef | SidebarHeaderItemRef;
 
@@ -14,9 +23,17 @@ const TOOLBAR_ITEM_SELECTOR =
 
 const ROW_DOM_ID_PREFIX = "worktree-sidebar-row-";
 
-/** Stable DOM id used by aria-activedescendant on every worktree row wrapper. */
+/**
+ * Stable DOM id used by aria-activedescendant on every worktree row wrapper.
+ *
+ * Worktree ids are filesystem paths; on macOS especially these often contain
+ * spaces, which produce invalid HTML `id` attributes (and break the
+ * activeDescendant lookup downstream). encodeURIComponent normalizes the path
+ * into an id-safe string while remaining a pure, deterministic function of
+ * the worktree id so the same id resolves to the same DOM node every render.
+ */
 export function getWorktreeSidebarRowId(worktreeId: string): string {
-  return `${ROW_DOM_ID_PREFIX}${worktreeId}`;
+  return `${ROW_DOM_ID_PREFIX}${encodeURIComponent(worktreeId)}`;
 }
 
 function isElementVisible(el: HTMLElement): boolean {
@@ -138,10 +155,28 @@ export function useWorktreeSidebarKeyboard({
 
   const navigateTo = useCallback(
     (flatIndex: number) => {
-      const item = itemsRef.current[flatIndex];
+      const items = itemsRef.current;
+      const item = items[flatIndex];
       if (!item || item.kind !== "row") return;
       setActiveWorktreeId(item.worktreeId);
-      virtuosoRef.current?.scrollToIndex({ index: flatIndex, align: "center", behavior: "auto" });
+      // Pinned rows are rendered outside the Virtuoso surface — skip
+      // scrollToIndex (it'd point at the wrong row), and don't even compute
+      // a Virtuoso index for them. They're always in the DOM, so the
+      // browser will scroll the role="grid" container into view if needed.
+      if (item.isPinned) return;
+      // The flat items list interleaves pinned rows ahead of the virtualized
+      // items. Subtract the count of preceding pinned rows so scrollToIndex
+      // targets the right Virtuoso row.
+      let pinnedBefore = 0;
+      for (let i = 0; i < flatIndex; i++) {
+        const prior = items[i];
+        if (prior?.kind === "row" && prior.isPinned) pinnedBefore++;
+      }
+      virtuosoRef.current?.scrollToIndex({
+        index: flatIndex - pinnedBefore,
+        align: "center",
+        behavior: "auto",
+      });
     },
     [virtuosoRef]
   );

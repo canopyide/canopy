@@ -1058,13 +1058,25 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     dragStartOrder,
   ]);
 
-  const keyboardItems = useMemo<SidebarKeyboardItem[]>(
-    () =>
-      sidebarItems.map((item) =>
+  // The pinned main + integration rows live OUTSIDE the Virtuoso surface but
+  // INSIDE the role="grid" container, so keyboard navigation must visit them
+  // before descending into the virtualized list. They carry isPinned so the
+  // hook skips scrollToIndex (they're always rendered, never windowed).
+  const keyboardItems = useMemo<SidebarKeyboardItem[]>(() => {
+    const items: SidebarKeyboardItem[] = [];
+    if (mainVisible && mainWorktree) {
+      items.push({ kind: "row", worktreeId: mainWorktree.id, isPinned: true });
+    }
+    if (integrationVisible && integrationWorktree) {
+      items.push({ kind: "row", worktreeId: integrationWorktree.id, isPinned: true });
+    }
+    for (const item of sidebarItems) {
+      items.push(
         item.kind === "row" ? { kind: "row", worktreeId: item.worktreeId } : { kind: "header" }
-      ),
-    [sidebarItems]
-  );
+      );
+    }
+    return items;
+  }, [sidebarItems, mainVisible, mainWorktree, integrationVisible, integrationWorktree]);
 
   const {
     gridRef,

@@ -69,6 +69,13 @@ function useScrollIndicator({ itemCount }: UseScrollIndicatorParams): UseScrollI
     const next = el instanceof HTMLElement ? el : null;
     scrollerElRef.current = next;
     setScrollerEl(next);
+    // When Virtuoso unmounts (filter clears to an empty state), reset the
+    // indicator counts so stale "5 above" badges don't briefly remain over
+    // the empty state placeholder.
+    if (next === null) {
+      setHiddenAbove(0);
+      setHiddenBelow(0);
+    }
   }, []);
 
   const scrollToTop = useCallback(() => {

@@ -245,6 +245,43 @@ describe("Worktree list keyboard grid — issue #6422 / virtualized rewrite", ()
       // activeWorktreeId so aria-activedescendant doesn't point at a missing id.
       expect(source).toMatch(/stillVisible/);
     });
+
+    it("skips scrollToIndex for pinned rows (they live outside Virtuoso)", () => {
+      // Pinned rows are always mounted, so navigating to one must NOT call
+      // scrollToIndex — that would point at the wrong Virtuoso row.
+      expect(source).toMatch(/item\.isPinned/);
+      expect(source).toMatch(/if \(item\.isPinned\) return/);
+    });
+
+    it("offsets the Virtuoso scrollToIndex by the number of preceding pinned rows", () => {
+      // The flat items list interleaves pinned rows ahead of the virtualized
+      // items; subtract the count so scrollToIndex targets the right row.
+      expect(source).toMatch(/pinnedBefore/);
+      expect(source).toMatch(/index: flatIndex - pinnedBefore/);
+    });
+
+    it("encodes worktree ids before composing the DOM id (paths may contain spaces)", () => {
+      // Worktree ids are filesystem paths; on macOS they often contain spaces
+      // which produce invalid id attributes.
+      expect(source).toMatch(/encodeURIComponent\(worktreeId\)/);
+    });
+  });
+
+  describe("SidebarContent — pinned rows participate in keyboard navigation", () => {
+    let source: string;
+    beforeEach(async () => {
+      source = await fs.readFile(SIDEBAR_CONTENT_PATH, "utf-8");
+    });
+
+    it("prepends the main worktree to keyboardItems when visible", () => {
+      expect(source).toMatch(/if \(mainVisible && mainWorktree\)[\s\S]{0,200}isPinned: true/);
+    });
+
+    it("prepends the integration worktree to keyboardItems when visible", () => {
+      expect(source).toMatch(
+        /if \(integrationVisible && integrationWorktree\)[\s\S]{0,200}isPinned: true/
+      );
+    });
   });
 
   describe("issue #7212 — APG grid attributes and keyboard model", () => {

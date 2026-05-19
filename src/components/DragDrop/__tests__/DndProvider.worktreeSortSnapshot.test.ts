@@ -44,4 +44,15 @@ describe("DndProvider worktree-sort drag snapshot — issue #8393", () => {
     const matches = source.match(/activeWorktreeSortDataRef\.current\s*=\s*null/g);
     expect(matches?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
+
+  it("consults the snapshot ref inside cancelDrop so an unmounted source row doesn't convert the drop to a cancel", () => {
+    // dnd-kit fires cancelDrop before handleDragEnd. If active.data.current
+    // is undefined (source row unmounted outside Virtuoso's overscan), the
+    // worktree-sort branch must still short-circuit cancelDrop to let the
+    // drop fall through to handleDragEnd, where the ref-based snapshot does
+    // the actual reorder.
+    const cancelDropBlock = source.match(/const cancelDrop = useCallback\(([\s\S]*?)\}, \[/);
+    expect(cancelDropBlock).toBeTruthy();
+    expect(cancelDropBlock?.[1]).toMatch(/activeWorktreeSortDataRef\.current\s*!==\s*null/);
+  });
 });

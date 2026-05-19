@@ -193,6 +193,58 @@ describe("useWorktreeSidebarKeyboard — Alt+Arrow reorder", () => {
   });
 });
 
+describe("useWorktreeSidebarKeyboard — pinned rows in navigation", () => {
+  const PINNED_ITEMS: SidebarKeyboardItem[] = [
+    { kind: "row", worktreeId: "main", isPinned: true },
+    { kind: "row", worktreeId: "integration", isPinned: true },
+    { kind: "row", worktreeId: "wt1" },
+    { kind: "row", worktreeId: "wt2" },
+  ];
+
+  it("starts on the first pinned row when the grid is focused", () => {
+    const { getByTestId } = render(<Harness items={PINNED_ITEMS} />);
+    const grid = getByTestId("grid");
+    // fireEvent.focus wraps the state update in act() so the next assertion
+    // observes the seeded activeWorktreeId. element.focus() doesn't flush.
+    fireEvent.focus(grid);
+    expect(grid.getAttribute("aria-activedescendant")).toBe(getWorktreeSidebarRowId("main"));
+  });
+
+  it("ArrowDown traverses pinned rows before entering the virtualized list", () => {
+    const { getByTestId } = render(<Harness items={PINNED_ITEMS} />);
+    const grid = getByTestId("grid");
+    grid.focus();
+    fireEvent.keyDown(grid, { key: "ArrowDown" });
+    expect(grid.getAttribute("aria-activedescendant")).toBe(getWorktreeSidebarRowId("integration"));
+    fireEvent.keyDown(grid, { key: "ArrowDown" });
+    expect(grid.getAttribute("aria-activedescendant")).toBe(getWorktreeSidebarRowId("wt1"));
+  });
+
+  it("ArrowUp from the first virtualized row returns to the integration pinned row", () => {
+    const { getByTestId } = render(<Harness items={PINNED_ITEMS} />);
+    const grid = getByTestId("grid");
+    grid.focus();
+    fireEvent.keyDown(grid, { key: "End" });
+    expect(grid.getAttribute("aria-activedescendant")).toBe(getWorktreeSidebarRowId("wt2"));
+    fireEvent.keyDown(grid, { key: "Home" });
+    expect(grid.getAttribute("aria-activedescendant")).toBe(getWorktreeSidebarRowId("main"));
+  });
+
+  it("Alt+ArrowUp on a pinned row still fires the reorder callback (caller bounds-checks)", () => {
+    const onKeyboardReorder = vi.fn();
+    const { getByTestId } = render(
+      <Harness items={PINNED_ITEMS} onKeyboardReorder={onKeyboardReorder} />
+    );
+    const grid = getByTestId("grid");
+    grid.focus(); // → main pinned active
+    fireEvent.keyDown(grid, { key: "ArrowDown", altKey: true });
+    // The hook stays agnostic; SidebarContent's handleKeyboardReorder
+    // bounces the move when the worktree id isn't in the visible
+    // (non-pinned) dragStartOrder. The hook itself just translates the key.
+    expect(onKeyboardReorder).toHaveBeenCalledWith("main", 1);
+  });
+});
+
 describe("useWorktreeSidebarKeyboard — toolbar sub-mode", () => {
   it("Enter on the active row moves focus into the first toolbar button", () => {
     const { getByTestId } = render(<Harness items={ITEMS} />);

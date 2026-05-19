@@ -1107,7 +1107,15 @@ export function DndProvider({ children }: DndProviderProps) {
         return true;
       }
 
-      if (isWorktreeSortDragData(active.data.current as Record<string, unknown> | undefined)) {
+      // Worktree-sort drags own their own drop logic in handleDragEnd; let
+      // every drop through. Also check the snapshot ref: if Virtuoso has
+      // unmounted the source row, active.data.current is undefined but the
+      // ref still holds the original drag data — converting to cancel here
+      // would lose the reorder entirely.
+      if (
+        activeWorktreeSortDataRef.current !== null ||
+        isWorktreeSortDragData(active.data.current as Record<string, unknown> | undefined)
+      ) {
         return false;
       }
 
