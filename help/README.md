@@ -1,6 +1,6 @@
 # Daintree Help System
 
-Multi-agent help assistant workspace. Runs any supported AI coding agent (Claude Code, Gemini CLI, Codex CLI) in a sandboxed help-assistant mode that answers user questions about Daintree using a live MCP documentation server. Claude additionally connects to a tier-gated local MCP server (`daintree`) that exposes read-only introspection or non-destructive actions on the running Daintree app, depending on the session's authorization tier. Gemini and Codex remain docs-only in Phase 1.
+Multi-agent help assistant workspace. Runs any supported AI coding agent (Claude Code, Gemini CLI, Codex CLI) in a sandboxed help-assistant mode that answers user questions about Daintree using a live MCP documentation server. All three agents also connect to the tier-gated local MCP server (`daintree`) when local MCP is enabled in settings, exposing read-only introspection or non-destructive actions on the running Daintree app depending on the session's authorization tier. Claude and Codex run at the `action` tier (full in-app orchestration); Gemini's `--approval-mode=plan` pins it to read-only introspection.
 
 Daintree launches agents in this directory automatically via the help panel — users don't need to `cd` here manually.
 
@@ -61,7 +61,8 @@ Adding a new agent requires three things:
 The three prompt files share the same answer workflow, tone, and topic coverage. They diverge on what the assistant is allowed to do beyond docs search:
 
 - **`CLAUDE.md`** — Tier-aware. Describes the `workbench` / `action` / `system` model exposed by the local `daintree` MCP server (see Tier Model below) and tells Claude to prefer the least-privileged path. Also carries the `terminal.getStatus` fleet-polling recipe.
-- **`AGENTS.md`** (Codex) and **`GEMINI.md`** — Docs-only in Phase 1. No local MCP wiring; the assistant only searches docs and uses `gh` for GitHub issues.
+- **`AGENTS.md`** (Codex) — Connects to the local `daintree` MCP at the `action` tier when local MCP is enabled. Full in-app orchestration; the Codex sandbox still blocks file writes and arbitrary shell, so operational work goes through the MCP, not the shell.
+- **`GEMINI.md`** — Connects to the local `daintree` MCP when local MCP is enabled, but `--approval-mode=plan` constrains it to read-only introspection (no spawning, sending commands, or mutations).
 
 All three share:
 
@@ -81,8 +82,8 @@ scripts/help-src/
 ├── CLAUDE.head.md      # Claude title + What You Can Do + Tier Model
 ├── CLAUDE.tasks.md     # Claude-only worked-example task recipes (read/spawn/send/close)
 ├── CLAUDE.tail.md      # Claude-only terminal.getStatus recipe
-├── GEMINI.head.md      # Gemini title + Scope (docs-only)
-└── AGENTS.head.md      # Codex Role Override + Scope (docs-only)
+├── GEMINI.head.md      # Gemini title + What You Can Do (plan-mode read-only)
+└── AGENTS.head.md      # Codex Role Override + What You Can Do (action tier)
 ```
 
 After editing any partial, run:
@@ -109,7 +110,7 @@ The authoritative tier definitions live in `shared/config/helpAssistantTierAllow
 
 ## Permission Lockdown
 
-Claude and Codex block file writes, edits, and arbitrary shell commands at the tool layer; Gemini's `shell` tool is allowlisted but constrained by instruction-level guardrails. All three share a `gh` allowlist for searching/viewing GitHub issues; creating issues always requires user confirmation. Claude additionally has tier-gated access to a local `mcp__daintree__*` tool surface for inspecting and acting on the running Daintree app — Gemini and Codex do not.
+Claude and Codex block file writes, edits, and arbitrary shell commands at the tool layer; Gemini's `shell` tool is allowlisted but constrained by instruction-level guardrails. All three share a `gh` allowlist for searching/viewing GitHub issues; creating issues always requires user confirmation. All three also have tier-gated access to the local `daintree` MCP tool surface when local MCP is enabled — Claude and Codex at the `action` tier, Gemini pinned to read-only introspection by `--approval-mode=plan`.
 
 **Claude** (`.claude/settings.json`):
 
