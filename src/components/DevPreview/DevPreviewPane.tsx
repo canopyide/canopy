@@ -738,7 +738,6 @@ export function DevPreviewPane({
     setCrashState("none");
     setCrashDetails(null);
     crashTimestampsRef.current = [];
-    void restart();
   }, [
     id,
     setBrowserUrl,
