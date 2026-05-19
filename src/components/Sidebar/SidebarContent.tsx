@@ -991,22 +991,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       ? groupedSections.reduce((n, s) => n + 1 + s.worktrees.length, 0)
       : filteredWorktrees.length);
 
-  const renderWorktreeCard = (worktree: WorktreeState, ariaRowIndex: number) => (
-    <StaticWorktreeRow
-      key={worktree.id}
-      worktreeId={worktree.id}
-      activeWorktreeId={activeWorktreeId}
-      focusedWorktreeId={focusedWorktreeId}
-      totalWorktreeCount={deferredWorktrees.length}
-      selectWorktree={selectWorktree}
-      worktreeActions={worktreeActions}
-      availability={availability}
-      agentSettings={agentSettings}
-      homeDir={homeDir}
-      ariaRowIndex={ariaRowIndex}
-    />
-  );
-
   return (
     <div className="flex flex-col h-full">
       {worktreeLoadErrorBanner}
@@ -1136,7 +1120,19 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
             className="shrink-0"
             style={{ contentVisibility: "auto", containIntrinsicSize: "auto 180px" }}
           >
-            {renderWorktreeCard(integrationWorktree, integrationRowIndex)}
+            <StaticWorktreeRow
+              key={integrationWorktree.id}
+              worktreeId={integrationWorktree.id}
+              activeWorktreeId={activeWorktreeId}
+              focusedWorktreeId={focusedWorktreeId}
+              totalWorktreeCount={deferredWorktrees.length}
+              selectWorktree={selectWorktree}
+              worktreeActions={worktreeActions}
+              availability={availability}
+              agentSettings={agentSettings}
+              homeDir={homeDir}
+              ariaRowIndex={integrationRowIndex}
+            />
           </div>
         )}
 
@@ -1204,9 +1200,21 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                     let nextRowIndex = firstScrollableRowIndex;
                     return groupedSections.map((section) => {
                       const headerRowIndex = nextRowIndex++;
-                      const sectionWorktreeRows = section.worktrees.map((worktree) =>
-                        renderWorktreeCard(worktree, nextRowIndex++)
-                      );
+                      const sectionWorktreeRows = section.worktrees.map((worktree) => (
+                        <StaticWorktreeRow
+                          key={worktree.id}
+                          worktreeId={worktree.id}
+                          activeWorktreeId={activeWorktreeId}
+                          focusedWorktreeId={focusedWorktreeId}
+                          totalWorktreeCount={deferredWorktrees.length}
+                          selectWorktree={selectWorktree}
+                          worktreeActions={worktreeActions}
+                          availability={availability}
+                          agentSettings={agentSettings}
+                          homeDir={homeDir}
+                          ariaRowIndex={nextRowIndex++}
+                        />
+                      ));
                       return (
                         <div key={section.type} role="rowgroup">
                           <div

@@ -331,6 +331,55 @@ describe("Worktree list keyboard grid — issue #6422", () => {
     });
   });
 
+  describe("issue #8389 — per-row sidebar subscription stops full-list re-renders", () => {
+    let source: string;
+    let staticSource: string;
+    beforeEach(async () => {
+      source = await fs.readFile(SIDEBAR_CONTENT_PATH, "utf-8");
+      staticSource = await fs.readFile(STATIC_ROW_PATH, "utf-8");
+    });
+
+    it("StaticWorktreeRow subscribes to its own store slice by id (not a prop object)", () => {
+      // The row reads exactly its own snapshot via a primitive Map-get
+      // selector, so an unrelated worktree changing in the poll cycle does
+      // not invalidate this row's selector result.
+      expect(staticSource).toMatch(
+        /useWorktreeStore\(\s*\(state\)\s*=>\s*state\.worktrees\.get\(worktreeId\)\s*\)/
+      );
+      // The row's public prop is the id, never a full WorktreeState object.
+      expect(staticSource).toContain("worktreeId: string;");
+      expect(staticSource).not.toMatch(/worktree:\s*WorktreeState;/);
+    });
+
+    it("removes the per-render renderWorktreeCard closure that re-created every row element each poll", () => {
+      // A closure rebuilt on every SidebarContent render produced a fresh
+      // element factory each poll, defeating the React Compiler's per-row
+      // memoization. Rows must be authored as inline JSX so each element is
+      // memoized by its own (id-only) props.
+      expect(source).not.toMatch(/const renderWorktreeCard\s*=/);
+      expect(source).not.toMatch(/renderWorktreeCard\(/);
+    });
+
+    it("renders the integration and grouped-section rows as <StaticWorktreeRow worktreeId={...}/> (id only)", () => {
+      // Integration (pinned) row.
+      expect(source).toMatch(
+        /<StaticWorktreeRow\s+key=\{integrationWorktree\.id\}\s+worktreeId=\{integrationWorktree\.id\}/
+      );
+      // Grouped-section rows.
+      expect(source).toMatch(
+        /section\.worktrees\.map\(\(worktree\)\s*=>\s*\(\s*<StaticWorktreeRow\s+key=\{worktree\.id\}\s+worktreeId=\{worktree\.id\}/
+      );
+      // No render path threads a full worktree object into the row.
+      expect(source).not.toMatch(/<StaticWorktreeRow[^>]*\bworktree=\{/);
+    });
+
+    it("preserves the side-effecting aria-rowindex counter in the grouped path", () => {
+      // The 1-based aria-rowindex slot advances per rendered data row; the
+      // inline conversion must keep the post-increment exactly.
+      expect(source).toMatch(/ariaRowIndex=\{nextRowIndex\+\+\}/);
+    });
+  });
+
   describe("issue #7972 — sortable sidebar drop indicator and keyboard reorder", () => {
     describe("SortableWorktreeCard directional drop indicator", () => {
       let source: string;
