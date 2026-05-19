@@ -10,10 +10,7 @@ import {
   parseSsoKind,
   rateLimitAwareFetch,
 } from "../GitHubAuth.js";
-import {
-  gitHubRateLimitService,
-  GitHubRateLimitError,
-} from "../GitHubRateLimitService.js";
+import { gitHubRateLimitService, GitHubRateLimitError } from "../GitHubRateLimitService.js";
 
 function createStorage() {
   let token: string | undefined;
@@ -616,9 +613,11 @@ describe("GitHubAuth", () => {
   });
 
   it("validate() distinguishes a secondary-rate-limit 403 from a permissions 403", async () => {
-    const mockFetch = vi.fn().mockResolvedValue(
-      new Response("You have exceeded a secondary rate limit. Please wait.", { status: 403 })
-    );
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(
+        new Response("You have exceeded a secondary rate limit. Please wait.", { status: 403 })
+      );
     (globalThis as unknown as { fetch: Mock }).fetch = mockFetch;
 
     const result = await GitHubAuth.validate("ghp_validtoken012345678901234567890123456789");
