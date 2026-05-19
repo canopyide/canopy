@@ -99,6 +99,28 @@ vi.mock("@/components/ui/Spinner", () => ({
   Spinner: () => <span data-testid="spinner">loading</span>,
 }));
 
+vi.mock("@/components/Terminal/InlineStatusBanner", () => ({
+  InlineStatusBanner: ({
+    title,
+    description,
+    onClose,
+  }: {
+    title: ReactNode;
+    description?: ReactNode;
+    onClose?: () => void;
+  }) => (
+    <div data-testid="cleanup-banner">
+      <span>{title}</span>
+      <span>{description}</span>
+      {onClose && (
+        <button type="button" onClick={onClose}>
+          banner-dismiss
+        </button>
+      )}
+    </div>
+  ),
+}));
+
 import { CloneRepoDialog } from "../CloneRepoDialog";
 
 describe("CloneRepoDialog", () => {
@@ -870,5 +892,132 @@ describe("CloneRepoDialog", () => {
         url: "https://gitlab.com/user/repo.git",
       })
     );
+  });
+
+  async function startActiveClone() {
+    const urlInput = screen.getByPlaceholderText("owner/repo or https://github.com/user/repo.git");
+    fireEvent.change(urlInput, { target: { value: "https://github.com/user/repo.git" } });
+    const browseBtn = screen.getByText("Browse");
+    await act(async () => {
+      fireEvent.click(browseBtn);
+    });
+    const cloneBtn = screen.getByText("Clone");
+    await act(async () => {
+      fireEvent.click(cloneBtn);
+    });
+  }
+
+  describe("Doherty-gated connecting placeholder", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      cloneRepoMock.mockImplementation(() => new Promise(() => {}));
+    });
+
+    afterEach(() => {
+      vi.runOnlyPendingTimers();
+      vi.useRealTimers();
+    });
+
+    it("does not flash a spinner or box before the 400ms threshold", async () => {
+      render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+      await startActiveClone();
+
+      act(() => {
+        vi.advanceTimersByTime(399);
+      });
+
+      expect(screen.queryByText("Connecting…")).toBeNull();
+      expect(screen.queryByTestId("spinner")).toBeNull();
+    });
+
+    it("shows the connecting placeholder once the threshold elapses", async () => {
+      render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+      await startActiveClone();
+
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      expect(screen.getByText("Connecting…")).toBeTruthy();
+    });
+
+    it("replaces the placeholder with the live log when the first event arrives", async () => {
+      render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+      await startActiveClone();
+
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+      expect(screen.getByText("Connecting…")).toBeTruthy();
+
+      act(() => {
+        progressHandler?.({
+          stage: "receiving",
+          progress: 12,
+          message: "Receiving: 12%",
+          timestamp: Date.now(),
+        });
+      });
+
+      expect(screen.queryByText("Connecting…")).toBeNull();
+      expect(screen.getByText("Receiving: 12%")).toBeTruthy();
+    });
+  });
+
+  describe("cleanup-failure banner", () => {
+    it("renders the cleanup-failed event as a separate banner, not a log row", async () => {
+      cloneRepoMock.mockImplementation(() => new Promise(() => {}));
+      render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+      await startActiveClone();
+
+      await waitFor(() => expect(progressHandler).not.toBeNull());
+
+      act(() => {
+        progressHandler?.({
+          stage: "receiving",
+          progress: 40,
+          message: "Receiving: 40%",
+          timestamp: Date.now(),
+        });
+        progressHandler?.({
+          stage: "cleanup-failed",
+          progress: 0,
+          message: "Couldn't remove the partial clone at /tmp/repo.",
+          timestamp: Date.now(),
+        });
+      });
+
+      const banner = screen.getByTestId("cleanup-banner");
+      expect(banner).toBeTruthy();
+      expect(banner.textContent).toContain("Couldn't remove the partial clone at /tmp/repo.");
+      // The cleanup message must not also appear as a deduped progress row.
+      const log = screen.getByText("Receiving: 40%").closest("div");
+      expect(log?.parentElement?.textContent).not.toContain("Partial clone not removed");
+    });
+
+    it("dismisses the cleanup banner via its close control", async () => {
+      cloneRepoMock.mockImplementation(() => new Promise(() => {}));
+      render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+      await startActiveClone();
+
+      await waitFor(() => expect(progressHandler).not.toBeNull());
+
+      act(() => {
+        progressHandler?.({
+          stage: "cleanup-failed",
+          progress: 0,
+          message: "Couldn't remove the partial clone at /tmp/repo.",
+          timestamp: Date.now(),
+        });
+      });
+
+      expect(screen.getByTestId("cleanup-banner")).toBeTruthy();
+
+      await act(async () => {
+        fireEvent.click(screen.getByText("banner-dismiss"));
+      });
+
+      expect(screen.queryByTestId("cleanup-banner")).toBeNull();
+    });
   });
 });
