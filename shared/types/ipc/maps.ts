@@ -99,6 +99,7 @@ import type {
   ProjectStatusMap,
   ProjectSwitchPayload,
   ProjectSwitchOutgoingState,
+  ProjectWorktreeLoadStatusPayload,
 } from "./project.js";
 import type {
   RepositoryStats,
@@ -297,6 +298,10 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
     result: Record<string, IssueAssociation>;
   };
   "worktree:restart-service": {
+    args: [];
+    result: void;
+  };
+  "worktree:retry-project-load": {
     args: [];
     result: void;
   };
@@ -2191,6 +2196,7 @@ export interface IpcEventMap {
 
   // Project events
   "project:on-switch": ProjectSwitchPayload;
+  "project:worktree-load-status": ProjectWorktreeLoadStatusPayload;
   "project:stats-updated": ProjectStatusMap;
   "project:updated": Project;
   "project:removed": string;

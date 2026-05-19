@@ -146,6 +146,12 @@ export const projectClient = {
     return window.electron.project.onSwitch(callback);
   },
 
+  onWorktreeLoadStatus: (
+    callback: (payload: { projectId: string; worktreeLoadError: string | null }) => void
+  ): (() => void) => {
+    return window.electron.project.onWorktreeLoadStatus(callback);
+  },
+
   getSettings: (projectId: string): Promise<ProjectSettings> => {
     // Subscribe to project switch so external switches (multi-window,
     // app menu, IPC) clear the per-projectId settings cache. Cheap to

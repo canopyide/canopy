@@ -11,6 +11,7 @@ const projectClientMock = {
   reopen: vi.fn(),
   openDialog: vi.fn(),
   onSwitch: vi.fn(() => () => {}),
+  onWorktreeLoadStatus: vi.fn(() => () => {}),
   getSettings: vi.fn(),
   saveSettings: vi.fn(),
   detectRunners: vi.fn(),

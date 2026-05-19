@@ -19,6 +19,8 @@ export const CHANNELS = {
   WORKTREE_GET_ALL_ISSUE_ASSOCIATIONS: "worktree:get-all-issue-associations",
   WORKTREE_HOST_DISCONNECTED: "worktree:host-disconnected",
   WORKTREE_RESTART_SERVICE: "worktree:restart-service",
+  WORKTREE_RETRY_PROJECT_LOAD: "worktree:retry-project-load",
+  PROJECT_WORKTREE_LOAD_STATUS: "project:worktree-load-status",
 
   TERMINAL_SPAWN: "terminal:spawn",
   TERMINAL_DATA: "terminal:data",

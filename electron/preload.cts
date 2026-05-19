@@ -724,6 +724,8 @@ const api: ElectronAPI = {
 
     restartService: (): Promise<void> => _unwrappingInvoke(CHANNELS.WORKTREE_RESTART_SERVICE),
 
+    retryProjectLoad: (): Promise<void> => _unwrappingInvoke(CHANNELS.WORKTREE_RETRY_PROJECT_LOAD),
+
     onUpdate: (callback: (state: WorktreeState) => void) =>
       _eventBusOn("worktree:update", (payload) => callback(payload.worktree)),
 
@@ -1244,6 +1246,10 @@ const api: ElectronAPI = {
         hydrateResult?: import("../shared/types/ipc/app.js").HydrateResult;
       }) => void
     ) => _typedOn(CHANNELS.PROJECT_ON_SWITCH, callback),
+
+    onWorktreeLoadStatus: (
+      callback: (payload: { projectId: string; worktreeLoadError: string | null }) => void
+    ) => _typedOn(CHANNELS.PROJECT_WORKTREE_LOAD_STATUS, callback),
 
     onUpdated: (callback: (project: Project) => void) =>
       _typedOn(CHANNELS.PROJECT_UPDATED, callback),

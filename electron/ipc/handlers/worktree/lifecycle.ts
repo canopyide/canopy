@@ -1,5 +1,7 @@
 import { CHANNELS } from "../../channels.js";
 import { store } from "../../../store.js";
+import { projectStore } from "../../../services/ProjectStore.js";
+import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
 import type { HandlerDependencies, IpcContext } from "../../types.js";
 import type { WorktreeSetActivePayload, WorktreeDeletePayload } from "../../../types/index.js";
 import type { WorktreeState } from "../../../../shared/types/worktree.js";
@@ -107,6 +109,32 @@ export function registerWorktreeLifecycleHandlers(deps: HandlerDependencies): ()
   };
   handlers.push(
     typedHandleWithContext(CHANNELS.WORKTREE_RESTART_SERVICE, handleWorktreeRestartService)
+  );
+
+  // Recovery path for a project switch whose worktree load threw (#8400).
+  // The switch forward-fails to the new project, so the current project is
+  // already the one whose load failed — re-run loadProject for it rather than
+  // re-issuing a no-op same-project switch.
+  const handleWorktreeRetryProjectLoad = async (ctx: IpcContext): Promise<void> => {
+    if (!deps.worktreeService) {
+      throw new Error("Workspace service is not available");
+    }
+    const windowId = ctx.senderWindow?.id;
+    if (windowId === undefined) {
+      throw new Error("Couldn't identify the window to reload");
+    }
+    const project = projectStore.getCurrentProject();
+    if (!project) {
+      throw new Error("No active project to reload");
+    }
+    try {
+      await deps.worktreeService.loadProject(project.path, windowId);
+    } catch (error) {
+      throw new Error(formatErrorMessage(error, "Failed to load worktrees"), { cause: error });
+    }
+  };
+  handlers.push(
+    typedHandleWithContext(CHANNELS.WORKTREE_RETRY_PROJECT_LOAD, handleWorktreeRetryProjectLoad)
   );
 
   const handleWorktreeDelete = async (ctx: IpcContext, payload: WorktreeDeletePayload) => {
