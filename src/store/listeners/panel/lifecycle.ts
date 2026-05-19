@@ -226,8 +226,7 @@ export function setupLifecycleListeners(): DisposableStore {
       terminalRegistryController.onRestored((data: { id: string }) => {
         const { id } = data;
         usePanelStore.getState().markAsRestored(id);
-        const { focusedId: previousFocusedId, activeDockTerminalId } =
-          usePanelStore.getState();
+        const { focusedId: previousFocusedId, activeDockTerminalId } = usePanelStore.getState();
         // Only clear the open dock popover when the restored terminal IS the
         // one displayed in it. A background terminal waking from hibernation
         // must not silently dismiss an unrelated dock session the user is
