@@ -9,6 +9,7 @@ import {
   useState,
   useTransition,
 } from "react";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { AlertTriangle, FolderOpen, LayoutGrid, Plus, RefreshCw, Zap } from "lucide-react";
 import { HollowCircle } from "@/components/icons";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -74,7 +75,9 @@ import { isAgentTerminal } from "@/utils/terminalType";
 import { isTerminalVisible } from "@/lib/terminalVisibility";
 import { useWorktreeIds } from "@/hooks/useTerminalSelectors";
 import { logError } from "@/utils/logger";
-import { useWorktreeGridRovingFocus } from "./useWorktreeGridRovingFocus";
+import { useWorktreeSidebarKeyboard, type SidebarKeyboardItem } from "./useWorktreeSidebarKeyboard";
+import type { UseAgentLauncherReturn } from "@/hooks/useAgentLauncher";
+import type { WorktreeActions } from "@/hooks/useWorktreeActions";
 
 export function preloadNewWorktreeDialog() {
   return import("@/components/Worktree/NewWorktreeDialog");
@@ -97,6 +100,11 @@ const QUICK_STATE_LABELS: Record<"working" | "waiting" | "finished", string> = {
 
 const KEYBOARD_REORDER_ANNOUNCEMENT_DEBOUNCE_MS = 150;
 
+// Virtuoso overscan in pixels — covers ~2–5 rows at the 120–260px height range,
+// keeping useSortable hooks alive in a small window beyond the viewport so a
+// dnd-kit drop target stays mounted as the user drags past it.
+const SIDEBAR_VIRTUOSO_OVERSCAN_PX = 600;
+
 // Threshold for escalating the "Reconnecting…" badge to include the time
 // since data last arrived. 10s sits above the Doherty 400ms gate so the
 // indicator never flickers on transient reconnects, and below the worst-case
@@ -110,6 +118,105 @@ function truncateSearchQuery(trimmedQuery: string) {
     : trimmedQuery;
 }
 
+interface SidebarHeaderFlatItem {
+  kind: "header";
+  id: string;
+  type: string;
+  displayName: string;
+  count: number;
+  ariaRowIndex: number;
+}
+
+interface SidebarRowFlatItem {
+  kind: "row";
+  id: string;
+  worktreeId: string;
+  ariaRowIndex: number;
+  rowIndex: number;
+  isPinned: boolean;
+  mode: "sortable" | "static";
+}
+
+type SidebarFlatItem = SidebarHeaderFlatItem | SidebarRowFlatItem;
+
+interface SidebarVirtuosoContext {
+  activeWorktreeId: string | null;
+  focusedWorktreeId: string | null;
+  totalWorktreeCount: number;
+  selectWorktree: (id: string) => void;
+  worktreeActions: WorktreeActions;
+  availability: UseAgentLauncherReturn["availability"];
+  agentSettings: UseAgentLauncherReturn["agentSettings"];
+  homeDir: string | undefined;
+  dragStartOrder: string[];
+  isSortDisabled: boolean;
+}
+
+// Module-level item key so Virtuoso's memoization isn't broken by a fresh
+// arrow identity each render (past lesson #5010). Returning the stable id
+// (not a key that encodes mutable state) is the lesson from #1992.
+function computeSidebarItemKey(_index: number, item: SidebarFlatItem): string {
+  return item.id;
+}
+
+function renderSidebarFlatItem(
+  _index: number,
+  item: SidebarFlatItem,
+  context: SidebarVirtuosoContext
+) {
+  if (item.kind === "header") {
+    return (
+      <div
+        role="row"
+        aria-rowindex={item.ariaRowIndex}
+        className="bg-daintree-sidebar border-b border-divider"
+      >
+        <div
+          role="rowheader"
+          aria-colspan={1}
+          className="px-4 py-2 text-[10px] font-medium text-daintree-text/50 uppercase tracking-wide"
+        >
+          {item.displayName} ({item.count})
+        </div>
+      </div>
+    );
+  }
+  if (item.mode === "static") {
+    return (
+      <StaticWorktreeRow
+        worktreeId={item.worktreeId}
+        activeWorktreeId={context.activeWorktreeId}
+        focusedWorktreeId={context.focusedWorktreeId}
+        totalWorktreeCount={context.totalWorktreeCount}
+        selectWorktree={context.selectWorktree}
+        worktreeActions={context.worktreeActions}
+        availability={context.availability}
+        agentSettings={context.agentSettings}
+        homeDir={context.homeDir}
+        ariaRowIndex={item.ariaRowIndex}
+      />
+    );
+  }
+  return (
+    <SidebarWorktreeRow
+      worktreeId={item.worktreeId}
+      activeWorktreeId={context.activeWorktreeId}
+      focusedWorktreeId={context.focusedWorktreeId}
+      totalWorktreeCount={context.totalWorktreeCount}
+      selectWorktree={context.selectWorktree}
+      worktreeActions={context.worktreeActions}
+      availability={context.availability}
+      agentSettings={context.agentSettings}
+      homeDir={context.homeDir}
+      dragStartOrder={context.dragStartOrder}
+      isSortDisabled={context.isSortDisabled}
+      isPinned={item.isPinned}
+      rowIndex={item.rowIndex}
+      ariaRowIndex={item.ariaRowIndex}
+    />
+  );
+}
+
 interface SidebarContentProps {
   onOpenOverview: () => void;
 }
@@ -121,7 +228,8 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   const overviewAriaShortcut = useAriaKeyshortcuts("worktree.overview");
   const refreshAriaShortcut = useAriaKeyshortcuts("worktree.refresh");
   const createWorktreeAriaShortcut = useAriaKeyshortcuts("worktree.createDialog.open");
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const virtuosoRef = useRef<VirtuosoHandle | null>(null);
+  const scrollerElementRef = useRef<HTMLElement | null>(null);
   // Latest dragStartOrder + sort-disabled state captured in refs so the
   // keyboard-reorder callback identity stays stable across renders without
   // missing new visible orders or going stale on group/search toggles.
@@ -145,13 +253,11 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   // produces a fresh DOM mutation that AT actually treats as new content.
   const [keyboardCancelAnnouncement, setKeyboardCancelAnnouncement] = useState("");
   const cancelAnnouncementTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleKeyboardReorder = useCallback((rowEl: HTMLElement, delta: -1 | 1) => {
+  const handleKeyboardReorder = useCallback((worktreeId: string, delta: -1 | 1) => {
     // Grouped-by-type and active-search modes hide the drag handle; keyboard
     // reorder must mirror that — writing to manualOrder here would silently
     // mutate ordering the user can't see being applied.
     if (isSortDisabledRef.current) return;
-    const worktreeId = rowEl.dataset.worktreeRow;
-    if (!worktreeId) return;
     const visible = dragStartOrderRef.current;
     const currentIdx = visible.indexOf(worktreeId);
     if (currentIdx === -1) return;
@@ -176,10 +282,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       setKeyboardReorderAnnouncement(message);
     }, KEYBOARD_REORDER_ANNOUNCEMENT_DEBOUNCE_MS);
   }, []);
-  const { gridRef, handleGridKeyDown, handleGridFocusCapture } = useWorktreeGridRovingFocus(
-    scrollContainerRef,
-    { onKeyboardReorder: handleKeyboardReorder }
-  );
   // Drop the cancel timer if the sidebar unmounts mid-flight so the trailing
   // setTimeout doesn't fire setState on an unmounted component.
   useEffect(() => {
@@ -465,7 +567,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     return result;
   }, [worktreeIdList, panelIdsByWorktreeId, panelsById, isInTrash, worktreeIds]);
 
-  const scrollContentRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -764,11 +865,24 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       hasFacetFiltersActive,
     ]);
 
-  const { hiddenAbove, hiddenBelow, scrollToTop, scrollToBottom } = useScrollIndicator({
-    scrollContainerRef,
-    scrollContentRef,
+  const {
+    hiddenAbove,
+    hiddenBelow,
+    scrollToTop,
+    scrollToBottom,
+    scrollerRef: scrollIndicatorScrollerRef,
+    handleScroll,
+  } = useScrollIndicator({
     itemCount: filteredWorktrees.length,
   });
+
+  const setScrollerElement = useCallback(
+    (el: HTMLElement | Window | null) => {
+      scrollerElementRef.current = el instanceof HTMLElement ? el : null;
+      scrollIndicatorScrollerRef(el);
+    },
+    [scrollIndicatorScrollerRef]
+  );
 
   const worktreeActions = useWorktreeActions({
     onOpenRecipeEditor: handleOpenRecipeEditor,
@@ -810,6 +924,200 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     }
     return unarmed;
   }, [filterArmEligibleIds, armedIds]);
+
+  // -------------------------------------------------------------------------
+  // Pre-render index + visibility computations — these are pure derivations,
+  // but they're hoisted above the early returns below so the hook calls that
+  // depend on them (sidebarItems memo, useWorktreeSidebarKeyboard) can stay
+  // in a single, render-order-stable position. Without this hoist the hooks
+  // would sit after `if (isLoading) return …`, breaking rules-of-hooks.
+  const worktreeMatchesQueryPre = (w: WorktreeState) => {
+    if (!query) return true;
+    const exactNum = parseExactNumber(query);
+    if (exactNum !== null) {
+      return w.issueNumber === exactNum || w.linked?.pr?.ref.number === exactNum;
+    }
+    return scoreWorktree(w, query) > 0;
+  };
+
+  const pinnedFiltersPre: FilterState = {
+    query,
+    statusFilters,
+    typeFilters,
+    githubFilters,
+    sessionFilters,
+    activityFilters,
+  };
+
+  const mainMatchesQueryPre = mainWorktree && worktreeMatchesQueryPre(mainWorktree);
+  const mainMatchesFacetsPre =
+    !hasFacetFiltersActive ||
+    (mainWorktree &&
+      matchesFilters(
+        mainWorktree,
+        pinnedFiltersPre,
+        derivedMetaMap.get(mainWorktree.id) ?? {
+          terminalCount: 0,
+          hasWorkingAgent: false,
+          hasWaitingAgent: false,
+          hasCompletedAgent: false,
+          hasExitedAgent: false,
+          hasMergeConflict: false,
+          chipState: null,
+        },
+        mainWorktree.id === activeWorktreeId
+      ));
+  const mainVisible = mainMatchesQueryPre && mainMatchesFacetsPre;
+
+  const integrationMatchesQueryPre =
+    integrationWorktree && worktreeMatchesQueryPre(integrationWorktree);
+  const integrationMatchesFacetsPre =
+    !hasFacetFiltersActive ||
+    (integrationWorktree &&
+      matchesFilters(
+        integrationWorktree,
+        pinnedFiltersPre,
+        derivedMetaMap.get(integrationWorktree.id) ?? {
+          terminalCount: 0,
+          hasWorkingAgent: false,
+          hasWaitingAgent: false,
+          hasCompletedAgent: false,
+          hasExitedAgent: false,
+          hasMergeConflict: false,
+          chipState: null,
+        },
+        integrationWorktree.id === activeWorktreeId
+      ));
+  const integrationVisible = integrationMatchesQueryPre && integrationMatchesFacetsPre;
+
+  const hasQuery = query.trim().length > 0;
+  const isSortDisabled = isGroupedByType || hasQuery;
+  isSortDisabledRef.current = isSortDisabled;
+
+  const mainRowIndex = mainVisible ? 1 : 0;
+  const integrationRowIndex = integrationVisible ? mainRowIndex + 1 : mainRowIndex;
+  const firstScrollableRowIndex = integrationRowIndex + 1;
+
+  // Total rows in the grid — pinned rows + group header rows + data rows.
+  // Group header rows count toward aria-rowcount because they carry role="row".
+  const ariaRowCount =
+    integrationRowIndex +
+    (groupedSections
+      ? groupedSections.reduce((n, s) => n + 1 + s.worktrees.length, 0)
+      : filteredWorktrees.length);
+
+  // Build the flat item array that drives the virtualized scroll region. The
+  // grouped path interleaves sticky header sentinels with static rows; the
+  // ungrouped path emits sortable rows so dnd-kit's SortableContext can
+  // wrap the whole Virtuoso surface.
+  const sidebarItems = useMemo<SidebarFlatItem[]>(() => {
+    const items: SidebarFlatItem[] = [];
+    let nextRowIndex = firstScrollableRowIndex;
+    if (groupedSections) {
+      for (const section of groupedSections) {
+        items.push({
+          kind: "header",
+          id: `header-${section.type}`,
+          type: section.type,
+          displayName: section.displayName,
+          count: section.worktrees.length,
+          ariaRowIndex: nextRowIndex++,
+        });
+        for (const w of section.worktrees) {
+          items.push({
+            kind: "row",
+            id: `row-${w.id}`,
+            worktreeId: w.id,
+            ariaRowIndex: nextRowIndex++,
+            rowIndex: dragStartOrder.indexOf(w.id),
+            isPinned: pinnedWorktrees.includes(w.id),
+            mode: "static",
+          });
+        }
+      }
+    } else {
+      for (let i = 0; i < filteredWorktrees.length; i++) {
+        const w = filteredWorktrees[i]!;
+        items.push({
+          kind: "row",
+          id: `row-${w.id}`,
+          worktreeId: w.id,
+          ariaRowIndex: nextRowIndex++,
+          rowIndex: i,
+          isPinned: pinnedWorktrees.includes(w.id),
+          mode: "sortable",
+        });
+      }
+    }
+    return items;
+  }, [
+    groupedSections,
+    filteredWorktrees,
+    firstScrollableRowIndex,
+    pinnedWorktrees,
+    dragStartOrder,
+  ]);
+
+  // The pinned main + integration rows live OUTSIDE the Virtuoso surface but
+  // INSIDE the role="grid" container, so keyboard navigation must visit them
+  // before descending into the virtualized list. They carry isPinned so the
+  // hook skips scrollToIndex (they're always rendered, never windowed).
+  const keyboardItems = useMemo<SidebarKeyboardItem[]>(() => {
+    const items: SidebarKeyboardItem[] = [];
+    if (mainVisible && mainWorktree) {
+      items.push({ kind: "row", worktreeId: mainWorktree.id, isPinned: true });
+    }
+    if (integrationVisible && integrationWorktree) {
+      items.push({ kind: "row", worktreeId: integrationWorktree.id, isPinned: true });
+    }
+    for (const item of sidebarItems) {
+      items.push(
+        item.kind === "row" ? { kind: "row", worktreeId: item.worktreeId } : { kind: "header" }
+      );
+    }
+    return items;
+  }, [sidebarItems, mainVisible, mainWorktree, integrationVisible, integrationWorktree]);
+
+  const {
+    gridRef,
+    activeDescendantId,
+    handleGridKeyDown,
+    handleGridFocus,
+    handleGridFocusCapture,
+  } = useWorktreeSidebarKeyboard({
+    items: keyboardItems,
+    virtuosoRef,
+    scrollerRef: scrollerElementRef,
+    onKeyboardReorder: handleKeyboardReorder,
+    onSelectWorktree: selectWorktree,
+  });
+
+  const virtuosoContext = useMemo<SidebarVirtuosoContext>(
+    () => ({
+      activeWorktreeId,
+      focusedWorktreeId,
+      totalWorktreeCount: deferredWorktrees.length,
+      selectWorktree,
+      worktreeActions,
+      availability,
+      agentSettings,
+      homeDir,
+      dragStartOrder,
+      isSortDisabled,
+    }),
+    [
+      activeWorktreeId,
+      focusedWorktreeId,
+      deferredWorktrees.length,
+      selectWorktree,
+      worktreeActions,
+      availability,
+      agentSettings,
+      homeDir,
+      dragStartOrder,
+      isSortDisabled,
+    ]
+  );
 
   // Hoisted before early returns so the dialog still mounts when the zero-
   // worktrees branch fires — its empty-state nudge dispatches
@@ -1011,68 +1319,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       <TooltipContent side="bottom">{armMatchingLabel}</TooltipContent>
     </Tooltip>
   );
-  const worktreeMatchesQuery = (w: WorktreeState) => {
-    if (!query) return true;
-    const exactNum = parseExactNumber(query);
-    if (exactNum !== null) {
-      return w.issueNumber === exactNum || w.linked?.pr?.ref.number === exactNum;
-    }
-    return scoreWorktree(w, query) > 0;
-  };
-
-  const pinnedFilters: FilterState = {
-    query,
-    statusFilters,
-    typeFilters,
-    githubFilters,
-    sessionFilters,
-    activityFilters,
-  };
-
-  const mainMatchesQuery = mainWorktree && worktreeMatchesQuery(mainWorktree);
-  const mainMatchesFacets =
-    !hasFacetFiltersActive ||
-    (mainWorktree &&
-      matchesFilters(
-        mainWorktree,
-        pinnedFilters,
-        derivedMetaMap.get(mainWorktree.id) ?? {
-          terminalCount: 0,
-          hasWorkingAgent: false,
-          hasWaitingAgent: false,
-          hasCompletedAgent: false,
-          hasExitedAgent: false,
-          hasMergeConflict: false,
-          chipState: null,
-        },
-        mainWorktree.id === activeWorktreeId
-      ));
-  const mainVisible = mainMatchesQuery && mainMatchesFacets;
-
-  const integrationMatchesQuery = integrationWorktree && worktreeMatchesQuery(integrationWorktree);
-  const integrationMatchesFacets =
-    !hasFacetFiltersActive ||
-    (integrationWorktree &&
-      matchesFilters(
-        integrationWorktree,
-        pinnedFilters,
-        derivedMetaMap.get(integrationWorktree.id) ?? {
-          terminalCount: 0,
-          hasWorkingAgent: false,
-          hasWaitingAgent: false,
-          hasCompletedAgent: false,
-          hasExitedAgent: false,
-          hasMergeConflict: false,
-          chipState: null,
-        },
-        integrationWorktree.id === activeWorktreeId
-      ));
-  const integrationVisible = integrationMatchesQuery && integrationMatchesFacets;
-
-  const hasQuery = query.trim().length > 0;
-  const isSortDisabled = isGroupedByType || hasQuery;
-  isSortDisabledRef.current = isSortDisabled;
-
   const filteredCount = filteredWorktrees.length;
   const showScope = hasActiveFilters() && filteredCount !== totalCount;
   const dragDisabledReason = hasQuery
@@ -1080,20 +1326,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     : isGroupedByType
       ? "Sorting disabled while grouped by type"
       : null;
-
-  // 1-based aria-rowindex slots for the pinned rows.
-  const mainRowIndex = mainVisible ? 1 : 0;
-  const integrationRowIndex = integrationVisible ? mainRowIndex + 1 : mainRowIndex;
-  // First slot available to the scrollable section (1-based).
-  const firstScrollableRowIndex = integrationRowIndex + 1;
-
-  // Total rows in the grid — pinned rows + group header rows + data rows.
-  // Group header rows count toward aria-rowcount because they carry role="row".
-  const ariaRowCount =
-    integrationRowIndex +
-    (groupedSections
-      ? groupedSections.reduce((n, s) => n + 1 + s.worktrees.length, 0)
-      : filteredWorktrees.length);
 
   return (
     <div className="flex flex-col h-full">
@@ -1231,15 +1463,21 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       <div className="sr-only" role="status" aria-live="assertive" aria-atomic="true">
         {keyboardCancelAnnouncement}
       </div>
-      {/* Worktree list — single role="grid" with roving tab stop spans pinned + scrollable rows */}
+      {/* Worktree list — single role="grid" with aria-activedescendant tracking
+          the active row. Single tab stop on the grid container; rows never
+          take focus directly, so they can be unmounted by Virtuoso without
+          stranding keyboard navigation. */}
       <div
         ref={gridRef}
         role="grid"
         aria-label="Worktrees"
         aria-rowcount={ariaRowCount}
+        aria-activedescendant={activeDescendantId}
+        tabIndex={0}
         onKeyDown={handleGridKeyDown}
+        onFocus={handleGridFocus}
         onFocusCapture={handleGridFocusCapture}
-        className="flex flex-col flex-1 min-h-0"
+        className="flex flex-col flex-1 min-h-0 focus:outline-hidden"
       >
         {/* Main worktree — visible unless excluded by text search or facet filters */}
         {mainVisible && (
@@ -1286,160 +1524,118 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
           </div>
         )}
 
+        {pendingCreationRows && <div className="shrink-0">{pendingCreationRows}</div>}
+
         {/* Strong divider between pinned worktrees and scrollable list */}
         {hasNonMainWorktrees && <div className="shrink-0 border-b border-border-default" />}
 
-        {/* Non-main worktree list */}
+        {hasNonMainWorktrees && (
+          <QuickStateFilterBar
+            value={quickStateFilter}
+            onChange={setQuickStateFilter}
+            counts={quickStateCounts}
+            trailing={armMatchingButton}
+          />
+        )}
+
+        {/* Virtualized non-main worktree list */}
         <div className="relative flex-1 min-h-0">
-          <div ref={scrollContainerRef} className="h-full overflow-y-auto scrollbar-none">
-            <div ref={scrollContentRef}>
-              {pendingCreationRows}
-              {hasNonMainWorktrees && (
-                <QuickStateFilterBar
-                  value={quickStateFilter}
-                  onChange={setQuickStateFilter}
-                  counts={quickStateCounts}
-                  trailing={armMatchingButton}
-                />
-              )}
-              {showQuickStateEmptyState && !hasFacetFiltersActive && !hasQuery ? (
-                <EmptyState variant="user-cleared" scale="sidebar" title="All caught up" />
-              ) : showQuickStateEmptyState && hasFacetFiltersActive ? (
-                <EmptyState
-                  variant="filtered-empty"
-                  scale="sidebar"
-                  instant
-                  title={`No worktrees match ${QUICK_STATE_LABELS[quickStateFilter]} with ${activeFacetFilterCount} ${
-                    activeFacetFilterCount === 1 ? "filter" : "filters"
-                  }`}
-                  action={
-                    <>
-                      <button
-                        type="button"
-                        onClick={clearAllFilters}
-                        className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
-                      >
-                        Show all worktrees
-                      </button>
-                      <button
-                        type="button"
-                        onClick={onOpenOverview}
-                        className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors ml-1"
-                        title={formatButtonTitle("Open overview", overviewShortcut)}
-                        aria-keyshortcuts={overviewAriaShortcut}
-                      >
-                        Open overview
-                      </button>
-                    </>
-                  }
-                />
-              ) : filteredWorktrees.length === 0 &&
-                hasFilters &&
-                hasNonMainWorktrees &&
-                !(mainVisible || integrationVisible) ? (
-                <EmptyState
-                  variant="filtered-empty"
-                  scale="sidebar"
-                  instant
-                  title={
-                    hasQuery
-                      ? `No matches for "${truncateSearchQuery(query.trim())}"`
-                      : "No matching worktrees"
-                  }
-                  action={
-                    <>
-                      <button
-                        type="button"
-                        onClick={clearAllFilters}
-                        className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
-                      >
-                        Show all worktrees
-                      </button>
-                      <button
-                        type="button"
-                        onClick={onOpenOverview}
-                        className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors ml-1"
-                        title={formatButtonTitle("Open overview", overviewShortcut)}
-                        aria-keyshortcuts={overviewAriaShortcut}
-                      >
-                        Open overview
-                      </button>
-                    </>
-                  }
-                />
-              ) : groupedSections ? (
-                <div className="flex flex-col">
-                  {(() => {
-                    let nextRowIndex = firstScrollableRowIndex;
-                    return groupedSections.map((section) => {
-                      const headerRowIndex = nextRowIndex++;
-                      const sectionWorktreeRows = section.worktrees.map((worktree) => (
-                        <StaticWorktreeRow
-                          key={worktree.id}
-                          worktreeId={worktree.id}
-                          activeWorktreeId={activeWorktreeId}
-                          focusedWorktreeId={focusedWorktreeId}
-                          totalWorktreeCount={deferredWorktrees.length}
-                          selectWorktree={selectWorktree}
-                          worktreeActions={worktreeActions}
-                          availability={availability}
-                          agentSettings={agentSettings}
-                          homeDir={homeDir}
-                          ariaRowIndex={nextRowIndex++}
-                          isDragHandleDisabled
-                        />
-                      ));
-                      return (
-                        <div key={section.type} role="rowgroup">
-                          <div
-                            role="row"
-                            aria-rowindex={headerRowIndex}
-                            className="sticky top-0 z-10 bg-daintree-sidebar border-b border-divider"
-                          >
-                            <div
-                              role="rowheader"
-                              aria-colspan={1}
-                              className="px-4 py-2 text-[10px] font-medium text-daintree-text/50 uppercase tracking-wide"
-                            >
-                              {section.displayName} ({section.worktrees.length})
-                            </div>
-                          </div>
-                          {sectionWorktreeRows}
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              ) : (
-                <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-                  <div className="flex flex-col">
-                    {filteredWorktrees.map((worktree, idx) => {
-                      const isPinned = pinnedWorktrees.includes(worktree.id);
-                      return (
-                        <SidebarWorktreeRow
-                          key={worktree.id}
-                          worktreeId={worktree.id}
-                          activeWorktreeId={activeWorktreeId}
-                          focusedWorktreeId={focusedWorktreeId}
-                          totalWorktreeCount={deferredWorktrees.length}
-                          selectWorktree={selectWorktree}
-                          worktreeActions={worktreeActions}
-                          availability={availability}
-                          agentSettings={agentSettings}
-                          homeDir={homeDir}
-                          dragStartOrder={dragStartOrder}
-                          isSortDisabled={isSortDisabled}
-                          isPinned={isPinned}
-                          rowIndex={idx}
-                          ariaRowIndex={firstScrollableRowIndex + idx}
-                        />
-                      );
-                    })}
-                  </div>
-                </SortableContext>
-              )}
-            </div>
-          </div>
+          {showQuickStateEmptyState && !hasFacetFiltersActive && !hasQuery ? (
+            <EmptyState variant="user-cleared" scale="sidebar" title="All caught up" />
+          ) : showQuickStateEmptyState && hasFacetFiltersActive ? (
+            <EmptyState
+              variant="filtered-empty"
+              scale="sidebar"
+              instant
+              title={`No worktrees match ${QUICK_STATE_LABELS[quickStateFilter]} with ${activeFacetFilterCount} ${
+                activeFacetFilterCount === 1 ? "filter" : "filters"
+              }`}
+              action={
+                <>
+                  <button
+                    type="button"
+                    onClick={clearAllFilters}
+                    className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
+                  >
+                    Show all worktrees
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onOpenOverview}
+                    className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors ml-1"
+                    title={formatButtonTitle("Open overview", overviewShortcut)}
+                    aria-keyshortcuts={overviewAriaShortcut}
+                  >
+                    Open overview
+                  </button>
+                </>
+              }
+            />
+          ) : filteredWorktrees.length === 0 &&
+            hasFilters &&
+            hasNonMainWorktrees &&
+            !(mainVisible || integrationVisible) ? (
+            <EmptyState
+              variant="filtered-empty"
+              scale="sidebar"
+              instant
+              title={
+                hasQuery
+                  ? `No matches for "${truncateSearchQuery(query.trim())}"`
+                  : "No matching worktrees"
+              }
+              action={
+                <>
+                  <button
+                    type="button"
+                    onClick={clearAllFilters}
+                    className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
+                  >
+                    Show all worktrees
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onOpenOverview}
+                    className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors ml-1"
+                    title={formatButtonTitle("Open overview", overviewShortcut)}
+                    aria-keyshortcuts={overviewAriaShortcut}
+                  >
+                    Open overview
+                  </button>
+                </>
+              }
+            />
+          ) : groupedSections ? (
+            <Virtuoso<SidebarFlatItem, SidebarVirtuosoContext>
+              ref={virtuosoRef}
+              data={sidebarItems}
+              context={virtuosoContext}
+              overscan={SIDEBAR_VIRTUOSO_OVERSCAN_PX}
+              increaseViewportBy={SIDEBAR_VIRTUOSO_OVERSCAN_PX}
+              skipAnimationFrameInResizeObserver
+              computeItemKey={computeSidebarItemKey}
+              itemContent={renderSidebarFlatItem}
+              scrollerRef={setScrollerElement}
+              onScroll={handleScroll}
+              className="absolute inset-0 overflow-y-auto scrollbar-none"
+            />
+          ) : (
+            <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+              <Virtuoso<SidebarFlatItem, SidebarVirtuosoContext>
+                ref={virtuosoRef}
+                data={sidebarItems}
+                context={virtuosoContext}
+                overscan={SIDEBAR_VIRTUOSO_OVERSCAN_PX}
+                increaseViewportBy={SIDEBAR_VIRTUOSO_OVERSCAN_PX}
+                skipAnimationFrameInResizeObserver
+                computeItemKey={computeSidebarItemKey}
+                itemContent={renderSidebarFlatItem}
+                scrollerRef={setScrollerElement}
+                onScroll={handleScroll}
+                className="absolute inset-0 overflow-y-auto scrollbar-none"
+              />
+            </SortableContext>
+          )}
           <ScrollIndicator
             direction="above"
             count={hiddenAbove}

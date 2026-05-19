@@ -4,10 +4,9 @@ import path from "path";
 
 const SIDEBAR_CONTENT_PATH = path.resolve(__dirname, "../SidebarContent.tsx");
 
-// Static-source assertions, mirroring the established SidebarContent test
-// convention (#5843, #6422, #6874). The keystroke→callback path is covered
-// behaviorally by useWorktreeGridRovingFocus.altArrow.test.tsx; this locks
-// down the screen-reader fix in handleKeyboardReorder (issue #8013).
+// Static-source assertions for the SR announcement plumbing on top of
+// keyboard reorder (issue #8013). The keystroke→callback path itself is
+// covered behaviorally by useWorktreeSidebarKeyboard.altArrow.test.tsx.
 describe("SidebarContent keyboard reorder announcement — issue #8013", () => {
   let source: string;
 
@@ -30,8 +29,6 @@ describe("SidebarContent keyboard reorder announcement — issue #8013", () => {
     });
 
     it("announces the worktree name alongside the position", () => {
-      // Regression guard for #8013: the old copy was just
-      // `Moved to position N of M` with no row identity.
       expect(source).toContain(
         "`Moved '${name}' to position ${targetIdx + 1} of ${visible.length}`"
       );
@@ -53,9 +50,6 @@ describe("SidebarContent keyboard reorder announcement — issue #8013", () => {
     });
 
     it("defers setKeyboardReorderAnnouncement behind a 150ms trailing timeout", () => {
-      // 150ms == Tier 1 motion timing; absorbs ~30Hz OS key-repeat so
-      // NVDA/JAWS never queue intermediate positions. The constant name documents
-      // the intent at the call site.
       expect(source).toMatch(/const\s+KEYBOARD_REORDER_ANNOUNCEMENT_DEBOUNCE_MS\s*=\s*150/);
       expect(source).toMatch(
         /reorderAnnouncementTimerRef\.current\s*=\s*setTimeout\(\(\)\s*=>\s*\{[\s\S]*?reorderAnnouncementTimerRef\.current\s*=\s*null;[\s\S]*?setKeyboardReorderAnnouncement\(message\);[\s\S]*?\},\s*KEYBOARD_REORDER_ANNOUNCEMENT_DEBOUNCE_MS\)/
@@ -63,12 +57,22 @@ describe("SidebarContent keyboard reorder announcement — issue #8013", () => {
     });
 
     it("does not call setKeyboardReorderAnnouncement synchronously in the callback", () => {
-      // The only setKeyboardReorderAnnouncement call must live inside the
-      // debounced timeout, never on the synchronous keypress path.
       const synchronousCall =
         /setKeyboardReorderAnnouncement\(`Moved/.test(source) ||
         /setOrderBy\("manual"\);\s*setKeyboardReorderAnnouncement/.test(source);
       expect(synchronousCall).toBe(false);
+    });
+  });
+
+  describe("reorder callback signature — virtualized rewrite", () => {
+    it("accepts a worktreeId string (not a DOM row element) from the keyboard hook", () => {
+      // The virtualized sidebar may have the source row unmounted outside
+      // Virtuoso's overscan; the hook resolves the id from items, not the DOM.
+      expect(source).toMatch(
+        /handleKeyboardReorder = useCallback\(\(worktreeId: string, delta: -1 \| 1\)/
+      );
+      expect(source).not.toMatch(/rowEl: HTMLElement/);
+      expect(source).not.toContain("rowEl.dataset.worktreeRow");
     });
   });
 
