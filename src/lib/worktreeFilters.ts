@@ -482,41 +482,73 @@ export function emptyChipCounts(): ChipCounts {
   };
 }
 
+const DEFAULT_DERIVED_META: DerivedWorktreeMeta = {
+  terminalCount: 0,
+  hasWorkingAgent: false,
+  hasWaitingAgent: false,
+  hasCompletedAgent: false,
+  hasExitedAgent: false,
+  hasMergeConflict: false,
+  chipState: null,
+};
+
+function withoutGroup<K extends keyof FilterState>(filters: FilterState, group: K): FilterState {
+  return { ...filters, [group]: new Set() };
+}
+
 export function computeChipCounts(
   worktrees: readonly (Worktree | WorktreeState)[],
   derivedMetaMap: Map<string, DerivedWorktreeMeta>,
-  activeWorktreeId: string | null
+  activeWorktreeId: string | null,
+  filters: FilterState
 ): ChipCounts {
   const counts = emptyChipCounts();
   const now = Date.now();
 
-  for (const worktree of worktrees) {
-    const isActive = worktree.id === activeWorktreeId;
-    const statuses = computeStatus(worktree, isActive);
+  const baseIsActive = (w: (typeof worktrees)[number]) => w.id === activeWorktreeId;
+  const getDerived = (id: string) => derivedMetaMap.get(id) ?? DEFAULT_DERIVED_META;
+  const matchesGroup = (w: (typeof worktrees)[number], groupKey: keyof FilterState) =>
+    matchesFilters(w, withoutGroup(filters, groupKey), getDerived(w.id), baseIsActive(w));
+
+  // Build base set per group — filtered by all OTHER groups + query
+  const statusBase = worktrees.filter((w) => matchesGroup(w, "statusFilters"));
+  const typeBase = worktrees.filter((w) => matchesGroup(w, "typeFilters"));
+  const githubBase = worktrees.filter((w) => matchesGroup(w, "githubFilters"));
+  const sessionsBase = worktrees.filter((w) => matchesGroup(w, "sessionFilters"));
+  const activityBase = worktrees.filter((w) => matchesGroup(w, "activityFilters"));
+
+  for (const w of statusBase) {
+    const statuses = computeStatus(w, baseIsActive(w));
     for (const status of statuses) counts.status[status]++;
+  }
 
-    const type = getWorktreeType(worktree);
-    counts.branchType[type]++;
+  for (const w of typeBase) {
+    counts.branchType[getWorktreeType(w)]++;
+  }
 
-    if (worktree.issueNumber) counts.github.hasIssue++;
-    if (worktree.linked?.pr) counts.github.hasPR++;
-    if (worktree.linked?.pr?.state === "open") counts.github.prOpen++;
-    if (worktree.linked?.pr?.state === "merged") counts.github.prMerged++;
-    if (worktree.linked?.pr?.state === "closed" || worktree.linked?.pr?.state === "declined")
+  for (const w of githubBase) {
+    if (w.issueNumber) counts.github.hasIssue++;
+    if (w.linked?.pr) counts.github.hasPR++;
+    if (w.linked?.pr?.state === "open") counts.github.prOpen++;
+    if (w.linked?.pr?.state === "merged") counts.github.prMerged++;
+    if (w.linked?.pr?.state === "closed" || w.linked?.pr?.state === "declined")
       counts.github.prClosed++;
+  }
 
-    const meta = derivedMetaMap.get(worktree.id);
-    if (meta) {
-      if (meta.terminalCount > 0) counts.sessions.hasTerminals++;
-      if (meta.hasWorkingAgent) counts.sessions.working++;
-      if (meta.hasWaitingAgent) counts.sessions.waiting++;
-      if (meta.hasCompletedAgent) counts.sessions.completed++;
-      if (meta.hasExitedAgent) counts.sessions.exited++;
-    }
+  for (const w of sessionsBase) {
+    const meta = getDerived(w.id);
+    if (meta.terminalCount > 0) counts.sessions.hasTerminals++;
+    if (meta.hasWorkingAgent) counts.sessions.working++;
+    if (meta.hasWaitingAgent) counts.sessions.waiting++;
+    if (meta.hasCompletedAgent) counts.sessions.completed++;
+    if (meta.hasExitedAgent) counts.sessions.exited++;
+  }
 
-    const lastActivity = worktree.lastActivityTimestamp ?? 0;
+  for (const w of activityBase) {
+    const lastActivity = w.lastActivityTimestamp ?? 0;
     if (lastActivity > 0) {
       const elapsed = now - lastActivity;
+      if (elapsed < 0) continue;
       for (const key of ACTIVITY_KEYS) {
         if (elapsed < ACTIVITY_WINDOW_MS[key]) counts.activity[key]++;
       }
