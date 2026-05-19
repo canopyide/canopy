@@ -82,10 +82,15 @@ export function registerWorktreeServiceActions(
         ? "No worktree load failure to retry"
         : undefined,
     run: async () => {
+      const retriedError = useProjectStore.getState().worktreeLoadError;
       await worktreeClient.retryProjectLoad();
-      // The reload succeeded — clear the banner. A failure rejects above and
-      // leaves worktreeLoadError set so the banner stays visible.
-      useProjectStore.getState().setWorktreeLoadError(null);
+      // Clear only if the banner still shows the same failure we retried — a
+      // concurrent switch may have set a *new* worktreeLoadError mid-flight,
+      // and that one must not be wiped by this success. A failure rejects above
+      // and leaves the banner untouched.
+      if (useProjectStore.getState().worktreeLoadError === retriedError) {
+        useProjectStore.getState().setWorktreeLoadError(null);
+      }
     },
   }));
 

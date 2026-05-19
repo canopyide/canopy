@@ -85,4 +85,23 @@ describe("worktree.retryProjectLoad (#8400)", () => {
     await expect(getAction().run(undefined, {})).rejects.toThrow("still broken");
     expect(setWorktreeLoadErrorMock).not.toHaveBeenCalled();
   });
+
+  it("does not clobber a new error that arrived mid-retry", async () => {
+    worktreeLoadError = "Not a git repository";
+    let resolveRetry: () => void = () => {};
+    retryProjectLoadMock.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveRetry = resolve;
+      })
+    );
+
+    const runPromise = getAction().run(undefined, {});
+    // A concurrent switch surfaces a different failure while the retry is in
+    // flight — the success path must not wipe it.
+    worktreeLoadError = "A different project failed";
+    resolveRetry();
+    await runPromise;
+
+    expect(setWorktreeLoadErrorMock).not.toHaveBeenCalled();
+  });
 });

@@ -132,10 +132,12 @@ interface ProjectState {
 interface ProjectStoreListenerState {
   applyUpdated: ((project: Project) => void) | null;
   applyRemoved: ((projectId: string) => void) | null;
-  applySwitch: ((worktreeLoadError: string | null) => void) | null;
+  applyWorktreeLoadStatus:
+    | ((payload: { projectId: string; worktreeLoadError: string | null }) => void)
+    | null;
   updatedRegistered: boolean;
   removedRegistered: boolean;
-  switchRegistered: boolean;
+  worktreeLoadStatusRegistered: boolean;
 }
 
 const PROJECT_STORE_LISTENER_STATE_KEY = "__daintreeProjectStoreListenerState";
@@ -155,10 +157,10 @@ function getProjectStoreListenerState(): ProjectStoreListenerState {
   const created: ProjectStoreListenerState = {
     applyUpdated: null,
     applyRemoved: null,
-    applySwitch: null,
+    applyWorktreeLoadStatus: null,
     updatedRegistered: false,
     removedRegistered: false,
-    switchRegistered: false,
+    worktreeLoadStatusRegistered: false,
   };
   target[PROJECT_STORE_LISTENER_STATE_KEY] = created;
   return created;
@@ -749,11 +751,20 @@ if (typeof window !== "undefined" && window.electron?.project) {
       return { projects, currentProject };
     });
   };
-  // A switch broadcast resolves the banner state for the project this view now
-  // shows: surface the failure when the new project's worktree load threw, or
-  // clear a stale banner when the switch (or a cross-view switch) succeeded.
-  listenerState.applySwitch = (worktreeLoadError) => {
-    useProjectStore.setState({ worktreeLoadError });
+  // The worktree-load-status event resolves the banner for the project this
+  // view now shows. The production path targets a single view, but the legacy
+  // path broadcasts to every view (incl. LRU-cached other-project views), so
+  // ignore events whose projectId doesn't match this view's current project.
+  // The guard is *permissive*: a cold-started view may receive the event before
+  // `getCurrentProject()` has populated `currentProject`, so a null
+  // currentProject still accepts the targeted event rather than dropping it.
+  listenerState.applyWorktreeLoadStatus = (payload) => {
+    useProjectStore.setState((state) => {
+      if (state.currentProject && state.currentProject.id !== payload.projectId) {
+        return state;
+      }
+      return { worktreeLoadError: payload.worktreeLoadError };
+    });
   };
 
   const projectApi = window.electron.project;
@@ -770,10 +781,10 @@ if (typeof window !== "undefined" && window.electron?.project) {
       listenerState.applyRemoved?.(projectId);
     });
   }
-  if (!listenerState.switchRegistered) {
-    listenerState.switchRegistered = true;
-    projectClient.onSwitch((payload) => {
-      listenerState.applySwitch?.(payload.worktreeLoadError ?? null);
+  if (!listenerState.worktreeLoadStatusRegistered) {
+    listenerState.worktreeLoadStatusRegistered = true;
+    projectClient.onWorktreeLoadStatus((payload) => {
+      listenerState.applyWorktreeLoadStatus?.(payload);
     });
   }
 }

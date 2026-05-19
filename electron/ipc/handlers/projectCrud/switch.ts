@@ -5,6 +5,7 @@ import { distributePortsToView } from "../../../window/portDistribution.js";
 import { projectStore } from "../../../services/ProjectStore.js";
 import { scratchStore } from "../../../services/ScratchStore.js";
 import { ProjectSwitchService } from "../../../services/ProjectSwitchService.js";
+import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
 import {
   sanitizeTerminals,
   sanitizeTerminalSizes,
@@ -192,6 +193,12 @@ async function activateProjectView(
     const senderWindow = getWindowForWebContents(event.sender);
     const windowId = senderWindow?.id ?? deps.mainWindow?.id;
     if (windowId !== undefined) {
+      // Forward-fail: the view swap already committed to the new project, so a
+      // load failure surfaces as a Tier 3 recovery banner rather than reverting
+      // (#8400). Send a targeted status to *this* view only (broadcastToRenderer
+      // would also hit LRU-cached other-project views); null on success clears a
+      // stale banner when a previously-failed view is reactivated successfully.
+      let worktreeLoadError: string | null = null;
       try {
         await deps.worktreeService.loadProject(project.path, windowId);
 
@@ -209,6 +216,13 @@ async function activateProjectView(
         }
       } catch (err) {
         console.error(`${options.logPrefix} Failed to load worktrees:`, err);
+        worktreeLoadError = formatErrorMessage(err, "Failed to load worktrees");
+      }
+      if (!view.webContents.isDestroyed()) {
+        view.webContents.send(CHANNELS.PROJECT_WORKTREE_LOAD_STATUS, {
+          projectId,
+          worktreeLoadError,
+        });
       }
     }
 

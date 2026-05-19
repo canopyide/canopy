@@ -11,6 +11,7 @@ const projectClientMock = {
   reopen: vi.fn().mockResolvedValue(undefined),
   openDialog: vi.fn(),
   onSwitch: vi.fn(() => () => {}),
+  onWorktreeLoadStatus: vi.fn(() => () => {}),
   getSettings: vi.fn(),
   saveSettings: vi.fn(),
   detectRunners: vi.fn(),
@@ -514,29 +515,39 @@ describe("worktreeLoadError surfacing (#8400)", () => {
     expect(useProjectStore.getState().worktreeLoadError).toBeNull();
   });
 
-  it("stores worktreeLoadError from the project switch broadcast and clears it on a clean switch", async () => {
+  it("applies the worktree-load-status event, guarding on projectId", async () => {
     delete (globalThis as { __daintreeProjectStoreListenerState?: unknown })
       .__daintreeProjectStoreListenerState;
     // The module-init listener block only registers when window.electron.project
-    // is present; provide a minimal stub so projectClient.onSwitch is wired.
+    // is present; provide a minimal stub so the listener is wired.
     (window as unknown as { electron: unknown }).electron = {
       project: { onUpdated: vi.fn(), onRemoved: vi.fn() },
     };
-    const { useProjectStore } = await import("../projectStore");
-
-    const onSwitchCb = projectClientMock.onSwitch.mock.calls.at(-1)?.[0] as
-      | ((payload: {
-          project: typeof projectB;
-          switchId: string;
-          worktreeLoadError?: string;
-        }) => void)
+    let statusCb:
+      | ((payload: { projectId: string; worktreeLoadError: string | null }) => void)
       | undefined;
-    expect(typeof onSwitchCb).toBe("function");
+    projectClientMock.onWorktreeLoadStatus.mockImplementation((cb: typeof statusCb) => {
+      statusCb = cb;
+      return () => {};
+    });
 
-    onSwitchCb!({ project: projectB, switchId: "s1", worktreeLoadError: "Not a git repository" });
+    const { useProjectStore } = await import("../projectStore");
+    expect(typeof statusCb).toBe("function");
+
+    // Permissive: accepted while currentProject is still null (cold view).
+    useProjectStore.setState({ currentProject: null, worktreeLoadError: null });
+    statusCb!({ projectId: projectB.id, worktreeLoadError: "Not a git repository" });
     expect(useProjectStore.getState().worktreeLoadError).toBe("Not a git repository");
 
-    onSwitchCb!({ project: projectB, switchId: "s2" });
+    // Applied when the payload's project matches this view's current project.
+    useProjectStore.setState({ currentProject: projectB });
+    statusCb!({ projectId: projectB.id, worktreeLoadError: null });
+    expect(useProjectStore.getState().worktreeLoadError).toBeNull();
+
+    // Ignored when the payload targets a different project (cross-view broadcast
+    // contamination guard).
+    useProjectStore.setState({ currentProject: projectB, worktreeLoadError: null });
+    statusCb!({ projectId: projectA.id, worktreeLoadError: "Other project failed" });
     expect(useProjectStore.getState().worktreeLoadError).toBeNull();
   });
 });

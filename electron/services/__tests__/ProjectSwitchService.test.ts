@@ -298,6 +298,11 @@ describe("ProjectSwitchService", () => {
         worktreeLoadError: "Not a git repository",
       })
     );
+    // Dedicated load-status event the renderer banner listens on (#8400).
+    expect(sendToRendererMock).toHaveBeenCalledWith(CHANNELS.PROJECT_WORKTREE_LOAD_STATUS, {
+      projectId: "project-new",
+      worktreeLoadError: "Not a git repository",
+    });
   });
 
   it("does not include worktreeLoadError when loadProject succeeds", async () => {
@@ -305,8 +310,16 @@ describe("ProjectSwitchService", () => {
 
     await service.switchProject("project-new");
 
-    const payload = sendToRendererMock.mock.calls[0][1];
-    expect(payload).not.toHaveProperty("worktreeLoadError");
+    const onSwitchPayload = sendToRendererMock.mock.calls.find(
+      (c: unknown[]) => c[0] === CHANNELS.PROJECT_ON_SWITCH
+    )?.[1];
+    expect(onSwitchPayload).not.toHaveProperty("worktreeLoadError");
+    // The load-status event still fires, with a null error so a stale banner
+    // on a reactivated view clears.
+    expect(sendToRendererMock).toHaveBeenCalledWith(CHANNELS.PROJECT_WORKTREE_LOAD_STATUS, {
+      projectId: "project-new",
+      worktreeLoadError: null,
+    });
   });
 
   it("includes pre-built hydrateResult in switch payload", async () => {

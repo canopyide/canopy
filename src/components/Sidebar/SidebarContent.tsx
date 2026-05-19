@@ -831,21 +831,26 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
             <h2 className="text-daintree-text font-semibold text-sm tracking-wide">Worktrees</h2>
           </div>
 
-          <EmptyState
-            variant="zero-data"
-            scale="sidebar"
-            icon={<FolderOpen />}
-            title="Open a Git repository to get started"
-            action={
-              <span className="text-xs text-daintree-text/50">
-                Use{" "}
-                <kbd className="px-1.5 py-0.5 bg-tint/[0.06] rounded text-xs">
-                  File → Open Directory
-                </kbd>
-              </span>
-            }
-            className="flex-1"
-          />
+          {/* A failed load already has an open project — the "Open a Git
+              repository" nudge would contradict the banner, so the banner
+              stands alone as the actionable state. */}
+          {!worktreeLoadError && (
+            <EmptyState
+              variant="zero-data"
+              scale="sidebar"
+              icon={<FolderOpen />}
+              title="Open a Git repository to get started"
+              action={
+                <span className="text-xs text-daintree-text/50">
+                  Use{" "}
+                  <kbd className="px-1.5 py-0.5 bg-tint/[0.06] rounded text-xs">
+                    File → Open Directory
+                  </kbd>
+                </span>
+              }
+              className="flex-1"
+            />
+          )}
         </div>
         {newWorktreeDialogElement}
       </>

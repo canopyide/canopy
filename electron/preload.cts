@@ -1247,6 +1247,10 @@ const api: ElectronAPI = {
       }) => void
     ) => _typedOn(CHANNELS.PROJECT_ON_SWITCH, callback),
 
+    onWorktreeLoadStatus: (
+      callback: (payload: { projectId: string; worktreeLoadError: string | null }) => void
+    ) => _typedOn(CHANNELS.PROJECT_WORKTREE_LOAD_STATUS, callback),
+
     onUpdated: (callback: (project: Project) => void) =>
       _typedOn(CHANNELS.PROJECT_UPDATED, callback),
 

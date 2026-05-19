@@ -118,6 +118,14 @@ export class ProjectSwitchService {
         ...(hydrateResult ? { hydrateResult } : {}),
       });
 
+      // Dedicated load-status event consumed by the renderer's Tier 3 banner
+      // (#8400). Mirrors the targeted send on the production view-swap path so
+      // both paths drive the same listener; null clears any stale banner.
+      broadcastToRenderer(CHANNELS.PROJECT_WORKTREE_LOAD_STATUS, {
+        projectId,
+        worktreeLoadError: worktreeLoadError ?? null,
+      });
+
       console.log("[ProjectSwitch] Project switch complete, switchId:", switchId);
       return updatedProject;
     } catch (error) {
