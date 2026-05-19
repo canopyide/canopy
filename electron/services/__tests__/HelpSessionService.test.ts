@@ -88,8 +88,35 @@ async function makeBundledHelpFolder(root: string): Promise<string> {
     path.join(helpDir, ".claude", "settings.json"),
     JSON.stringify({
       permissions: {
-        allow: ["Read(**)", "WebFetch", "mcp__daintree-docs__*", "Bash(gh issue list*)"],
-        deny: ["Write(**)", "Edit(**)", "Bash(**)"],
+        allow: [
+          "Read(**)",
+          "Glob(**)",
+          "Grep(**)",
+          "LS(**)",
+          "WebFetch",
+          "mcp__daintree-docs__*",
+          "Bash(gh *)",
+          "Bash(glab *)",
+          "Bash(tea *)",
+        ],
+        deny: [
+          "Write(**)",
+          "Edit(**)",
+          "MultiEdit(**)",
+          "Bash(gh issue create*)",
+          "Bash(gh pr create*)",
+          "Bash(gh pr merge*)",
+          "Bash(gh repo create*)",
+          "Bash(gh repo delete*)",
+          "Bash(glab issue create*)",
+          "Bash(glab mr create*)",
+          "Bash(glab mr merge*)",
+          "Bash(tea issue create*)",
+          "Bash(tea issues create*)",
+          "Bash(tea pr create*)",
+          "Bash(tea pulls create*)",
+          "Bash(tea pulls merge*)",
+        ],
       },
     })
   );
@@ -245,6 +272,73 @@ describe("HelpSessionService", () => {
     expect(settings.permissions.allow).toContain("mcp__daintree__*");
     expect(settings.permissions.allow).toContain("mcp__daintree-docs__*");
     expect(settings.permissions.deny).toContain("Write(**)");
+  });
+
+  it("opens the full forge CLI surface without a blanket Bash deny (#8360)", async () => {
+    const result = await service.provisionSession(provisionInput());
+    if (!result) throw new Error("expected result");
+
+    const settings = JSON.parse(
+      await fs.readFile(path.join(result.sessionPath, ".claude", "settings.json"), "utf-8")
+    );
+    // A blanket Bash(**) deny would win over every Bash allow (deny > allow),
+    // silently killing the gh/glab/tea allowlist — the #8360 root cause.
+    expect(settings.permissions.deny).not.toContain("Bash(**)");
+    expect(settings.permissions.allow).toContain("Bash(gh *)");
+    expect(settings.permissions.allow).toContain("Bash(glab *)");
+    expect(settings.permissions.allow).toContain("Bash(tea *)");
+    // All destructive write paths stay hard-blocked — a partial drop of
+    // this list must fail the test, not slip through.
+    for (const denied of [
+      "Bash(gh issue create*)",
+      "Bash(gh pr create*)",
+      "Bash(gh pr merge*)",
+      "Bash(gh repo create*)",
+      "Bash(gh repo delete*)",
+      "Bash(glab issue create*)",
+      "Bash(glab mr create*)",
+      "Bash(glab mr merge*)",
+      "Bash(tea issue create*)",
+      "Bash(tea issues create*)",
+      "Bash(tea pr create*)",
+      "Bash(tea pulls create*)",
+      "Bash(tea pulls merge*)",
+    ]) {
+      expect(settings.permissions.deny).toContain(denied);
+    }
+    // Pin the #8360 root-cause pattern: no deny entry may shadow the
+    // broad forge allows. Any of these would silently kill the allowlist.
+    for (const shadow of ["Bash(*)", "Bash(**)", "Bash(gh *)", "Bash(glab *)", "Bash(tea *)"]) {
+      expect(settings.permissions.deny).not.toContain(shadow);
+    }
+  });
+
+  it("the bundled .claude/settings.json matches the in-code fallback baseline (#8360)", async () => {
+    // The fallback in readBundledSettings is the safety net for a corrupted
+    // install; if it drifts from the bundled file the #8360 bug reappears
+    // whenever the file read fails. Reading the real repo file (not a test
+    // fixture) catches that drift.
+    // Vitest runs from the repo root, so the real bundled file is at a
+    // stable relative path — not a test fixture.
+    const bundledPath = path.join(process.cwd(), "help", ".claude", "settings.json");
+    const bundled = JSON.parse(await fs.readFile(bundledPath, "utf-8"));
+
+    // Delete the bundled fixture's settings so readBundledSettings is
+    // forced down its hardcoded fallback path.
+    await fs.rm(path.join(helpFolder, ".claude", "settings.json"));
+
+    const result = await service.provisionSession(provisionInput());
+    if (!result) throw new Error("expected result");
+    const fallback = JSON.parse(
+      await fs.readFile(path.join(result.sessionPath, ".claude", "settings.json"), "utf-8")
+    );
+
+    // mcp__daintree__* is appended at provision time; compare the static
+    // forge surface only.
+    expect(new Set(fallback.permissions.deny)).toEqual(new Set(bundled.permissions.deny));
+    for (const allowed of bundled.permissions.allow) {
+      expect(fallback.permissions.allow).toContain(allowed);
+    }
   });
 
   it("sets defaultMode=bypassPermissions and tier=system when legacy skipPermissions is true", async () => {
@@ -1894,8 +1988,35 @@ describe("HelpSessionService", () => {
         path.join(altHelp, ".claude", "settings.json"),
         JSON.stringify({
           permissions: {
-            allow: ["Read(**)", "WebFetch", "mcp__daintree-docs__*", "Bash(gh issue list*)"],
-            deny: ["Write(**)", "Edit(**)", "Bash(**)"],
+            allow: [
+              "Read(**)",
+              "Glob(**)",
+              "Grep(**)",
+              "LS(**)",
+              "WebFetch",
+              "mcp__daintree-docs__*",
+              "Bash(gh *)",
+              "Bash(glab *)",
+              "Bash(tea *)",
+            ],
+            deny: [
+              "Write(**)",
+              "Edit(**)",
+              "MultiEdit(**)",
+              "Bash(gh issue create*)",
+              "Bash(gh pr create*)",
+              "Bash(gh pr merge*)",
+              "Bash(gh repo create*)",
+              "Bash(gh repo delete*)",
+              "Bash(glab issue create*)",
+              "Bash(glab mr create*)",
+              "Bash(glab mr merge*)",
+              "Bash(tea issue create*)",
+              "Bash(tea issues create*)",
+              "Bash(tea pr create*)",
+              "Bash(tea pulls create*)",
+              "Bash(tea pulls merge*)",
+            ],
           },
         })
       );
