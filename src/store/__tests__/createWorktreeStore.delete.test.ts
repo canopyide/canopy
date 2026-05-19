@@ -288,9 +288,7 @@ describe("createWorktreeStore — delete in-flight state (#8417)", () => {
     );
 
     const store = createWorktreeStore();
-    store
-      .getState()
-      .applySnapshot([makeSnapshot("wt-1"), makeSnapshot("wt-2")], nextV());
+    store.getState().applySnapshot([makeSnapshot("wt-1"), makeSnapshot("wt-2")], nextV());
 
     store.getState().startDelete("wt-1", { force: false });
     store.getState().startDelete("wt-2", { force: true });
