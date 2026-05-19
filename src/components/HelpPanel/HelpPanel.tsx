@@ -107,6 +107,11 @@ export function HelpPanel({
   const isMacroFocused = useMacroFocusStore((s) => s.focusedRegion === "assistant");
   const isVisible = isVisibleProp ?? effectiveWidth > 0;
   const [showNewSessionConfirm, setShowNewSessionConfirm] = useState(false);
+  const [showAgentSwitchConfirm, setShowAgentSwitchConfirm] = useState(false);
+  // Tracks the last preferredAgentId the switch effect acted on so a single
+  // preference change drives at most one switch attempt (the effect re-runs
+  // on unrelated dep changes while the async launch settles).
+  const prevPreferredAgentIdRef = useRef<string | null>(null);
   const [visibilityEpoch, setVisibilityEpoch] = useState(0);
   const activeWorktreeId = useWorktreeSelectionStore((s) => s.activeWorktreeId);
 
@@ -246,6 +251,52 @@ export function HelpPanel({
       }
     }
   }, [terminalId, terminal?.agentState, markConversationStarted]);
+
+  // React to a Settings agent change while a session is already bound.
+  // `setTerminal` no longer overwrites `preferredAgentId`, so a user choice
+  // made in the Daintree Assistant settings tab reaches here as a genuine
+  // change. Replace the live session with the chosen agent, gated by the
+  // same D1 confirm as a new session when there's a conversation to lose.
+  // (#8353 — switching the assistant agent was a silent no-op.)
+  useEffect(() => {
+    // No preference, or no live session to replace. Do NOT record the value
+    // yet — a preference chosen before a terminal binds must still trigger
+    // the switch once the terminal appears (#8353 critical fix).
+    if (!preferredAgentId || !terminalId) return;
+    // Already running the preferred agent — covers first-mount hydration and
+    // the user reverting the dropdown back to the live agent. Reconcile any
+    // open confirm so a stale "Switch to X?" prompt can't fire the wrong
+    // agent after the preference moved on.
+    if (preferredAgentId === agentId) {
+      prevPreferredAgentIdRef.current = preferredAgentId;
+      if (showAgentSwitchConfirm) setShowAgentSwitchConfirm(false);
+      return;
+    }
+    // Dedupe: this preference, against the current live agent, was already
+    // acted on (the effect re-runs on unrelated dep changes while the async
+    // launch settles).
+    if (prevPreferredAgentIdRef.current === preferredAgentId) return;
+    prevPreferredAgentIdRef.current = preferredAgentId;
+    const shouldConfirm =
+      (terminal?.agentState !== undefined && CLOSE_CONFIRM_AGENT_STATES.has(terminal.agentState)) ||
+      conversationTouched;
+    if (shouldConfirm) {
+      // The dialog title and confirm action both read live `preferredAgentId`,
+      // so a retarget to a third agent while the dialog is open tracks the
+      // latest preference without needing a separate pending field.
+      setShowAgentSwitchConfirm(true);
+      return;
+    }
+    controller.selectAgent(preferredAgentId);
+  }, [
+    controller,
+    preferredAgentId,
+    terminalId,
+    agentId,
+    terminal?.agentState,
+    conversationTouched,
+    showAgentSwitchConfirm,
+  ]);
 
   // Auto-snapshot pre-flight: when the project's MCP tier is `system`, take
   // a pre-flight snapshot once per session and surface a Tier-1 banner.
@@ -419,6 +470,22 @@ export function HelpPanel({
 
   const handleCancelNewSession = useCallback(() => {
     setShowNewSessionConfirm(false);
+  }, []);
+
+  const handleConfirmAgentSwitch = useCallback(() => {
+    setShowAgentSwitchConfirm(false);
+    // Guard against the preference having moved back to the running agent (or
+    // cleared) between opening the dialog and confirming.
+    if (preferredAgentId && preferredAgentId !== agentId) {
+      controller.selectAgent(preferredAgentId);
+    }
+  }, [controller, preferredAgentId, agentId]);
+
+  // Leave preferredAgentId as the user set it — reverting it on cancel would
+  // be a silent fallback the dropdown wouldn't reflect. The session simply
+  // stays on the running agent until the user confirms a switch.
+  const handleCancelAgentSwitch = useCallback(() => {
+    setShowAgentSwitchConfirm(false);
   }, []);
 
   const handleOpenSettings = useCallback(() => {
@@ -640,6 +707,17 @@ export function HelpPanel({
         confirmLabel="Start new session"
         onConfirm={handleConfirmNewSession}
         onClose={handleCancelNewSession}
+        variant="destructive"
+      />
+      <ConfirmDialog
+        isOpen={showAgentSwitchConfirm}
+        title={`Switch to ${
+          getAgentConfig(preferredAgentId ?? "")?.name ?? preferredAgentId ?? "agent"
+        }?`}
+        description="The current session will end and the conversation will be discarded."
+        confirmLabel="Switch agent"
+        onConfirm={handleConfirmAgentSwitch}
+        onClose={handleCancelAgentSwitch}
         variant="destructive"
       />
     </aside>
