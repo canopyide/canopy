@@ -884,6 +884,7 @@ export class WorktreeMonitor {
       aheadCount: this.aheadCount,
       behindCount: this.behindCount,
       lastFetchedAt: this._lastFetchedAt ?? undefined,
+      lastGitStatusCheckedAt: this.lastGitStatusCompletedAt,
       fetchAuthFailed: this._fetchAuthFailed || undefined,
       fetchNetworkFailed: this._fetchNetworkFailed || undefined,
       // Read in-flight state authoritatively at snapshot time (lesson #1700)

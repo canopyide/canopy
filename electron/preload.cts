@@ -680,7 +680,7 @@ const api: ElectronAPI = {
   worktree: {
     getAll: () => _unwrappingInvoke(CHANNELS.WORKTREE_GET_ALL),
 
-    refresh: () => _unwrappingInvoke(CHANNELS.WORKTREE_REFRESH),
+    refresh: (worktreeId?: string) => _unwrappingInvoke(CHANNELS.WORKTREE_REFRESH, worktreeId),
 
     refreshPullRequests: () => _unwrappingInvoke(CHANNELS.WORKTREE_PR_REFRESH),
 

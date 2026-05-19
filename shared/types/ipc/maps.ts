@@ -242,7 +242,7 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
     result: WorktreeState[];
   };
   "worktree:refresh": {
-    args: [];
+    args: [worktreeId?: string];
     result: void;
   };
   "worktree:pr-refresh": {

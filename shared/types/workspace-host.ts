@@ -131,6 +131,9 @@ export interface WorktreeSnapshot {
    */
   lastFetchedAt?: number | null;
 
+  /** Epoch ms of the last completed git status check for this worktree. */
+  lastGitStatusCheckedAt?: number;
+
   /** True when this worktree's repo is in an auth-failed fetch state. */
   fetchAuthFailed?: boolean;
 

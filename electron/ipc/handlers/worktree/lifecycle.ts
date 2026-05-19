@@ -36,11 +36,11 @@ export function registerWorktreeLifecycleHandlers(deps: HandlerDependencies): ()
   };
   handlers.push(typedHandleWithContext(CHANNELS.WORKTREE_GET_ALL, handleWorktreeGetAll));
 
-  const handleWorktreeRefresh = async () => {
+  const handleWorktreeRefresh = async (worktreeId?: string) => {
     if (!deps.worktreeService) {
       return;
     }
-    await deps.worktreeService.refresh();
+    await deps.worktreeService.refresh(undefined, worktreeId);
   };
   handlers.push(typedHandle(CHANNELS.WORKTREE_REFRESH, handleWorktreeRefresh));
 
