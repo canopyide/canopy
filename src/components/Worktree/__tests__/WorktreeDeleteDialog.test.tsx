@@ -192,7 +192,7 @@ describe("WorktreeDeleteDialog — warning messages", () => {
     expect(warning.textContent).toContain("1 uncommitted file.");
   });
 
-  it("hides warning when force is checked", () => {
+  it("persists banner with escalated copy when force is checked for tracked changes", () => {
     const worktree = makeWorktree(makeChanges([{ path: "src/app.ts", status: "modified" }]));
     render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
 
@@ -202,6 +202,39 @@ describe("WorktreeDeleteDialog — warning messages", () => {
     fireEvent.click(forceCheckbox);
 
     expect(screen.queryByText(/Standard deletion will fail/)).toBeNull();
+    expect(screen.getByText(/Force delete will discard/)).toBeDefined();
+    expect(screen.getByText(/1 uncommitted tracked file. This is irreversible./)).toBeDefined();
+  });
+
+  it("persists banner with escalated copy when force is checked for untracked-only files", () => {
+    const worktree = makeWorktree(makeChanges([{ path: "new.txt", status: "untracked" }]));
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    expect(screen.getByText(/Standard deletion will fail/)).toBeDefined();
+
+    const forceCheckbox = screen.getByRole("checkbox", { name: /force delete/i });
+    fireEvent.click(forceCheckbox);
+
+    expect(screen.queryByText(/Standard deletion will fail/)).toBeNull();
+    expect(screen.getByText(/Force delete will permanently remove/)).toBeDefined();
+    expect(screen.getByText(/1 untracked file./)).toBeDefined();
+  });
+
+  it("shows combined counts in force banner when both tracked and untracked files exist", () => {
+    const worktree = makeWorktree(
+      makeChanges([
+        { path: "src/app.ts", status: "modified" },
+        { path: "new.txt", status: "untracked" },
+      ])
+    );
+    render(<WorktreeDeleteDialog isOpen={true} onClose={vi.fn()} worktree={worktree} />);
+
+    const forceCheckbox = screen.getByRole("checkbox", { name: /force delete/i });
+    fireEvent.click(forceCheckbox);
+
+    const banner = screen.getByText(/Force delete will discard/);
+    expect(banner.textContent).toContain("and 1 untracked file");
+    expect(banner.textContent).toContain("This is irreversible.");
   });
 
   it('shows "remove untracked files" on force label when only untracked files exist', () => {
@@ -439,7 +472,7 @@ describe("WorktreeDeleteDialog — medium tier (no name confirmation)", () => {
     expect(screen.queryByTestId("delete-worktree-confirm-input")).toBeNull();
     const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
     expect(button.disabled).toBe(false);
-    expect(button.textContent).toBe("Delete worktree");
+    expect(button.textContent).toBe("Force delete worktree");
   });
 
   it("dispatches delete on click without typing", async () => {
@@ -500,7 +533,7 @@ describe("WorktreeDeleteDialog — high tier (name confirmation)", () => {
 
     expect(screen.getByTestId("delete-worktree-confirm-input")).toBeDefined();
     const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
-    expect(button.textContent).toBe("Delete worktree");
+    expect(button.textContent).toBe("Force delete 'main'");
     expect(button.disabled).toBe(true);
   });
 
@@ -573,7 +606,7 @@ describe("WorktreeDeleteDialog — high tier (name confirmation)", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: /force delete/i }));
 
     const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
-    expect(button.textContent).toBe("Delete worktree");
+    expect(button.textContent).toBe("Force delete 'abc1234'");
     expect(button.disabled).toBe(true);
 
     const input = screen.getByTestId("delete-worktree-confirm-input") as HTMLInputElement;
@@ -592,7 +625,7 @@ describe("WorktreeDeleteDialog — high tier (name confirmation)", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: /force delete/i }));
 
     const button = screen.getByTestId("delete-worktree-confirm") as HTMLButtonElement;
-    expect(button.textContent).toBe("Delete worktree");
+    expect(button.textContent).toBe("Force delete 'abc1234'");
 
     const input = screen.getByTestId("delete-worktree-confirm-input") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "abc1234" } });
