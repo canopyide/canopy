@@ -3,6 +3,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { WorktreeCard, type WorktreeCardProps } from "@/components/Worktree";
 import { WorktreeCardErrorFallback } from "@/components/Worktree/WorktreeCardErrorFallback";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
+import { getWorktreeSidebarRowId } from "./useWorktreeSidebarKeyboard";
 import type { WorktreeState } from "@/types";
 import type { WorktreeActions } from "@/hooks/useWorktreeActions";
 import type { UseAgentLauncherReturn } from "@/hooks/useAgentLauncher";
@@ -74,6 +75,7 @@ function StaticWorktreeRow({
   return (
     <div
       role="row"
+      id={getWorktreeSidebarRowId(worktreeId)}
       data-worktree-row={worktreeId}
       tabIndex={-1}
       aria-rowindex={ariaRowIndex}

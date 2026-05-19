@@ -507,6 +507,12 @@ export function DndProvider({ children }: DndProviderProps) {
   const stabilizationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dockRetryTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
+  // Snapshot of the worktree-sort drag data pinned at pickup. The virtualized
+  // sidebar can unmount the source row's useSortable hook once it scrolls
+  // outside Virtuoso's overscan window, dropping active.data.current to
+  // undefined before handleDragEnd fires.
+  const activeWorktreeSortDataRef = useRef<Record<string, unknown> | null>(null);
+
   const [isCancelDrop, setIsCancelDrop] = useState(false);
 
   // Configure sensors with activation constraint so clicks work for popovers.
@@ -573,6 +579,9 @@ export function DndProvider({ children }: DndProviderProps) {
 
     // Skip terminal-specific logic for worktree-sort drags
     if (isWorktreeSortDragData(active.data.current as Record<string, unknown> | undefined)) {
+      // Pin a snapshot so handleDragEnd survives Virtuoso unmounting the
+      // source row when it scrolls outside the overscan window mid-drag.
+      activeWorktreeSortDataRef.current = active.data.current as Record<string, unknown>;
       setActiveId(dragId);
       setIsWorktreeSortActive(true);
       const worktreeId = parseWorktreeSortDragId(dragId);
@@ -696,9 +705,15 @@ export function DndProvider({ children }: DndProviderProps) {
     (event: DragEndEvent) => {
       const { active, over } = event;
 
-      // Handle worktree-sort drags before any terminal logic
-      const activeRawData = active.data.current as Record<string, unknown> | undefined;
+      // Handle worktree-sort drags before any terminal logic. The snapshot ref
+      // is the canonical source — active.data.current can be undefined once
+      // the source row unmounts outside Virtuoso's overscan window.
+      const liveActiveData = active.data.current as Record<string, unknown> | undefined;
+      const activeRawData =
+        activeWorktreeSortDataRef.current ??
+        (isWorktreeSortDragData(liveActiveData) ? liveActiveData : undefined);
       if (isWorktreeSortDragData(activeRawData)) {
+        activeWorktreeSortDataRef.current = null;
         setActiveId(null);
         setActiveData(null);
         setIsWorktreeSortActive(false);
@@ -1154,7 +1169,9 @@ export function DndProvider({ children }: DndProviderProps) {
   const handleDragCancel = useCallback(() => {
     // Skip terminal unlock for worktree-sort drags (no lock was acquired)
     const isWorktreeSort = activeId ? parseWorktreeSortDragId(activeId) !== null : false;
-    if (!isWorktreeSort) {
+    if (isWorktreeSort) {
+      activeWorktreeSortDataRef.current = null;
+    } else {
       const terminalId =
         activeData?.terminal?.id ??
         (activeId ? (parseAccordionDragId(activeId) ?? activeId) : null);
