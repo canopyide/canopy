@@ -43,12 +43,18 @@ import {
   MCP_DEDUP_ALLOWLIST,
   MCP_DEDUP_TTL_MS,
   MCP_DEDUP_MAX_ENTRIES_PER_SESSION,
+  MCP_DEDUP_KEY_COLLISION_CODE,
   minimumPermittingTier,
   EXECUTION_ERROR_CODE,
   buildToolError,
   buildMcpErrorPayload,
 } from "./shared.js";
-import { buildDedupKey, readDedupCache, type CallToolResultLike } from "./sessionDedup.js";
+import {
+  buildDedupKey,
+  canonicalArgsHash,
+  readDedupCache,
+  type CallToolResultLike,
+} from "./sessionDedup.js";
 import {
   shouldExposeTool,
   isTierPermitted,
@@ -192,13 +198,35 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
     // Keyed by `requestKey` if the caller supplied one, otherwise a hash of
     // `(actionId, args)`. See #7531.
     let dedupKey: string | undefined;
+    let argsHash: string | undefined;
     if (MCP_DEDUP_ALLOWLIST.has(actionId)) {
       dedupKey = buildDedupKey(actionId, requestKey, args);
+      argsHash = canonicalArgsHash(actionId, args);
 
       const resultCache = sessionStore.dedupResultCache.get(sessionId);
       if (resultCache) {
-        const cached = readDedupCache(resultCache, dedupKey, Date.now());
-        if (cached) {
+        const cachedEntry = readDedupCache(resultCache, dedupKey, Date.now());
+        if (cachedEntry) {
+          if (cachedEntry.argsHash !== argsHash) {
+            try {
+              appendAuditRecord({
+                toolId: actionId,
+                sessionId,
+                tier,
+                args,
+                durationMs: Date.now() - startedAt,
+                outcome: { kind: "collision" },
+              });
+            } catch (err) {
+              console.error("[MCP] Failed to append audit record:", err);
+            }
+            return buildToolError({
+              code: MCP_DEDUP_KEY_COLLISION_CODE,
+              message:
+                "Idempotency key collision: the same requestKey was used with different arguments.",
+              details: { actionId, requestKey },
+            });
+          }
           try {
             appendAuditRecord({
               toolId: actionId,
@@ -211,13 +239,33 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
           } catch (err) {
             console.error("[MCP] Failed to append audit record:", err);
           }
-          return cached;
+          return cachedEntry.result;
         }
       }
 
       const inFlightForSession = sessionStore.dedupInFlight.get(sessionId);
-      const sharedPromise = inFlightForSession?.get(dedupKey);
-      if (sharedPromise) {
+      const sharedEntry = inFlightForSession?.get(dedupKey);
+      if (sharedEntry) {
+        if (sharedEntry.argsHash !== argsHash) {
+          try {
+            appendAuditRecord({
+              toolId: actionId,
+              sessionId,
+              tier,
+              args,
+              durationMs: Date.now() - startedAt,
+              outcome: { kind: "collision" },
+            });
+          } catch (err) {
+            console.error("[MCP] Failed to append audit record:", err);
+          }
+          return buildToolError({
+            code: MCP_DEDUP_KEY_COLLISION_CODE,
+            message:
+              "Idempotency key collision: the same requestKey was used with different arguments.",
+            details: { actionId, requestKey },
+          });
+        }
         try {
           appendAuditRecord({
             toolId: actionId,
@@ -230,7 +278,7 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
         } catch (err) {
           console.error("[MCP] Failed to append audit record:", err);
         }
-        return await sharedPromise;
+        return await sharedEntry.promise;
       }
     }
 
@@ -367,7 +415,8 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
       }
       const ownedInFlight = inFlight;
       const cleanupKey = dedupKey;
-      ownedInFlight.set(cleanupKey, dispatchPromise);
+      const ownedArgsHash = argsHash!;
+      ownedInFlight.set(cleanupKey, { promise: dispatchPromise, argsHash: ownedArgsHash });
 
       dispatchPromise.then(
         (result) => {
@@ -393,6 +442,7 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
             cache.set(cleanupKey, {
               result,
               expiresAt: Date.now() + MCP_DEDUP_TTL_MS,
+              argsHash: ownedArgsHash,
             });
             // FIFO-evict the oldest entries when the per-session cap is
             // exceeded. Map iteration is insertion-order, so the first key
