@@ -18,7 +18,6 @@ import type {
   McpTier,
 } from "./shared.js";
 import type {
-  McpGrantLifecyclePayload,
   McpIssueGrantResult,
   McpRevokeSessionGrantsResult,
 } from "../../../shared/types/ipc/mcpServer.js";
