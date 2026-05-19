@@ -465,6 +465,7 @@ async function runDeleteAsync(
     // learns the branch was not cleaned up. Without this, the failure is
     // silently swallowed (the original race guard's bug).
     if (!prev.deletingIds.has(worktreeId) && !prev.worktrees.has(worktreeId)) {
+      // eslint-disable-next-line no-restricted-syntax -- notify-no-action: ok
       notify({
         type: "error",
         title: "Couldn't delete branch",
