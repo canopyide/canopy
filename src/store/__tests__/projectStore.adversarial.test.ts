@@ -35,6 +35,7 @@ const projectClientMock = vi.hoisted(() => ({
   locate: vi.fn(),
   close: vi.fn(),
   createFolder: vi.fn(),
+  onWorktreeLoadStatus: vi.fn(() => () => {}),
 }));
 
 const notifyMock = vi.hoisted(() => vi.fn());

@@ -781,7 +781,12 @@ if (typeof window !== "undefined" && window.electron?.project) {
       listenerState.applyRemoved?.(projectId);
     });
   }
-  if (!listenerState.worktreeLoadStatusRegistered) {
+  // Guarded like onUpdated/onRemoved above: partial environments (and test
+  // doubles that only stub the methods they exercise) may not expose this.
+  if (
+    typeof projectClient.onWorktreeLoadStatus === "function" &&
+    !listenerState.worktreeLoadStatusRegistered
+  ) {
     listenerState.worktreeLoadStatusRegistered = true;
     projectClient.onWorktreeLoadStatus((payload) => {
       listenerState.applyWorktreeLoadStatus?.(payload);
