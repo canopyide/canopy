@@ -55,3 +55,20 @@ export function handleDockEscapeKeyDown(
     event.preventDefault();
   }
 }
+
+/**
+ * Returns `true` when a Radix `onOpenChange(false)` should be ignored because
+ * focus currently lives inside the dock panel's portal container (the xterm
+ * surface or the hybrid input editor). Typing into those surfaces emits
+ * `focusin` events that Radix's DismissableLayer can misclassify as an outside
+ * interaction once the `wasJustOpenedRef` timing guard has drained — closing
+ * the popover mid-keystroke. Mirrors `handleDockEscapeKeyDown`'s containment
+ * check so the timing guard is no longer the only line of defence.
+ *
+ * Pass `portalContainerElementRef.current` (the synchronous ref node), not the
+ * React state copy — the state copy lags one render behind, so it can still be
+ * null on the frame the spurious close fires.
+ */
+export function shouldSuppressDockClose(portalContainer: HTMLElement | null): boolean {
+  return portalContainer?.contains(document.activeElement) ?? false;
+}

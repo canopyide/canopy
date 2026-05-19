@@ -79,9 +79,11 @@ vi.mock("../useDockBlockedState", () => ({
   getDockDisplayAgentState: () => undefined,
 }));
 
+const shouldSuppressDockCloseMock = vi.fn(() => false);
 vi.mock("../dockPopoverGuard", () => ({
   handleDockInteractOutside: vi.fn(),
   handleDockEscapeKeyDown: vi.fn(),
+  shouldSuppressDockClose: (...args: unknown[]) => shouldSuppressDockCloseMock(...args),
 }));
 
 vi.mock("@/utils/terminalChrome", () => ({
@@ -183,6 +185,8 @@ describe("DockedTerminalItem mount-time close guard (#6602)", () => {
     mockActiveDockTerminalId = null;
     capturedOnOpenChange = null;
     capturedOnOpenAutoFocus = null;
+    shouldSuppressDockCloseMock.mockClear();
+    shouldSuppressDockCloseMock.mockReturnValue(false);
     vi.mocked(terminalInstanceService.focus).mockClear();
   });
 
@@ -209,6 +213,42 @@ describe("DockedTerminalItem mount-time close guard (#6602)", () => {
       vi.advanceTimersByTime(150);
     });
 
+    act(() => {
+      capturedOnOpenChange?.(false);
+    });
+
+    expect(closeDockTerminalMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores onOpenChange(false) while typing inside the portal (#8368)", () => {
+    mockActiveDockTerminalId = "t-1";
+    render(<DockedTerminalItem terminal={makeTerminal({ id: "t-1" })} />);
+    expect(capturedOnOpenChange).not.toBeNull();
+
+    // Drain the mount-time timing guard so the containment check is the only
+    // thing standing between a spurious focusin and closeDockTerminal.
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+
+    shouldSuppressDockCloseMock.mockReturnValue(true);
+    act(() => {
+      capturedOnOpenChange?.(false);
+    });
+
+    expect(closeDockTerminalMock).not.toHaveBeenCalled();
+  });
+
+  it("allows onOpenChange(false) when focus is outside the portal (#8368)", () => {
+    mockActiveDockTerminalId = "t-1";
+    render(<DockedTerminalItem terminal={makeTerminal({ id: "t-1" })} />);
+    expect(capturedOnOpenChange).not.toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+
+    shouldSuppressDockCloseMock.mockReturnValue(false);
     act(() => {
       capturedOnOpenChange?.(false);
     });

@@ -56,7 +56,11 @@ import { SortableTabButton } from "@/components/Panel/SortableTabButton";
 import { makeSortableAnnouncements } from "@/components/DragDrop/sortableAnnouncements";
 import type { TabGroup } from "@/types";
 import { buildPanelDuplicateOptions } from "@/services/terminal/panelDuplicationService";
-import { handleDockInteractOutside, handleDockEscapeKeyDown } from "./dockPopoverGuard";
+import {
+  handleDockInteractOutside,
+  handleDockEscapeKeyDown,
+  shouldSuppressDockClose,
+} from "./dockPopoverGuard";
 import { usePreferencesStore } from "@/store";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DockPopoverChildProvider } from "@/components/ui/DockPopoverChildContext";
@@ -213,6 +217,12 @@ export function DockedTabGroup({ group, panels }: DockedTabGroupProps) {
         openDockTerminal(activeTabId);
       } else {
         if (wasJustOpenedRef.current) {
+          return;
+        }
+        // Ignore spurious closes while the user is typing into the portaled
+        // terminal/editor — Radix can misread xterm/CodeMirror focusin events
+        // as an outside interaction (#8368). Use the ref, not the state copy.
+        if (shouldSuppressDockClose(portalContainerElementRef.current)) {
           return;
         }
         closeDockTerminal();

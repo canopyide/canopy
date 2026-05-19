@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from "vitest";
-import { handleDockInteractOutside, handleDockEscapeKeyDown } from "../dockPopoverGuard";
+import {
+  handleDockInteractOutside,
+  handleDockEscapeKeyDown,
+  shouldSuppressDockClose,
+} from "../dockPopoverGuard";
 
 function makeEvent(target: EventTarget | null): Event & { preventDefault: () => void } {
   const preventDefault = vi.fn();
@@ -194,6 +198,44 @@ describe("handleDockEscapeKeyDown", () => {
     handleDockEscapeKeyDown(event, container);
 
     expect(event.preventDefault).not.toHaveBeenCalled();
+    container.remove();
+  });
+});
+
+describe("shouldSuppressDockClose", () => {
+  it("returns true when focus is inside the portal container (typing into terminal)", () => {
+    const container = document.createElement("div");
+    const textarea = document.createElement("textarea");
+    container.appendChild(textarea);
+    document.body.appendChild(container);
+    textarea.focus();
+
+    expect(shouldSuppressDockClose(container)).toBe(true);
+    container.remove();
+  });
+
+  it("returns false when focus is outside the portal container", () => {
+    const container = document.createElement("div");
+    const outside = document.createElement("input");
+    document.body.appendChild(container);
+    document.body.appendChild(outside);
+    outside.focus();
+
+    expect(shouldSuppressDockClose(container)).toBe(false);
+    container.remove();
+    outside.remove();
+  });
+
+  it("returns false when the portal container is null (transition window)", () => {
+    expect(shouldSuppressDockClose(null)).toBe(false);
+  });
+
+  it("returns false when no element has focus", () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    (document.activeElement as HTMLElement)?.blur?.();
+
+    expect(shouldSuppressDockClose(container)).toBe(false);
     container.remove();
   });
 });
