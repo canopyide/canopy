@@ -116,11 +116,16 @@ vi.mock("@/hooks/useWorktreeStore", () => ({
 
 const mockSetPendingWorktree = vi.fn();
 const mockSelectWorktree = vi.fn();
+const mockAddPendingCreation = vi.fn();
+const mockFailPendingCreation = vi.fn();
 vi.mock("@/store/worktreeStore", () => ({
   useWorktreeSelectionStore: {
     getState: () => ({
       setPendingWorktree: mockSetPendingWorktree,
       selectWorktree: mockSelectWorktree,
+      addPendingCreation: mockAddPendingCreation,
+      failPendingCreation: mockFailPendingCreation,
+      activeWorktreeId: null,
     }),
   },
 }));

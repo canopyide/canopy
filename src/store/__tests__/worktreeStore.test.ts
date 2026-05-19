@@ -422,6 +422,95 @@ describe("worktreeStore", () => {
     expect(state.expandedTerminals.has("t1")).toBe(true);
   });
 
+  describe("pendingCreations", () => {
+    it("addPendingCreation seeds a creating entry keyed by path", () => {
+      useWorktreeSelectionStore
+        .getState()
+        .addPendingCreation("/abs/path", { branch: "feature/foo" });
+      const entry = useWorktreeSelectionStore.getState().pendingCreations.get("/abs/path");
+      expect(entry).toBeDefined();
+      expect(entry?.branch).toBe("feature/foo");
+      expect(entry?.status).toBe("creating");
+      expect(entry?.startedAt).toBeGreaterThan(0);
+    });
+
+    it("addPendingCreation is idempotent for in-flight creations", () => {
+      useWorktreeSelectionStore
+        .getState()
+        .addPendingCreation("/abs/path", { branch: "feature/foo" });
+      const firstStartedAt = useWorktreeSelectionStore
+        .getState()
+        .pendingCreations.get("/abs/path")?.startedAt;
+      useWorktreeSelectionStore
+        .getState()
+        .addPendingCreation("/abs/path", { branch: "feature/bar" });
+      const entry = useWorktreeSelectionStore.getState().pendingCreations.get("/abs/path");
+      // First write wins for in-flight; branch and startedAt unchanged.
+      expect(entry?.branch).toBe("feature/foo");
+      expect(entry?.startedAt).toBe(firstStartedAt);
+    });
+
+    it("addPendingCreation replaces an error entry so retry resets status", () => {
+      useWorktreeSelectionStore
+        .getState()
+        .addPendingCreation("/abs/path", { branch: "feature/foo" });
+      useWorktreeSelectionStore.getState().failPendingCreation("/abs/path", "boom");
+      useWorktreeSelectionStore
+        .getState()
+        .addPendingCreation("/abs/path", { branch: "feature/foo" });
+      const entry = useWorktreeSelectionStore.getState().pendingCreations.get("/abs/path");
+      expect(entry?.status).toBe("creating");
+      expect(entry?.error).toBeUndefined();
+    });
+
+    it("resolvePendingCreation removes the entry", () => {
+      useWorktreeSelectionStore
+        .getState()
+        .addPendingCreation("/abs/path", { branch: "feature/foo" });
+      useWorktreeSelectionStore.getState().resolvePendingCreation("/abs/path");
+      expect(useWorktreeSelectionStore.getState().pendingCreations.has("/abs/path")).toBe(false);
+    });
+
+    it("resolvePendingCreation is a no-op when no entry matches", () => {
+      const before = useWorktreeSelectionStore.getState().pendingCreations;
+      useWorktreeSelectionStore.getState().resolvePendingCreation("/unknown");
+      // No state churn — same Map reference.
+      expect(useWorktreeSelectionStore.getState().pendingCreations).toBe(before);
+    });
+
+    it("failPendingCreation flips status to error and records the message", () => {
+      useWorktreeSelectionStore
+        .getState()
+        .addPendingCreation("/abs/path", { branch: "feature/foo" });
+      useWorktreeSelectionStore.getState().failPendingCreation("/abs/path", "permission denied");
+      const entry = useWorktreeSelectionStore.getState().pendingCreations.get("/abs/path");
+      expect(entry?.status).toBe("error");
+      expect(entry?.error).toBe("permission denied");
+    });
+
+    it("failPendingCreation on an unknown path is a no-op", () => {
+      const before = useWorktreeSelectionStore.getState().pendingCreations;
+      useWorktreeSelectionStore.getState().failPendingCreation("/unknown", "boom");
+      expect(useWorktreeSelectionStore.getState().pendingCreations).toBe(before);
+    });
+
+    it("dismissPendingCreation removes the entry regardless of status", () => {
+      useWorktreeSelectionStore
+        .getState()
+        .addPendingCreation("/abs/path", { branch: "feature/foo" });
+      useWorktreeSelectionStore.getState().failPendingCreation("/abs/path", "boom");
+      useWorktreeSelectionStore.getState().dismissPendingCreation("/abs/path");
+      expect(useWorktreeSelectionStore.getState().pendingCreations.has("/abs/path")).toBe(false);
+    });
+
+    it("reset clears all pending creations", () => {
+      useWorktreeSelectionStore.getState().addPendingCreation("/abs/a", { branch: "feature/a" });
+      useWorktreeSelectionStore.getState().addPendingCreation("/abs/b", { branch: "feature/b" });
+      useWorktreeSelectionStore.getState().reset();
+      expect(useWorktreeSelectionStore.getState().pendingCreations.size).toBe(0);
+    });
+  });
+
   it("setActiveWorktree(null) clears both activeWorktreeId and focusedWorktreeId", () => {
     useWorktreeSelectionStore.setState({
       activeWorktreeId: "wt-a",

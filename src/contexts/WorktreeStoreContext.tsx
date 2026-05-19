@@ -244,6 +244,11 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
         if (selectionStore.pendingWorktreeId === event.worktree.id) {
           selectionStore.applyPendingWorktreeSelection(event.worktree.id);
         }
+
+        // Side effect: clear sidebar placeholder once the real worktree arrives.
+        // Idempotent — the action is a no-op when no entry matches the id, so
+        // unrelated worktree-update events cost nothing.
+        selectionStore.resolvePendingCreation(event.worktree.id);
       })
     );
 

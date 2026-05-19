@@ -16,7 +16,16 @@ interface CreateDialogState {
   initialIssue: GitHubIssue | null;
   initialPR: GitHubPR | null;
   initialRecipeId: string | null;
+  initialBranchInput: string | null;
   onCreated?: (worktreeId: string) => void;
+}
+
+export interface PendingCreation {
+  path: string;
+  branch: string;
+  startedAt: number;
+  status: "creating" | "error";
+  error?: string;
 }
 
 interface QuickCreateState {
@@ -42,6 +51,7 @@ interface WorktreeSelectionState {
   activeWorktreeId: string | null;
   focusedWorktreeId: string | null;
   pendingWorktreeId: string | null;
+  pendingCreations: Map<string, PendingCreation>;
   expandedWorktrees: Set<string>;
   expandedTerminals: Set<string>;
   createDialog: CreateDialogState;
@@ -59,6 +69,10 @@ interface WorktreeSelectionState {
   selectWorktree: (id: string) => void;
   setPendingWorktree: (id: string | null) => void;
   applyPendingWorktreeSelection: (worktreeId: string) => void;
+  addPendingCreation: (path: string, meta: { branch: string }) => void;
+  resolvePendingCreation: (path: string) => void;
+  failPendingCreation: (path: string, error: string) => void;
+  dismissPendingCreation: (path: string) => void;
   toggleWorktreeExpanded: (id: string) => void;
   setWorktreeExpanded: (id: string, expanded: boolean) => void;
   collapseAllWorktrees: () => void;
@@ -66,7 +80,11 @@ interface WorktreeSelectionState {
   setTerminalsExpanded: (id: string, expanded: boolean) => void;
   openCreateDialog: (
     initialIssue?: GitHubIssue | null,
-    options?: { initialRecipeId?: string | null; onCreated?: (worktreeId: string) => void }
+    options?: {
+      initialRecipeId?: string | null;
+      initialBranchInput?: string | null;
+      onCreated?: (worktreeId: string) => void;
+    }
   ) => void;
   openCreateDialogForPR: (pr: GitHubPR) => void;
   closeCreateDialog: () => void;
@@ -239,6 +257,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
   activeWorktreeId: null,
   focusedWorktreeId: null,
   pendingWorktreeId: null,
+  pendingCreations: new Map<string, PendingCreation>(),
   expandedWorktrees: new Set<string>(),
   expandedTerminals: new Set<string>(),
   createDialog: {
@@ -246,6 +265,8 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     initialIssue: null,
     initialPR: null,
     initialRecipeId: null,
+    initialBranchInput: null,
+    initialWorktreePath: null,
     onCreated: undefined,
   },
   bulkCreateDialog: {
@@ -388,6 +409,51 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     applyWorktreeTerminalPolicy(get, set, worktreeId, generation);
   },
 
+  addPendingCreation: (path, meta) => {
+    set((state) => {
+      // Idempotent for in-flight creations (StrictMode-safe). An error entry is
+      // replaced so a retry resubmission resets status to "creating".
+      const existing = state.pendingCreations.get(path);
+      if (existing && existing.status === "creating") return state;
+      const next = new Map(state.pendingCreations);
+      next.set(path, {
+        path,
+        branch: meta.branch,
+        startedAt: Date.now(),
+        status: "creating",
+      });
+      return { pendingCreations: next };
+    });
+  },
+
+  resolvePendingCreation: (path) => {
+    set((state) => {
+      if (!state.pendingCreations.has(path)) return state;
+      const next = new Map(state.pendingCreations);
+      next.delete(path);
+      return { pendingCreations: next };
+    });
+  },
+
+  failPendingCreation: (path, error) => {
+    set((state) => {
+      const existing = state.pendingCreations.get(path);
+      if (!existing) return state;
+      const next = new Map(state.pendingCreations);
+      next.set(path, { ...existing, status: "error", error });
+      return { pendingCreations: next };
+    });
+  },
+
+  dismissPendingCreation: (path) => {
+    set((state) => {
+      if (!state.pendingCreations.has(path)) return state;
+      const next = new Map(state.pendingCreations);
+      next.delete(path);
+      return { pendingCreations: next };
+    });
+  },
+
   toggleWorktreeExpanded: (id) =>
     set((state) => {
       const next = new Set(state.expandedWorktrees);
@@ -453,6 +519,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
         initialIssue,
         initialPR: null,
         initialRecipeId: options?.initialRecipeId ?? null,
+        initialBranchInput: options?.initialBranchInput ?? null,
         onCreated: options?.onCreated,
       },
     });
@@ -477,6 +544,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
         initialIssue: null,
         initialPR: pr,
         initialRecipeId: null,
+        initialBranchInput: null,
         onCreated: undefined,
       },
     });
@@ -489,6 +557,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
         initialIssue: null,
         initialPR: null,
         initialRecipeId: null,
+        initialBranchInput: null,
         onCreated: undefined,
       },
     }),
@@ -722,6 +791,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
       activeWorktreeId: null,
       focusedWorktreeId: null,
       pendingWorktreeId: null,
+      pendingCreations: new Map<string, PendingCreation>(),
       expandedWorktrees: new Set<string>(),
       expandedTerminals: new Set<string>(),
       createDialog: {
@@ -729,6 +799,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
         initialIssue: null,
         initialPR: null,
         initialRecipeId: null,
+        initialBranchInput: null,
         onCreated: undefined,
       },
       bulkCreateDialog: {
