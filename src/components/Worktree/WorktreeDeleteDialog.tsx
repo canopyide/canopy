@@ -92,7 +92,64 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
     onClose();
   };
 
-  const deleteButtonLabel = "Delete worktree";
+  const deleteButtonLabel = !force
+    ? "Delete worktree"
+    : isHighTier
+      ? `Force delete '${confirmTarget}'`
+      : "Force delete worktree";
+
+  let advisoryBanner: React.ReactNode = null;
+  if (hasChanges) {
+    if (!force) {
+      advisoryBanner = (
+        <div
+          role="alert"
+          className="flex items-start gap-2 p-3 bg-status-warning/10 border border-status-warning/20 rounded text-status-warning text-xs"
+        >
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <p>
+            This worktree has{" "}
+            {hasTrackedChanges && hasUntrackedFiles
+              ? `${trackedChangeCount} uncommitted file${trackedChangeCount === 1 ? "" : "s"} and ${untrackedFileCount} untracked file${untrackedFileCount === 1 ? "" : "s"}`
+              : hasTrackedChanges
+                ? `${trackedChangeCount} uncommitted file${trackedChangeCount === 1 ? "" : "s"}`
+                : `${untrackedFileCount} untracked file${untrackedFileCount === 1 ? "" : "s"}`}
+            . Standard deletion will fail.
+          </p>
+        </div>
+      );
+    } else if (hasTrackedChanges) {
+      advisoryBanner = (
+        <div
+          role="alert"
+          className="flex items-start gap-2 p-3 bg-status-error/10 border border-status-error/20 rounded text-status-error text-xs"
+        >
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <p>
+            Force delete will discard {trackedChangeCount} uncommitted tracked file
+            {trackedChangeCount === 1 ? "" : "s"}
+            {hasUntrackedFiles
+              ? ` and ${untrackedFileCount} untracked file${untrackedFileCount === 1 ? "" : "s"}`
+              : ""}
+            . This is irreversible.
+          </p>
+        </div>
+      );
+    } else {
+      advisoryBanner = (
+        <div
+          role="alert"
+          className="flex items-start gap-2 p-3 bg-status-error/10 border border-status-error/20 rounded text-status-error text-xs"
+        >
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <p>
+            Force delete will permanently remove {untrackedFileCount} untracked file
+            {untrackedFileCount === 1 ? "" : "s"}.
+          </p>
+        </div>
+      );
+    }
+  }
 
   return (
     <AppDialog
@@ -167,20 +224,7 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
             {worktree.path}
           </div>
 
-          {hasChanges && !force && (
-            <div className="flex items-start gap-2 p-3 bg-status-warning/10 border border-status-warning/20 rounded text-status-warning text-xs">
-              <AlertTriangle className="w-4 h-4 shrink-0" />
-              <p>
-                This worktree has{" "}
-                {hasTrackedChanges && hasUntrackedFiles
-                  ? `${trackedChangeCount} uncommitted file${trackedChangeCount === 1 ? "" : "s"} and ${untrackedFileCount} untracked file${untrackedFileCount === 1 ? "" : "s"}`
-                  : hasTrackedChanges
-                    ? `${trackedChangeCount} uncommitted file${trackedChangeCount === 1 ? "" : "s"}`
-                    : `${untrackedFileCount} untracked file${untrackedFileCount === 1 ? "" : "s"}`}
-                . Standard deletion will fail.
-              </p>
-            </div>
-          )}
+          {advisoryBanner}
 
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -256,6 +300,7 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
           variant="destructive"
           onClick={handleDelete}
           disabled={!canSubmit}
+          aria-live="polite"
           data-testid="delete-worktree-confirm"
         >
           {deleteButtonLabel}
