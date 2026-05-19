@@ -63,6 +63,7 @@ import {
 } from "@/panels/dev-preview/viewportPresets";
 import type { ViewportPresetId } from "@shared/types/panel";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { getDevPreviewWebContents, buildEmulationParams } from "./viewportEmulation";
 import { logError } from "@/utils/logger";
 import { loadWebviewUrl } from "./loadWebviewUrl";
 import { useDevPreviewLoadLifecycle, type SessionStorageEntry } from "./useDevPreviewLoadLifecycle";
@@ -396,7 +397,6 @@ export function DevPreviewPane({
     projectId: currentProjectId,
     loadTimeoutMs,
     zoomFactor,
-    viewportPreset,
     evictingRef,
     lastSetUrlRef,
     originalUaRef,
@@ -823,9 +823,6 @@ export function DevPreviewPane({
   const handleViewportDprChange = useCallback(
     (dpr: 1 | 2 | 3) => {
       setViewportDpr(id, dpr);
-      // TODO(#8278): once the enableDeviceEmulation IPC bridge lands, apply the
-      // deviceScaleFactor to the live webview here. Until then this only
-      // persists the preference so the toolbar shape is stable when #8278 ships.
     },
     [id, setViewportDpr]
   );
@@ -940,45 +937,56 @@ export function DevPreviewPane({
 
   useWebviewThrottle(id, location, isEvicted ? null : webviewElement, isWebviewReady && !isEvicted);
 
-  // Apply UA override when viewport preset changes on an already-ready webview
-  // Initialize to undefined so restored presets trigger the effect on first render
-  const prevViewportPresetRef = useRef<ViewportPresetId | undefined>(undefined);
+  // Apply device emulation when viewport preset, rotation, or DPR changes.
+  // Uses enableDeviceEmulation which drives CSS media queries and window.innerWidth
+  // without a page reload, preserving in-page state across preset switches.
+  const prevEmulationKeyRef = useRef<string | null>(null);
+  const hasAppliedEmulationRef = useRef(false);
   useEffect(() => {
     if (!isWebviewReady || !webviewElement) return;
-    if (prevViewportPresetRef.current === viewportPreset) return;
-    const previousPreset = prevViewportPresetRef.current;
-    prevViewportPresetRef.current = viewportPreset;
+    const emulationKey = `${viewportPreset ?? "none"}-${viewportRotated}-${viewportDpr}`;
+    if (prevEmulationKeyRef.current === emulationKey) return;
+    const hadPrevious = hasAppliedEmulationRef.current;
+
+    const wc = getDevPreviewWebContents(webviewElement);
+    if (!wc) return;
 
     try {
-      const wc = (
-        webviewElement as unknown as {
-          getWebContents(): { setUserAgent(ua: string): void; getUserAgent(): string };
-        }
-      ).getWebContents();
-      // Capture original UA on first override
-      if (originalUaRef.current === null) {
-        originalUaRef.current = wc.getUserAgent();
-      }
       if (viewportPreset) {
-        const preset = getViewportPreset(viewportPreset);
-        wc.setUserAgent(preset.userAgent);
-      } else if (previousPreset !== undefined) {
-        // Only restore if we previously overrode (not first mount with no preset)
-        wc.setUserAgent(originalUaRef.current!);
-      }
-      // Reload so the page re-evaluates with the new UA
-      if (previousPreset !== undefined) {
-        webviewElement.reload();
+        if (originalUaRef.current === null) {
+          originalUaRef.current = wc.getUserAgent();
+        }
+        wc.setUserAgent(getViewportPreset(viewportPreset).userAgent);
+        wc.enableDeviceEmulation(
+          buildEmulationParams(viewportPreset, viewportRotated, viewportDpr)!
+        );
+        prevEmulationKeyRef.current = emulationKey;
+        hasAppliedEmulationRef.current = true;
+      } else if (hadPrevious) {
+        try {
+          wc.disableDeviceEmulation();
+        } catch {
+          // disableDeviceEmulation may throw if emulation was never enabled
+        }
+        if (originalUaRef.current) {
+          wc.setUserAgent(originalUaRef.current);
+        }
+        prevEmulationKeyRef.current = emulationKey;
+        hasAppliedEmulationRef.current = false;
       }
     } catch {
       // WebContents not available (webview detached)
     }
-  }, [viewportPreset, isWebviewReady, webviewElement]);
+  }, [viewportPreset, viewportRotated, viewportDpr, isWebviewReady, webviewElement]);
   const { currentDialog, handleDialogRespond } = useWebviewDialog(
     id,
     isEvicted ? null : webviewElement,
     isWebviewReady && !isEvicted
   );
+
+  // Consolidated emulation effect above handles all preset/rotation/DPR changes.
+  // Cross-origin navigation re-apply is handled in useDevPreviewLoadLifecycle's
+  // did-finish-load handler so emulation survives renderer process swaps.
   const findInPage = useFindInPage(
     id,
     isEvicted ? null : webviewElement,

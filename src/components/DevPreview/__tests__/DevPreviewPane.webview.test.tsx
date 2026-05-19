@@ -4,6 +4,13 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import type { DevPreviewPaneProps } from "../DevPreviewPane";
 import { DevPreviewPane } from "../DevPreviewPane";
 
+type MockWebContents = {
+  setUserAgent: ReturnType<typeof vi.fn>;
+  getUserAgent: ReturnType<typeof vi.fn>;
+  enableDeviceEmulation: ReturnType<typeof vi.fn>;
+  disableDeviceEmulation: ReturnType<typeof vi.fn>;
+};
+
 type MockWebviewElement = HTMLElement & {
   reload: ReturnType<typeof vi.fn>;
   loadURL: ReturnType<typeof vi.fn>;
@@ -13,6 +20,7 @@ type MockWebviewElement = HTMLElement & {
   isLoading: ReturnType<typeof vi.fn>;
   executeJavaScript: ReturnType<typeof vi.fn>;
   getWebContentsId: ReturnType<typeof vi.fn>;
+  getWebContents: () => MockWebContents;
   setMockLoading: (value: boolean) => void;
 };
 
@@ -42,6 +50,13 @@ function decorateWebviewElement(element: HTMLElement): MockWebviewElement {
   webview.isLoading = vi.fn(() => loading);
   webview.executeJavaScript = vi.fn().mockResolvedValue(0);
   webview.getWebContentsId = vi.fn(() => 42);
+  const mockWc = {
+    setUserAgent: vi.fn(),
+    getUserAgent: vi.fn(() => "original-ua"),
+    enableDeviceEmulation: vi.fn(),
+    disableDeviceEmulation: vi.fn(),
+  };
+  webview.getWebContents = vi.fn(() => mockWc);
   webview.setMockLoading = (value: boolean) => {
     loading = value;
   };
@@ -319,6 +334,7 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         stopConsoleCapture: vi.fn(() => Promise.resolve()),
         onConsoleMessage: vi.fn(() => vi.fn()),
         onConsoleContextCleared: vi.fn(() => vi.fn()),
+        reloadIgnoringCache: vi.fn(() => Promise.resolve()),
       },
     };
   });
@@ -464,6 +480,90 @@ describe("DevPreviewPane webview lifecycle regression", () => {
     expect(webview.stop).not.toHaveBeenCalled();
     expect(devServerStateRef.current.restart).toHaveBeenCalledTimes(1);
     expect(terminalStoreState.setBrowserUrl).toHaveBeenCalledWith("dev-preview-panel-1", "");
+  });
+
+  describe("viewport device emulation", () => {
+    const withPreset = (preset: string | undefined) => {
+      terminalStoreState.getTerminal.mockImplementation(() => ({
+        id: "dev-preview-panel-1",
+        browserHistory: { past: [], present: "http://localhost:5173/", future: [] },
+        browserZoom: 1.4,
+        devPreviewConsoleOpen: false,
+        devCommand: "npm run dev",
+        viewportPreset: preset,
+      }));
+    };
+
+    const getEmulationMock = (container: HTMLElement) =>
+      getWebviewElement(container).getWebContents().enableDeviceEmulation;
+    const getDisableEmulationMock = (container: HTMLElement) =>
+      getWebviewElement(container).getWebContents().disableDeviceEmulation;
+
+    it("applies device emulation for the active preset without reloading the page", async () => {
+      withPreset("iphone");
+      const { container } = render(<DevPreviewPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(getEmulationMock(container)).toHaveBeenCalledWith({
+        screenPosition: "mobile",
+        screenSize: { width: 393, height: 852 },
+        viewPosition: { x: 0, y: 0 },
+        deviceScaleFactor: 1,
+        viewSize: { width: 393, height: 852 },
+        scale: 1,
+      });
+      expect(webview.reload).not.toHaveBeenCalled();
+    });
+
+    it("re-applies device emulation on did-finish-load (cross-origin nav drops it)", async () => {
+      withPreset("galaxy");
+      const { container } = render(<DevPreviewPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      getEmulationMock(container).mockClear();
+
+      act(() => {
+        emitWebviewEvent(webview, "did-finish-load");
+      });
+
+      expect(getEmulationMock(container)).toHaveBeenCalledWith({
+        screenPosition: "mobile",
+        screenSize: { width: 360, height: 780 },
+        viewPosition: { x: 0, y: 0 },
+        deviceScaleFactor: 1,
+        viewSize: { width: 360, height: 780 },
+        scale: 1,
+      });
+    });
+
+    it("clears device emulation when the viewport preset is removed", async () => {
+      withPreset("iphone");
+      const { container, rerender } = render(<DevPreviewPane {...baseProps} />);
+      const webview = getWebviewElement(container);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      getEmulationMock(container).mockClear();
+      withPreset(undefined);
+      rerender(<DevPreviewPane {...baseProps} />);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(getDisableEmulationMock(container)).toHaveBeenCalled();
+      expect(webview.reload).not.toHaveBeenCalled();
+    });
   });
 
   it("retries loadURL with exponential backoff when did-fail-load fires with ERR_CONNECTION_REFUSED", async () => {
