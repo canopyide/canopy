@@ -595,8 +595,11 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     // target isn't corrupted by a double-enter. Return the existing token so
     // a caller that re-enters still holds a token that matches the live scope.
     if (get().isFleetScopeActive) {
+      // Non-null in this branch: an active scope always has a live token.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- branded token narrowing
       return get()._fleetScopeToken as FleetScopeToken;
     }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- branding an opaque uuid
     const token = crypto.randomUUID() as FleetScopeToken;
     const activeWorktreeId = get().activeWorktreeId;
     const generation = get()._policyGeneration + 1;
