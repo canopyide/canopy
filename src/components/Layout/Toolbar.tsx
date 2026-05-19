@@ -224,6 +224,7 @@ export function Toolbar({
     activeWorktreeId ? state.worktrees.get(activeWorktreeId) : null
   );
   const branchName = activeWorktree?.branch;
+  const watcherDegraded = useWorktreeStore((state) => state.watcherDegraded);
 
   useEffect(() => {
     loadProjects();
@@ -709,6 +710,7 @@ export function Toolbar({
           <ToolbarProblemsButton
             key="problems"
             errorCount={errorCount}
+            watcherDegraded={watcherDegraded}
             onToggleProblems={onToggleProblems}
             data-toolbar-item=""
           />
@@ -761,6 +763,7 @@ export function Toolbar({
       onPreloadSettings,
       onToggleProblems,
       errorCount,
+      watcherDegraded,
       showDeveloperTools,
       notificationsEnabled,
       pluginButtonIds,

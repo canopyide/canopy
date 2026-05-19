@@ -86,6 +86,13 @@ export interface WorktreeViewState {
   isInitialized: boolean;
   isReconnecting: boolean;
   reconnectingAt: number | null;
+  /**
+   * True while this project's recursive file watcher is degraded to the
+   * polling/git-only fallback (ENOSPC/EMFILE). Drives the persistent
+   * Tier-1 indicator. Hydrated from the `get-all-states` handshake and
+   * updated by watcher degradation/recovery port events.
+   */
+  watcherDegraded: boolean;
 }
 
 export interface WorktreeViewActions {
@@ -102,6 +109,7 @@ export interface WorktreeViewActions {
   setError(error: string | null): void;
   setFatalError(message: string): void;
   setReconnecting(reconnecting: boolean): void;
+  setWatcherDegraded(degraded: boolean): void;
 }
 
 export type WorktreeViewStore = WorktreeViewState & WorktreeViewActions;
@@ -118,6 +126,7 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
     isInitialized: false,
     isReconnecting: false,
     reconnectingAt: null,
+    watcherDegraded: false,
 
     applySnapshot(
       states: WorktreeSnapshot[],
@@ -317,6 +326,13 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
             : Date.now()
           : null,
       });
+    },
+
+    setWatcherDegraded(degraded: boolean) {
+      // Functional updater: degradation/recovery events can race the
+      // get-all-states hydration; merge against the latest state so a
+      // concurrent update isn't dropped by a stale closure.
+      set((prev) => (prev.watcherDegraded === degraded ? prev : { watcherDegraded: degraded }));
     },
   }));
 }

@@ -713,6 +713,7 @@ export class WorkspaceService {
         },
         onInotifyLimitReached: () => this.handleInotifyLimitReached(),
         onEmfileLimitReached: () => this.handleEmfileLimitReached(),
+        onWatcherRecovered: () => this.handleWatcherRecovered(),
         onScheduleFetch: async (worktreeId, _isCurrent, force) => {
           const target = this.monitors.get(worktreeId);
           if (!target || !target.isRunning) return;
@@ -941,6 +942,29 @@ export class WorkspaceService {
     if (this.emfileLimitNotified) return;
     this.emfileLimitNotified = true;
     this.sendEvent({ type: "emfile-limit-reached" });
+  }
+
+  /**
+   * A recursive watcher re-armed after a degradation. Clear the one-shot
+   * notification guards so a later relapse can re-signal, and emit
+   * `watcher-recovered` so the renderer hides the persistent degraded
+   * indicator and the main-process router resets its toast guards. Idempotent
+   * — firing when nothing was degraded is a harmless no-op downstream.
+   */
+  private handleWatcherRecovered(): void {
+    this.inotifyLimitNotified = false;
+    this.emfileLimitNotified = false;
+    this.sendEvent({ type: "watcher-recovered" });
+  }
+
+  /**
+   * Whether any worktree's recursive watcher is currently degraded to the
+   * polling/git-only fallback. Bundled into the `get-all-states` handshake so
+   * a late-mounting view hydrates the persistent indicator without waiting
+   * for a live event.
+   */
+  isWatcherDegraded(): boolean {
+    return this.inotifyLimitNotified || this.emfileLimitNotified;
   }
 
   private worktreeMetadataDirPath(): string | null {

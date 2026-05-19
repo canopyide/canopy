@@ -113,3 +113,41 @@ describe("ToolbarProblemsButton — single-signal error treatment", () => {
     expect(badge?.getAttribute("data-visible")).toBe("false");
   });
 });
+
+describe("ToolbarProblemsButton — watcher-degraded pip", () => {
+  beforeEach(() => {
+    useDiagnosticsStore.setState({ isOpen: false });
+  });
+
+  it("keeps the watcher pip hidden by default", () => {
+    const { getByTestId } = render(<ToolbarProblemsButton errorCount={0} />);
+    expect(getByTestId("watcher-degraded-badge").getAttribute("data-visible")).toBe("false");
+  });
+
+  it("shows the watcher pip when watcherDegraded is true", () => {
+    const { getByTestId } = render(<ToolbarProblemsButton errorCount={0} watcherDegraded />);
+    expect(getByTestId("watcher-degraded-badge").getAttribute("data-visible")).toBe("true");
+  });
+
+  it("is independent of errorCount (both pips can show together)", () => {
+    const { container, getByTestId } = render(
+      <ToolbarProblemsButton errorCount={2} watcherDegraded />
+    );
+    expect(container.querySelector(".toolbar-problems-badge")?.getAttribute("data-visible")).toBe(
+      "true"
+    );
+    expect(getByTestId("watcher-degraded-badge").getAttribute("data-visible")).toBe("true");
+  });
+
+  it("reflects watcher degradation in the accessible label", () => {
+    const { container } = render(<ToolbarProblemsButton errorCount={0} watcherDegraded />);
+    expect(container.querySelector("button")?.getAttribute("aria-label")).toBe(
+      "Problems: 0 errors, file watching degraded"
+    );
+  });
+
+  it("omits the degraded clause from the label when healthy", () => {
+    const { container } = render(<ToolbarProblemsButton errorCount={1} />);
+    expect(container.querySelector("button")?.getAttribute("aria-label")).toBe("Problems: 1 error");
+  });
+});

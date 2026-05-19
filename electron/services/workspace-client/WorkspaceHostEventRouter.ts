@@ -234,6 +234,15 @@ export class WorkspaceHostEventRouter {
         });
         break;
       }
+
+      case "watcher-recovered": {
+        // Recursive coverage restored. Reset the one-shot toast guards so a
+        // subsequent relapse re-notifies. No toast — recovery is conveyed by
+        // the persistent indicator disappearing (Tier-1 ambient signal).
+        this.inotifyLimitToastSent = false;
+        this.emfileLimitToastSent = false;
+        break;
+      }
     }
   }
 }

@@ -138,8 +138,20 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
 
       worktreePort
         .request("get-all-states")
-        .then(async (response: { states: WorktreeSnapshot[]; epoch: string; seq: number }) => {
+        .then(async (response: {
+          states: WorktreeSnapshot[];
+          epoch: string;
+          seq: number;
+          watcherDegraded: boolean;
+        }) => {
           if (thisGen !== generation) return;
+
+          // Hydrate the persistent watcher-degraded indicator from the
+          // handshake so a late-mounting view reflects current state without
+          // waiting for a live event. Set before the async associations fetch
+          // so a degradation/recovery event delivered during that await wins
+          // over this now-stale snapshot value.
+          store.getState().setWatcherDegraded(response.watcherDegraded ?? false);
 
           // Hydrate manual issue associations from electron store.
           // Auto-detected issues (from branch names) arrive in the snapshots,
@@ -458,6 +470,26 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
           },
           overlayVersion(store.getState().version)
         );
+      })
+    );
+
+    // Watcher degradation/recovery — service-wide ambient signals, not keyed
+    // to a worktree. Use `.getState()` (not a captured ref) since these fire
+    // async; the store action's functional updater keeps them race-safe
+    // against the get-all-states hydration.
+    cleanups.push(
+      worktreePort.onEvent("inotify-limit-reached", () => {
+        store.getState().setWatcherDegraded(true);
+      })
+    );
+    cleanups.push(
+      worktreePort.onEvent("emfile-limit-reached", () => {
+        store.getState().setWatcherDegraded(true);
+      })
+    );
+    cleanups.push(
+      worktreePort.onEvent("watcher-recovered", () => {
+        store.getState().setWatcherDegraded(false);
       })
     );
 

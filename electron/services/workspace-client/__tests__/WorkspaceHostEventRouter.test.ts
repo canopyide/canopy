@@ -130,6 +130,38 @@ describe("WorkspaceHostEventRouter", () => {
     });
   });
 
+  describe("watcher-recovered resets one-shot toast guards", () => {
+    it("does not emit a toast itself", () => {
+      const entry = makeEntry();
+      router.routeHostEvent(entry, { type: "watcher-recovered" });
+
+      expect(broadcastToRenderer).not.toHaveBeenCalled();
+    });
+
+    it("re-arms the inotify toast so a relapse re-notifies", () => {
+      const entry = makeEntry();
+
+      router.routeHostEvent(entry, { type: "inotify-limit-reached" });
+      router.routeHostEvent(entry, { type: "inotify-limit-reached" });
+      expect(broadcastToRenderer).toHaveBeenCalledTimes(1);
+
+      router.routeHostEvent(entry, { type: "watcher-recovered" });
+      router.routeHostEvent(entry, { type: "inotify-limit-reached" });
+      expect(broadcastToRenderer).toHaveBeenCalledTimes(2);
+    });
+
+    it("re-arms the emfile toast so a relapse re-notifies", () => {
+      const entry = makeEntry();
+
+      router.routeHostEvent(entry, { type: "emfile-limit-reached" });
+      expect(broadcastToRenderer).toHaveBeenCalledTimes(1);
+
+      router.routeHostEvent(entry, { type: "watcher-recovered" });
+      router.routeHostEvent(entry, { type: "emfile-limit-reached" });
+      expect(broadcastToRenderer).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe("inotify and emfile are independent", () => {
     it("allows both limit types to fire independently", () => {
       const entry = makeEntry();

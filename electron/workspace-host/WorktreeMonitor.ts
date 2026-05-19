@@ -77,6 +77,7 @@ export interface WorktreeMonitorCallbacks {
   onResourceStatusPoll?: (worktreeId: string) => Promise<unknown> | void;
   onInotifyLimitReached?: (worktreeId: string) => void;
   onEmfileLimitReached?: (worktreeId: string) => void;
+  onWatcherRecovered?: (worktreeId: string) => void;
   /**
    * Schedule a background `git fetch` for this worktree's repo. Routed through
    * `WorkspaceService` so per-repo serialization and failure-cache state are
@@ -345,6 +346,7 @@ export class WorktreeMonitor {
         monitor.callbacks.onInotifyLimitReached?.(worktreeId),
       onEmfileLimitReached: (worktreeId: string) =>
         monitor.callbacks.onEmfileLimitReached?.(worktreeId),
+      onWatcherRecovered: () => monitor.callbacks.onWatcherRecovered?.(monitor.id),
     };
     this.watcherController = new WatcherController(watcherHost);
 
