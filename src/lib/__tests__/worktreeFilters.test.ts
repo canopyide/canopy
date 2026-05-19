@@ -1585,4 +1585,39 @@ describe("computeChipCounts", () => {
     expect(counts.branchType.feature).toBe(1);
     expect(counts.branchType.bugfix).toBe(1);
   });
+
+  it("applies exact-number query (#123) as a global AND gate", () => {
+    const worktrees = [
+      createMockWorktree({ id: "1", branch: "feature/a", issueNumber: 100 }),
+      createMockWorktree({ id: "2", branch: "feature/b", issueNumber: 200 }),
+      createMockWorktree({ id: "3", branch: "bugfix/c" }),
+    ];
+    const filters: FilterState = {
+      query: "#100",
+      statusFilters: new Set(),
+      typeFilters: new Set(),
+      githubFilters: new Set(),
+      sessionFilters: new Set(),
+      activityFilters: new Set(),
+    };
+    const counts = computeChipCounts(worktrees, new Map(), null, filters);
+    // Only w1 matches the exact-number query — all chips counted against it
+    expect(counts.branchType.feature).toBe(1);
+    expect(counts.branchType.bugfix).toBe(0);
+    expect(counts.github.hasIssue).toBe(1);
+  });
+
+  it("excludes worktrees with future lastActivityTimestamp from all activity windows", () => {
+    const now = Date.now();
+    const worktrees = [
+      createMockWorktree({ id: "1", lastActivityTimestamp: now + 60 * 60 * 1000 }),
+      createMockWorktree({ id: "2", lastActivityTimestamp: now - 5 * 60 * 1000 }),
+    ];
+    const counts = computeChipCounts(worktrees, new Map(), null, createEmptyFilters());
+    // w1 has future timestamp → excluded from all activity chips
+    // w2 is within last15m → counted
+    expect(counts.activity.last15m).toBe(1);
+    expect(counts.activity.last1h).toBe(1);
+    expect(counts.activity.last24h).toBe(1);
+  });
 });

@@ -548,6 +548,7 @@ export function computeChipCounts(
     const lastActivity = w.lastActivityTimestamp ?? 0;
     if (lastActivity > 0) {
       const elapsed = now - lastActivity;
+      if (elapsed < 0) continue;
       for (const key of ACTIVITY_KEYS) {
         if (elapsed < ACTIVITY_WINDOW_MS[key]) counts.activity[key]++;
       }
