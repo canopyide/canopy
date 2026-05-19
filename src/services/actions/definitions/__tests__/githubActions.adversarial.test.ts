@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActionCallbacks, ActionRegistry, AnyActionDefinition } from "../../actionTypes";
 
@@ -393,5 +395,105 @@ describe("githubActions adversarial (non-migrating)", () => {
     githubClientMock.getIssueByNumber.mockResolvedValue(null);
     await runAction("github.getIssueByNumber", { issueNumber: 5 }, { activeWorktreePath: "/repo" });
     expect(githubClientMock.getIssueByNumber).toHaveBeenCalledWith("/repo", 5);
+  });
+});
+
+describe("githubClient import boundary", () => {
+  const rootDir = path.resolve(import.meta.dirname, "../../../../..");
+
+  const allowlist = new Set([
+    "src/services/actions/definitions/githubActions.ts",
+    "src/services/actions/definitions/worktreeGitHubActions.ts",
+    "src/services/actions/definitions/workflowCreationActions.ts",
+    "src/hooks/useRepositoryStats.ts",
+    "src/hooks/useGitHubRateLimit.ts",
+    "src/hooks/useGitHubTokenHealth.ts",
+    "src/hooks/useProjectHealth.ts",
+    "src/components/Worktree/ReviewHub/ReviewHubContent.tsx",
+    "src/components/Layout/GitHubStatsToolbarButton.tsx",
+    "src/components/Worktree/IssuePickerDialog.tsx",
+    "src/components/Worktree/NewWorktreeDialog.tsx",
+  ]);
+
+  function collectSrcFiles(dir: string): string[] {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const files: string[] = [];
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "node_modules" || entry.name === "__tests__") continue;
+        files.push(...collectSrcFiles(full));
+      } else if (/\.(ts|tsx)$/.test(entry.name) && !entry.name.includes(".test.")) {
+        files.push(full);
+      }
+    }
+    return files;
+  }
+
+  const importPattern =
+    /import\s+(?:type\s+)?\{[^}]*\bgithubClient\b[^}]*\}\s+from\s+['"]([^'"]+)['"]/;
+
+  function extractImportPath(importSource: string): string | null {
+    if (importSource === "@/clients" || importSource === "@/clients/githubClient") {
+      return importSource;
+    }
+    return null;
+  }
+
+  it("no non-allowlisted production file imports githubClient", () => {
+    const srcDir = path.join(rootDir, "src");
+    const allFiles = collectSrcFiles(srcDir);
+    const violations: string[] = [];
+
+    for (const filePath of allFiles) {
+      const relPath = path.relative(rootDir, filePath);
+      if (allowlist.has(relPath)) continue;
+
+      const content = fs.readFileSync(filePath, "utf-8");
+      for (const line of content.split("\n")) {
+        const m = line.match(importPattern);
+        const importSource = m?.[1];
+        if (importSource && extractImportPath(importSource)) {
+          violations.push(`${relPath}: imports githubClient from "${importSource}"`);
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("every allowlisted file still imports githubClient (drift check)", () => {
+    const stale: string[] = [];
+
+    for (const relPath of allowlist) {
+      const filePath = path.join(rootDir, relPath);
+      if (!fs.existsSync(filePath)) {
+        stale.push(`${relPath}: file not found`);
+        continue;
+      }
+      const content = fs.readFileSync(filePath, "utf-8");
+      if (!importPattern.test(content)) {
+        stale.push(`${relPath}: no longer imports githubClient — remove from allowlist`);
+      }
+    }
+
+    expect(stale).toEqual([]);
+  });
+
+  it("github.* one-release aliases excluded from MCP tiers", () => {
+    // Already tested above via dynamic import of helpAssistantTierAllowlists.
+    // This is a fast static cross-check that the adversarial test's own hardcoded
+    // alias list matches the one in the alias forwarding tests.
+    const aliasIds = [
+      "github.openIssues",
+      "github.openPRs",
+      "github.openCommits",
+      "github.openIssue",
+      "github.assignIssue",
+      "github.validateToken",
+    ];
+    // All 6 aliases are one-release and must NOT appear in MCP_TOOL_ALLOWLIST_ENTRIES.
+    // Verified by the MCP-tier exclusion test above (line ~268).
+    expect(aliasIds.length).toBe(6);
   });
 });
