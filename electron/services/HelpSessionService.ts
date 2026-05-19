@@ -1360,6 +1360,11 @@ export class HelpSessionService {
     const merged = deepClonePlainJson(baseline);
     if (!merged.permissions) merged.permissions = {};
     if (!Array.isArray(merged.permissions.allow)) merged.permissions.allow = [];
+    // A malformed bundled file could pass the object guard in
+    // readBundledSettings with a non-array deny (e.g. the bare string
+    // "Bash(**)"). Claude Code's handling of a non-array deny is undefined,
+    // so normalize it here the same way we normalize allow.
+    if (!Array.isArray(merged.permissions.deny)) merged.permissions.deny = [];
 
     if (settings.daintreeControl && !merged.permissions.allow.includes("mcp__daintree__*")) {
       merged.permissions.allow.push("mcp__daintree__*");
@@ -1420,7 +1425,10 @@ export class HelpSessionService {
           "Bash(glab mr create*)",
           "Bash(glab mr merge*)",
           "Bash(tea issue create*)",
+          "Bash(tea issues create*)",
           "Bash(tea pr create*)",
+          "Bash(tea pulls create*)",
+          "Bash(tea pulls merge*)",
         ],
       },
     };

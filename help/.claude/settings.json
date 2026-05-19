@@ -24,7 +24,10 @@
       "Bash(glab mr create*)",
       "Bash(glab mr merge*)",
       "Bash(tea issue create*)",
-      "Bash(tea pr create*)"
+      "Bash(tea issues create*)",
+      "Bash(tea pr create*)",
+      "Bash(tea pulls create*)",
+      "Bash(tea pulls merge*)"
     ]
   }
 }

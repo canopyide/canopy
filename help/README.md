@@ -110,7 +110,7 @@ The authoritative tier definitions live in `shared/config/helpAssistantTierAllow
 
 ## Permission Lockdown
 
-Claude and Codex block file writes and edits at the tool layer; Gemini's `shell` tool is allowlisted but constrained by instruction-level guardrails. All three open the full read surface of the forge CLIs (`gh`, `glab`, `tea`) for searching/viewing issues and PRs; creating issues or PRs always requires user confirmation. All three also have tier-gated access to the local `daintree` MCP tool surface when local MCP is enabled — Claude and Codex at the `action` tier, Gemini pinned to read-only introspection by `--approval-mode=plan`.
+Claude and Codex block file writes and edits at the tool layer; Gemini's `shell` tool is allowlisted but constrained by instruction-level guardrails. All three open the full read surface of the forge CLIs (`gh`, `glab`, `tea`) for searching/viewing issues and PRs, while the destructive write paths (issue/PR/repo creation, PR merge, repo delete) are hard-blocked at the CLI tool layer — the assistant opens issues/PRs through the tier-gated `daintree` MCP surface (a `system`-tier capability the user must enable), not by shelling out. All three also have tier-gated access to the local `daintree` MCP tool surface when local MCP is enabled — Claude and Codex at the `action` tier, Gemini pinned to read-only introspection by `--approval-mode=plan`.
 
 Claude Code evaluates permissions in order **deny → ask → allow**, and the first matching rule wins — a deny always beats an allow. The allowlist is therefore structured as a broad forge-CLI allow with narrow deny entries for the destructive write paths, rather than a blanket `Bash(**)` deny (which would silently shadow every `Bash` allow). The `gh`/`glab`/`tea` entries are pre-wired so future forge providers work without a service change; the allow is inert when a binary is absent.
 
@@ -118,7 +118,7 @@ Claude Code evaluates permissions in order **deny → ask → allow**, and the f
 
 - Allows: `Read(**)`, `Glob(**)`, `Grep(**)`, `LS(**)`, `WebFetch`, `mcp__daintree-docs__*`
 - Allows (auto-approved): `Bash(gh *)`, `Bash(glab *)`, `Bash(tea *)` — the full read surface of each forge CLI
-- Denies: `Write(**)`, `Edit(**)`, `MultiEdit(**)`, plus the destructive forge write paths (`Bash(gh issue create*)`, `Bash(gh pr create*)`, `Bash(gh pr merge*)`, `Bash(gh repo create*)`, `Bash(gh repo delete*)`, and the `glab`/`tea` equivalents) so issue/PR creation and merges still require user confirmation
+- Denies: `Write(**)`, `Edit(**)`, `MultiEdit(**)`, plus the destructive forge write paths (`Bash(gh issue create*)`, `Bash(gh pr create*)`, `Bash(gh pr merge*)`, `Bash(gh repo create*)`, `Bash(gh repo delete*)`, and the `glab`/`tea` equivalents including tea's `issues`/`pulls` plural aliases). A Claude Code `deny` is a hard block, not a confirmation prompt — these commands cannot be invoked at the tool layer at all, so autonomous issue/PR creation via the CLI is impossible regardless of the model's reasoning
 - At provision time, `HelpSessionService` adds `mcp__daintree__*` to the allow list when the user has local MCP enabled, and sets `defaultMode: "bypassPermissions"` when skip-permissions is enabled. The session tier (`workbench` / `action` / `system`) gates the actual `mcp__daintree__*` tool surface server-side.
 
 **Gemini** (`.gemini/settings.json` + spawn-time `--approval-mode=plan`):
