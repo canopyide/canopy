@@ -161,7 +161,7 @@ describe("AuditService.appendRecord schemaVersion and severity", () => {
           result: null,
           error: { code: errorCode, message: "" },
         },
-      };
+      } as AuditOutcome;
     }
 
     service.appendRecord({
