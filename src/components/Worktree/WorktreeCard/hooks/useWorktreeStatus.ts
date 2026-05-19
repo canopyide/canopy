@@ -125,8 +125,12 @@ export function useWorktreeStatus({
       return { text: firstLineLastCommitMessage, tone: "muted" };
     }
 
-    if (worktree.prTitle?.trim() && worktree.prState !== "closed") {
-      return { text: worktree.prTitle.trim(), tone: "muted" };
+    if (
+      worktree.linked?.pr?.title?.trim() &&
+      worktree.linked.pr.state !== "closed" &&
+      worktree.linked.pr.state !== "declined"
+    ) {
+      return { text: worktree.linked.pr.title.trim(), tone: "muted" };
     }
 
     return { text: "No recent activity", tone: "muted" };
@@ -134,8 +138,8 @@ export function useWorktreeStatus({
     hasChanges,
     worktree.worktreeChanges,
     firstLineLastCommitMessage,
-    worktree.prTitle,
-    worktree.prState,
+    worktree.linked?.pr?.title,
+    worktree.linked?.pr?.state,
   ]);
 
   const spineState: SpineState = useMemo(() => {
@@ -156,7 +160,7 @@ export function useWorktreeStatus({
 
   const isComplete =
     !!worktree.issueNumber &&
-    !!worktree.prNumber &&
+    !!worktree.linked?.pr &&
     !hasChanges &&
     worktree.worktreeChanges !== null;
 
@@ -164,14 +168,14 @@ export function useWorktreeStatus({
     if (isMainWorktree) return null;
     if (worktree.worktreeChanges === null) return null;
 
-    if (worktree.prState === "merged") {
+    if (worktree.linked?.pr?.state === "merged") {
       return worktree.issueNumber ? "ready-for-cleanup" : "merged";
     }
 
-    if (worktree.prState === "open") return "in-review";
+    if (worktree.linked?.pr?.state === "open") return "in-review";
 
     return null;
-  }, [isMainWorktree, worktree.worktreeChanges, worktree.prState, worktree.issueNumber]);
+  }, [isMainWorktree, worktree.worktreeChanges, worktree.linked?.pr?.state, worktree.issueNumber]);
 
   const lifecycle = worktree.lifecycleStatus;
   const isLifecycleRunning = lifecycle?.state === "running";

@@ -1,19 +1,20 @@
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Clock, CloudOff, CornerDownRight, GitPullRequest } from "lucide-react";
-import type { GitHubPRCIStatus } from "@shared/types/github";
+import type { CIStatus } from "@shared/types/forge";
+import type { NormalizedPRState } from "@shared/types/forge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import { usePRTooltip } from "@/hooks/useGitHubTooltip";
 import { useGitHubBadgeTooltip } from "./hooks/useGitHubBadgeTooltip";
 import { useGitHubBadgeFreshness } from "./hooks/useGitHubBadgeFreshness";
 import { freshnessSuffix } from "@/components/Layout/FreshnessUtils";
 import { PRTooltipContent, TooltipLoading, TokenMissingTooltip } from "./GitHubTooltipContent";
-import { getPRCIStatusVisual } from "@github-renderer/utils/prCIStatus";
+import { getCIStatusVisual } from "@/lib/worktreeCIStatus";
 
 interface PRBadgeProps {
   prNumber: number;
-  prState?: "open" | "merged" | "closed";
-  prCiStatus?: GitHubPRCIStatus;
+  prState?: NormalizedPRState;
+  prCiStatus?: CIStatus | null;
   isSubordinate: boolean;
   worktreePath: string;
   onOpen?: () => void;
@@ -57,13 +58,18 @@ export function PRBadge({
   const prStateColor =
     prState === "merged"
       ? "text-github-merged"
-      : prState === "closed"
+      : prState === "closed" || prState === "declined"
         ? "text-github-closed"
         : "text-github-open";
 
-  const prStateLabel = prState === "merged" ? "merged" : prState === "closed" ? "closed" : "open";
+  const prStateLabel =
+    prState === "merged"
+      ? "merged"
+      : prState === "closed" || prState === "declined"
+        ? "closed"
+        : "open";
 
-  const ciVisual = getPRCIStatusVisual(prCiStatus);
+  const ciVisual = getCIStatusVisual(prCiStatus);
 
   const showDetectionPaused = (prDetectionPaused ?? false) && !missingToken;
 

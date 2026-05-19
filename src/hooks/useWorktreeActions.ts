@@ -198,7 +198,7 @@ export function useWorktreeActions({
   }, []);
 
   const handleOpenPR = useCallback((worktree: WorktreeSnapshot) => {
-    if (worktree.prUrl) {
+    if (worktree.linked?.pr?.url) {
       void actionService.dispatch(
         "worktree.openPR",
         { worktreeId: worktree.id },

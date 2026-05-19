@@ -437,6 +437,7 @@ function linkedEqual(
     a.pr?.state === b.pr?.state &&
     a.pr?.url === b.pr?.url &&
     a.pr?.title === b.pr?.title &&
+    a.pr?.ciStatus?.state === b.pr?.ciStatus?.state &&
     a.issue?.ref.number === b.issue?.ref.number &&
     a.issue?.title === b.issue?.title
   );

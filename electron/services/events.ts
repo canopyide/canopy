@@ -451,6 +451,8 @@ export type DaintreeEventMap = {
     branchName?: string;
     /** Provider that resolved the PR (e.g. "builtin.github"). */
     providerId?: string;
+    /** Provider-agnostic CI status (forge format). */
+    ciStatus?: import("../../shared/types/forge.js").CIStatus;
     timestamp: number;
   };
   "sys:pr:cleared": {

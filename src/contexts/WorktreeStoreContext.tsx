@@ -6,6 +6,7 @@ import {
 } from "@/store/createWorktreeStore";
 import type { WorktreeSnapshot } from "@shared/types";
 import type { GitHubPR, GitHubPRCIStatus } from "@shared/types/github";
+import type { PluginWorktreeLinked } from "@shared/types/plugin";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
 import { usePanelStore } from "@/store/panelStore";
 import { usePulseStore } from "@/store/pulseStore";
@@ -40,6 +41,8 @@ interface PRDetectedEvent {
   prLastUpdatedAt?: number;
   issueLastUpdatedAt?: number;
   branchName?: string;
+  providerId?: string;
+  linked?: PluginWorktreeLinked | null;
 }
 
 interface PRClearedEvent {
@@ -55,6 +58,7 @@ interface IssueDetectedEvent {
   issueTitle: string;
   issueLastUpdatedAt?: number;
   branchName?: string;
+  providerId?: string;
 }
 
 interface IssueNotFoundEvent {
@@ -267,6 +271,7 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
             issueTitle: event.issueTitle ?? existing.issueTitle,
             prLastUpdatedAt: event.prLastUpdatedAt ?? existing.prLastUpdatedAt,
             issueLastUpdatedAt: event.issueLastUpdatedAt ?? existing.issueLastUpdatedAt,
+            linked: event.linked ?? existing.linked,
           },
           store.getState().nextVersion()
         );
@@ -339,6 +344,9 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
             prTitle: undefined,
             prLastUpdatedAt: undefined,
             issueLastUpdatedAt: undefined,
+            linked: existing.linked?.issue
+              ? { providerId: existing.linked.providerId, issue: existing.linked.issue }
+              : null,
           },
           store.getState().nextVersion()
         );
@@ -366,6 +374,24 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
             issueNumber: event.issueNumber,
             issueTitle: event.issueTitle,
             issueLastUpdatedAt: event.issueLastUpdatedAt ?? existing.issueLastUpdatedAt,
+            ...(event.providerId
+              ? {
+                  linked: {
+                    providerId: event.providerId,
+                    issue: {
+                      ref: {
+                        providerId: event.providerId,
+                        owner: "",
+                        repo: "",
+                        number: event.issueNumber,
+                        rawData: null,
+                      },
+                      title: event.issueTitle,
+                    },
+                    ...(existing.linked?.pr ? { pr: existing.linked.pr } : {}),
+                  },
+                }
+              : {}),
           },
           store.getState().nextVersion()
         );

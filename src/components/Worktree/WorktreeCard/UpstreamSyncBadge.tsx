@@ -13,7 +13,7 @@ interface UpstreamSyncBadgeProps {
   lastFetchedAt: number | null | undefined;
   fetchAuthFailed: boolean;
   fetchNetworkFailed: boolean;
-  isGitHubRemote: boolean;
+  isGitHubProvider: boolean;
   containerGapClass: string;
 }
 
@@ -24,7 +24,7 @@ export function UpstreamSyncBadge({
   lastFetchedAt,
   fetchAuthFailed,
   fetchNetworkFailed,
-  isGitHubRemote,
+  isGitHubProvider,
   containerGapClass,
 }: UpstreamSyncBadgeProps) {
   const hasAhead = aheadCount !== undefined && aheadCount > 0;
@@ -40,7 +40,7 @@ export function UpstreamSyncBadge({
     );
   }, []);
 
-  if (fetchAuthFailed && isGitHubRemote) {
+  if (fetchAuthFailed && isGitHubProvider) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>

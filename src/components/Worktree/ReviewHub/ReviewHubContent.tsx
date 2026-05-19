@@ -32,7 +32,7 @@ import {
 import { isProtectedBranch } from "@shared/utils/gitConstants";
 import { useUIStore } from "@/store/uiStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
-import { getPRCIStatusVisual } from "@github-renderer/utils/prCIStatus";
+import { getCIStatusVisual } from "@/lib/worktreeCIStatus";
 import { Spinner } from "@/components/ui/Spinner";
 import { FileStageRow, type FileStageRowSection } from "./FileStageRow";
 import { CommitPanel } from "./CommitPanel";
@@ -375,12 +375,12 @@ export function ReviewHubContent({
     useShallow((state) => {
       for (const wt of state.worktrees.values()) {
         if (wt.path === worktreePath) {
-          return wt.prNumber
+          return wt.linked?.pr
             ? {
-                prNumber: wt.prNumber,
-                prUrl: wt.prUrl,
-                prState: wt.prState,
-                prCiStatus: wt.prCiStatus,
+                prNumber: wt.linked.pr.ref.number,
+                prUrl: wt.linked.pr.url,
+                prState: wt.linked.pr.state,
+                prCiStatus: wt.linked.pr.ciStatus,
               }
             : null;
         }
@@ -1177,11 +1177,11 @@ export function ReviewHubContent({
               worktreePR &&
               worktreePR.prUrl &&
               (() => {
-                const ciVisual = getPRCIStatusVisual(worktreePR.prCiStatus);
+                const ciVisual = getCIStatusVisual(worktreePR.prCiStatus);
                 const prStateLabel =
                   worktreePR.prState === "merged"
                     ? "merged"
-                    : worktreePR.prState === "closed"
+                    : worktreePR.prState === "closed" || worktreePR.prState === "declined"
                       ? "closed"
                       : "open";
                 return (
@@ -1202,7 +1202,7 @@ export function ReviewHubContent({
                           "w-3 h-3 shrink-0",
                           worktreePR.prState === "merged"
                             ? "text-github-merged"
-                            : worktreePR.prState === "closed"
+                            : worktreePR.prState === "closed" || worktreePR.prState === "declined"
                               ? "text-github-closed"
                               : "text-github-open"
                         )}
@@ -1211,7 +1211,7 @@ export function ReviewHubContent({
                         className={
                           worktreePR.prState === "merged"
                             ? "text-github-merged"
-                            : worktreePR.prState === "closed"
+                            : worktreePR.prState === "closed" || worktreePR.prState === "declined"
                               ? "text-github-closed"
                               : "text-github-open"
                         }

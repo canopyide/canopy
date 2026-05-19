@@ -35,6 +35,8 @@ export interface PRIntegrationCallbacks {
       branchName?: string;
       /** Provider that resolved the PR (e.g. "builtin.github"). */
       providerId?: string;
+      /** Provider-agnostic CI status (forge format). */
+      ciStatus?: import("../../shared/types/forge.js").CIStatus;
     }
   ): void;
   onPRCleared(worktreeId: string, data: { branchName?: string; providerId?: string }): void;
@@ -101,6 +103,7 @@ export class PRIntegrationService {
           issueLastUpdatedAt: data.issueTitle !== undefined ? Date.now() : undefined,
           branchName: data.branchName,
           providerId: data.providerId,
+          ciStatus: data.ciStatus,
         });
       })
     );

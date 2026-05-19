@@ -147,7 +147,7 @@ export function ContentDock({ density = "normal" }: ContentDockProps) {
   const recipeContext = activeWorktree
     ? {
         issueNumber: activeWorktree.issueNumber,
-        prNumber: activeWorktree.prNumber,
+        prNumber: activeWorktree.linked?.pr?.ref.number,
         branchName: activeWorktree.branch,
         worktreePath: activeWorktree.path,
       }

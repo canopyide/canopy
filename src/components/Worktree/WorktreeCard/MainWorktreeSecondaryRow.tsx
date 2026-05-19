@@ -18,7 +18,7 @@ interface MainWorktreeSecondaryRowProps {
   lastFetchedAt: number | null | undefined;
   fetchAuthFailed: boolean;
   fetchNetworkFailed: boolean;
-  isGitHubRemote: boolean;
+  isGitHubProvider: boolean;
   aggregateCounts?: AggregateCounts;
 }
 
@@ -34,7 +34,7 @@ export function MainWorktreeSecondaryRow({
   lastFetchedAt,
   fetchAuthFailed,
   fetchNetworkFailed,
-  isGitHubRemote,
+  isGitHubProvider,
   aggregateCounts,
 }: MainWorktreeSecondaryRowProps) {
   return (
@@ -53,7 +53,7 @@ export function MainWorktreeSecondaryRow({
           lastFetchedAt={lastFetchedAt}
           fetchAuthFailed={fetchAuthFailed}
           fetchNetworkFailed={fetchNetworkFailed}
-          isGitHubRemote={isGitHubRemote}
+          isGitHubProvider={isGitHubProvider}
           containerGapClass="gap-1"
         />
       )}

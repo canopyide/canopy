@@ -701,7 +701,7 @@ export function WorktreeCard({
                 }
                 badges={{
                   onOpenIssue: worktree.issueNumber ? handleOpenIssueExternal : undefined,
-                  onOpenPR: worktree.prNumber ? handleOpenPRExternal : undefined,
+                  onOpenPR: worktree.linked?.pr ? handleOpenPRExternal : undefined,
                   onOpenPlan: worktree.hasPlanFile ? () => setShowPlanViewer(true) : undefined,
                 }}
                 menu={{
@@ -724,8 +724,8 @@ export function WorktreeCard({
                   onRevealInFinder: handlePathClick,
                   onOpenIssuePortal: worktree.issueNumber ? handleOpenIssuePortal : undefined,
                   onOpenIssueExternal: worktree.issueNumber ? handleOpenIssueExternal : undefined,
-                  onOpenPRPortal: worktree.prUrl ? handleOpenPRPortal : undefined,
-                  onOpenPRExternal: worktree.prUrl ? handleOpenPRExternal : undefined,
+                  onOpenPRPortal: worktree.linked?.pr?.url ? handleOpenPRPortal : undefined,
+                  onOpenPRExternal: worktree.linked?.pr?.url ? handleOpenPRExternal : undefined,
                   onAttachIssue: () => setShowIssuePicker(true),
                   onViewPlan: () => setShowPlanViewer(true),
                   onOpenReviewHub: openReviewHubForThisWorktree,
@@ -886,8 +886,8 @@ export function WorktreeCard({
           onRevealInFinder={handlePathClick}
           onOpenIssuePortal={worktree.issueNumber ? handleOpenIssuePortal : undefined}
           onOpenIssueExternal={worktree.issueNumber ? handleOpenIssueExternal : undefined}
-          onOpenPRPortal={worktree.prUrl ? handleOpenPRPortal : undefined}
-          onOpenPRExternal={worktree.prUrl ? handleOpenPRExternal : undefined}
+          onOpenPRPortal={worktree.linked?.pr?.url ? handleOpenPRPortal : undefined}
+          onOpenPRExternal={worktree.linked?.pr?.url ? handleOpenPRExternal : undefined}
           onAttachIssue={() => setShowIssuePicker(true)}
           onViewPlan={() => setShowPlanViewer(true)}
           onOpenReviewHub={openReviewHubForThisWorktree}

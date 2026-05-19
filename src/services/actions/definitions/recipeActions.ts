@@ -68,7 +68,7 @@ export function registerRecipeActions(actions: ActionRegistry, _callbacks: Actio
 
         const recipeContext = {
           issueNumber: worktree?.issueNumber,
-          prNumber: worktree?.prNumber,
+          prNumber: worktree?.linked?.pr?.ref.number,
           worktreePath,
           branchName: worktree?.branch,
         };

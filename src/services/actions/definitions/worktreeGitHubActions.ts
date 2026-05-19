@@ -47,8 +47,8 @@ export function registerWorktreeGitHubActions(
         const targetWorktreeId = worktreeId ?? ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
         if (!targetWorktreeId) return;
         const worktree = getCurrentViewStore().getState().worktrees.get(targetWorktreeId);
-        if (!worktree?.prUrl) return;
-        await githubClient.openPR(worktree.prUrl);
+        if (!worktree?.linked?.pr?.url) return;
+        await githubClient.openPR(worktree.linked.pr.url);
       },
     })
   );
@@ -69,24 +69,24 @@ export function registerWorktreeGitHubActions(
         if (!targetWorktreeId) return;
 
         const worktree = getCurrentViewStore().getState().worktrees.get(targetWorktreeId);
-        if (!worktree?.prUrl) return;
+        if (!worktree?.linked?.pr?.url) return;
 
         try {
-          const url = new URL(worktree.prUrl);
+          const url = new URL(worktree.linked.pr.url);
           if (!["https:", "http:"].includes(url.protocol)) {
             logWarn(`Invalid PR URL protocol: ${url.protocol}`);
             return;
           }
         } catch (error) {
-          logError(`Invalid PR URL: ${worktree.prUrl}`, error);
+          logError(`Invalid PR URL: ${worktree.linked.pr.url}`, error);
           return;
         }
 
         await actionService.dispatch(
           "portal.openUrl",
           {
-            url: worktree.prUrl,
-            title: worktree.prTitle || `PR #${worktree.prNumber}`,
+            url: worktree.linked.pr.url,
+            title: worktree.linked.pr.title || `PR #${worktree.linked.pr.ref.number}`,
             background: false,
           },
           { source: "user" }
@@ -96,13 +96,18 @@ export function registerWorktreeGitHubActions(
         const worktreeId = ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
         if (!worktreeId) return false;
         const worktree = getCurrentViewStore().getState().worktrees.get(worktreeId);
-        return typeof worktree?.prUrl === "string" && worktree.prUrl.trim().length > 0;
+        return (
+          typeof worktree?.linked?.pr?.url === "string" && worktree.linked.pr.url.trim().length > 0
+        );
       },
       disabledReason: (ctx: ActionContext) => {
         const worktreeId = ctx.focusedWorktreeId ?? ctx.activeWorktreeId;
         if (!worktreeId) return "No worktree selected";
         const worktree = getCurrentViewStore().getState().worktrees.get(worktreeId);
-        if (typeof worktree?.prUrl !== "string" || worktree.prUrl.trim().length === 0)
+        if (
+          typeof worktree?.linked?.pr?.url !== "string" ||
+          worktree.linked.pr.url.trim().length === 0
+        )
           return "Worktree has no associated PR";
         return undefined;
       },

@@ -97,7 +97,7 @@ export function scoreWorktree(worktree: Worktree | WorktreeState, query: string)
   const name = worktree.name.toLowerCase();
   const branch = (worktree.branch ?? "").toLowerCase();
   const issueTitle = (worktree.issueTitle ?? "").toLowerCase();
-  const prTitle = (worktree.prTitle ?? "").toLowerCase();
+  const prTitle = (worktree.linked?.pr?.title ?? "").toLowerCase();
 
   return Math.max(
     scoreField(issueTitle, q, 4, 3),
@@ -147,7 +147,7 @@ export function matchesFilters(
   if (filters.query.length > 0) {
     const exactNum = parseExactNumber(filters.query);
     if (exactNum !== null) {
-      if (worktree.issueNumber !== exactNum && worktree.prNumber !== exactNum) {
+      if (worktree.issueNumber !== exactNum && worktree.linked?.pr?.ref.number !== exactNum) {
         return false;
       }
     } else {
@@ -175,10 +175,16 @@ export function matchesFilters(
     let hasMatch = false;
 
     if (filters.githubFilters.has("hasIssue") && worktree.issueNumber) hasMatch = true;
-    if (filters.githubFilters.has("hasPR") && worktree.prNumber) hasMatch = true;
-    if (filters.githubFilters.has("prOpen") && worktree.prState === "open") hasMatch = true;
-    if (filters.githubFilters.has("prMerged") && worktree.prState === "merged") hasMatch = true;
-    if (filters.githubFilters.has("prClosed") && worktree.prState === "closed") hasMatch = true;
+    if (filters.githubFilters.has("hasPR") && worktree.linked?.pr) hasMatch = true;
+    if (filters.githubFilters.has("prOpen") && worktree.linked?.pr?.state === "open")
+      hasMatch = true;
+    if (filters.githubFilters.has("prMerged") && worktree.linked?.pr?.state === "merged")
+      hasMatch = true;
+    if (
+      filters.githubFilters.has("prClosed") &&
+      (worktree.linked?.pr?.state === "closed" || worktree.linked?.pr?.state === "declined")
+    )
+      hasMatch = true;
 
     if (!hasMatch) return false;
   }
@@ -398,7 +404,7 @@ export function filterTriageWorktrees<T extends Worktree | WorktreeState>(
     if (query.trim().length > 0) {
       const exactNum = parseExactNumber(query);
       if (exactNum !== null) {
-        return w.issueNumber === exactNum || w.prNumber === exactNum;
+        return w.issueNumber === exactNum || w.linked?.pr?.ref.number === exactNum;
       }
       return scoreWorktree(w, query) > 0;
     }
@@ -493,10 +499,11 @@ export function computeChipCounts(
     counts.branchType[type]++;
 
     if (worktree.issueNumber) counts.github.hasIssue++;
-    if (worktree.prNumber) counts.github.hasPR++;
-    if (worktree.prState === "open") counts.github.prOpen++;
-    if (worktree.prState === "merged") counts.github.prMerged++;
-    if (worktree.prState === "closed") counts.github.prClosed++;
+    if (worktree.linked?.pr) counts.github.hasPR++;
+    if (worktree.linked?.pr?.state === "open") counts.github.prOpen++;
+    if (worktree.linked?.pr?.state === "merged") counts.github.prMerged++;
+    if (worktree.linked?.pr?.state === "closed" || worktree.linked?.pr?.state === "declined")
+      counts.github.prClosed++;
 
     const meta = derivedMetaMap.get(worktree.id);
     if (meta) {

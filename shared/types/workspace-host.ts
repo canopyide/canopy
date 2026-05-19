@@ -440,6 +440,8 @@ export type WorkspaceHostEvent =
       branchName?: string;
       /** Provider that resolved the PR (e.g. "builtin.github"). */
       providerId?: string;
+      /** Provider-agnostic linked projection (dual-shipped alongside legacy fields during migration). */
+      linked?: PluginWorktreeLinked | null;
     }
   | {
       type: "pr-cleared";

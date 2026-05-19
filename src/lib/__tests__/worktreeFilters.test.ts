@@ -19,15 +19,41 @@ import {
 } from "../worktreeFilters";
 import type { Worktree } from "@shared/types/worktree";
 
-const createMockWorktree = (overrides: Partial<Worktree> = {}): Worktree => ({
-  id: "test-id",
-  path: "/home/user/project",
-  name: "main",
-  branch: "main",
-  isCurrent: false,
-  isMainWorktree: false,
-  ...overrides,
-});
+const createMockWorktree = (overrides: Partial<Worktree> = {}): Worktree => {
+  const num = overrides.prNumber;
+  const state = overrides.prState;
+  const title = overrides.prTitle;
+  const linked =
+    num !== undefined || state !== undefined || title !== undefined
+      ? {
+          linked: {
+            providerId: "github",
+            pr: {
+              ref: {
+                providerId: "github",
+                owner: "test",
+                repo: "test",
+                number: num ?? 0,
+                rawData: {},
+              },
+              state: (state ?? "open") as "open" | "merged" | "closed" | "declined",
+              url: `https://github.com/test/repo/pull/${num ?? 0}`,
+              ...(title ? { title } : {}),
+            },
+          },
+        }
+      : {};
+  return {
+    id: "test-id",
+    path: "/home/user/project",
+    name: "main",
+    branch: "main",
+    isCurrent: false,
+    isMainWorktree: false,
+    ...linked,
+    ...overrides,
+  };
+};
 
 const createEmptyFilters = (): FilterState => ({
   query: "",
