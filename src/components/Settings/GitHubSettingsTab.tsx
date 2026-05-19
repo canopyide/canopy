@@ -1,13 +1,44 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ComponentType, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Key, Check, AlertCircle, FlaskConical, ExternalLink, Github } from "lucide-react";
 // TODO(#8061): replace with plugin settings contribution when forge settings UI lands
 import { useGitHubConfigStore } from "@github-renderer/stores/githubConfigStore";
 import { actionService } from "@/services/ActionService";
 import type { GitHubTokenConfig, GitHubTokenValidation } from "@/types";
-import { SettingsSection } from "./SettingsSection";
 import { useSettingsTabValidation } from "./SettingsValidationRegistry";
 import { logError } from "@/utils/logger";
+
+interface ForgeSettingBlockProps {
+  id?: string;
+  icon: ComponentType<{ className?: string }>;
+  title: string;
+  description: string;
+  children: ReactNode;
+}
+
+function ForgeSettingBlock({
+  id,
+  icon: Icon,
+  title,
+  description,
+  children,
+}: ForgeSettingBlockProps) {
+  return (
+    <div
+      id={id}
+      className="rounded-[var(--radius-lg)] border border-daintree-border bg-daintree-bg/30 p-4 space-y-3 scroll-mt-12"
+    >
+      <div>
+        <h5 className="text-sm font-medium text-daintree-text flex items-center gap-2">
+          <Icon className="w-4 h-4 text-daintree-text/70" aria-hidden="true" />
+          {title}
+        </h5>
+        <p className="text-xs text-daintree-text/50 mt-0.5 select-text">{description}</p>
+      </div>
+      {children}
+    </div>
+  );
+}
 
 type ValidationResult = "success" | "error" | "test-success" | "test-error" | null;
 
@@ -193,96 +224,94 @@ export function GitHubSettingsTab() {
   }
 
   return (
-    <div className="space-y-6">
-      <SettingsSection
+    <div className="space-y-4">
+      <ForgeSettingBlock
         id="github-token"
         icon={Key}
         title="Personal access token"
         description="Used for repository statistics, issue/PR detection, and linking worktrees to GitHub. Eliminates the need for the gh CLI."
       >
-        <div className="contents">
-          {githubConfig?.hasToken && (
-            <div className="flex items-center gap-1 text-xs text-status-success">
-              <Check className="w-3 h-3" />
-              GitHub connected
-            </div>
-          )}
+        {githubConfig?.hasToken && (
+          <div className="flex items-center gap-1 text-xs text-status-success">
+            <Check className="w-3 h-3" />
+            GitHub connected
+          </div>
+        )}
 
-          <div className="flex gap-2">
-            <input
-              type="password"
-              value={githubToken}
-              onChange={(e) => setGithubToken(e.target.value)}
-              placeholder={
-                githubConfig?.hasToken ? "Enter new token to replace" : "ghp_... or github_pat_..."
-              }
-              aria-label="GitHub personal access token"
-              autoComplete="new-password"
-              className="flex-1 bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-1.5 text-sm text-daintree-text placeholder:text-text-muted focus:outline-hidden focus:border-daintree-accent transition-colors"
-              disabled={isValidating || isTesting}
-            />
+        <div className="flex gap-2">
+          <input
+            type="password"
+            value={githubToken}
+            onChange={(e) => setGithubToken(e.target.value)}
+            placeholder={
+              githubConfig?.hasToken ? "Enter new token to replace" : "ghp_... or github_pat_..."
+            }
+            aria-label="GitHub personal access token"
+            autoComplete="new-password"
+            className="flex-1 bg-daintree-bg border border-border-strong rounded-[var(--radius-md)] px-3 py-1.5 text-sm text-daintree-text placeholder:text-text-muted focus:outline-hidden focus:border-daintree-accent transition-colors"
+            disabled={isValidating || isTesting}
+          />
+          <Button
+            onClick={handleTestToken}
+            disabled={isValidating || !githubToken.trim()}
+            loading={isTesting}
+            variant="outline"
+            size="sm"
+            aria-label="Test token"
+            className="min-w-[70px] text-daintree-text border-daintree-border hover:bg-daintree-border"
+          >
+            <FlaskConical aria-hidden="true" />
+            Test
+          </Button>
+          <Button
+            onClick={handleSaveToken}
+            disabled={isTesting || !githubToken.trim()}
+            loading={isValidating}
+            size="sm"
+            aria-label="Save token"
+            className="min-w-[70px]"
+          >
+            Save
+          </Button>
+          {githubConfig?.hasToken && (
             <Button
-              onClick={handleTestToken}
-              disabled={isValidating || !githubToken.trim()}
-              loading={isTesting}
+              onClick={handleClearToken}
               variant="outline"
               size="sm"
-              aria-label="Test token"
-              className="min-w-[70px] text-daintree-text border-daintree-border hover:bg-daintree-border"
+              className="text-status-error border-daintree-border hover:bg-status-error/10 hover:text-status-error/70 hover:border-status-error/20"
             >
-              <FlaskConical aria-hidden="true" />
-              Test
+              Clear
             </Button>
-            <Button
-              onClick={handleSaveToken}
-              disabled={isTesting || !githubToken.trim()}
-              loading={isValidating}
-              size="sm"
-              aria-label="Save token"
-              className="min-w-[70px]"
-            >
-              Save
-            </Button>
-            {githubConfig?.hasToken && (
-              <Button
-                onClick={handleClearToken}
-                variant="outline"
-                size="sm"
-                className="text-status-error border-daintree-border hover:bg-status-error/10 hover:text-status-error/70 hover:border-status-error/20"
-              >
-                Clear
-              </Button>
-            )}
-          </div>
-
-          {validationResult === "success" && (
-            <p className="text-xs text-status-success flex items-center gap-1">
-              <Check className="w-3 h-3" />
-              Token saved
-            </p>
-          )}
-          {validationResult === "test-success" && (
-            <p className="text-xs text-status-success flex items-center gap-1">
-              <Check className="w-3 h-3" />
-              Token is valid! Click Save to store it.
-            </p>
-          )}
-          {validationResult === "error" && (
-            <p className="text-xs text-status-error flex items-center gap-1">
-              <AlertCircle className="w-3 h-3" />
-              {errorMessage || "Invalid token. Please check and try again."}
-            </p>
-          )}
-          {validationResult === "test-error" && (
-            <p className="text-xs text-status-error flex items-center gap-1">
-              <AlertCircle className="w-3 h-3" />
-              {errorMessage || "Token test failed. Please check your token."}
-            </p>
           )}
         </div>
-      </SettingsSection>
 
-      <SettingsSection
+        {validationResult === "success" && (
+          <p className="text-xs text-status-success flex items-center gap-1">
+            <Check className="w-3 h-3" />
+            Token saved
+          </p>
+        )}
+        {validationResult === "test-success" && (
+          <p className="text-xs text-status-success flex items-center gap-1">
+            <Check className="w-3 h-3" />
+            Token is valid! Click Save to store it.
+          </p>
+        )}
+        {validationResult === "error" && (
+          <p className="text-xs text-status-error flex items-center gap-1">
+            <AlertCircle className="w-3 h-3" />
+            {errorMessage || "Invalid token. Please check and try again."}
+          </p>
+        )}
+        {validationResult === "test-error" && (
+          <p className="text-xs text-status-error flex items-center gap-1">
+            <AlertCircle className="w-3 h-3" />
+            {errorMessage || "Token test failed. Please check your token."}
+          </p>
+        )}
+      </ForgeSettingBlock>
+
+      <ForgeSettingBlock
         icon={Github}
         title="Create a new token"
         description="To create a personal access token with the required scopes, click the button below. This will open GitHub in your browser."
@@ -309,7 +338,7 @@ export function GitHubSettingsTab() {
             </li>
           </ul>
         </div>
-      </SettingsSection>
+      </ForgeSettingBlock>
     </div>
   );
 }

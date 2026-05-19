@@ -1,12 +1,18 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ComponentType } from "react";
 import { cn } from "@/lib/utils";
-import { GitBranch, ChevronDown, Search } from "lucide-react";
+import { GitBranch, Github, ChevronDown, Search } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 export interface ForgeProviderOption {
   id: string;
   name: string;
   pluginId: string;
+}
+
+type ProviderIcon = ComponentType<{ size?: number; className?: string }>;
+
+function getProviderIcon(id: string): ProviderIcon {
+  return id === "github" ? Github : GitBranch;
 }
 
 interface ForgeProviderSelectorDropdownProps {
@@ -99,10 +105,15 @@ export function ForgeProviderSelectorDropdown({
           )}
         >
           {selectedProvider ? (
-            <>
-              <GitBranch size={16} className="text-daintree-text/60" />
-              <span className="flex-1 text-left truncate">{selectedProvider.name}</span>
-            </>
+            (() => {
+              const Icon = getProviderIcon(selectedProvider.id);
+              return (
+                <>
+                  <Icon size={16} className="text-daintree-text/60" />
+                  <span className="flex-1 text-left truncate">{selectedProvider.name}</span>
+                </>
+              );
+            })()
           ) : (
             <>
               <GitBranch size={16} className="text-daintree-text/60" />
@@ -187,10 +198,15 @@ export function ForgeProviderSelectorDropdown({
                     </div>
                   </>
                 ) : (
-                  <>
-                    <GitBranch size={16} className="shrink-0 text-daintree-text/60" />
-                    <span className="flex-1 min-w-0 truncate">{item.provider.name}</span>
-                  </>
+                  (() => {
+                    const Icon = getProviderIcon(item.provider.id);
+                    return (
+                      <>
+                        <Icon size={16} className="shrink-0 text-daintree-text/60" />
+                        <span className="flex-1 min-w-0 truncate">{item.provider.name}</span>
+                      </>
+                    );
+                  })()
                 )}
               </div>
             );
