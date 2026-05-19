@@ -1,6 +1,6 @@
 import type {
   KeyScope,
-  KeybindingConfig,
+  RegisteredKeybindingConfig,
   KeybindingConflict,
   KeybindingResolutionResult,
 } from "./keybindingUtils";
@@ -12,6 +12,8 @@ import {
 } from "./keybindingUtils";
 import { DEFAULT_KEYBINDINGS } from "./defaultKeybindings";
 import { isMac } from "@/lib/platform";
+import { BUILT_IN_ACTION_IDS } from "@shared/config/actionIds";
+import { KEY_ACTION_VALUES } from "@shared/types/keymap";
 
 export * from "./keybindingUtils";
 export * from "./defaultKeybindings";
@@ -20,8 +22,13 @@ function scopesConflict(a: KeyScope, b: KeyScope): boolean {
   return a === b || a === "global" || b === "global";
 }
 
+const builtInActionIdSet: ReadonlySet<string> = new Set([
+  ...BUILT_IN_ACTION_IDS,
+  ...KEY_ACTION_VALUES,
+]);
+
 class KeybindingService {
-  private bindings: Map<string, KeybindingConfig[]> = new Map();
+  private bindings: Map<string, RegisteredKeybindingConfig[]> = new Map();
   private overrides: Map<string, string[]> = new Map();
   private scopeStack: KeyScope[] = ["global"];
   private currentScope: KeyScope = "global";
@@ -46,11 +53,16 @@ class KeybindingService {
       const overrides = await window.electron.keybinding.getOverrides();
       this.overrides.clear();
       if (overrides && typeof overrides === "object") {
-        Object.entries(overrides).forEach(([actionId, combos]) => {
-          if (Array.isArray(combos)) {
-            this.overrides.set(actionId, combos);
+        for (const [actionId, combos] of Object.entries(overrides)) {
+          if (!Array.isArray(combos)) continue;
+          if (!builtInActionIdSet.has(actionId) && !this.bindings.has(actionId)) {
+            console.warn(
+              `[KeybindingService] Dropping override for unknown action "${actionId}" — not a built-in or registered binding.`
+            );
+            continue;
           }
-        });
+          this.overrides.set(actionId, combos as string[]);
+        }
       }
       this.notifyListeners();
     }
@@ -213,14 +225,14 @@ class KeybindingService {
     return this.currentScope;
   }
 
-  getBinding(actionId: string): KeybindingConfig | undefined {
+  getBinding(actionId: string): RegisteredKeybindingConfig | undefined {
     const arr = this.bindings.get(actionId);
     if (!arr || arr.length === 0) return undefined;
     const scopeMatch = arr.find((b) => b.scope === this.currentScope);
     return scopeMatch ?? arr[0];
   }
 
-  getAllBindings(): KeybindingConfig[] {
+  getAllBindings(): RegisteredKeybindingConfig[] {
     return Array.from(this.bindings.values()).flat();
   }
 
@@ -340,14 +352,14 @@ class KeybindingService {
   }
 
   resolveKeybinding(event: KeyboardEvent): KeybindingResolutionResult {
-    let bestMatch: KeybindingConfig | undefined;
+    let bestMatch: RegisteredKeybindingConfig | undefined;
     let bestPriority = -Infinity;
     let foundChordPrefix = false;
 
     const currentCombo = this.eventToCombo(event);
 
     // When a chord is pending, prioritize chord completion over standalone shortcuts
-    let chordCompletionMatch: KeybindingConfig | undefined;
+    let chordCompletionMatch: RegisteredKeybindingConfig | undefined;
     let chordCompletionPriority = -Infinity;
 
     for (const arr of this.bindings.values()) {
@@ -441,12 +453,12 @@ class KeybindingService {
     return scope === "global" || scope === this.currentScope;
   }
 
-  findMatchingAction(event: KeyboardEvent): KeybindingConfig | undefined {
+  findMatchingAction(event: KeyboardEvent): RegisteredKeybindingConfig | undefined {
     const result = this.resolveKeybinding(event);
     return result.match;
   }
 
-  registerBinding(config: KeybindingConfig): void {
+  registerBinding(config: RegisteredKeybindingConfig): void {
     if (config.combo) {
       for (const arr of this.bindings.values()) {
         for (const existing of arr) {
@@ -504,7 +516,9 @@ class KeybindingService {
     return display;
   }
 
-  getAllBindingsWithEffectiveCombos(): Array<KeybindingConfig & { effectiveCombo: string }> {
+  getAllBindingsWithEffectiveCombos(): Array<
+    RegisteredKeybindingConfig & { effectiveCombo: string }
+  > {
     return Array.from(this.bindings.values())
       .flat()
       .map((binding) => {

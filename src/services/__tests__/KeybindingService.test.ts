@@ -4,7 +4,7 @@ import {
   KeybindingService,
   normalizeKey,
   normalizeKeyForBinding,
-  type KeybindingConfig,
+  type RegisteredKeybindingConfig,
 } from "../KeybindingService";
 
 function setPlatform(platform: string) {
@@ -494,7 +494,7 @@ describe("KeybindingService", () => {
 
     const all = service.getAllBindingsWithEffectiveCombos();
     const binding = all.find((entry) => entry.actionId === "terminal.duplicate") as
-      | (KeybindingConfig & { effectiveCombo: string })
+      | (RegisteredKeybindingConfig & { effectiveCombo: string })
       | undefined;
 
     expect(binding).toBeTruthy();
@@ -1628,6 +1628,113 @@ describe("KeybindingService", () => {
         createKeyboardEvent({ key: "+", code: "Equal", metaKey: true, shiftKey: true })
       );
       expect(match?.actionId).toBe("window.zoomIn");
+    });
+  });
+
+  describe("loadOverrides warn-and-drop — issue #8318", () => {
+    function mockElectronOverrides(overrides: Record<string, string[]>) {
+      vi.stubGlobal("window", {
+        electron: {
+          keybinding: {
+            getOverrides: vi.fn().mockResolvedValue(overrides),
+            setOverride: vi.fn().mockResolvedValue(undefined),
+            removeOverride: vi.fn().mockResolvedValue(undefined),
+            resetAll: vi.fn().mockResolvedValue(undefined),
+          },
+        },
+      });
+    }
+
+    it("loads valid built-in override", async () => {
+      setPlatform("MacIntel");
+      mockElectronOverrides({ "terminal.close": ["Cmd+Shift+W"] });
+      const service = new KeybindingService();
+
+      await service.loadOverrides();
+      expect(service.getEffectiveCombo("terminal.close")).toBe("Cmd+Shift+W");
+    });
+
+    it("drops unknown actionId with warning", async () => {
+      setPlatform("MacIntel");
+      mockElectronOverrides({ "terminal.clearr": ["Cmd+X"] });
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const service = new KeybindingService();
+
+      await service.loadOverrides();
+      expect(service.getOverride("terminal.clearr")).toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Dropping override for unknown action "terminal.clearr"')
+      );
+
+      warnSpy.mockRestore();
+    });
+
+    it("retains valid entries in mixed valid + invalid overrides", async () => {
+      setPlatform("MacIntel");
+      mockElectronOverrides({
+        "terminal.close": ["Cmd+Shift+W"],
+        "terminal.clearr": ["Cmd+X"],
+        "terminal.new": ["Cmd+Shift+N"],
+      });
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const service = new KeybindingService();
+
+      await service.loadOverrides();
+      expect(service.getEffectiveCombo("terminal.close")).toBe("Cmd+Shift+W");
+      expect(service.getEffectiveCombo("terminal.new")).toBe("Cmd+Shift+N");
+      expect(service.getOverride("terminal.clearr")).toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+
+      warnSpy.mockRestore();
+    });
+
+    it("empty overrides load without warning", async () => {
+      setPlatform("MacIntel");
+      mockElectronOverrides({});
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const service = new KeybindingService();
+
+      await service.loadOverrides();
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+
+    it("calling loadOverrides twice does not resurrect stale invalid entries", async () => {
+      setPlatform("MacIntel");
+      mockElectronOverrides({ "terminal.clearr": ["Cmd+X"] });
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const service = new KeybindingService();
+
+      await service.loadOverrides();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      warnSpy.mockClear();
+
+      await service.loadOverrides();
+      // Second load from same stub returns the same invalid entry, dropped again
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(service.getOverride("terminal.clearr")).toBeUndefined();
+
+      warnSpy.mockRestore();
+    });
+
+    it("preserves plugin-like binding registered before loadOverrides", async () => {
+      setPlatform("MacIntel");
+      mockElectronOverrides({ "plugin.foo": ["Cmd+P"] });
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const service = new KeybindingService();
+      service.registerBinding({
+        actionId: "plugin.foo",
+        combo: "",
+        scope: "global",
+        priority: 0,
+      });
+
+      await service.loadOverrides();
+      expect(service.getEffectiveCombo("plugin.foo")).toBe("Cmd+P");
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
     });
   });
 

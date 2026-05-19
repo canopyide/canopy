@@ -96,6 +96,7 @@ vi.mock("@shared/config/agentIds", () => {
   const set: ReadonlySet<string> = new Set<string>(BUILT_IN_AGENT_IDS);
   return {
     BUILT_IN_AGENT_IDS,
+    BUILT_IN_AGENT_KEY_ACTIONS: BUILT_IN_AGENT_IDS.map((id) => `agent.${id}`),
     isBuiltInAgentId: (value: unknown): boolean => typeof value === "string" && set.has(value),
   };
 });
