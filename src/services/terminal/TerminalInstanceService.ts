@@ -68,8 +68,9 @@ function canAutoInitializeTerminalIngest(): boolean {
 
 class TerminalInstanceService {
   private instances = new Map<string, ManagedTerminal>();
-  private dataBuffer = new TerminalOutputIngestService((id, data) =>
-    this.writeToTerminal(id, data)
+  private dataBuffer = new TerminalOutputIngestService(
+    (id, data) => this.writeToTerminal(id, data),
+    (id) => this.instances.get(id)?.getRefreshTier?.() ?? TerminalRefreshTier.FOCUSED
   );
   private suppressedExitUntil = new Map<string, number>();
   private unseenTracker = new TerminalUnseenOutputTracker();
@@ -153,6 +154,7 @@ class TerminalInstanceService {
         return this.wakeManager.wakeAndRestore(id);
       },
       onPostWake: (id) => this.handlePostWake(id),
+      onResumeFlush: (id) => this.dataBuffer.resumeFlush(id),
       applyDeferredResize: (id) => this.resizeController.applyDeferredResize(id),
       onTierApplied: (id, tier, managed) => {
         if (this.isHibernationEligible(tier, managed) && !managed.isVisible) {
@@ -907,6 +909,11 @@ class TerminalInstanceService {
     // lastAppliedTier so that a later promotion is seen as an upgrade.
     if (initialTier === TerminalRefreshTier.BACKGROUND) {
       managed.lastAppliedTier = TerminalRefreshTier.BACKGROUND;
+      // Seed the renderer-policy backend tier so the first promotion is seen
+      // as a real BACKGROUND→active transition. Without this, lastBackendTier
+      // is unset, prevBackendTier defaults to "active", and the wake/flush
+      // path is skipped — bytes held by the background gate would never drain.
+      this.rendererPolicy.initializeBackendTier(id, "background");
       try {
         managed.imageAddon?.dispose();
       } catch {
