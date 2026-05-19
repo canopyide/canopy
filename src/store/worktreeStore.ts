@@ -5,6 +5,7 @@ import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import type { GitHubIssue, GitHubPR } from "@shared/types/github";
 import type { FleetScopeToken } from "@shared/types/worktree";
 import { useFocusStore } from "@/store/focusStore";
+import { usePanelStore } from "@/store/panelStore";
 import { logErrorWithContext } from "@/utils/errorContext";
 import { PERF_MARKS } from "@shared/perf/marks";
 import { markRendererPerformance } from "@/utils/performance";
@@ -85,10 +86,8 @@ interface WorktreeSelectionState {
 }
 
 type ClientsModule = typeof import("@/clients");
-type TerminalStoreModule = typeof import("@/store/panelStore");
 
 let clientsModulePromise: Promise<ClientsModule> | null = null;
-let terminalStoreModulePromise: Promise<TerminalStoreModule> | null = null;
 let lastPersistedActiveWorktreeId: string | null | undefined;
 let pendingPersistActiveWorktreeId: string | null | undefined;
 let persistRequestVersion = 0;
@@ -170,34 +169,6 @@ function loadClientsModule(): Promise<ClientsModule> {
       });
   }
   return clientsModulePromise;
-}
-
-function loadTerminalStoreModule(): Promise<TerminalStoreModule> {
-  if (!terminalStoreModulePromise) {
-    const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
-    markRendererPerformance("dynamic_import_start", { module: "@/store/panelStore" });
-    terminalStoreModulePromise = import("@/store/panelStore")
-      .then((module) => {
-        const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-        markRendererPerformance("dynamic_import_end", {
-          module: "@/store/panelStore",
-          durationMs: Number((now - startedAt).toFixed(3)),
-          ok: true,
-        });
-        return module;
-      })
-      .catch((error) => {
-        const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-        markRendererPerformance("dynamic_import_end", {
-          module: "@/store/panelStore",
-          durationMs: Number((now - startedAt).toFixed(3)),
-          ok: false,
-          error: formatErrorMessage(error, "Failed to load @/store/panelStore module"),
-        });
-        throw error;
-      });
-  }
-  return terminalStoreModulePromise;
 }
 
 function persistActiveWorktree(id: string | null): void {
@@ -328,12 +299,8 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
 
     // Record worktree MRU on explicit selection (suppressed during hydration)
     if (!mruRecordingSuppressed) {
-      void loadTerminalStoreModule()
-        .then(({ usePanelStore }) => {
-          usePanelStore.getState().recordMru(`worktree:${id}`);
-          persistMruList(usePanelStore.getState().mruList);
-        })
-        .catch(() => {});
+      usePanelStore.getState().recordMru(`worktree:${id}`);
+      persistMruList(usePanelStore.getState().mruList);
     }
 
     applyWorktreeTerminalPolicy(get, set, id, generation, () => {
@@ -344,30 +311,17 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
       });
     });
 
-    // Restore the last focused terminal for this worktree
+    // Restore the last focused terminal for this worktree. Runs synchronously
+    // in the same tick as the set() above, so the prior generation/active
+    // guards are now dead — nothing between the set() and here can change
+    // them. Only the terminal-validity checks remain load-bearing.
     const lastFocusedTerminalId = get().lastFocusedTerminalByWorktree.get(id);
     if (lastFocusedTerminalId) {
-      void loadTerminalStoreModule()
-        .then(({ usePanelStore }) => {
-          // Check generation to ensure we're not applying stale focus from a previous switch
-          if (get()._policyGeneration !== generation) return;
-          // Verify the worktree hasn't changed
-          if (get().activeWorktreeId !== id) return;
-
-          const terminal = usePanelStore.getState().panelsById[lastFocusedTerminalId];
-
-          // Validate terminal still exists, belongs to this worktree, and isn't in trash
-          if (terminal && terminal.worktreeId === id && terminal.location !== "trash") {
-            usePanelStore.getState().setFocused(lastFocusedTerminalId);
-          }
-        })
-        .catch((error) => {
-          logErrorWithContext(error, {
-            operation: "import_terminal_store_for_focus_restore",
-            component: "worktreeStore",
-            details: { worktreeId: id, lastFocusedTerminalId },
-          });
-        });
+      const terminal = usePanelStore.getState().panelsById[lastFocusedTerminalId];
+      // Validate terminal still exists, belongs to this worktree, and isn't in trash
+      if (terminal && terminal.worktreeId === id && terminal.location !== "trash") {
+        usePanelStore.getState().setFocused(lastFocusedTerminalId);
+      }
     }
   },
 
@@ -384,6 +338,11 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     if (state.activeWorktreeId !== worktreeId) {
       return;
     }
+    // Read _policyGeneration WITHOUT incrementing: this applies a pending
+    // selection that was queued before the active worktree settled, so it
+    // must not supersede an in-flight explicit transition that bumped the
+    // generation after the pending was set — passing the current value lets
+    // applyWorktreeTerminalPolicy's guard bail if that happened.
     const generation = state._policyGeneration;
     applyWorktreeTerminalPolicy(get, set, worktreeId, generation);
   },
@@ -612,24 +571,17 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     // Clear any active maximize so the fleet-scope render path isn't shadowed
     // by the single-panel/group maximize branch in ContentGrid. Also clear the
     // preMaximizeLayout snapshot so exiting scope later doesn't restore a
-    // stale layout captured against a different worktree.
-    //
-    // Guard inside the resolved callback: the dynamic import resolves on a
-    // later microtask, so if the caller entered and exited scope back-to-back
-    // we must not wipe a maximize the user set after the exit.
-    void loadTerminalStoreModule()
-      .then(({ usePanelStore }) => {
-        // Token equality (not `isFleetScopeActive`): if the caller exited and
-        // re-entered scope back-to-back, `isFleetScopeActive` is true again but
-        // for a *different* scope — wiping its maximize would be wrong.
-        if (get()._fleetScopeToken !== token) return;
-        usePanelStore.setState({
-          maximizedId: null,
-          maximizeTarget: null,
-          preMaximizeLayout: null,
-        });
-      })
-      .catch(() => {});
+    // stale layout captured against a different worktree. The earlier
+    // idempotency guard already ensures we only reach here when scope is
+    // active, so no further re-check is needed now that this runs in-tick
+    // (the token-equality guard the dynamic-import path used inside its
+    // microtask callback was solely to protect against a back-to-back
+    // exit+re-enter that drained later — that race is structurally gone now).
+    usePanelStore.setState({
+      maximizedId: null,
+      maximizeTarget: null,
+      preMaximizeLayout: null,
+    });
     // Promote armed cross-worktree terminals to VISIBLE so their xterm
     // instances actually stream live output inside the fleet grid. The
     // policy function consults `isFleetScopeActive` + the armed set.
@@ -647,7 +599,8 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     const restoreId = get()._previousActiveWorktreeId;
     const generation = get()._policyGeneration + 1;
     // Snapshot the primary (most-recently-armed) terminal BEFORE `set()` so
-    // it's stable across the async focus-restore microtask below.
+    // the value used for focus restore is stable against any reads/writes
+    // the in-tick clears below might trigger.
     const primaryTerminalId = getFleetLastArmedId();
     set({
       isFleetScopeActive: false,
@@ -660,25 +613,14 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     persistActiveWorktree(restoreId);
     // Defensive: drop any preMaximizeLayout snapshot that may have survived
     // scope entry. The restored worktree's layout should be computed fresh.
-    void loadTerminalStoreModule()
-      .then(({ usePanelStore }) => {
-        // Symmetric to the enter-side maximize-clear guard: if a fresh scope
-        // was entered before this microtask drained, `_fleetScopeToken` is
-        // non-null and clearing preMaximizeLayout would clobber the new
-        // scope's legitimate snapshot.
-        if (get()._fleetScopeToken !== null) return;
-        usePanelStore.setState({ preMaximizeLayout: null });
-      })
-      .catch(() => {});
+    usePanelStore.setState({ preMaximizeLayout: null });
     // Focus the primary (most-recently-armed) terminal so the user lands on
     // a known pane instead of whatever `focusedId` happened to be during
-    // fleet scope. Guarded by:
-    //   - token: a new `enterFleetScope()` during this async window mints a
-    //     fresh token (non-null), so restoring focus would fight the new
-    //     scope. `_fleetScopeToken === null` means no scope re-entered.
-    //   - generation: prevents a stale microtask from overwriting a newer
-    //     worktree switch (also catches concurrent setActiveWorktree /
-    //     selectWorktree that don't touch the token).
+    // fleet scope. Runs in-tick now, so the prior token/generation guards
+    // inside the async callback are structurally dead — the set() above
+    // already cleared `_fleetScopeToken` and bumped the generation in the
+    // same tick, and nothing between that set() and here can mutate them.
+    // Still guarded by:
     //   - worktreeId match: the user's scope-exit intent is "restore the
     //     pre-scope worktree". If the primary lives elsewhere, focusing it
     //     would let `rendererStoreOrchestrator`'s focusedId subscription
@@ -687,29 +629,16 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     //     focus would activate the dock rather than a grid pane, and
     //     trashed/background terminals aren't valid focus targets.
     if (primaryTerminalId && restoreId) {
-      void loadTerminalStoreModule()
-        .then(({ usePanelStore }) => {
-          if (get()._fleetScopeToken !== null) return;
-          if (get()._policyGeneration !== generation) return;
-          const terminal = usePanelStore.getState().panelsById[primaryTerminalId];
-          if (!terminal) return;
-          if (terminal.worktreeId !== restoreId) return;
-          if (
-            terminal.location === "trash" ||
-            terminal.location === "background" ||
-            terminal.location === "dock"
-          ) {
-            return;
-          }
-          usePanelStore.getState().setFocused(primaryTerminalId);
-        })
-        .catch((error) => {
-          logErrorWithContext(error, {
-            operation: "import_terminal_store_for_fleet_exit_focus",
-            component: "worktreeStore",
-            details: { primaryTerminalId },
-          });
-        });
+      const terminal = usePanelStore.getState().panelsById[primaryTerminalId];
+      if (
+        terminal &&
+        terminal.worktreeId === restoreId &&
+        terminal.location !== "trash" &&
+        terminal.location !== "background" &&
+        terminal.location !== "dock"
+      ) {
+        usePanelStore.getState().setFocused(primaryTerminalId);
+      }
     }
     // Reconcile terminal streaming tiers: consumers may have mutated
     // activeWorktreeId during scope, so the renderer policy must be
@@ -767,80 +696,71 @@ function applyWorktreeTerminalPolicy(
   // Reliability: terminals from inactive worktrees should not stream output to the renderer.
   // They remain alive in the backend headless model and will be restored on wake.
   // Terminals in the active worktree must be activated to resume streaming.
-  void loadTerminalStoreModule()
-    .then(({ usePanelStore }) => {
-      // Check generation to ensure we're not applying a stale policy from a previous switch
-      if (get()._policyGeneration !== generation) return;
-      // Double check that the active worktree hasn't changed underneath us
-      if ((get().activeWorktreeId ?? null) !== (targetWorktreeId ?? null)) return;
+  //
+  // Runs synchronously: callers invoke this immediately after their own set(),
+  // so the generation/active guards below are defensive (they no longer guard a
+  // microtask boundary, but are kept because applyPendingWorktreeSelection
+  // passes a generation captured at a different point).
+  if (get()._policyGeneration !== generation) return;
+  if ((get().activeWorktreeId ?? null) !== (targetWorktreeId ?? null)) return;
 
-      const { panelsById, panelIds } = usePanelStore.getState();
-      const activeDockTerminalId = usePanelStore.getState().activeDockTerminalId;
+  const { panelsById, panelIds } = usePanelStore.getState();
+  const activeDockTerminalId = usePanelStore.getState().activeDockTerminalId;
 
-      // Fleet scope pins armed grid/agent terminals to VISIBLE regardless of
-      // worktree affiliation — the whole point of the scope view is to see
-      // live output across worktrees. Without this, cross-worktree armed
-      // terminals would get demoted to BACKGROUND and show stale/frozen
-      // content even though they are mounted in the fleet grid. We fetch the
-      // armed set through the shared accessor module to avoid a cyclic import.
-      const fleetActive = get().isFleetScopeActive;
-      const armedIds = fleetActive ? getFleetArmedIds() : null;
+  // Fleet scope pins armed grid/agent terminals to VISIBLE regardless of
+  // worktree affiliation — the whole point of the scope view is to see
+  // live output across worktrees. Without this, cross-worktree armed
+  // terminals would get demoted to BACKGROUND and show stale/frozen
+  // content even though they are mounted in the fleet grid. We fetch the
+  // armed set through the shared accessor module to avoid a cyclic import.
+  const fleetActive = get().isFleetScopeActive;
+  const armedIds = fleetActive ? getFleetArmedIds() : null;
 
-      for (const id of panelIds) {
-        const terminal = panelsById[id];
-        if (!terminal) continue;
-        const isInActiveWorktree = (terminal.worktreeId ?? null) === (targetWorktreeId ?? null);
+  for (const id of panelIds) {
+    const terminal = panelsById[id];
+    if (!terminal) continue;
+    const isInActiveWorktree = (terminal.worktreeId ?? null) === (targetWorktreeId ?? null);
 
-        const location = terminal.location ?? "grid";
-        const isDockOrTrash = location === "dock" || location === "trash";
+    const location = terminal.location ?? "grid";
+    const isDockOrTrash = location === "dock" || location === "trash";
 
-        // Let DockedTerminalItem manage open/closed dock policy, but if the active dock
-        // terminal is not in the active worktree, force it to BACKGROUND.
-        if (terminal.id === activeDockTerminalId && isDockOrTrash && isInActiveWorktree) {
-          continue;
-        }
+    // Let DockedTerminalItem manage open/closed dock policy, but if the active dock
+    // terminal is not in the active worktree, force it to BACKGROUND.
+    if (terminal.id === activeDockTerminalId && isDockOrTrash && isInActiveWorktree) {
+      continue;
+    }
 
-        const isArmedInFleetScope = armedIds?.has(terminal.id) && !isDockOrTrash;
+    const isArmedInFleetScope = armedIds?.has(terminal.id) && !isDockOrTrash;
 
-        const targetTier =
-          isArmedInFleetScope || (isInActiveWorktree && !isDockOrTrash)
-            ? TerminalRefreshTier.VISIBLE
-            : TerminalRefreshTier.BACKGROUND;
+    const targetTier =
+      isArmedInFleetScope || (isInActiveWorktree && !isDockOrTrash)
+        ? TerminalRefreshTier.VISIBLE
+        : TerminalRefreshTier.BACKGROUND;
 
-        // Apply appropriate renderer policy based on worktree membership.
-        // Avoid waking dock/trash terminals - they manage their own visibility.
-        // `applyRendererPolicy(VISIBLE)` only restores on a real
-        // BACKGROUND->active transition. It returns early on same-tier VISIBLE,
-        // so pair active grid promotion with an explicit wake to pull any bytes
-        // that arrived while the renderer was hidden or not yet mounted.
-        terminalInstanceService.applyRendererPolicy(terminal.id, targetTier);
-        if (
-          targetTier !== TerminalRefreshTier.BACKGROUND &&
-          terminal.hasPty !== false &&
-          panelKindHasPty(terminal.kind ?? "terminal")
-        ) {
-          try {
-            terminalInstanceService.wake(terminal.id);
-          } catch (error) {
-            logErrorWithContext(error, {
-              operation: "wake_visible_worktree_terminal",
-              component: "worktreeStore",
-              errorType: "process",
-              details: { terminalId: terminal.id, targetWorktreeId, generation },
-            });
-          }
-        }
+    // Apply appropriate renderer policy based on worktree membership.
+    // Avoid waking dock/trash terminals - they manage their own visibility.
+    // `applyRendererPolicy(VISIBLE)` only restores on a real
+    // BACKGROUND->active transition. It returns early on same-tier VISIBLE,
+    // so pair active grid promotion with an explicit wake to pull any bytes
+    // that arrived while the renderer was hidden or not yet mounted.
+    terminalInstanceService.applyRendererPolicy(terminal.id, targetTier);
+    if (
+      targetTier !== TerminalRefreshTier.BACKGROUND &&
+      terminal.hasPty !== false &&
+      panelKindHasPty(terminal.kind ?? "terminal")
+    ) {
+      try {
+        terminalInstanceService.wake(terminal.id);
+      } catch (error) {
+        logErrorWithContext(error, {
+          operation: "wake_visible_worktree_terminal",
+          component: "worktreeStore",
+          errorType: "process",
+          details: { terminalId: terminal.id, targetWorktreeId, generation },
+        });
       }
+    }
+  }
 
-      onComplete?.();
-    })
-    .catch((error) => {
-      logErrorWithContext(error, {
-        operation: "apply_terminal_streaming_policy",
-        component: "worktreeStore",
-        errorType: "process",
-        details: { targetWorktreeId, generation },
-      });
-      onComplete?.();
-    });
+  onComplete?.();
 }
