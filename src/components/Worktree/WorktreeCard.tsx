@@ -78,6 +78,7 @@ export interface WorktreeCardProps {
   dragHandleListeners?: SyntheticListenerMap;
   dragHandleActivatorRef?: (node: HTMLElement | null) => void;
   isDraggingSort?: boolean;
+  isDragHandleDisabled?: boolean;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
   canMoveUp?: boolean;
@@ -104,6 +105,7 @@ export function WorktreeCard({
   dragHandleListeners,
   dragHandleActivatorRef,
   isDraggingSort,
+  isDragHandleDisabled = false,
   onMoveUp,
   onMoveDown,
   canMoveUp,
@@ -717,23 +719,46 @@ export function WorktreeCard({
             </Tooltip>
           )}
           <div className="relative z-10 flex">
-            {dragHandleListeners && (
-              <div
-                ref={dragHandleActivatorRef}
-                data-worktree-row-drag-handle=""
-                className={cn(
-                  "shrink-0 w-4 flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none transition-colors group-hover/card:delay-[50ms] motion-reduce:transition-none",
-                  isDraggingSort
-                    ? "bg-overlay-emphasis text-text-primary"
-                    : "text-text-primary/25 group-hover/card:text-text-primary/40 group-hover/card:bg-overlay-soft"
-                )}
-                aria-label="Drag to reorder"
-                {...dragHandleListeners}
-              >
-                <GripVertical className="w-3 h-3" />
-              </div>
-            )}
-            <div className={cn("flex-1 min-w-0 py-3", dragHandleListeners ? "pl-1 pr-4" : "px-4")}>
+            {(dragHandleListeners || isDragHandleDisabled) &&
+              (isDragHandleDisabled ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div
+                      ref={dragHandleActivatorRef}
+                      data-worktree-row-drag-handle=""
+                      className="shrink-0 w-4 flex items-center justify-center cursor-not-allowed opacity-30 touch-none select-none transition-colors motion-reduce:transition-none"
+                      aria-label="Manual reorder paused while filter is active"
+                      aria-disabled="true"
+                    >
+                      <GripVertical className="w-3 h-3" />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="text-xs">
+                    Manual reorder paused while filter is active
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <div
+                  ref={dragHandleActivatorRef}
+                  data-worktree-row-drag-handle=""
+                  className={cn(
+                    "shrink-0 w-4 flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none transition-colors group-hover/card:delay-[50ms] motion-reduce:transition-none",
+                    isDraggingSort
+                      ? "bg-overlay-emphasis text-text-primary"
+                      : "text-text-primary/25 group-hover/card:text-text-primary/40 group-hover/card:bg-overlay-soft"
+                  )}
+                  aria-label="Drag to reorder"
+                  {...dragHandleListeners}
+                >
+                  <GripVertical className="w-3 h-3" />
+                </div>
+              ))}
+            <div
+              className={cn(
+                "flex-1 min-w-0 py-3",
+                dragHandleListeners || isDragHandleDisabled ? "pl-1 pr-4" : "px-4"
+              )}
+            >
               <WorktreeHeader
                 worktree={worktree}
                 isActive={isActive}

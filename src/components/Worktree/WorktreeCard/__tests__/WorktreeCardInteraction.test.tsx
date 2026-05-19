@@ -139,3 +139,47 @@ describe("WorktreeCard row affordances polish (issue #8099)", () => {
     expect(envPopoverSource).toContain("focus-visible:outline-2");
   });
 });
+
+// Issue #8395 — Replace silent disable of sidebar reorder with a disabled
+// drag handle. The grip always renders for non-pinned rows, but shows disabled
+// styling and a tooltip when group-by-type or search is active.
+describe("WorktreeCard disabled drag handle (issue #8395)", () => {
+  it("accepts isDragHandleDisabled as an optional boolean prop", () => {
+    expect(cardSource).toMatch(/isDragHandleDisabled\s*\?\s*:\s*boolean/);
+    expect(cardSource).toMatch(/isDragHandleDisabled\s*=\s*false/);
+  });
+
+  it("renders the disabled grip with cursor-not-allowed and opacity-30", () => {
+    expect(cardSource).toContain("cursor-not-allowed opacity-30");
+  });
+
+  it("sets aria-disabled on the disabled grip", () => {
+    expect(cardSource).toContain('aria-disabled="true"');
+  });
+
+  it("labels the disabled grip for screen readers", () => {
+    expect(cardSource).toContain('aria-label="Manual reorder paused while filter is active"');
+  });
+
+  it("shows the disabled explanation in a TooltipContent", () => {
+    expect(cardSource).toContain("Manual reorder paused while filter is active");
+  });
+
+  it("wraps the disabled grip in a Tooltip with TooltipTrigger asChild", () => {
+    expect(cardSource).toMatch(/isDragHandleDisabled\s*\?\s*\(\s*<Tooltip>/);
+    expect(cardSource).toMatch(/<TooltipTrigger asChild>/);
+  });
+
+  it("keeps the enabled grip with cursor-grab and dragHandleListeners", () => {
+    expect(cardSource).toContain("cursor-grab active:cursor-grabbing");
+    expect(cardSource).toContain('aria-label="Drag to reorder"');
+  });
+
+  it("preserves the group-hover delay on the enabled grip", () => {
+    expect(cardSource).toContain("group-hover/card:delay-[50ms]");
+  });
+
+  it("gates the grip block on dragHandleListeners OR isDragHandleDisabled", () => {
+    expect(cardSource).toMatch(/\(dragHandleListeners\s*\|\|\s*isDragHandleDisabled\)\s*&&/);
+  });
+});
