@@ -88,6 +88,7 @@ async function main(): Promise<void> {
   }
 
   const sampleDist = computeClassDistribution(sample.records);
+  const recentDist = computeClassDistribution(recent);
 
   // Load calibration set
   let calibrationMatched: Array<{
@@ -150,22 +151,43 @@ async function main(): Promise<void> {
   let psi: number | undefined;
 
   if (calibrationMatched.length > 0 && judgePredictions.length > 0) {
-    // Join judge predictions with calibration labels by position in matched set
-    const n = Math.min(judgePredictions.length, calibrationMatched.length);
-    const judgeSlice = judgePredictions.slice(0, n);
-    const expectedSlice = calibrationMatched.slice(0, n).map((m) => m.expected);
+    // Join on record ID: map judge predictions by ID, then pair with calibration labels
+    const judgeById = new Map<string, TurnOutcomeClass>();
+    for (let i = 0; i < sample.records.length && i < judgePredictions.length; i++) {
+      judgeById.set(sample.records[i].id, judgePredictions[i]);
+    }
 
-    confusionMatrix = computeConfusionMatrix(judgeSlice, expectedSlice);
-    kappa = computeKappa(judgeSlice, expectedSlice);
+    const paired: { predicted: TurnOutcomeClass; expected: TurnOutcomeClass }[] = [];
+    for (const m of calibrationMatched) {
+      const predicted = judgeById.get(m.record.id);
+      if (predicted) {
+        paired.push({ predicted, expected: m.expected });
+      }
+    }
 
-    console.log(
-      `Cohen's kappa: ${kappa.toFixed(3)}${kappa < 0.7 ? " (below 0.70 threshold)" : " (>= 0.70)"}`
-    );
-    console.log(`Macro F1: ${confusionMatrix.macroF1.toFixed(3)}`);
-    console.log(`Accuracy: ${(confusionMatrix.accuracy * 100).toFixed(1)}%`);
+    if (paired.length > 0) {
+      const judgeSlice = paired.map((p) => p.predicted);
+      const expectedSlice = paired.map((p) => p.expected);
+
+      confusionMatrix = computeConfusionMatrix(judgeSlice, expectedSlice);
+      kappa = computeKappa(judgeSlice, expectedSlice);
+
+      const ready = kappa >= 0.7 && paired.length >= 20;
+      console.log(
+        `Cohen's kappa: ${kappa.toFixed(3)}${ready ? " (>= 0.70, READY)" : " (below 0.70 threshold)"}`
+      );
+      console.log(`Macro F1: ${confusionMatrix.macroF1.toFixed(3)}`);
+      console.log(`Accuracy: ${(confusionMatrix.accuracy * 100).toFixed(1)}%`);
+      console.log(`  (${paired.length} judge-calibration pairs joined by ID)`);
+      if (!ready) {
+        process.exitCode = 1;
+      }
+    } else {
+      console.log("No overlapping records between judge predictions and calibration set.");
+    }
   }
 
-  psi = computePSI(sampleDist, baselineDist);
+  psi = computePSI(recentDist, baselineDist);
   const psiDrift = isPsiDrift(psi);
   if (psiDrift) {
     console.log(`PSI: ${psi.toFixed(4)} (DRIFT detected — exceeds ${0.2} threshold)`);
@@ -180,11 +202,13 @@ async function main(): Promise<void> {
   }
 
   // Build report
+  const ready = kappa !== undefined && kappa >= 0.7 && calibrationMatched.length >= 20;
   const report = {
     sampleMetadata: sample.metadata,
     distribution: sampleDist,
     confusionMatrix: confusionMatrix ?? undefined,
     kappa,
+    ready,
     psi,
     psiDrift,
     baselineHours: options.baselineHours,
@@ -212,7 +236,9 @@ async function main(): Promise<void> {
   for (const cls of sample.metadata.absentClasses) {
     console.log(`  ${cls}: — (absent)`);
   }
-  for (const cls of [...sampleDist.counts].filter(([, c]) => c > 0).sort((a, b) => b[1] - a[1])) {
+  for (const cls of Object.entries(sampleDist.counts)
+    .filter(([, c]) => c > 0)
+    .sort((a, b) => b[1] - a[1])) {
     const pct = ((cls[1] / sampleDist.total) * 100).toFixed(1);
     console.log(`  ${cls[0]}: ${cls[1]} (${pct}%)`);
   }
@@ -270,11 +296,16 @@ async function runJudge(
 
   for (let i = 0; i < results.length; i++) {
     const result = results[i];
-    if (result.error) {
+    if (result.error && result.predictions.length === 0) {
+      // Complete batch failure — fill with unknown
       failures += batches[i].length;
       predictions.push(...Array(batches[i].length).fill("unknown" as TurnOutcomeClass));
     } else {
       predictions.push(...result.predictions);
+      if (result.error) {
+        // Partial failure — some predictions returned
+        failures += batches[i].length - result.predictions.length;
+      }
     }
   }
 
@@ -359,11 +390,13 @@ ${recordsCtx}`;
       model,
       input: prompt,
       text: {
-        type: "json_schema" as const,
-        name: "turnOutcomeJudgment",
-        schema: JUDGE_SCHEMA,
-        strict: true,
-      } as Record<string, unknown>,
+        format: {
+          type: "json_schema" as const,
+          name: "turnOutcomeJudgment",
+          schema: JUDGE_SCHEMA,
+          strict: true,
+        },
+      },
     });
 
     const content = response.output_text;

@@ -119,6 +119,19 @@ describe("loadRecords", () => {
     expect(warnings.length).toBeGreaterThan(0);
   });
 
+  it("rejects NaN, Infinity, and negative timestamps", () => {
+    const raw = [
+      { id: "1", timestamp: NaN, outcome: "answered" },
+      { id: "2", timestamp: Infinity, outcome: "hedged" },
+      { id: "3", timestamp: -1, outcome: "unknown" },
+      { id: "4", timestamp: 1000, outcome: "answered" },
+    ];
+    const { records, warnings } = loadRecords(raw);
+    expect(records).toHaveLength(1);
+    expect(records[0].id).toBe("4");
+    expect(warnings).toHaveLength(3);
+  });
+
   it("returns empty for empty array", () => {
     const { records, warnings } = loadRecords([]);
     expect(records).toHaveLength(0);
@@ -143,6 +156,18 @@ describe("ensureChronological", () => {
     const result = ensureChronological(records);
     expect(result[0].timestamp).toBe(1000);
     expect(result[1].timestamp).toBe(2000);
+  });
+
+  it("sorts partially shuffled arrays", () => {
+    const records = [
+      makeRecord({ timestamp: 1000 }),
+      makeRecord({ timestamp: 3000 }),
+      makeRecord({ timestamp: 2000 }),
+    ];
+    const result = ensureChronological(records);
+    expect(result[0].timestamp).toBe(1000);
+    expect(result[1].timestamp).toBe(2000);
+    expect(result[2].timestamp).toBe(3000);
   });
 
   it("handles single record", () => {

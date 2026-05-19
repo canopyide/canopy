@@ -148,6 +148,11 @@ export function loadRecords(raw: unknown): LoadedRecords {
       warnings.push(`record[${i}]: timestamp is not a number, skipping`);
       continue;
     }
+    const ts = (item as Record<string, unknown>).timestamp as number;
+    if (!Number.isFinite(ts) || ts < 0) {
+      warnings.push(`record[${i}]: timestamp ${String(ts)} is invalid, skipping`);
+      continue;
+    }
     if (
       !TURN_OUTCOME_CLASS_ORDER.includes(
         (item as Record<string, unknown>).outcome as TurnOutcomeClass
@@ -166,10 +171,7 @@ export function loadRecords(raw: unknown): LoadedRecords {
 
 export function ensureChronological(records: AssistantTurnRecord[]): AssistantTurnRecord[] {
   if (records.length < 2) return records;
-  if (records[0].timestamp > records[records.length - 1].timestamp) {
-    return [...records].reverse();
-  }
-  return records;
+  return [...records].sort((a, b) => a.timestamp - b.timestamp);
 }
 
 // ---------------------------------------------------------------------------
@@ -298,9 +300,12 @@ export function stratifiedSample(records: AssistantTurnRecord[], budget: number)
         const largest = [...allocations.entries()].sort((a, b) => b[1] - a[1])[0][0];
         allocations.set(largest, allocations.get(largest)! + diff);
       }
-      // Cap at available
+      // Cap at available, floor at zero
       for (const cls of presentClasses) {
-        const alloc = Math.min(allocations.get(cls)!, remainingByClass.get(cls)!.length);
+        const alloc = Math.max(
+          0,
+          Math.min(allocations.get(cls)!, remainingByClass.get(cls)!.length)
+        );
         const picked = pickWithoutReplacement(remainingByClass.get(cls)!, alloc, used);
         selected.push(...picked);
         for (const r of picked) used.add(r.id);
@@ -337,7 +342,7 @@ function pickWithoutReplacement(
 ): AssistantTurnRecord[] {
   const available = bucket.filter((r) => !used.has(r.id));
   const n = Math.min(count, available.length);
-  if (n === 0) return [];
+  if (n <= 0) return [];
   // Fisher-Yates partial shuffle for the first n elements
   const shuffled = [...available];
   for (let i = 0; i < n; i++) {
