@@ -14,7 +14,10 @@ import type { GitHubPRCIStatus } from "../../shared/types/github.js";
 import type { WorktreeSnapshot } from "../../shared/types/workspace-host.js";
 import { invalidateGitStatusCache, getWorktreeChangesWithStats } from "../utils/git.js";
 import { getGitDir } from "../utils/gitUtils.js";
-import { isRepoOperationInProgress } from "../utils/gitRepoOperationState.js";
+import {
+  isRepoOperationInProgress,
+  getRepoOperationStateSync,
+} from "../utils/gitRepoOperationState.js";
 import { WorktreeRemovedError } from "../utils/errorTypes.js";
 import { categorizeWorktree } from "../services/worktree/mood.js";
 import { AdaptivePollingStrategy, NoteFileReader } from "../services/worktree/index.js";
@@ -176,6 +179,17 @@ export class WorktreeMonitor {
   // per phase) so a later phase no longer overwrites an earlier phase's outcome.
   private _lifecyclePhaseResults: WorktreeLifecyclePhaseResult[] = [];
 
+  // Git operation state
+  private _isDetached: boolean = false;
+  private _head: string | undefined;
+  private _repoState: import("../../shared/types/git.js").RepoState | undefined;
+
+  // Previously emitted git state for change detection (avoid suppressing
+  // detached↔branch transitions that don't touch file state).
+  private _prevEmittedIsDetached: boolean = false;
+  private _prevEmittedHead: string | undefined;
+  private _prevEmittedRepoState: import("../../shared/types/git.js").RepoState | undefined;
+
   // Resource state
   private _resourceStatus:
     | import("../../shared/types/worktree.js").WorktreeResourceStatus
@@ -247,6 +261,8 @@ export class WorktreeMonitor {
     this._gitDir = worktree.gitDir;
     this._isCurrent = worktree.isCurrent;
     this._isMainWorktree = Boolean(worktree.isMainWorktree);
+    this._isDetached = Boolean(worktree.isDetached);
+    this._head = worktree.head;
     this.gitWatchEnabled = config.gitWatchEnabled ?? true;
     this.gitWatchDebounceMs = config.gitWatchDebounceMs ?? 300;
     this.pollQueue = pollQueue;
@@ -1006,6 +1022,9 @@ export class WorktreeMonitor {
       wslGitOptIn: this._wslGitOptIn || undefined,
       wslGitDismissed: this._wslGitDismissed || undefined,
       linked: this._linked,
+      repoState: this._repoState || undefined,
+      isDetached: this._isDetached || undefined,
+      head: this._head || undefined,
     };
 
     return ensureSerializable(snapshot) as WorktreeSnapshot;
@@ -1257,6 +1276,21 @@ export class WorktreeMonitor {
     // Polling continues uninterrupted, so the next scheduled poll after
     // sentinels clear also picks up the change.
     const gitDir = getGitDir(this.path, { cache: true, logErrors: false });
+
+    // Detect blocking git operation state from sentinel files so the renderer
+    // can surface it even when git status is skipped.
+    if (gitDir) {
+      const opState = getRepoOperationStateSync(gitDir);
+      if (opState !== this._repoState) {
+        this._repoState = opState;
+        if (this._hasInitialStatus) {
+          this.emitUpdate();
+        }
+      }
+    } else {
+      this._repoState = undefined;
+    }
+
     if (gitDir && isRepoOperationInProgress(gitDir)) {
       // If we're skipping the very first poll (e.g. app started mid-rebase),
       // emit a default snapshot so the renderer can still display the worktree.
@@ -1382,8 +1416,18 @@ export class WorktreeMonitor {
       const upstreamChanged =
         nextAheadCount !== this.aheadCount || nextBehindCount !== this.behindCount;
 
+      const gitStateChanged =
+        this._isDetached !== this._prevEmittedIsDetached ||
+        this._head !== this._prevEmittedHead ||
+        this._repoState !== this._prevEmittedRepoState;
+
       const anythingChanged =
-        stateChanged || noteChanged || branchChanged || planChanged || upstreamChanged;
+        stateChanged ||
+        noteChanged ||
+        branchChanged ||
+        planChanged ||
+        upstreamChanged ||
+        gitStateChanged;
 
       // Drive the idle backoff from what the git check actually observed —
       // a real state change resets, otherwise we count one quiet tick. The
@@ -1579,17 +1623,33 @@ export class WorktreeMonitor {
 
   private async readCurrentBranch(): Promise<string | undefined> {
     const gitDir = getGitDir(this.path, { cache: true, logErrors: false });
-    if (!gitDir) return undefined;
+    if (!gitDir) {
+      this._isDetached = false;
+      this._head = undefined;
+      return undefined;
+    }
 
     try {
       const headContent = await readFile(pathJoin(gitDir, "HEAD"), "utf-8");
       const trimmed = headContent.trim();
       const prefix = "ref: refs/heads/";
       if (trimmed.startsWith(prefix)) {
+        this._isDetached = false;
+        this._head = undefined;
         return trimmed.slice(prefix.length);
+      }
+      // Detached HEAD — the file contains a commit SHA
+      if (/^[0-9a-f]{40}$/.test(trimmed)) {
+        this._isDetached = true;
+        this._head = trimmed;
+      } else {
+        this._isDetached = false;
+        this._head = undefined;
       }
       return undefined;
     } catch {
+      this._isDetached = false;
+      this._head = undefined;
       return undefined;
     }
   }
@@ -1641,6 +1701,9 @@ export class WorktreeMonitor {
   }
 
   emitUpdate(): void {
+    this._prevEmittedIsDetached = this._isDetached;
+    this._prevEmittedHead = this._head;
+    this._prevEmittedRepoState = this._repoState;
     this.callbacks.onUpdate(this.getSnapshot());
   }
 }

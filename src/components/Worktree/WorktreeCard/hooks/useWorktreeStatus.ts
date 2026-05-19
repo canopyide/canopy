@@ -19,6 +19,38 @@ export type WorktreeReviewState = "conflicted" | "unpushed-clean" | "has-changes
 
 export type ResourceStatusColor = "green" | "yellow" | "red" | "neutral";
 
+export type GitStateKind =
+  | "conflicted"
+  | "rebasing"
+  | "merging"
+  | "cherry-picking"
+  | "reverting"
+  | "detached"
+  | "dirty";
+
+export interface GitStateIndicator {
+  kind: GitStateKind;
+  label: string;
+  tone: "error" | "warning" | "info";
+}
+
+const REPO_STATE_TO_KIND: Record<string, GitStateKind> = {
+  REBASING: "rebasing",
+  MERGING: "merging",
+  CHERRY_PICKING: "cherry-picking",
+  REVERTING: "reverting",
+};
+
+const GIT_STATE_LABELS: Record<GitStateKind, string> = {
+  conflicted: "conflicted",
+  rebasing: "rebasing",
+  merging: "merging",
+  "cherry-picking": "cherry-picking",
+  reverting: "reverting",
+  detached: "detached",
+  dirty: "dirty",
+};
+
 export interface UseWorktreeStatusResult {
   branchLabel: string;
   isMainOnStandardBranch: boolean;
@@ -35,6 +67,7 @@ export interface UseWorktreeStatusResult {
   resourceStatusLabel?: string;
   resourceStatusColor?: ResourceStatusColor;
   hasResourceConfig: boolean;
+  gitStateIndicator: GitStateIndicator | null;
 }
 
 export function useWorktreeStatus({
@@ -140,6 +173,26 @@ export function useWorktreeStatus({
     if (worktree.mood === "stale") return "stale";
     return "idle";
   }, [hasChanges, worktree.isCurrent, worktree.mood]);
+
+  const gitStateIndicator: GitStateIndicator | null = useMemo(() => {
+    // Priority: conflicted > blocking operation > detached > dirty
+    if (worktree.worktreeChanges?.changes?.some((c) => c.status === "conflicted")) {
+      return { kind: "conflicted", label: GIT_STATE_LABELS.conflicted, tone: "error" };
+    }
+    if (worktree.repoState) {
+      const kind = REPO_STATE_TO_KIND[worktree.repoState];
+      if (kind) {
+        return { kind, label: GIT_STATE_LABELS[kind], tone: "warning" };
+      }
+    }
+    if (worktree.isDetached) {
+      return { kind: "detached", label: GIT_STATE_LABELS.detached, tone: "warning" };
+    }
+    if (hasChanges) {
+      return { kind: "dirty", label: GIT_STATE_LABELS.dirty, tone: "info" };
+    }
+    return null;
+  }, [worktree.worktreeChanges?.changes, worktree.repoState, worktree.isDetached, hasChanges]);
 
   const reviewState: WorktreeReviewState = useMemo(() => {
     const changes = worktree.worktreeChanges;
@@ -253,5 +306,6 @@ export function useWorktreeStatus({
     resourceStatusLabel,
     resourceStatusColor,
     hasResourceConfig,
+    gitStateIndicator,
   };
 }

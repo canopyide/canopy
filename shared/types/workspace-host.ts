@@ -15,6 +15,7 @@ import type {
   BranchInfo,
   CreateWorktreeOptions,
   FileChangeDetail,
+  RepoState,
   WorktreeChanges,
 } from "./git.js";
 import type {
@@ -207,6 +208,15 @@ export interface WorktreeSnapshot {
 
   /** User dismissed the WSL git suggestion banner without opting in. */
   wslGitDismissed?: boolean;
+
+  /** Current in-progress git operation (REBASING, MERGING, CHERRY_PICKING, REVERTING). Absent when no blocking operation is in progress. */
+  repoState?: RepoState;
+
+  /** Whether this worktree is in detached HEAD state. Mirrors the Worktree field. */
+  isDetached?: boolean;
+
+  /** HEAD commit hash (only populated when in detached HEAD state). */
+  head?: string;
 }
 
 /** Monitor configuration for polling intervals */

@@ -275,6 +275,7 @@ export function WorktreeCard({
     resourceStatusLabel,
     resourceStatusColor,
     hasResourceConfig,
+    gitStateIndicator,
   } = useWorktreeStatus({ worktree });
 
   const hasPauseCommand = !!worktree.hasPauseCommand;
@@ -646,7 +647,7 @@ export function WorktreeCard({
           data-resource-status={resourceStatusLabel ?? undefined}
           role={variant === "grid" ? "group" : undefined}
           aria-current={variant === "grid" && isActive ? "true" : undefined}
-          aria-label={`Worktree: ${worktree.issueTitle ?? branchLabel}${worktree.issueTitle ? ` (${branchLabel})` : ""}${worktree.isCurrent ? " (selected, current)" : ""}, Status: ${spineState}${hasChanges ? ", has uncommitted changes" : ""}`}
+          aria-label={`Worktree: ${worktree.issueTitle ?? branchLabel}${worktree.issueTitle ? ` (${branchLabel})` : ""}${worktree.isCurrent ? " (selected, current)" : ""}, Status: ${spineState}${gitStateIndicator ? `, ${gitStateIndicator.label}` : ""}${!gitStateIndicator && hasChanges ? ", has uncommitted changes" : ""}`}
           onClick={onSelect}
           onDoubleClick={handleDoubleClick}
           onPointerEnter={handlePointerEnter}
@@ -795,6 +796,7 @@ export function WorktreeCard({
                   onOpenPR: worktree.linked?.pr ? handleOpenPRExternal : undefined,
                   onOpenPlan: worktree.hasPlanFile ? () => setShowPlanViewer(true) : undefined,
                 }}
+                gitStateIndicator={gitStateIndicator}
                 menu={{
                   launchAgents,
                   recipes,
