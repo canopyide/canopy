@@ -362,14 +362,22 @@ ptyManager.on("data", (id: string, data: string | Uint8Array) => {
       typeof data === "string" ? new Uint8Array(Buffer.from(data, "utf8")) : new Uint8Array(data);
     const byteCount = chunk.byteLength;
 
+    const termProject = terminalInfo?.projectId ?? null;
+    const targets: RendererConnection[] = [];
     for (const [windowId, conn] of rendererConnections) {
       const windowProject = windowProjectMap.get(windowId) ?? null;
-      const termProject = terminalInfo?.projectId ?? null;
       const filtered = windowProject !== null && termProject !== windowProject;
-
       if (filtered) continue;
+      targets.push(conn);
+    }
 
-      if (conn.batcher.write(id, chunk, byteCount)) {
+    // The chunk's ArrayBuffer can only be transferred zero-copy when exactly one
+    // batcher receives it: a transfer detaches the buffer, and per-batcher flush
+    // timing is independent, so with 2+ targets any flush would neuter the chunk
+    // out from under siblings still waiting to copy it. Sole target → owned.
+    const owned = targets.length === 1;
+    for (const conn of targets) {
+      if (conn.batcher.write(id, chunk, byteCount, owned)) {
         visualWritten = true;
       }
     }
