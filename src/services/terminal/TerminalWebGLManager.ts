@@ -1,6 +1,11 @@
 import type { WebglAddon as WebglAddonType } from "@xterm/addon-webgl";
 import type { IDisposable } from "@xterm/xterm";
-import { getMaxContexts, setMaxContexts as setConfiguredMaxContexts } from "./TerminalWebGLConfig";
+import {
+  getMaxContexts,
+  getPassiveThreshold,
+  setMaxContexts as setConfiguredMaxContexts,
+  setPassiveThreshold as setConfiguredPassiveThreshold,
+} from "./TerminalWebGLConfig";
 import { WRITE_BURST_RECENCY_MS, type ManagedTerminal } from "./types";
 
 const WEBGL_DISABLED = import.meta.env.DAINTREE_DISABLE_WEBGL === "1";
@@ -126,6 +131,10 @@ export class TerminalWebGLManager {
     setConfiguredMaxContexts(n);
   }
 
+  static setPassiveThreshold(n: number): void {
+    setConfiguredPassiveThreshold(n);
+  }
+
   private pool = new Map<string, WebGLEntry>();
   private lruOrder: string[] = [];
   private hardwareAvailable = true;
@@ -186,6 +195,20 @@ export class TerminalWebGLManager {
       return;
     }
     if (!managed.isOpened) return;
+
+    // Passive-mode gate: when a large agent fleet is visible at once, the pool
+    // (capped well below the visible count) would otherwise cycle the same
+    // terminals through release/reacquire, flashing them. Once the threshold of
+    // contexts is occupied, suppress new acquisitions — those terminals stay on
+    // the DOM renderer. Existing pooled contexts are untouched and drain
+    // naturally via releaseContext/onTerminalDestroyed; the next ensure from a
+    // newly-visible terminal passes the gate once the count falls back below it.
+    // Re-ensures of terminals already pooled (LRU touch) or already queued must
+    // pass through — they don't add a new context, and gating them on the raw
+    // pool+queue size would spuriously suppress an unrelated free slot.
+    if (!this.pool.has(id) && !this.pendingEnsures.has(id)) {
+      if (this.pool.size + this.pendingEnsures.size >= getPassiveThreshold()) return;
+    }
 
     // Dedupe: latest request per id wins until the queue drains.
     this.pendingEnsures.set(id, managed);

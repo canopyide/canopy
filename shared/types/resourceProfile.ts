@@ -11,6 +11,12 @@ export interface ResourceProfileConfig {
   projectStatsPollInterval: number;
   /** Max WebGL contexts in the renderer */
   maxWebGLContexts: number;
+  /**
+   * Passive-mode gate: once this many agent terminals hold or are queued for a
+   * WebGL context, new acquisitions are suppressed (DOM renderer) to stop
+   * release/reacquire churn under large visible fleets.
+   */
+  passiveWebGLThreshold: number;
   /** HibernationService memory-pressure inactivity threshold (ms) */
   memoryPressureInactiveMs: number;
   /**
@@ -36,6 +42,7 @@ export interface ResourceProfilePayload {
  * - processTreePollInterval: 2500 (ProcessTreeCache constructor default)
  * - projectStatsPollInterval: 5000 (ProjectStatsService DEFAULT_POLL_INTERVAL_MS)
  * - maxWebGLContexts: 12 (TerminalWebGLManager MAX_CONTEXTS)
+ * - passiveWebGLThreshold: 8 (TerminalWebGLConfig initial value)
  * - memoryPressureInactiveMs: 1800000 (HibernationService MEMORY_PRESSURE_INACTIVE_MS = 30min)
  */
 export const RESOURCE_PROFILE_CONFIGS: Record<ResourceProfile, ResourceProfileConfig> = {
@@ -45,6 +52,7 @@ export const RESOURCE_PROFILE_CONFIGS: Record<ResourceProfile, ResourceProfileCo
     processTreePollInterval: 2000,
     projectStatsPollInterval: 5000,
     maxWebGLContexts: 16,
+    passiveWebGLThreshold: 16,
     memoryPressureInactiveMs: 60 * 60 * 1000, // 60 min
     lowMemoryFreeThresholdMb: null,
   },
@@ -54,6 +62,7 @@ export const RESOURCE_PROFILE_CONFIGS: Record<ResourceProfile, ResourceProfileCo
     processTreePollInterval: 2500,
     projectStatsPollInterval: 5000,
     maxWebGLContexts: 12,
+    passiveWebGLThreshold: 8,
     memoryPressureInactiveMs: 30 * 60 * 1000, // 30 min
     lowMemoryFreeThresholdMb: 768,
   },
@@ -63,6 +72,7 @@ export const RESOURCE_PROFILE_CONFIGS: Record<ResourceProfile, ResourceProfileCo
     processTreePollInterval: 5000,
     projectStatsPollInterval: 25000,
     maxWebGLContexts: 6,
+    passiveWebGLThreshold: 6,
     memoryPressureInactiveMs: 15 * 60 * 1000, // 15 min
     lowMemoryFreeThresholdMb: 1024,
   },

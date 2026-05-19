@@ -200,6 +200,11 @@ describe("TerminalWebGLManager", () => {
     mod.__testing.setWebglAddonClass(
       WebglAddonMock as unknown as new () => InstanceType<typeof webglMod.WebglAddon>
     );
+    // The passive-mode threshold is module-level state that survives across
+    // tests. Reset to the balanced default so order doesn't matter; blocks that
+    // need to fill the pool past it (LRU eviction, eviction priority) raise it
+    // in their own beforeEach, which runs after this one.
+    mod.TerminalWebGLManager.setPassiveThreshold(8);
     manager = new mod.TerminalWebGLManager();
   });
 
@@ -870,6 +875,14 @@ describe("TerminalWebGLManager", () => {
   });
 
   describe("LRU eviction", () => {
+    // These tests fill the pool to MAX_CONTEXTS (12), past the passive gate.
+    // Pin the threshold above the pool cap so eviction — not passive-mode
+    // suppression — is what's under test here.
+    beforeEach(async () => {
+      const mod = await import("../TerminalWebGLManager");
+      mod.TerminalWebGLManager.setPassiveThreshold(999);
+    });
+
     it("evicts the least recently used entry when pool reaches MAX_CONTEXTS", async () => {
       const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
       const maxContexts = TerminalWebGLManager.MAX_CONTEXTS;
@@ -938,6 +951,13 @@ describe("TerminalWebGLManager", () => {
   });
 
   describe("eviction priority", () => {
+    // Same as LRU eviction: these fill the pool past the passive gate, so the
+    // threshold is pinned above the pool cap to isolate eviction behaviour.
+    beforeEach(async () => {
+      const mod = await import("../TerminalWebGLManager");
+      mod.TerminalWebGLManager.setPassiveThreshold(999);
+    });
+
     // Builds a fresh manager whose addons each carry an id-tagged dispose mock,
     // so a test can assert exactly which pooled terminal lost its slot.
     async function makePriorityManager(): Promise<{
@@ -1237,6 +1257,114 @@ describe("TerminalWebGLManager", () => {
         warnSpy.mockRestore();
         vi.useRealTimers();
       }
+    });
+  });
+
+  describe("passive mode gate (#8378)", () => {
+    it("suppresses new acquisitions once pool+queue reaches the threshold", async () => {
+      const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
+      TerminalWebGLManager.setPassiveThreshold(2);
+
+      manager.ensureContext("t1", makeManagedTerminal());
+      manager.ensureContext("t2", makeManagedTerminal());
+      expect(WebglAddonMock).toHaveBeenCalledTimes(2);
+      expect(manager.isActive("t1")).toBe(true);
+      expect(manager.isActive("t2")).toBe(true);
+
+      // 3rd request — pool is already at the threshold, so this is suppressed
+      // and the terminal stays on the DOM renderer.
+      manager.ensureContext("t3", makeManagedTerminal());
+      expect(WebglAddonMock).toHaveBeenCalledTimes(2);
+      expect(manager.isActive("t3")).toBe(false);
+    });
+
+    it("lets a re-ensure of an already-pooled terminal pass through (LRU touch)", async () => {
+      const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
+      TerminalWebGLManager.setPassiveThreshold(2);
+
+      const m1 = makeManagedTerminal();
+      manager.ensureContext("t1", m1);
+      manager.ensureContext("t2", makeManagedTerminal());
+
+      // Pool is full at the threshold; re-ensuring a pooled terminal must not
+      // be gated (it adds no new context) and must not evict anything.
+      manager.ensureContext("t1", m1);
+      expect(WebglAddonMock).toHaveBeenCalledTimes(2);
+      expect(manager.isActive("t1")).toBe(true);
+      expect(manager.isActive("t2")).toBe(true);
+    });
+
+    it("resumes acquisition once a release drops the count below the threshold", async () => {
+      const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
+      TerminalWebGLManager.setPassiveThreshold(2);
+
+      manager.ensureContext("t1", makeManagedTerminal());
+      manager.ensureContext("t2", makeManagedTerminal());
+      manager.ensureContext("t3", makeManagedTerminal());
+      expect(manager.isActive("t3")).toBe(false);
+
+      manager.releaseContext("t1");
+      expect(manager.isActive("t1")).toBe(false);
+
+      // Slot freed — a newly-visible terminal now passes the gate.
+      manager.ensureContext("t3", makeManagedTerminal());
+      expect(manager.isActive("t3")).toBe(true);
+      expect(WebglAddonMock).toHaveBeenCalledTimes(3);
+    });
+
+    it("keeps a suppressed terminal on DOM until the caller re-ensures it", async () => {
+      const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
+      TerminalWebGLManager.setPassiveThreshold(2);
+
+      manager.ensureContext("t1", makeManagedTerminal());
+      manager.ensureContext("t2", makeManagedTerminal());
+      manager.ensureContext("t3", makeManagedTerminal());
+      expect(manager.isActive("t3")).toBe(false);
+
+      // Releasing t1 frees a slot, but t3 must NOT auto-resume — the gate only
+      // suppresses, it doesn't track suppressed terminals. The caller drives
+      // re-acquisition on the next attach/focus signal.
+      manager.releaseContext("t1");
+      expect(manager.isActive("t3")).toBe(false);
+
+      manager.ensureContext("t3", makeManagedTerminal());
+      expect(manager.isActive("t3")).toBe(true);
+    });
+
+    it("clamps the threshold to a minimum of 1", async () => {
+      const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
+      TerminalWebGLManager.setPassiveThreshold(0);
+
+      // Clamped to 1 (not 0): the first acquisition still succeeds, the second
+      // is suppressed. A threshold of 0 would have suppressed even the first.
+      manager.ensureContext("t1", makeManagedTerminal());
+      manager.ensureContext("t2", makeManagedTerminal());
+      expect(manager.isActive("t1")).toBe(true);
+      expect(manager.isActive("t2")).toBe(false);
+      expect(WebglAddonMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not evict existing pooled contexts when the threshold is crossed", async () => {
+      const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
+      TerminalWebGLManager.setPassiveThreshold(2);
+
+      const disposes: ReturnType<typeof vi.fn>[] = [];
+      WebglAddonMock.mockImplementation(function () {
+        const d = vi.fn();
+        disposes.push(d);
+        return { dispose: d, onContextLoss: mockOnContextLoss };
+      });
+      const localManager = new TerminalWebGLManager();
+
+      localManager.ensureContext("t1", makeManagedTerminal());
+      localManager.ensureContext("t2", makeManagedTerminal());
+      // Suppressed — must not trigger eviction of t1/t2 to make room.
+      localManager.ensureContext("t3", makeManagedTerminal());
+
+      expect(localManager.isActive("t1")).toBe(true);
+      expect(localManager.isActive("t2")).toBe(true);
+      expect(disposes).toHaveLength(2);
+      disposes.forEach((d) => expect(d).not.toHaveBeenCalled());
     });
   });
 

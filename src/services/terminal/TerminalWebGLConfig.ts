@@ -9,3 +9,18 @@ export function getMaxContexts(): number {
 export function setMaxContexts(n: number): void {
   maxContexts = Math.max(1, n);
 }
+
+// Passive-mode gate: once this many agent terminals already hold (or are
+// queued for) a WebGL context, new acquisitions are suppressed and those
+// terminals render via the DOM renderer instead. This stops the release/
+// reacquire churn that flashes terminals when a large fleet (20+) is visible
+// at once. Initial value matches the balanced resource profile.
+let passiveThreshold = 8;
+
+export function getPassiveThreshold(): number {
+  return passiveThreshold;
+}
+
+export function setPassiveThreshold(n: number): void {
+  passiveThreshold = Math.max(1, n);
+}
