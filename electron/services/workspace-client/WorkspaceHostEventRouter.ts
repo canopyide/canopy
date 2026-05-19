@@ -150,8 +150,7 @@ export class WorkspaceHostEventRouter {
           if (
             event.state.remaining === 0 &&
             ghChangeAt > 0 &&
-            Date.now() - ghChangeAt <
-              WorkspaceHostEventRouter.RATE_LIMIT_TOKEN_CHANGE_GUARD_MS
+            Date.now() - ghChangeAt < WorkspaceHostEventRouter.RATE_LIMIT_TOKEN_CHANGE_GUARD_MS
           ) {
             break;
           }
