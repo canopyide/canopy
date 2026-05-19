@@ -36,10 +36,12 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
       requestedId: z.string().optional(),
       force: z.boolean().optional(),
     }),
-    resultSchema: z.object({
-      terminalId: z.string(),
-      location: LaunchLocationSchema,
-    }),
+    resultSchema: z
+      .object({
+        terminalId: z.string(),
+        location: LaunchLocationSchema,
+      })
+      .nullable(),
     mcpOutputSchema: true,
     run: async (args: unknown) => {
       const {
