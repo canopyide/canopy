@@ -45,9 +45,11 @@ import {
   MCP_DEDUP_MAX_ENTRIES_PER_SESSION,
   minimumPermittingTier,
   EXECUTION_ERROR_CODE,
+  SESSION_BINDING_GONE,
   buildToolError,
   buildMcpErrorPayload,
 } from "./shared.js";
+import { SessionBindingError } from "./rendererBridge.js";
 import { buildDedupKey, readDedupCache, type CallToolResultLike } from "./sessionDedup.js";
 import {
   shouldExposeTool,
@@ -362,6 +364,12 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
           confirmationDecision = confirmationDecision ?? envelope.confirmationDecision;
         } catch (err) {
           outcome = { kind: "throw", error: err };
+          if (err instanceof SessionBindingError) {
+            return buildToolError({
+              code: SESSION_BINDING_GONE,
+              message: err.message,
+            });
+          }
           return buildToolError({
             code: EXECUTION_ERROR_CODE,
             message: formatErrorMessage(err, "Action dispatch failed"),

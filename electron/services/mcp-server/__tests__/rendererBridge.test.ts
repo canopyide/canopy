@@ -42,7 +42,7 @@ vi.mock("../../../window/windowRef.js", () => ({
   getProjectViewManager: () => null,
 }));
 
-import { createRendererBridge } from "../rendererBridge.js";
+import { createRendererBridge, SessionBindingError } from "../rendererBridge.js";
 import type { PendingRequest, DispatchEnvelope } from "../shared.js";
 import type { ActionManifestEntry } from "../../../../shared/types/actions.js";
 
@@ -205,12 +205,18 @@ describe("rendererBridge — per-session pinned dispatch (#7002)", () => {
 
   it("fails closed when the pinned view has been destroyed (#7002 — never silently re-routes)", async () => {
     // No entry for id=999 → webContents.fromId returns undefined.
+    await expect(bridge.requestManifestForWebContents(999)).rejects.toBeInstanceOf(
+      SessionBindingError
+    );
     await expect(bridge.requestManifestForWebContents(999)).rejects.toThrow(
-      /MCP pinned view 999 no longer available/
+      /Do not retry/
     );
     await expect(
       bridge.dispatchActionForWebContents(999, "actions.list", {}, false)
-    ).rejects.toThrow(/MCP pinned view 999 no longer available/);
+    ).rejects.toBeInstanceOf(SessionBindingError);
+    await expect(
+      bridge.dispatchActionForWebContents(999, "actions.list", {}, false)
+    ).rejects.toThrow(/Do not retry/);
   });
 
   it("fails closed when the pinned view exists but reports isDestroyed", async () => {
@@ -218,12 +224,18 @@ describe("rendererBridge — per-session pinned dispatch (#7002)", () => {
     wc.isDestroyed.mockReturnValue(true);
     mockWebContentsRegistry.set(404, wc);
 
+    await expect(bridge.requestManifestForWebContents(404)).rejects.toBeInstanceOf(
+      SessionBindingError
+    );
     await expect(bridge.requestManifestForWebContents(404)).rejects.toThrow(
-      /MCP pinned view 404 no longer available/
+      /Do not retry/
     );
     await expect(
       bridge.dispatchActionForWebContents(404, "actions.list", {}, false)
-    ).rejects.toThrow(/MCP pinned view 404 no longer available/);
+    ).rejects.toBeInstanceOf(SessionBindingError);
+    await expect(
+      bridge.dispatchActionForWebContents(404, "actions.list", {}, false)
+    ).rejects.toThrow(/Do not retry/);
     // Must not have attempted to send to a destroyed view.
     expect(wc.send).not.toHaveBeenCalled();
   });

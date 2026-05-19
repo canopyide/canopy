@@ -7,6 +7,19 @@ import { CHANNELS } from "../../ipc/channels.js";
 import type { PendingRequest, DispatchEnvelope } from "./shared.js";
 import { MCP_MANIFEST_REQUEST_TIMEOUT_MS, MCP_DISPATCH_TIMEOUT_MS } from "./shared.js";
 
+export class SessionBindingError extends Error {
+  readonly code = "SESSION_BINDING_GONE";
+  readonly webContentsId: number;
+
+  constructor(webContentsId: number) {
+    super(
+      `MCP pinned view ${webContentsId} no longer available — the renderer session this MCP session was bound to has been destroyed. Do not retry.`
+    );
+    this.name = "SessionBindingError";
+    this.webContentsId = webContentsId;
+  }
+}
+
 export function createRendererBridge(
   pendingManifests: Map<string, PendingRequest<ActionManifestEntry[]>>,
   pendingDispatches: Map<string, PendingRequest<DispatchEnvelope>>,
@@ -44,7 +57,7 @@ export function createRendererBridge(
   function getPinnedWebContents(id: number): Electron.WebContents {
     const wc = electronWebContents.fromId(id);
     if (!wc || wc.isDestroyed()) {
-      throw new Error(`MCP pinned view ${id} no longer available`);
+      throw new SessionBindingError(id);
     }
     return wc;
   }
