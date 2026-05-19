@@ -1064,57 +1064,6 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
     }
   };
 
-  const handleSetDeviceEmulation = async (
-    webContentsId: unknown,
-    panelId: unknown,
-    params: unknown
-  ): Promise<void> => {
-    if (typeof webContentsId !== "number" || typeof panelId !== "string") {
-      throw new Error("Invalid arguments: webContentsId must be number, panelId must be string");
-    }
-    if (params !== null && (typeof params !== "object" || Array.isArray(params))) {
-      throw new Error("Invalid arguments: params must be an object or null");
-    }
-
-    if (getWebviewDialogService().getPanelId(webContentsId) !== panelId) return;
-
-    const wc = webContents.fromId(webContentsId);
-    if (!wc || wc.isDestroyed()) return;
-
-    if (params === null) {
-      wc.disableDeviceEmulation();
-      return;
-    }
-
-    const { screenPosition, width, height } = params as {
-      screenPosition?: unknown;
-      width?: unknown;
-      height?: unknown;
-    };
-    if (
-      (screenPosition !== "mobile" && screenPosition !== "desktop") ||
-      typeof width !== "number" ||
-      !Number.isFinite(width) ||
-      width <= 0 ||
-      typeof height !== "number" ||
-      !Number.isFinite(height) ||
-      height <= 0
-    ) {
-      throw new Error(
-        "Invalid arguments: params must have screenPosition ('mobile'|'desktop') and positive finite width/height"
-      );
-    }
-
-    wc.enableDeviceEmulation({
-      screenPosition,
-      screenSize: { width, height },
-      viewSize: { width, height },
-      viewPosition: { x: 0, y: 0 },
-      deviceScaleFactor: 0,
-      scale: 1,
-    });
-  };
-
   const cleanups: Array<() => void> = [
     typedHandle(CHANNELS.WEBVIEW_SET_LIFECYCLE_STATE, handleSetLifecycleState),
     typedHandle(CHANNELS.WEBVIEW_REGISTER_PANEL, handleRegisterPanel),
@@ -1128,7 +1077,6 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
     typedHandle(CHANNELS.WEBVIEW_CANCEL_OAUTH_LOOPBACK, handleCancelOAuthLoopback),
     typedHandle(CHANNELS.WEBVIEW_RELOAD_IGNORING_CACHE, handleReloadIgnoringCache),
     typedHandle(CHANNELS.WEBVIEW_GET_SCROLL_POSITION, handleGetScrollPosition),
-    typedHandle(CHANNELS.WEBVIEW_SET_DEVICE_EMULATION, handleSetDeviceEmulation),
   ];
 
   return () => {
