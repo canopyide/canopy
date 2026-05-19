@@ -17,18 +17,16 @@ describe("freshnessClass", () => {
     expect(freshnessClass("aging")).toBe("opacity-75");
   });
 
-  it("returns border-l-2 + italic for stale-disk level, not opacity", () => {
+  it("returns border-l-2 border-border-default italic for stale-disk level, not opacity", () => {
     const result = freshnessClass("stale-disk");
-    expect(result).toContain("border-l-2");
-    expect(result).toContain("italic");
-    expect(result).not.toMatch(/opacity-[56]0/);
+    expect(result).toBe("border-l-2 border-border-default italic");
+    expect(result).not.toMatch(/\bopacity-/);
   });
 
-  it("returns border-l-2 + italic for errored level, not opacity", () => {
+  it("returns border-l-2 border-border-default italic for errored level, not opacity", () => {
     const result = freshnessClass("errored");
-    expect(result).toContain("border-l-2");
-    expect(result).toContain("italic");
-    expect(result).not.toMatch(/opacity-[56]0/);
+    expect(result).toBe("border-l-2 border-border-default italic");
+    expect(result).not.toMatch(/\bopacity-/);
   });
 });
 

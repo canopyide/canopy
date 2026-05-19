@@ -61,8 +61,6 @@ function blendOverBackground(fgHex: string, bgHex: string, opacity: number): str
 
 const FRESHNESS_OPACITY_TIERS: Array<{ opacity: number; tier: string }> = [
   { opacity: 0.75, tier: "aging" },
-  { opacity: 0.6, tier: "stale-disk" },
-  { opacity: 0.5, tier: "errored" },
 ];
 
 function hexToLinear(channel: number): number {
