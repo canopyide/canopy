@@ -116,7 +116,7 @@ export function useWorktreeStatus({
 
   const effectiveSummary = isSummarySameAsCommit ? null : worktree.summary;
 
-  const computedSubtitle = useMemo((): ComputedSubtitle => {
+  const computedSubtitle: ComputedSubtitle = (() => {
     if (hasChanges && worktree.worktreeChanges) {
       return { text: "", tone: "warning" };
     }
@@ -125,22 +125,14 @@ export function useWorktreeStatus({
       return { text: firstLineLastCommitMessage, tone: "muted" };
     }
 
-    if (
-      worktree.linked?.pr?.title?.trim() &&
-      worktree.linked.pr.state !== "closed" &&
-      worktree.linked.pr.state !== "declined"
-    ) {
-      return { text: worktree.linked.pr.title.trim(), tone: "muted" };
+    const prTitle = worktree.linked?.pr?.title?.trim();
+    const prState = worktree.linked?.pr?.state;
+    if (prTitle && prState !== "closed" && prState !== "declined") {
+      return { text: prTitle, tone: "muted" };
     }
 
     return { text: "No recent activity", tone: "muted" };
-  }, [
-    hasChanges,
-    worktree.worktreeChanges,
-    firstLineLastCommitMessage,
-    worktree.linked?.pr?.title,
-    worktree.linked?.pr?.state,
-  ]);
+  })();
 
   const spineState: SpineState = useMemo(() => {
     if (hasChanges) return "dirty";
