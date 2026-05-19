@@ -11,14 +11,22 @@
  * response) is unchanged — these types are compile-time only.
  */
 
-import type { CreateWorktreeOptions, WorktreeSnapshot } from "./workspace-host.js";
+import type {
+  CreateWorktreeOptions,
+  WorktreeSnapshot,
+  WorktreeEventVersion,
+} from "./workspace-host.js";
 
 export type WorktreePortResourceAction = "provision" | "teardown" | "resume" | "pause" | "status";
 
 export interface WorktreePortProtocol {
   "get-all-states": {
     payload: Record<string, never>;
-    result: { states: WorktreeSnapshot[] };
+    // Carries the host's current version stamp so the renderer can anchor its
+    // comparison baseline to the host's actual `(epoch, seq)` position rather
+    // than a renderer-minted counter (#8403). `seq` is the high-water mark at
+    // snapshot time — a state description, not a new event.
+    result: { states: WorktreeSnapshot[] } & WorktreeEventVersion;
   };
   "set-active": {
     payload: { worktreeId: string };

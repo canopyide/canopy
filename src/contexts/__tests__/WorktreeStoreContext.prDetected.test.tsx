@@ -12,8 +12,16 @@ import {
 } from "@/lib/githubResourceCache";
 import { useProjectStore } from "@/store/projectStore";
 import type { GitHubPR, GitHubPRCIStatus } from "@shared/types/github";
-import type { WorktreeSnapshot } from "@shared/types";
+import type { WorktreeSnapshot, WorktreeEventVersion } from "@shared/types";
 import type { Project } from "@shared/types/project";
+
+// Host-minted `(epoch, seq)` versions (#8403). The mock host uses a fixed
+// epoch; `get-all-states` reports seq 0 and push events advance the seq.
+const TEST_EPOCH = "test-epoch";
+let _seq = 0;
+function nextV(): WorktreeEventVersion {
+  return { epoch: TEST_EPOCH, seq: ++_seq };
+}
 
 type PortEventName =
   | "worktree-update"
@@ -72,11 +80,13 @@ beforeEach(() => {
   listeners.clear();
   resetCache();
   setCurrentProject("/repo/proj");
+  _seq = 0;
 
   (globalThis as unknown as { window: Window }).window.electron = {
     worktreePort: {
       isReady: () => true,
-      request: (_name: string) => Promise.resolve({ states: [] as WorktreeSnapshot[] }),
+      request: (_name: string) =>
+        Promise.resolve({ states: [] as WorktreeSnapshot[], epoch: TEST_EPOCH, seq: 0 }),
       onEvent: (name: PortEventName, cb: (data: unknown) => void) => {
         let set = listeners.get(name);
         if (!set) {
@@ -123,7 +133,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
   it("writes prCiStatus to the worktree store", async () => {
     const store = await renderProvider();
     act(() => {
-      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+      store.getState().applyUpdate(makeWorktree("wt-1"), nextV());
     });
 
     act(() => {
@@ -143,12 +153,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
   it("clears prCiStatus when the event omits it (full-replace, matches backend)", async () => {
     const store = await renderProvider();
     act(() => {
-      store
-        .getState()
-        .applyUpdate(
-          makeWorktree("wt-1", { prCiStatus: "FAILURE" }),
-          store.getState().nextVersion()
-        );
+      store.getState().applyUpdate(makeWorktree("wt-1", { prCiStatus: "FAILURE" }), nextV());
     });
 
     act(() => {
@@ -167,7 +172,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
   it("updates the GitHub PR cache so the dropdown stays in sync", async () => {
     const store = await renderProvider();
     act(() => {
-      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+      store.getState().applyUpdate(makeWorktree("wt-1"), nextV());
     });
 
     const key = buildCacheKey("/repo/proj", "pr", "open", "created");
@@ -201,7 +206,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
   it("does not bump the cache generation when the CI status is unchanged", async () => {
     const store = await renderProvider();
     act(() => {
-      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+      store.getState().applyUpdate(makeWorktree("wt-1"), nextV());
     });
 
     const key = buildCacheKey("/repo/proj", "pr", "open", "created");
@@ -230,7 +235,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
   it("clears the cached ciStatus when prCiStatus is undefined (full-replace)", async () => {
     const store = await renderProvider();
     act(() => {
-      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+      store.getState().applyUpdate(makeWorktree("wt-1"), nextV());
     });
 
     const key = buildCacheKey("/repo/proj", "pr", "open", "created");
@@ -259,7 +264,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
   it("skips the cache mutation when there is no current project", async () => {
     const store = await renderProvider();
     act(() => {
-      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+      store.getState().applyUpdate(makeWorktree("wt-1"), nextV());
     });
 
     setCurrentProject(null);
@@ -290,7 +295,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
   it("targets the cache slot for the current project, not a sibling", async () => {
     const store = await renderProvider();
     act(() => {
-      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+      store.getState().applyUpdate(makeWorktree("wt-1"), nextV());
     });
 
     const sameProj = buildCacheKey("/repo/proj", "pr", "open", "created");
@@ -326,7 +331,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
   it("applies last-write-wins across rapid successive events for the same PR", async () => {
     const store = await renderProvider();
     act(() => {
-      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+      store.getState().applyUpdate(makeWorktree("wt-1"), nextV());
     });
 
     const key = buildCacheKey("/repo/proj", "pr", "open", "created");
@@ -388,7 +393,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
         .getState()
         .applyUpdate(
           makeWorktree("wt-1", { branch: "feature/bar", prCiStatus: "FAILURE", prNumber: 99 }),
-          store.getState().nextVersion()
+          nextV()
         );
     });
 
@@ -412,12 +417,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
   it("applies the overlay when event.branchName matches the worktree's current branch", async () => {
     const store = await renderProvider();
     act(() => {
-      store
-        .getState()
-        .applyUpdate(
-          makeWorktree("wt-1", { branch: "feature/foo" }),
-          store.getState().nextVersion()
-        );
+      store.getState().applyUpdate(makeWorktree("wt-1", { branch: "feature/foo" }), nextV());
     });
 
     act(() => {
@@ -438,12 +438,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
   it("applies the overlay when the event omits branchName (older host backward compat)", async () => {
     const store = await renderProvider();
     act(() => {
-      store
-        .getState()
-        .applyUpdate(
-          makeWorktree("wt-1", { branch: "feature/foo" }),
-          store.getState().nextVersion()
-        );
+      store.getState().applyUpdate(makeWorktree("wt-1", { branch: "feature/foo" }), nextV());
     });
 
     act(() => {
@@ -467,12 +462,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
     // feature/foo lookup completes and tries to land on the now-bar row.
     const store = await renderProvider();
     act(() => {
-      store
-        .getState()
-        .applyUpdate(
-          makeWorktree("wt-1", { branch: "feature/foo" }),
-          store.getState().nextVersion()
-        );
+      store.getState().applyUpdate(makeWorktree("wt-1", { branch: "feature/foo" }), nextV());
     });
 
     // Worktree-update arrives reflecting the branch change to feature/bar.
@@ -480,6 +470,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
       emit("worktree-update", {
         type: "worktree-update",
         worktree: makeWorktree("wt-1", { branch: "feature/bar", prCiStatus: undefined }),
+        ...nextV(),
       });
     });
 
@@ -505,9 +496,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
   it("applies the overlay when the worktree has no branch (detached HEAD)", async () => {
     const store = await renderProvider();
     act(() => {
-      store
-        .getState()
-        .applyUpdate(makeWorktree("wt-1", { branch: undefined }), store.getState().nextVersion());
+      store.getState().applyUpdate(makeWorktree("wt-1", { branch: undefined }), nextV());
     });
 
     act(() => {
@@ -528,7 +517,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
   it("uses the project path read at event time so closures cannot go stale", async () => {
     const store = await renderProvider();
     act(() => {
-      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+      store.getState().applyUpdate(makeWorktree("wt-1"), nextV());
     });
 
     // Project switches AFTER the provider mounts; the handler must read the
@@ -567,7 +556,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
   it("evicts a PR from the 'open' slot once it closes", async () => {
     const store = await renderProvider();
     act(() => {
-      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+      store.getState().applyUpdate(makeWorktree("wt-1"), nextV());
     });
 
     const key = buildCacheKey("/repo/proj", "pr", "open", "created");
@@ -602,7 +591,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
   it("evicts a closed PR from every 'open' sort slot in one event", async () => {
     const store = await renderProvider();
     act(() => {
-      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+      store.getState().applyUpdate(makeWorktree("wt-1"), nextV());
     });
 
     const createdKey = buildCacheKey("/repo/proj", "pr", "open", "created");
@@ -642,7 +631,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
   it("evicts a PR from the 'open' slot once it merges", async () => {
     const store = await renderProvider();
     act(() => {
-      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+      store.getState().applyUpdate(makeWorktree("wt-1"), nextV());
     });
 
     const key = buildCacheKey("/repo/proj", "pr", "open", "created");
@@ -672,7 +661,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
   it("evicts a PR from the 'closed' slot once it reopens", async () => {
     const store = await renderProvider();
     act(() => {
-      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+      store.getState().applyUpdate(makeWorktree("wt-1"), nextV());
     });
 
     const key = buildCacheKey("/repo/proj", "pr", "closed", "created");
@@ -702,7 +691,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
   it("keeps the row in a CI-only rollup where the state is unchanged", async () => {
     const store = await renderProvider();
     act(() => {
-      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+      store.getState().applyUpdate(makeWorktree("wt-1"), nextV());
     });
 
     const key = buildCacheKey("/repo/proj", "pr", "open", "created");
@@ -734,7 +723,7 @@ describe("WorktreeStoreProvider pr-detected handler", () => {
   it("keeps a state-changed PR in the 'all' slot, only patching CI", async () => {
     const store = await renderProvider();
     act(() => {
-      store.getState().applyUpdate(makeWorktree("wt-1"), store.getState().nextVersion());
+      store.getState().applyUpdate(makeWorktree("wt-1"), nextV());
     });
 
     const key = buildCacheKey("/repo/proj", "pr", "all", "created");
@@ -775,7 +764,7 @@ describe("WorktreeStoreProvider pr-cleared handler", () => {
           prUrl: "https://example.test/pr/42",
           prState: "open",
         }),
-        store.getState().nextVersion()
+        nextV()
       );
     });
 
@@ -803,7 +792,7 @@ describe("WorktreeStoreProvider pr-cleared handler", () => {
           prUrl: "https://example.test/pr/42",
           prState: "open",
         }),
-        store.getState().nextVersion()
+        nextV()
       );
     });
 
@@ -826,10 +815,7 @@ describe("WorktreeStoreProvider pr-cleared handler", () => {
     act(() => {
       store
         .getState()
-        .applyUpdate(
-          makeWorktree("wt-1", { branch: "feature/foo", prNumber: 42 }),
-          store.getState().nextVersion()
-        );
+        .applyUpdate(makeWorktree("wt-1", { branch: "feature/foo", prNumber: 42 }), nextV());
     });
 
     act(() => {
@@ -849,7 +835,7 @@ describe("WorktreeStoreProvider pr-cleared handler", () => {
         .getState()
         .applyUpdate(
           makeWorktree("wt-1", { branch: "feature/foo", prNumber: 42, prCiStatus: "FAILURE" }),
-          store.getState().nextVersion()
+          nextV()
         );
     });
 
@@ -878,7 +864,7 @@ describe("WorktreeStoreProvider pr-cleared handler", () => {
           prState: "open",
           prCiStatus: "SUCCESS",
         }),
-        store.getState().nextVersion()
+        nextV()
       );
     });
 
@@ -907,7 +893,7 @@ describe("WorktreeStoreProvider issue-detected handler", () => {
           issueNumber: 100,
           issueTitle: "Old issue",
         }),
-        store.getState().nextVersion()
+        nextV()
       );
     });
 
@@ -929,12 +915,7 @@ describe("WorktreeStoreProvider issue-detected handler", () => {
   it("applies the overlay when event.branchName matches the worktree's current branch", async () => {
     const store = await renderProvider();
     act(() => {
-      store
-        .getState()
-        .applyUpdate(
-          makeWorktree("wt-1", { branch: "feature/foo" }),
-          store.getState().nextVersion()
-        );
+      store.getState().applyUpdate(makeWorktree("wt-1", { branch: "feature/foo" }), nextV());
     });
 
     act(() => {
@@ -955,12 +936,7 @@ describe("WorktreeStoreProvider issue-detected handler", () => {
   it("applies the overlay when the event omits branchName (older host backward compat)", async () => {
     const store = await renderProvider();
     act(() => {
-      store
-        .getState()
-        .applyUpdate(
-          makeWorktree("wt-1", { branch: "feature/foo" }),
-          store.getState().nextVersion()
-        );
+      store.getState().applyUpdate(makeWorktree("wt-1", { branch: "feature/foo" }), nextV());
     });
 
     act(() => {
@@ -985,7 +961,7 @@ describe("WorktreeStoreProvider manual issue associations (#8079)", () => {
       worktreePort: { request: (name: string) => Promise<unknown> };
       worktree: { getAllIssueAssociations: () => Promise<unknown> };
     };
-    electron.worktreePort.request = () => Promise.resolve({ states });
+    electron.worktreePort.request = () => Promise.resolve({ states, epoch: TEST_EPOCH, seq: 0 });
     electron.worktree.getAllIssueAssociations = () => Promise.resolve(associations);
   }
 
@@ -1005,6 +981,7 @@ describe("WorktreeStoreProvider manual issue associations (#8079)", () => {
           issueNumber: undefined,
           issueTitle: undefined,
         }),
+        ...nextV(),
       });
     });
 
@@ -1038,6 +1015,7 @@ describe("WorktreeStoreProvider manual issue associations (#8079)", () => {
       emit("worktree-update", {
         type: "worktree-update",
         worktree: makeWorktree("wt-1", { issueNumber: undefined, issueTitle: undefined }),
+        ...nextV(),
       });
     });
 
@@ -1047,7 +1025,9 @@ describe("WorktreeStoreProvider manual issue associations (#8079)", () => {
 
 describe("WorktreeStoreProvider visibilitychange (#8066 consolidation)", () => {
   it("does not call worktreePort.request on visibilitychange after migration", async () => {
-    const requestMock = vi.fn(() => Promise.resolve({ states: [] as WorktreeSnapshot[] }));
+    const requestMock = vi.fn(() =>
+      Promise.resolve({ states: [] as WorktreeSnapshot[], epoch: TEST_EPOCH, seq: 0 })
+    );
     const electron = (globalThis as unknown as { window: Window }).window.electron as unknown as {
       worktreePort: { request: (name: string) => Promise<unknown> };
     };
@@ -1075,5 +1055,46 @@ describe("WorktreeStoreProvider visibilitychange (#8066 consolidation)", () => {
     });
 
     expect(requestMock.mock.calls.length).toBe(initialCallCount);
+  });
+});
+
+describe("WorktreeStoreProvider host restart re-hydration (#8403)", () => {
+  it("a new-epoch event triggers a re-hydrate that replaces the stale tree", async () => {
+    const store = await renderProvider();
+    // Initialized under TEST_EPOCH with a stale worktree.
+    act(() => {
+      store.getState().applyUpdate(makeWorktree("old-1"), nextV());
+    });
+    expect(store.getState().worktrees.has("old-1")).toBe(true);
+
+    // Host restarts: get-all-states now answers under a new epoch with the
+    // authoritative post-restart tree. The new-epoch push event's seq matches
+    // the high-water seq the snapshot reports — the equal-seq snapshot must
+    // still apply, or the re-hydrate is silently swallowed (review finding #2).
+    const electron = (globalThis as unknown as { window: Window }).window.electron as unknown as {
+      worktreePort: { request: (name: string) => Promise<unknown> };
+    };
+    electron.worktreePort.request = () =>
+      Promise.resolve({
+        states: [makeWorktree("post-1"), makeWorktree("post-2")],
+        epoch: "epoch-restarted",
+        seq: 1,
+      });
+
+    await act(async () => {
+      emit("worktree-update", {
+        type: "worktree-update",
+        worktree: makeWorktree("post-1"),
+        epoch: "epoch-restarted",
+        seq: 1,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(store.getState().worktrees.has("old-1")).toBe(false);
+    expect(store.getState().worktrees.has("post-2")).toBe(true);
+    expect(store.getState().version.epoch).toBe("epoch-restarted");
   });
 });

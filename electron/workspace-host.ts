@@ -82,7 +82,8 @@ async function handleWorktreePortRequest(
     switch (msg.action) {
       case "get-all-states": {
         const states = workspaceService.getSnapshotsSync();
-        result = { states };
+        const { epoch, seq } = workspaceService.getVersion();
+        result = { states, epoch, seq };
         break;
       }
 

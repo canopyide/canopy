@@ -1,10 +1,11 @@
-import { createContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useEffect, useState, startTransition, type ReactNode } from "react";
 import {
   createWorktreeStore,
   setCurrentViewStore,
+  compareVersion,
   type WorktreeViewStoreApi,
 } from "@/store/createWorktreeStore";
-import type { WorktreeSnapshot } from "@shared/types";
+import type { WorktreeSnapshot, WorktreeEventVersion } from "@shared/types";
 import type { GitHubPR, GitHubPRCIStatus } from "@shared/types/github";
 import type { PluginWorktreeLinked } from "@shared/types/plugin";
 import { useWorktreeSelectionStore } from "@/store/worktreeStore";
@@ -21,11 +22,15 @@ export const WorktreeStoreContext = createContext<WorktreeViewStoreApi | null>(n
 interface WorktreeUpdateEvent {
   type: "worktree-update";
   worktree: WorktreeSnapshot;
+  epoch: string;
+  seq: number;
 }
 
 interface WorktreeRemovedEvent {
   type: "worktree-removed";
   worktreeId: string;
+  epoch: string;
+  seq: number;
 }
 
 interface PRDetectedEvent {
@@ -79,6 +84,17 @@ function branchesMatch(
   return eventBranch === currentBranch;
 }
 
+// Overlay events (pr/issue detection) are renderer-synthesized — the host
+// mints no `(epoch, seq)` for them. Reuse the CURRENT stamp rather than
+// advancing the seq: the store accepts an equal same-epoch version (the guard
+// rejects only strictly-older), so the targeted field merge lands without
+// claiming a seq the host will later emit. Advancing it would shadow the real
+// host event that lands on that exact seq (#8403 review finding #3). A later
+// higher-seq host update or epoch transition still supersedes the overlay.
+function overlayVersion(current: WorktreeEventVersion): WorktreeEventVersion {
+  return { epoch: current.epoch, seq: current.seq };
+}
+
 interface WorktreeActivatedEvent {
   type: "worktree-activated";
   worktreeId: string;
@@ -122,7 +138,7 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
 
       worktreePort
         .request("get-all-states")
-        .then(async (response: { states: WorktreeSnapshot[] }) => {
+        .then(async (response: { states: WorktreeSnapshot[]; epoch: string; seq: number }) => {
           if (thisGen !== generation) return;
 
           // Hydrate manual issue associations from electron store.
@@ -132,12 +148,16 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
           // merges them (MANUAL_OVER_AUTO) and caches the map so later events
           // can re-merge without another IPC round-trip.
           const states = response.states;
-          // Mint the snapshot version NOW, while this data is fresh — before
-          // awaiting the association fetch. A `worktree-update` delivered
-          // during that await mints a higher version via its own
-          // `nextVersion()` and must win; minting late would make this
-          // now-stale snapshot silently revert the live update (#8079).
-          const snapshotVersion = store.getState().nextVersion();
+          // The host stamps this response with its current `(epoch, seq)`
+          // high-water mark, so the snapshot version is fixed at request time
+          // — no renderer-side minting. A `worktree-update` delivered during
+          // the association await carries a strictly higher host `seq` (same
+          // epoch) and `applySnapshot`'s own compare guard rejects this older
+          // snapshot, so the live update is never reverted (#8079, #8403).
+          const snapshotVersion: WorktreeEventVersion = {
+            epoch: response.epoch,
+            seq: response.seq,
+          };
 
           // `undefined` (not `{}`) means "couldn't load — keep whatever's
           // cached". An empty object means "authoritatively no associations".
@@ -161,15 +181,26 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
           if (!worktreePort.isReady()) return;
 
           // A `worktree-update` raced ahead during the association fetch and
-          // already advanced the store past this snapshot. Don't revert it.
-          // On a cold start we still must hydrate, so retry the fetch (the
-          // generation guard prevents overlapping stale completions).
-          if (snapshotVersion <= store.getState().version) {
+          // advanced the store STRICTLY past this snapshot (same epoch, higher
+          // seq). Don't revert it. An equal seq is the host's authoritative
+          // state at the same boundary (`get-all-states` reports the high-water
+          // seq without advancing), so it must still apply — otherwise cold
+          // start never initializes and an epoch-change re-hydrate is silently
+          // swallowed (#8403 review findings #1, #2). A differing epoch means
+          // the host restarted and always wins. On cold start we still must
+          // hydrate, so retry (the generation guard prevents stale overlaps).
+          if (compareVersion(snapshotVersion, store.getState().version) < 0) {
             if (!store.getState().isInitialized) fetchInitialState();
             return;
           }
 
-          store.getState().applySnapshot(states, snapshotVersion, associations);
+          // Wrap the wholesale Map replacement in a transition so the
+          // cascade of `useSyncExternalStore` worktree subscribers re-renders
+          // at non-urgent priority instead of synchronously blocking the
+          // event that delivered the snapshot (#8403).
+          startTransition(() => {
+            store.getState().applySnapshot(states, snapshotVersion, associations);
+          });
         })
         .catch((err: Error) => {
           if (thisGen !== generation) return;
@@ -184,7 +215,15 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
     cleanups.push(
       worktreePort.onEvent("worktree-update", (data) => {
         const event = data as WorktreeUpdateEvent;
-        store.getState().applyUpdate(event.worktree, store.getState().nextVersion());
+        const prevEpoch = store.getState().version.epoch;
+        // A differing epoch means the workspace host restarted. The event
+        // carries valid state and is applied (a new epoch always wins the
+        // compare), then we re-hydrate from a fresh snapshot to recover
+        // anything the restart's seq reset would otherwise have hidden.
+        // prevEpoch === "" is the pre-hydration baseline, not a restart.
+        const epochChanged = event.epoch !== prevEpoch && prevEpoch !== "";
+        store.getState().applyUpdate(event.worktree, { epoch: event.epoch, seq: event.seq });
+        if (epochChanged) fetchInitialState();
 
         // Side effect: sync pending worktree selection
         const selectionStore = useWorktreeSelectionStore.getState();
@@ -197,19 +236,24 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
     cleanups.push(
       worktreePort.onEvent("worktree-removed", (data) => {
         const event = data as WorktreeRemovedEvent;
+        const prevEpoch = store.getState().version.epoch;
+        const epochChanged = event.epoch !== prevEpoch && prevEpoch !== "";
         const { worktrees } = store.getState();
         const worktree = worktrees.get(event.worktreeId);
 
-        // Block removal of main worktree
+        // Block removal of main worktree (but still re-hydrate on a host
+        // restart so the rest of the tree converges on fresh state).
         if (worktree?.isMainWorktree) {
           console.warn("[WorktreeStore] Attempted to remove main worktree - blocked", {
             worktreeId: event.worktreeId,
             branch: worktree.branch,
           });
+          if (epochChanged) fetchInitialState();
           return;
         }
 
-        store.getState().applyRemove(event.worktreeId, store.getState().nextVersion());
+        store.getState().applyRemove(event.worktreeId, { epoch: event.epoch, seq: event.seq });
+        if (epochChanged) fetchInitialState();
 
         // Side effect: invalidate pulse cache
         usePulseStore.getState().invalidate(event.worktreeId);
@@ -273,7 +317,7 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
             issueLastUpdatedAt: event.issueLastUpdatedAt ?? existing.issueLastUpdatedAt,
             linked: event.linked ?? existing.linked,
           },
-          store.getState().nextVersion()
+          overlayVersion(store.getState().version)
         );
 
         // Sync the GitHub PR dropdown cache so the sidebar PRBadge and the
@@ -348,7 +392,7 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
               ? { providerId: existing.linked.providerId, issue: existing.linked.issue }
               : null,
           },
-          store.getState().nextVersion()
+          overlayVersion(store.getState().version)
         );
       })
     );
@@ -393,7 +437,7 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
                 }
               : {}),
           },
-          store.getState().nextVersion()
+          overlayVersion(store.getState().version)
         );
       })
     );
@@ -412,7 +456,7 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
             issueTitle: undefined,
             issueLastUpdatedAt: undefined,
           },
-          store.getState().nextVersion()
+          overlayVersion(store.getState().version)
         );
       })
     );

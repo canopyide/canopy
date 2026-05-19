@@ -88,7 +88,7 @@ function renderPalette(
   onClose: () => void = () => {}
 ) {
   const store = createWorktreeStore();
-  store.getState().applySnapshot(worktrees, 1);
+  store.getState().applySnapshot(worktrees, { epoch: "test", seq: 1 });
   return render(
     <WorktreeStoreContext.Provider value={store}>
       <FleetPickerPalette isOpen={isOpen} onClose={onClose} />

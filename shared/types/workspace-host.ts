@@ -37,6 +37,23 @@ import type { ProjectPulse, PulseRangeDays } from "./pulse.js";
 
 export type { BranchInfo, CreateWorktreeOptions } from "./git.js";
 
+/**
+ * Host-minted version stamp for worktree state events.
+ *
+ * `epoch` is a UUID regenerated each time the workspace-host process starts —
+ * it identifies a single host run and is compared by identity only (UUIDv4
+ * strings carry no meaningful ordering). `seq` is a monotonic counter within an
+ * epoch. The renderer compares stamps by checking epoch equality first: a
+ * differing epoch means the host restarted, so the event is always accepted and
+ * the renderer re-hydrates from a fresh snapshot. Within the same epoch, the
+ * higher `seq` wins. This replaces the renderer-minted counter that could not
+ * see a host-restart boundary (#8403).
+ */
+export interface WorktreeEventVersion {
+  epoch: string;
+  seq: number;
+}
+
 /** Pull request service status */
 export interface PRServiceStatus {
   isRunning: boolean;
@@ -385,7 +402,13 @@ export type WorkspaceHostEvent =
   | { type: "update-monitor-config-result"; requestId: string; success: boolean; error?: string }
   | { type: "project-switch-result"; requestId: string; success: boolean }
   // Worktree query responses
-  | { type: "all-states"; requestId: string; states: WorktreeSnapshot[] }
+  | {
+      type: "all-states";
+      requestId: string;
+      states: WorktreeSnapshot[];
+      epoch: string;
+      seq: number;
+    }
   | { type: "monitor"; requestId: string; state: WorktreeSnapshot | null }
   // Worktree operation responses
   | { type: "set-active-result"; requestId: string; success: boolean }
@@ -415,8 +438,8 @@ export type WorkspaceHostEvent =
   // Git operation responses
   | { type: "get-file-diff-result"; requestId: string; diff: string; error?: string }
   // Spontaneous updates (no requestId - these are pushed events)
-  | { type: "worktree-update"; worktree: WorktreeSnapshot }
-  | { type: "worktree-removed"; worktreeId: string }
+  | { type: "worktree-update"; worktree: WorktreeSnapshot; epoch: string; seq: number }
+  | { type: "worktree-removed"; worktreeId: string; epoch: string; seq: number }
   // Linux-only: fired once per host-process lifetime when the recursive file
   // watcher hits the inotify watch limit (ENOSPC).
   | { type: "inotify-limit-reached" }

@@ -89,7 +89,7 @@ function renderHarness(
   props: HarnessProps
 ): ReturnType<typeof render> {
   const store = createWorktreeStore();
-  store.getState().applySnapshot(worktrees, 1);
+  store.getState().applySnapshot(worktrees, { epoch: "test", seq: 1 });
   return render(
     <WorktreeStoreContext.Provider value={store}>
       <Harness {...props} />

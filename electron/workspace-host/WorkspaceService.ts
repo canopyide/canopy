@@ -1,4 +1,5 @@
 import os from "os";
+import { randomUUID } from "node:crypto";
 import PQueue from "p-queue";
 import { existsSync } from "fs";
 import { stat, readFile, access, mkdir } from "fs/promises";
@@ -115,6 +116,30 @@ export class WorkspaceService {
   private topologyDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private topologyWatcherEnabled = true;
   private topologyWatcherGeneration = 0;
+
+  /**
+   * Host-run identity, minted once per WorkspaceService instance — i.e. once
+   * per workspace-host process lifetime. Stamped onto every worktree state
+   * event so the renderer can detect a host restart (epoch change) and
+   * re-hydrate instead of silently dropping events whose `seq` reset (#8403).
+   */
+  private readonly epoch: string = randomUUID();
+  /** Monotonic event counter within `epoch`. */
+  private seq = 0;
+
+  /** Advance and return the next monotonic seq for an outgoing event. */
+  private nextSeq(): number {
+    return ++this.seq;
+  }
+
+  /**
+   * Current version stamp — used by the `get-all-states` response so the
+   * renderer anchors its baseline to the host's high-water mark. `seq` is NOT
+   * advanced here: a snapshot describes existing state, it is not a new event.
+   */
+  getVersion(): { epoch: string; seq: number } {
+    return { epoch: this.epoch, seq: this.seq };
+  }
 
   constructor(private readonly sendEvent: (event: WorkspaceHostEvent) => void) {
     this.fetchCoordinator = new RepoFetchCoordinator({
@@ -489,6 +514,8 @@ export class WorkspaceService {
         this.sendEvent({
           type: "worktree-removed",
           worktreeId: id,
+          epoch: this.epoch,
+          seq: this.nextSeq(),
         });
         events.emit("sys:worktree:remove", { worktreeId: id, timestamp: Date.now() });
       }
@@ -819,6 +846,8 @@ export class WorkspaceService {
     this.sendEvent({
       type: "worktree-update",
       worktree: snapshot,
+      epoch: this.epoch,
+      seq: this.nextSeq(),
     });
     events.emit("sys:worktree:update", snapshot);
   }
@@ -828,6 +857,8 @@ export class WorkspaceService {
     this.sendEvent({
       type: "worktree-update",
       worktree: snapshot,
+      epoch: this.epoch,
+      seq: this.nextSeq(),
     });
     events.emit("sys:worktree:update", snapshot);
   }
@@ -1048,7 +1079,12 @@ export class WorkspaceService {
       this.listService.invalidateCache(cacheKey);
     }
 
-    this.sendEvent({ type: "worktree-removed", worktreeId });
+    this.sendEvent({
+      type: "worktree-removed",
+      worktreeId,
+      epoch: this.epoch,
+      seq: this.nextSeq(),
+    });
     events.emit("sys:worktree:remove", { worktreeId, timestamp: Date.now() });
 
     console.log(
@@ -1061,7 +1097,13 @@ export class WorkspaceService {
     for (const monitor of this.monitors.values()) {
       states.push(monitor.getSnapshot());
     }
-    this.sendEvent({ type: "all-states", requestId, states });
+    this.sendEvent({
+      type: "all-states",
+      requestId,
+      states,
+      epoch: this.epoch,
+      seq: this.seq,
+    });
   }
 
   getSnapshotsSync(): WorktreeSnapshot[] {
@@ -1632,6 +1674,8 @@ export class WorkspaceService {
       this.sendEvent({
         type: "worktree-removed",
         worktreeId,
+        epoch: this.epoch,
+        seq: this.nextSeq(),
       });
 
       if (branchToDelete && this.git) {
