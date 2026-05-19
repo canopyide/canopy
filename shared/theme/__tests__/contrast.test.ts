@@ -212,6 +212,74 @@ describe("getThemeContrastWarnings", () => {
     }
   });
 
+  it("emits freshness opacity warning when attenuated text-primary fails threshold", () => {
+    // #777777 on #ffffff is ~4.51:1 at full opacity (passes), but at 50% it
+    // blends to #bbbbbb on #ffffff → ~1.88:1 (fails 4.5).
+    const scheme = makeScheme({
+      "text-primary": "#777777" as AppColorSchemeTokens["text-primary"],
+      "surface-canvas": "#ffffff" as AppColorSchemeTokens["surface-canvas"],
+    });
+    const warnings = getThemeContrastWarnings(scheme);
+    const freshnessWarnings = warnings.filter(
+      (w) => w.message.includes("opacity") && w.message.includes("text-primary")
+    );
+    expect(freshnessWarnings.length).toBeGreaterThan(0);
+    const errored50 = freshnessWarnings.find((w) => w.message.includes("50% opacity (errored)"));
+    expect(errored50).toBeDefined();
+  });
+
+  it("includes tier label in freshness opacity warning message", () => {
+    // #666666 on #ffffff is ~5.73:1 bare but ~2.12:1 at 50%.
+    const scheme = makeScheme({
+      "text-primary": "#666666" as AppColorSchemeTokens["text-primary"],
+      "surface-sidebar": "#ffffff" as AppColorSchemeTokens["surface-sidebar"],
+    });
+    const warnings = getThemeContrastWarnings(scheme);
+    const freshnessWarnings = warnings.filter(
+      (w) => w.message.includes("opacity") && w.message.includes("text-primary")
+    );
+    expect(freshnessWarnings.length).toBeGreaterThan(0);
+    expect(freshnessWarnings.some((w) => w.message.includes("(stale-disk)"))).toBe(true);
+    expect(freshnessWarnings.some((w) => w.message.includes("(aging)"))).toBe(true);
+    expect(freshnessWarnings.some((w) => w.message.includes("(errored)"))).toBe(true);
+  });
+
+  it("emits no freshness warnings at 75% opacity for high-contrast themes", () => {
+    // #000000 on #ffffff at 75% blends to #404040 on #ffffff → ~10.4:1, well above 4.5.
+    // Override all 5 surfaces so the test doesn't depend on the base theme's other surfaces.
+    const scheme = makeScheme({
+      "text-primary": "#000000" as AppColorSchemeTokens["text-primary"],
+      "surface-grid": "#ffffff" as AppColorSchemeTokens["surface-grid"],
+      "surface-sidebar": "#ffffff" as AppColorSchemeTokens["surface-sidebar"],
+      "surface-canvas": "#ffffff" as AppColorSchemeTokens["surface-canvas"],
+      "surface-panel": "#ffffff" as AppColorSchemeTokens["surface-panel"],
+      "surface-panel-elevated": "#ffffff" as AppColorSchemeTokens["surface-panel-elevated"],
+    });
+    const warnings = getThemeContrastWarnings(scheme);
+    const aging75 = warnings.filter((w) => w.message.includes("75% opacity (aging)"));
+    expect(aging75).toHaveLength(0);
+  });
+
+  it("skips freshness checks for non-hex text-primary without crashing", () => {
+    const scheme = makeScheme({
+      "text-primary": "oklch(0.5 0.1 200)" as AppColorSchemeTokens["text-primary"],
+    });
+    const warnings = getThemeContrastWarnings(scheme);
+    const freshnessWarnings = warnings.filter((w) => w.message.includes("opacity"));
+    expect(freshnessWarnings).toHaveLength(0);
+  });
+
+  it("aging (75%) produces zero freshness warnings across all built-in themes", () => {
+    for (const scheme of BUILT_IN_APP_SCHEMES) {
+      const warnings = getThemeContrastWarnings(scheme);
+      const agingFailures = warnings.filter((w) => w.message.includes("75% opacity (aging)"));
+      expect(
+        agingFailures,
+        `${scheme.id}: aging tier must not produce contrast warnings`
+      ).toHaveLength(0);
+    }
+  });
+
   it("emits no warnings when status-* tokens meet 3.0:1 against surface-panel", () => {
     // Pure black on white is 21:1 — well above any threshold.
     const scheme = makeScheme({
