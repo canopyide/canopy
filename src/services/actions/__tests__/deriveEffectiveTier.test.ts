@@ -19,7 +19,12 @@ describe("deriveEffectiveTier — worktree.delete", () => {
     expect(
       deriveEffectiveTier(
         "worktree.delete",
-        worktreeCtx({ force: false, isProtectedBranch: true, hasTrackedChanges: true })
+        worktreeCtx({
+          force: false,
+          isProtectedBranch: true,
+          isMainWorktree: true,
+          hasTrackedChanges: true,
+        })
       )
     ).toBe("D2");
   });

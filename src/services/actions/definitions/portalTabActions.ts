@@ -254,9 +254,11 @@ export function registerPortalTabActions(
     // `lastAction` would let `action.repeatLast` replay it past its gate.
     nonRepeatable: true,
     scope: "renderer",
-    argsSchema: z.object({ tabId: z.string().optional(), confirmed: z.boolean().optional() }),
+    argsSchema: z
+      .object({ tabId: z.string().optional(), confirmed: z.boolean().optional() })
+      .optional(),
     run: async (args: unknown) => {
-      const { tabId } = args as { tabId?: string };
+      const { tabId } = (args ?? {}) as { tabId?: string };
       const state = usePortalStore.getState();
       const targetId = tabId ?? state.activeTabId;
       if (!targetId) return;

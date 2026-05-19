@@ -12,7 +12,7 @@ interface DialogCopy {
   confirmLabel: string;
 }
 
-function buildCopy(pending: PortalPendingCloseSnapshot): DialogCopy {
+export function buildCopy(pending: PortalPendingCloseSnapshot): DialogCopy {
   const count = pending.tabsToClose.length;
   const noun = count === 1 ? "tab" : "tabs";
   switch (pending.kind) {
@@ -25,7 +25,10 @@ function buildCopy(pending: PortalPendingCloseSnapshot): DialogCopy {
     case "closeOthers":
       return {
         title: "Close other portal tabs?",
-        description: `Every portal tab except the active one closes and its navigation history is discarded. ${count} ${noun} will close.`,
+        // The kept tab is the one the user invoked from (right-clicked tab
+        // or active tab) — not necessarily the active one — so name neither;
+        // the list below shows exactly which tabs close.
+        description: `All other portal tabs close and their navigation history is discarded. ${count} ${noun} will close.`,
         confirmLabel: `Close ${count} portal ${noun}`,
       };
   }

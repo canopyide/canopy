@@ -180,7 +180,12 @@ export function PortalDock() {
 
   const handleClose = useCallback(async () => {
     await actionService.dispatch("portal.closeAllTabs", undefined, { source: "user" });
-    setOpen(false);
+    // At 3+ tabs the action escalates to a confirm dialog and leaves the
+    // tabs intact; collapsing the dock here would hide the portal out from
+    // under that dialog. Only collapse once the tabs are actually gone.
+    if (usePortalStore.getState().tabs.length === 0) {
+      setOpen(false);
+    }
   }, [setOpen]);
 
   const handleGoBack = useCallback(async () => {
