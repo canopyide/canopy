@@ -160,6 +160,7 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
         // `gitReason` is reattached duck-typed across the IPC realm boundary
         // (see `deserializeError` in shared/utils/ipcErrorSerialization.ts);
         // `instanceof GitOperationError` would fail here.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- intentional duck-type read across IPC realm
         const gitReason = (err as { gitReason?: GitOperationReason })?.gitReason;
         setError({
           message: formatErrorMessage(err, "Failed to clone repository"),
