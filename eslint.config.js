@@ -505,6 +505,17 @@ export default tseslint.config(
               name: "react-diff-view",
               message: "Heavy package — lazy-load via React.lazy() or dynamic import. See #7659.",
             },
+            {
+              name: "@/clients/githubClient",
+              message:
+                "githubClient is restricted to an allowlist. Use forgeClient for provider-neutral operations or dispatch forge.* actions via actionService. If this import is genuinely GitHub-specific, add the file to the allowlist in githubActions.adversarial.test.ts. See #8460.",
+            },
+            {
+              name: "@/clients",
+              importNames: ["githubClient"],
+              message:
+                "Importing githubClient from the barrel is restricted. If this file is in the allowlist, import from @/clients/githubClient directly. Otherwise use forgeClient or dispatch forge.* actions. See #8460.",
+            },
           ],
           patterns: [
             {

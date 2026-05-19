@@ -265,7 +265,12 @@ const MCP_TOOL_ALLOWLIST_ENTRIES = [
   "github.listIssues",
   "github.listPullRequests",
   "github.getIssueByNumber",
+  "forge.openIssues",
+  "forge.openPRs",
+  "forge.openCommits",
   "forge.openIssue",
+  "forge.assignIssue",
+  "forge.validateToken",
   "github.openPR",
 
   "terminal.list",

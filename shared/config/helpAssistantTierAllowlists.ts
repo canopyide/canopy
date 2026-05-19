@@ -113,7 +113,12 @@ export const SYSTEM_TIER_ADDONS = [
   "git.snapshotRevert",
   "git.snapshotDelete",
 
+  "forge.openIssues",
+  "forge.openPRs",
+  "forge.openCommits",
   "forge.openIssue",
+  "forge.assignIssue",
+  "forge.validateToken",
   "github.openPR",
 ] as const satisfies readonly BuiltInActionId[];
 

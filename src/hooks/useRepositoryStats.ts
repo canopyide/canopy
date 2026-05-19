@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { GitHubRateLimitKind, RepositoryStats } from "../types";
+// eslint-disable-next-line no-restricted-imports
 import { githubClient, projectClient } from "@/clients";
 import { isTokenRelatedError } from "@/lib/githubErrors";
 import { formatErrorMessage } from "@shared/utils/errorMessage";

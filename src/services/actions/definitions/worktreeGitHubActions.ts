@@ -2,6 +2,7 @@ import type { ActionCallbacks, ActionRegistry } from "../actionTypes";
 import { defineAction } from "../defineAction";
 import { z } from "zod";
 import type { ActionContext } from "@shared/types/actions";
+// eslint-disable-next-line no-restricted-imports
 import { githubClient } from "@/clients";
 import { actionService } from "@/services/ActionService";
 import { getCurrentViewStore } from "@/store/createWorktreeStore";

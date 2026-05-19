@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { ProjectHealthData } from "../types";
+// eslint-disable-next-line no-restricted-imports
 import { githubClient, projectClient } from "@/clients";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { usePollingLifecycle } from "@/hooks/usePollingLifecycle";
