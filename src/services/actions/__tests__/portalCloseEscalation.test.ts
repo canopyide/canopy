@@ -62,7 +62,11 @@ function seedTabs(ids: string[]) {
   });
 }
 
-async function run(actions: Awaited<ReturnType<typeof createRegistry>>, id: string, args?: unknown) {
+async function run(
+  actions: Awaited<ReturnType<typeof createRegistry>>,
+  id: string,
+  args?: unknown
+) {
   const def = actions.get(id)!();
   await def.run!(args as never, {});
   return def;

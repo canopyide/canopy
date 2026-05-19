@@ -55,19 +55,18 @@ export function deriveEffectiveTier(
   actionId: string,
   ctx: WorktreeDeleteTierCtx | PortalCloseTierCtx
 ): DestructiveTier {
-  switch (actionId) {
-    case "worktree.delete": {
-      const c = ctx as WorktreeDeleteTierCtx;
-      return c.force && (c.isProtectedBranch || c.isMainWorktree || c.hasTrackedChanges)
-        ? "D3"
-        : "D2";
-    }
-    case "portal.closeAllTabs":
-    case "portal.closeOthers": {
-      const c = ctx as PortalCloseTierCtx;
-      return c.tabCount >= PORTAL_BULK_CLOSE_TIER_THRESHOLD ? "D1" : "D0";
-    }
-    default:
-      return "D0";
+  // `in`-operator narrowing keeps each branch type-safe without a cast — the
+  // two ctx shapes have disjoint fields, so the discriminant is structural.
+  if (actionId === "worktree.delete" && "force" in ctx) {
+    return ctx.force && (ctx.isProtectedBranch || ctx.isMainWorktree || ctx.hasTrackedChanges)
+      ? "D3"
+      : "D2";
   }
+  if (
+    (actionId === "portal.closeAllTabs" || actionId === "portal.closeOthers") &&
+    "tabCount" in ctx
+  ) {
+    return ctx.tabCount >= PORTAL_BULK_CLOSE_TIER_THRESHOLD ? "D1" : "D0";
+  }
+  return "D0";
 }

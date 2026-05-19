@@ -51,10 +51,7 @@ describe("deriveEffectiveTier — worktree.delete", () => {
     // hasTrackedChanges:false models a worktree with untracked-only changes.
     // Collapsing tracked/untracked would wrongly demand the typed-name gate.
     expect(
-      deriveEffectiveTier(
-        "worktree.delete",
-        worktreeCtx({ force: true, hasTrackedChanges: false })
-      )
+      deriveEffectiveTier("worktree.delete", worktreeCtx({ force: true, hasTrackedChanges: false }))
     ).toBe("D2");
   });
 });
