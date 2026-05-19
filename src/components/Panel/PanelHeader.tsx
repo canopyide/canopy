@@ -105,6 +105,13 @@ export interface PanelHeaderProps {
   onTitleChange?: (newTitle: string) => void;
   onMinimize?: () => void;
   onRestore?: () => void;
+  /**
+   * Render the inline "Open in grid" control in the dock header. Gated so it
+   * isn't duplicated by DockedTabGroup's own restore button on grouped panels
+   * (single-panel dock only). onRestore still powers double-click + the
+   * overflow-menu "Restore to Grid" item regardless of this flag.
+   */
+  showRestoreControl?: boolean;
   onRestart?: () => void;
 
   // Visual states
@@ -172,6 +179,7 @@ function PanelHeaderComponent({
   onTitleChange,
   onMinimize,
   onRestore,
+  showRestoreControl,
   onRestart,
   isPinged,
   wasJustSelected = false,
@@ -1000,7 +1008,9 @@ function PanelHeaderComponent({
           </Tooltip>
         )}
 
-        {/* Middle control: Collapse-to-Dock + Open-in-grid (dock) / Maximize / Exit Focus */}
+        {/* Middle control: Collapse-to-Dock + Open-in-grid (dock) / Maximize / Exit Focus.
+            Dock panels never receive onToggleMaximize, so this branch owns the
+            slot whenever location is "dock" regardless of onMinimize. */}
         {location === "dock" ? (
           <>
             {onMinimize && (
@@ -1025,7 +1035,7 @@ function PanelHeaderComponent({
                 </TooltipContent>
               </Tooltip>
             )}
-            {onRestore && (
+            {onRestore && showRestoreControl && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button

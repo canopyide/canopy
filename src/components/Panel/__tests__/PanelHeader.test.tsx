@@ -421,9 +421,11 @@ describe("PanelHeader", () => {
   });
 
   describe("Open in grid button", () => {
-    it("renders when location is dock and onRestore is provided", () => {
+    it("renders when docked with onRestore and showRestoreControl", () => {
       const onRestore = vi.fn();
-      render(<PanelHeader {...makeProps({ location: "dock", onRestore })} />);
+      render(
+        <PanelHeader {...makeProps({ location: "dock", onRestore, showRestoreControl: true })} />
+      );
       const btn = screen.getByTestId("panel-open-in-grid");
       expect(btn).toBeDefined();
       expect(btn.getAttribute("aria-label")).toBe("Open in grid");
@@ -431,20 +433,58 @@ describe("PanelHeader", () => {
 
     it("calls onRestore when clicked", () => {
       const onRestore = vi.fn();
-      render(<PanelHeader {...makeProps({ location: "dock", onRestore })} />);
+      render(
+        <PanelHeader {...makeProps({ location: "dock", onRestore, showRestoreControl: true })} />
+      );
       screen.getByTestId("panel-open-in-grid").click();
       expect(onRestore).toHaveBeenCalledTimes(1);
     });
 
+    it("does not render when showRestoreControl is false (grouped dock panel)", () => {
+      const onRestore = vi.fn();
+      render(
+        <PanelHeader {...makeProps({ location: "dock", onRestore, showRestoreControl: false })} />
+      );
+      expect(screen.queryByTestId("panel-open-in-grid")).toBeNull();
+    });
+
     it("does not render when onRestore is not provided", () => {
-      render(<PanelHeader {...makeProps({ location: "dock", onMinimize: vi.fn() })} />);
+      render(
+        <PanelHeader
+          {...makeProps({ location: "dock", onMinimize: vi.fn(), showRestoreControl: true })}
+        />
+      );
       expect(screen.queryByTestId("panel-open-in-grid")).toBeNull();
     });
 
     it("does not render when location is grid", () => {
       const onRestore = vi.fn();
-      render(<PanelHeader {...makeProps({ location: "grid", onRestore })} />);
+      render(
+        <PanelHeader {...makeProps({ location: "grid", onRestore, showRestoreControl: true })} />
+      );
       expect(screen.queryByTestId("panel-open-in-grid")).toBeNull();
+    });
+
+    it("renders alongside Collapse to Dock, each firing only its own handler", () => {
+      const onRestore = vi.fn();
+      const onMinimize = vi.fn();
+      render(
+        <PanelHeader
+          {...makeProps({
+            location: "dock",
+            onRestore,
+            onMinimize,
+            showRestoreControl: true,
+          })}
+        />
+      );
+      screen.getByTestId("panel-open-in-grid").click();
+      expect(onRestore).toHaveBeenCalledTimes(1);
+      expect(onMinimize).not.toHaveBeenCalled();
+
+      screen.getByTestId("panel-collapse-to-dock").click();
+      expect(onMinimize).toHaveBeenCalledTimes(1);
+      expect(onRestore).toHaveBeenCalledTimes(1);
     });
   });
 

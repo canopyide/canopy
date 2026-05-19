@@ -211,6 +211,7 @@ export interface TerminalPaneProps {
   onTitleChange?: (newTitle: string) => void;
   onMinimize?: () => void;
   onRestore?: () => void;
+  showRestoreControl?: boolean;
   location?: "grid" | "dock";
   restartKey?: number;
   restartError?: TerminalRestartError;
@@ -255,6 +256,7 @@ function TerminalPaneComponent({
   onTitleChange,
   onMinimize,
   onRestore,
+  showRestoreControl,
   location = "grid",
   restartKey = 0,
   restartError,
@@ -1013,6 +1015,7 @@ function TerminalPaneComponent({
       onTitleChange={onTitleChange}
       onMinimize={onMinimize}
       onRestore={onRestore}
+      showRestoreControl={showRestoreControl}
       headerActions={agentHeaderActions}
       onRestart={handleRestart}
       isExited={isExited}

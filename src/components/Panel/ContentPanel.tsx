@@ -43,6 +43,7 @@ export interface BasePanelProps {
   onTitleChange?: (newTitle: string) => void;
   onMinimize?: () => void;
   onRestore?: () => void;
+  showRestoreControl?: boolean;
 }
 
 export interface ContentPanelProps extends BasePanelProps {
@@ -138,6 +139,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
     onTitleChange,
     onMinimize,
     onRestore,
+    showRestoreControl,
     children,
     headerContent,
     headerActions,
@@ -464,6 +466,7 @@ const ContentPanelInner = forwardRef<HTMLDivElement, ContentPanelProps>(function
           onTitleChange={onTitleChange}
           onMinimize={onMinimize}
           onRestore={onRestore}
+          showRestoreControl={showRestoreControl}
           onRestart={onRestart}
           isPinged={isPinged}
           wasJustSelected={wasJustSelected}
