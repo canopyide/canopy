@@ -9,18 +9,18 @@
   },
   "chunkCount": 270,
   "chunks": {
-    "_ActionService-BFZeIZ3I.js": {
-      "file": "assets/ActionService-BFZeIZ3I.js",
-      "raw": 33644,
-      "gzip": 8163
+    "_ActionService-RslQ_ueJ.js": {
+      "file": "assets/ActionService-RslQ_ueJ.js",
+      "raw": 33788,
+      "gzip": 8179
     },
-    "_AgentCard-C1o3c3XN.js": {
-      "file": "assets/AgentCard-C1o3c3XN.js",
+    "_AgentCard-Dt3HCXpJ.js": {
+      "file": "assets/AgentCard-Dt3HCXpJ.js",
       "raw": 12508,
-      "gzip": 4636
+      "gzip": 4632
     },
-    "_DiffViewer-BEzhfI__.js": {
-      "file": "assets/DiffViewer-BEzhfI__.js",
+    "_DiffViewer-CQUVML7V.js": {
+      "file": "assets/DiffViewer-CQUVML7V.js",
       "raw": 31121,
       "gzip": 11552
     },
@@ -29,23 +29,23 @@
       "raw": 392,
       "gzip": 281
     },
-    "_GitHubDropdownSkeletons-Cz185hp7.js": {
-      "file": "assets/GitHubDropdownSkeletons-Cz185hp7.js",
+    "_GitHubDropdownSkeletons-BAgpEInj.js": {
+      "file": "assets/GitHubDropdownSkeletons-BAgpEInj.js",
       "raw": 6507,
-      "gzip": 2000
+      "gzip": 1998
     },
-    "_KeyboardShortcuts-COc-GXAa.js": {
-      "file": "assets/KeyboardShortcuts-COc-GXAa.js",
+    "_KeyboardShortcuts-BavkHHPX.js": {
+      "file": "assets/KeyboardShortcuts-BavkHHPX.js",
       "raw": 7194,
       "gzip": 2699
     },
-    "_LiveTimeAgo-C1kpzgwK.js": {
-      "file": "assets/LiveTimeAgo-C1kpzgwK.js",
+    "_LiveTimeAgo-C_HeeC3u.js": {
+      "file": "assets/LiveTimeAgo-C_HeeC3u.js",
       "raw": 2478,
-      "gzip": 1268
+      "gzip": 1265
     },
-    "_McpAuditLogViewer-DfPDmbN8.js": {
-      "file": "assets/McpAuditLogViewer-DfPDmbN8.js",
+    "_McpAuditLogViewer-GquJTjlE.js": {
+      "file": "assets/McpAuditLogViewer-GquJTjlE.js",
       "raw": 8439,
       "gzip": 3068
     },
@@ -54,20 +54,20 @@
       "raw": 632,
       "gzip": 432
     },
-    "_RecipeEditor-BK0-zW6V.js": {
-      "file": "assets/RecipeEditor-BK0-zW6V.js",
+    "_RecipeEditor-qR_j-Elz.js": {
+      "file": "assets/RecipeEditor-qR_j-Elz.js",
       "raw": 14426,
-      "gzip": 3521
+      "gzip": 3518
     },
-    "_ReviewHubContent-CV8T1lMI.js": {
-      "file": "assets/ReviewHubContent-CV8T1lMI.js",
+    "_ReviewHubContent-D9Cc82iI.js": {
+      "file": "assets/ReviewHubContent-D9Cc82iI.js",
       "raw": 115320,
-      "gzip": 30608
+      "gzip": 30609
     },
-    "_SearchablePalette-B4QWa7O3.js": {
-      "file": "assets/SearchablePalette-B4QWa7O3.js",
+    "_SearchablePalette-DZBZ3Agd.js": {
+      "file": "assets/SearchablePalette-DZBZ3Agd.js",
       "raw": 32713,
-      "gzip": 11404
+      "gzip": 11405
     },
     "_SettingsCheckbox-Dd_XTmyF.js": {
       "file": "assets/SettingsCheckbox-Dd_XTmyF.js",
@@ -119,25 +119,25 @@
       "raw": 1239,
       "gzip": 688
     },
-    "_ShortcutReferenceDialog-DS-wEo9F.js": {
-      "file": "assets/ShortcutReferenceDialog-DS-wEo9F.js",
+    "_ShortcutReferenceDialog-DVdi4Dwf.js": {
+      "file": "assets/ShortcutReferenceDialog-DVdi4Dwf.js",
       "raw": 4682,
-      "gzip": 2089
+      "gzip": 2088
     },
     "_Spinner-CL4u7o_q.js": {
       "file": "assets/Spinner-CL4u7o_q.js",
       "raw": 580,
       "gzip": 396
     },
-    "_TerminalInstanceService-CizPk0Uf.js": {
-      "file": "assets/TerminalInstanceService-CizPk0Uf.js",
+    "_TerminalInstanceService-PSKPFlQf.js": {
+      "file": "assets/TerminalInstanceService-PSKPFlQf.js",
       "raw": 221599,
-      "gzip": 59343
+      "gzip": 59341
     },
-    "_TruncatedTooltip-BMFW_-mK.js": {
-      "file": "assets/TruncatedTooltip-BMFW_-mK.js",
+    "_TruncatedTooltip-DEJMK9Zn.js": {
+      "file": "assets/TruncatedTooltip-DEJMK9Zn.js",
       "raw": 1324,
-      "gzip": 809
+      "gzip": 808
     },
     "_YarnIcon-BxaD62AZ.js": {
       "file": "assets/YarnIcon-BxaD62AZ.js",
@@ -179,10 +179,10 @@
       "raw": 1371,
       "gzip": 486
     },
-    "_checklistItems-Ra_om5fo.js": {
-      "file": "assets/checklistItems-Ra_om5fo.js",
+    "_checklistItems-CC5SR_sJ.js": {
+      "file": "assets/checklistItems-CC5SR_sJ.js",
       "raw": 827,
-      "gzip": 472
+      "gzip": 473
     },
     "_clients-QKgdBxVH.js": {
       "file": "assets/clients-QKgdBxVH.js",
@@ -234,10 +234,10 @@
       "raw": 5868,
       "gzip": 2329
     },
-    "_folderName-CKcyFXIX.js": {
-      "file": "assets/folderName-CKcyFXIX.js",
+    "_folderName-SLx7VF0z.js": {
+      "file": "assets/folderName-SLx7VF0z.js",
       "raw": 803,
-      "gzip": 430
+      "gzip": 428
     },
     "_gitPullRebaseConfirmStore-Cz64yeMU.js": {
       "file": "assets/gitPullRebaseConfirmStore-Cz64yeMU.js",
@@ -299,10 +299,10 @@
       "raw": 9274,
       "gzip": 3540
     },
-    "_panelSpawning-vmSVqTn7.js": {
-      "file": "assets/panelSpawning-vmSVqTn7.js",
+    "_panelSpawning-uS9DBeQG.js": {
+      "file": "assets/panelSpawning-uS9DBeQG.js",
       "raw": 11728,
-      "gzip": 4472
+      "gzip": 4473
     },
     "_path-BORhKaM5.js": {
       "file": "assets/path-BORhKaM5.js",
@@ -324,10 +324,10 @@
       "raw": 1915,
       "gzip": 837
     },
-    "_projectStore-QD4mJuFV.js": {
-      "file": "assets/projectStore-QD4mJuFV.js",
+    "_projectStore-BB3f9fc_.js": {
+      "file": "assets/projectStore-BB3f9fc_.js",
       "raw": 13955,
-      "gzip": 4682
+      "gzip": 4681
     },
     "_radix-loader-CLYvGiqa.js": {
       "file": "assets/radix-loader-CLYvGiqa.js",
@@ -349,20 +349,20 @@
       "raw": 9641,
       "gzip": 3406
     },
-    "_settingsTabRegistry-DjzfxBJG.js": {
-      "file": "assets/settingsTabRegistry-DjzfxBJG.js",
+    "_settingsTabRegistry-A_78LQ7x.js": {
+      "file": "assets/settingsTabRegistry-A_78LQ7x.js",
       "raw": 65161,
-      "gzip": 16814
+      "gzip": 16817
     },
     "_simple-mode-B9ErAHMD.js": {
       "file": "assets/simple-mode-B9ErAHMD.js",
       "raw": 2295,
       "gzip": 1099
     },
-    "_sortableAnnouncements-y82Qpn3B.js": {
-      "file": "assets/sortableAnnouncements-y82Qpn3B.js",
+    "_sortableAnnouncements-UcEI1uGw.js": {
+      "file": "assets/sortableAnnouncements-UcEI1uGw.js",
       "raw": 3407,
-      "gzip": 1701
+      "gzip": 1700
     },
     "_svg-CAXG-2MA.js": {
       "file": "assets/svg-CAXG-2MA.js",
@@ -374,13 +374,13 @@
       "raw": 1966,
       "gzip": 999
     },
-    "_systemWakeStore-DNQjoRFj.js": {
-      "file": "assets/systemWakeStore-DNQjoRFj.js",
+    "_systemWakeStore-HvIQi6OZ.js": {
+      "file": "assets/systemWakeStore-HvIQi6OZ.js",
       "raw": 4126,
       "gzip": 1515
     },
-    "_terminalInputStore-DtFKd9uf.js": {
-      "file": "assets/terminalInputStore-DtFKd9uf.js",
+    "_terminalInputStore-CYrxR5WA.js": {
+      "file": "assets/terminalInputStore-CYrxR5WA.js",
       "raw": 7145,
       "gzip": 2412
     },
@@ -399,10 +399,10 @@
       "raw": 2773,
       "gzip": 1050
     },
-    "_useFindInPage-Czt806By.js": {
-      "file": "assets/useFindInPage-Czt806By.js",
+    "_useFindInPage-DRDBUrrx.js": {
+      "file": "assets/useFindInPage-DRDBUrrx.js",
       "raw": 31560,
-      "gzip": 9851
+      "gzip": 9848
     },
     "_utils-DXZJwFPf.js": {
       "file": "assets/utils-DXZJwFPf.js",
@@ -470,9 +470,9 @@
       "gzip": 484
     },
     "index.html": {
-      "file": "assets/index-DHNVfbYN.js",
-      "raw": 543319,
-      "gzip": 169605
+      "file": "assets/index-DWetA42l.js",
+      "raw": 543704,
+      "gzip": 169743
     },
     "node_modules/@codemirror/lang-cpp/dist/index.js": {
       "file": "assets/dist-sqRLbGvT.js",
@@ -1095,59 +1095,59 @@
       "gzip": 905
     },
     "plugins/builtin/github/renderer/components/CommitList.tsx": {
-      "file": "assets/CommitList-CK1N1Ws-.js",
-      "raw": 12683,
-      "gzip": 4872
+      "file": "assets/CommitList-D35G4Mnk.js",
+      "raw": 12656,
+      "gzip": 4866
     },
     "plugins/builtin/github/renderer/components/GitHubResourceList.tsx": {
-      "file": "assets/GitHubResourceList-Bm1bZrxq.js",
-      "raw": 49977,
-      "gzip": 16569
+      "file": "assets/GitHubResourceList-B9J3zvNF.js",
+      "raw": 50049,
+      "gzip": 16597
     },
     "src/App.tsx": {
-      "file": "assets/App-C1P7pMbu.js",
-      "raw": 1340123,
-      "gzip": 373459
+      "file": "assets/App-cVGJPKfk.js",
+      "raw": 1340851,
+      "gzip": 373543
     },
     "src/components/ActionPalette/ActionPalette.tsx": {
-      "file": "assets/ActionPalette-CZgC8qbn.js",
+      "file": "assets/ActionPalette-DX9ma6xF.js",
       "raw": 4074,
-      "gzip": 1863
+      "gzip": 1861
     },
     "src/components/Browser/BrowserPane.tsx": {
-      "file": "assets/BrowserPane-B-TU-rS7.js",
+      "file": "assets/BrowserPane-BbTxxdIF.js",
       "raw": 21026,
-      "gzip": 7397
+      "gzip": 7392
     },
     "src/components/DevPreview/DevPreviewPane.tsx": {
-      "file": "assets/DevPreviewPane-DwhIuTOA.js",
+      "file": "assets/DevPreviewPane-D7SlBjVC.js",
       "raw": 37511,
-      "gzip": 11672
+      "gzip": 11670
     },
     "src/components/FileViewer/FileViewerModalHost.tsx": {
-      "file": "assets/FileViewerModalHost-MlFe7vZp.js",
+      "file": "assets/FileViewerModalHost-Cn6_FrWd.js",
       "raw": 3727,
-      "gzip": 1906
+      "gzip": 1904
     },
     "src/components/Git/GitPullRebaseConfirmDialog.tsx": {
-      "file": "assets/GitPullRebaseConfirmDialog-Be6ZjtWV.js",
+      "file": "assets/GitPullRebaseConfirmDialog-upO8pkdZ.js",
       "raw": 4919,
-      "gzip": 2151
+      "gzip": 2150
     },
     "src/components/Git/GitPushConfirmDialog.tsx": {
-      "file": "assets/GitPushConfirmDialog-C4kHn6fR.js",
+      "file": "assets/GitPushConfirmDialog-NGw3kpqt.js",
       "raw": 4843,
-      "gzip": 2135
+      "gzip": 2134
     },
     "src/components/LogLevelPalette/LogLevelPalette.tsx": {
-      "file": "assets/LogLevelPalette-Dr5Yk0TI.js",
+      "file": "assets/LogLevelPalette-QGoCkrRA.js",
       "raw": 5364,
       "gzip": 2277
     },
     "src/components/McpConfirmDialog.tsx": {
-      "file": "assets/McpConfirmDialog-CWQoL_qL.js",
+      "file": "assets/McpConfirmDialog-gsdtsbuB.js",
       "raw": 2521,
-      "gzip": 1269
+      "gzip": 1266
     },
     "src/components/Onboarding/CelebrationConfetti.tsx": {
       "file": "assets/CelebrationConfetti-H89ojfIN.js",
@@ -1155,39 +1155,39 @@
       "gzip": 1475
     },
     "src/components/Onboarding/GettingStartedChecklist.tsx": {
-      "file": "assets/GettingStartedChecklist-B8r-VOij.js",
+      "file": "assets/GettingStartedChecklist-W10jxDqb.js",
       "raw": 8255,
-      "gzip": 3500
+      "gzip": 3498
     },
     "src/components/Onboarding/OnboardingFlow.tsx": {
-      "file": "assets/OnboardingFlow-D59XIdkg.js",
+      "file": "assets/OnboardingFlow-BhJ72oOF.js",
       "raw": 48891,
       "gzip": 15296
     },
     "src/components/PanelPalette/PanelPalette.tsx": {
-      "file": "assets/PanelPalette-s5euUQXK.js",
+      "file": "assets/PanelPalette-0qYKpVRP.js",
       "raw": 7677,
       "gzip": 3666
     },
     "src/components/Project/AutomationTab.tsx": {
-      "file": "assets/AutomationTab-B-ePmL5p.js",
+      "file": "assets/AutomationTab-Dd6AbqTi.js",
       "raw": 33273,
-      "gzip": 9481
+      "gzip": 9480
     },
     "src/components/Project/ContextTab.tsx": {
-      "file": "assets/ContextTab-BP-dm7Cr.js",
+      "file": "assets/ContextTab-DgXHua2d.js",
       "raw": 11734,
-      "gzip": 2702
+      "gzip": 2700
     },
     "src/components/Project/CreateProjectFolderDialog.tsx": {
-      "file": "assets/CreateProjectFolderDialog-Dty4s6_r.js",
+      "file": "assets/CreateProjectFolderDialog-BzBHgdfQ.js",
       "raw": 3555,
-      "gzip": 1510
+      "gzip": 1508
     },
     "src/components/Project/EnvironmentVariablesEditor.tsx": {
-      "file": "assets/EnvironmentVariablesEditor-D3uC8oZE.js",
+      "file": "assets/EnvironmentVariablesEditor-BJcw0HFN.js",
       "raw": 7365,
-      "gzip": 2643
+      "gzip": 2642
     },
     "src/components/Project/ForgeProviderTab.tsx": {
       "file": "assets/ForgeProviderTab-C49alBaE.js",
@@ -1195,9 +1195,9 @@
       "gzip": 1554
     },
     "src/components/Project/GeneralTab.tsx": {
-      "file": "assets/GeneralTab-BiBTg-Ix.js",
+      "file": "assets/GeneralTab-CiJkqOhR.js",
       "raw": 20606,
-      "gzip": 5932
+      "gzip": 5930
     },
     "src/components/Project/ProjectNotificationsTab.tsx": {
       "file": "assets/ProjectNotificationsTab-B0MYyKCi.js",
@@ -1205,59 +1205,59 @@
       "gzip": 3580
     },
     "src/components/Project/RecipesTab.tsx": {
-      "file": "assets/RecipesTab-_u09eHWr.js",
+      "file": "assets/RecipesTab-CvduGQAR.js",
       "raw": 12480,
-      "gzip": 4400
+      "gzip": 4398
     },
     "src/components/QuickSwitcher/QuickSwitcher.tsx": {
-      "file": "assets/QuickSwitcher-BL5oQj45.js",
+      "file": "assets/QuickSwitcher-ByLs0436.js",
       "raw": 5190,
-      "gzip": 2328
+      "gzip": 2327
     },
     "src/components/Settings/AgentSettings.tsx": {
-      "file": "assets/AgentSettings-DQnb7Ydo.js",
+      "file": "assets/AgentSettings-C6Ow6_4j.js",
       "raw": 90266,
-      "gzip": 26426
+      "gzip": 26427
     },
     "src/components/Settings/CommandOverridesTab.tsx": {
-      "file": "assets/CommandOverridesTab-DzOwY77I.js",
+      "file": "assets/CommandOverridesTab-Cy10OAfJ.js",
       "raw": 13004,
       "gzip": 4242
     },
     "src/components/Settings/DaintreeAssistantSettingsTab.tsx": {
-      "file": "assets/DaintreeAssistantSettingsTab-DAhXpiae.js",
+      "file": "assets/DaintreeAssistantSettingsTab-DWcv_f5O.js",
       "raw": 21693,
       "gzip": 7466
     },
     "src/components/Settings/EnvironmentSettingsTab.tsx": {
-      "file": "assets/EnvironmentSettingsTab-DuSo9uOy.js",
+      "file": "assets/EnvironmentSettingsTab-iLFdwDk1.js",
       "raw": 6394,
       "gzip": 2536
     },
     "src/components/Settings/ForgeIntegrationsTab.tsx": {
-      "file": "assets/ForgeIntegrationsTab-BO-Kzwen.js",
+      "file": "assets/ForgeIntegrationsTab-ClPeWxnx.js",
       "raw": 7577,
-      "gzip": 2815
+      "gzip": 2813
     },
     "src/components/Settings/GitHubSettingsTab.tsx": {
-      "file": "assets/GitHubSettingsTab-CPAsBG7V.js",
+      "file": "assets/GitHubSettingsTab-CygZbjRA.js",
       "raw": 6788,
-      "gzip": 2108
+      "gzip": 2106
     },
     "src/components/Settings/IntegrationsTab.tsx": {
-      "file": "assets/IntegrationsTab-BQvltPLK.js",
+      "file": "assets/IntegrationsTab-B3aakuPh.js",
       "raw": 10868,
-      "gzip": 3097
+      "gzip": 3095
     },
     "src/components/Settings/KeyboardShortcutsTab.tsx": {
-      "file": "assets/KeyboardShortcutsTab-Ytjngfa1.js",
+      "file": "assets/KeyboardShortcutsTab-DV30lC3T.js",
       "raw": 8895,
-      "gzip": 3118
+      "gzip": 3116
     },
     "src/components/Settings/McpServerSettingsTab.tsx": {
-      "file": "assets/McpServerSettingsTab-x6rUeI2T.js",
+      "file": "assets/McpServerSettingsTab-16Ig83O9.js",
       "raw": 14109,
-      "gzip": 4337
+      "gzip": 4336
     },
     "src/components/Settings/NotificationSettingsTab.tsx": {
       "file": "assets/NotificationSettingsTab-Yz0V8C7s.js",
@@ -1265,84 +1265,84 @@
       "gzip": 4964
     },
     "src/components/Settings/PortalSettingsTab.tsx": {
-      "file": "assets/PortalSettingsTab-DPau5-mS.js",
+      "file": "assets/PortalSettingsTab-CmxBKyqY.js",
       "raw": 14641,
       "gzip": 5113
     },
     "src/components/Settings/PrivacyDataTab.tsx": {
-      "file": "assets/PrivacyDataTab-BMYVRGvC.js",
+      "file": "assets/PrivacyDataTab-DFaN50pf.js",
       "raw": 11843,
-      "gzip": 3599
+      "gzip": 3596
     },
     "src/components/Settings/SettingsDialog.tsx": {
-      "file": "assets/SettingsDialog-B4VGsQTB.js",
+      "file": "assets/SettingsDialog-BpqkwkVd.js",
       "raw": 37026,
-      "gzip": 12673
+      "gzip": 12676
     },
     "src/components/Settings/TerminalAppearanceTab.tsx": {
-      "file": "assets/TerminalAppearanceTab-Chq5q-pT.js",
+      "file": "assets/TerminalAppearanceTab-DjrPkj49.js",
       "raw": 23985,
       "gzip": 8023
     },
     "src/components/Settings/TerminalSettingsTab.tsx": {
-      "file": "assets/TerminalSettingsTab-C_Z5vLF6.js",
+      "file": "assets/TerminalSettingsTab-DRgaOdBB.js",
       "raw": 19877,
-      "gzip": 5650
+      "gzip": 5652
     },
     "src/components/Settings/ToolbarSettingsTab.tsx": {
-      "file": "assets/ToolbarSettingsTab-Cb90c8E7.js",
+      "file": "assets/ToolbarSettingsTab-Ls8lYPkk.js",
       "raw": 13428,
       "gzip": 4945
     },
     "src/components/Settings/TroubleshootingTab.tsx": {
-      "file": "assets/TroubleshootingTab-Ccas_B5t.js",
+      "file": "assets/TroubleshootingTab-DB7zY5r3.js",
       "raw": 18157,
-      "gzip": 6157
+      "gzip": 6153
     },
     "src/components/Settings/VoiceInputSettingsTab.tsx": {
-      "file": "assets/VoiceInputSettingsTab-ojKAyikO.js",
+      "file": "assets/VoiceInputSettingsTab-BrjrgLzr.js",
       "raw": 23521,
       "gzip": 8201
     },
     "src/components/Settings/WorktreeSettingsTab.tsx": {
-      "file": "assets/WorktreeSettingsTab-Px7kGSdG.js",
+      "file": "assets/WorktreeSettingsTab-B0lTp9pn.js",
       "raw": 8152,
-      "gzip": 2355
+      "gzip": 2354
     },
     "src/components/Terminal/HybridInputBar.tsx": {
-      "file": "assets/HybridInputBar-JlLc5RKZ.js",
+      "file": "assets/HybridInputBar-DsIg6bTp.js",
       "raw": 126266,
-      "gzip": 37893
+      "gzip": 37895
     },
     "src/components/Terminal/PanelLimitConfirmDialog.tsx": {
-      "file": "assets/PanelLimitConfirmDialog-DSwfEVaX.js",
+      "file": "assets/PanelLimitConfirmDialog-H6_BbBOT.js",
       "raw": 1536,
-      "gzip": 899
+      "gzip": 897
     },
     "src/components/Terminal/SendToAgentPalette.tsx": {
-      "file": "assets/SendToAgentPalette-Cf1KyBT0.js",
+      "file": "assets/SendToAgentPalette-CCyxScTL.js",
       "raw": 4065,
-      "gzip": 1818
+      "gzip": 1816
     },
     "src/components/TerminalPalette/NewTerminalPalette.tsx": {
-      "file": "assets/NewTerminalPalette-B5ZQo4d-.js",
+      "file": "assets/NewTerminalPalette-Dj_C001T.js",
       "raw": 4466,
-      "gzip": 2179
+      "gzip": 2180
     },
     "src/components/ThemePalette/ThemePalette.tsx": {
-      "file": "assets/ThemePalette-wNId0-V6.js",
+      "file": "assets/ThemePalette-BIQuubLA.js",
       "raw": 5309,
-      "gzip": 2535
+      "gzip": 2536
     },
     "src/components/Worktree/CrossWorktreeDiff.tsx": {
-      "file": "assets/CrossWorktreeDiff-BkWmhy_U.js",
+      "file": "assets/CrossWorktreeDiff-wEVeoFC9.js",
       "raw": 8263,
-      "gzip": 3165
+      "gzip": 3166
     },
     "src/components/Worktree/NewWorktreeDialog.tsx": {
-      "file": "assets/NewWorktreeDialog-DvLi1u1D.js",
+      "file": "assets/NewWorktreeDialog-vXWVBXu1.js",
       "raw": 50160,
-      "gzip": 14918
+      "gzip": 14914
     },
     "src/components/ui/radix-deferred.ts": {
       "file": "assets/radix-deferred-biOWgG4H.js",
@@ -1355,13 +1355,13 @@
       "gzip": 84
     },
     "src/panels/review/ReviewPane.tsx": {
-      "file": "assets/ReviewPane-BYI-OHHx.js",
+      "file": "assets/ReviewPane-DGHpDLFy.js",
       "raw": 1109,
-      "gzip": 669
+      "gzip": 667
     }
   },
   "totals": {
-    "raw": 6920530,
-    "gzip": 2182641
+    "raw": 6921832,
+    "gzip": 2182840
   }
 }
