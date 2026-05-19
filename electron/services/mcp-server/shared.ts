@@ -129,6 +129,8 @@ export const USER_REJECTED_CODE = "USER_REJECTED";
 export const CONFIRMATION_TIMEOUT_CODE = "CONFIRMATION_TIMEOUT";
 export const ELICITATION_FAILED_CODE = "ELICITATION_FAILED";
 export const EXECUTION_ERROR_CODE = "EXECUTION_ERROR";
+export const BINDING_STALE = "BINDING_STALE";
+export const SESSION_BINDING_GONE = "SESSION_BINDING_GONE";
 
 /**
  * Application-level convention: codes here flag transient failures that a
@@ -147,6 +149,7 @@ export interface McpErrorPayload {
   message: string;
   details?: unknown;
   retriable: boolean;
+  errorCategory?: "transient" | "validation" | "business" | "permission";
 }
 
 /**
@@ -172,6 +175,9 @@ export function buildMcpErrorPayload(input: {
     message: input.message,
     retriable: RETRIABLE_ERROR_CODES.has(input.code),
   };
+  if (input.code === BINDING_STALE || input.code === SESSION_BINDING_GONE) {
+    payload.errorCategory = "business";
+  }
   if (input.details !== undefined) {
     let safeDetails: unknown = input.details;
     try {

@@ -19,11 +19,13 @@ import {
   RETRIABLE_ERROR_CODES,
   TIER_NOT_PERMITTED_CODE,
   EXECUTION_ERROR_CODE,
+  SESSION_BINDING_GONE,
   CONFIRMATION_TIMEOUT_CODE,
   USER_REJECTED_CODE,
   ELICITATION_FAILED_CODE,
   unwrapDispatchResult,
 } from "../shared.js";
+import { SessionBindingError } from "../rendererBridge.js";
 
 function fakeSessionStore(
   tier: "workbench" | "action" | "system" | "external" = "workbench"
@@ -1098,6 +1100,38 @@ describe("CallTool error envelope (integration through sessionServer)", () => {
     expect(parsed.code).toBe(EXECUTION_ERROR_CODE);
     expect(parsed.retriable).toBe(true);
     expect(parsed.message).toContain("transport went away");
+  });
+
+  it("maps SessionBindingError to SESSION_BINDING_GONE with retriable=false (#8432)", async () => {
+    const manifest = [
+      {
+        id: "files.search",
+        title: "Files: search",
+        description: "Search",
+        category: "files",
+        danger: "safe" as const,
+        source: ["agent"] as const,
+      },
+    ] as unknown as import("../../../../shared/types/actions.js").ActionManifestEntry[];
+    const deps = fakeDeps({
+      requestManifest: vi.fn().mockResolvedValue(manifest),
+      getCachedManifest: vi.fn(() => manifest),
+      dispatchAction: vi.fn().mockRejectedValue(new SessionBindingError(42)),
+    });
+    const server = createSessionServer("s-binding", deps);
+    await server.connect(makeMockTransport());
+
+    const result = (await callTool(server, {
+      name: "files.search",
+      arguments: {},
+    })) as { isError: boolean; content: { type: string; text: string }[] };
+
+    expect(result.isError).toBe(true);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.code).toBe(SESSION_BINDING_GONE);
+    expect(parsed.retriable).toBe(false);
+    expect(parsed.message).toContain("Do not retry");
+    expect(parsed.message).toContain("42");
   });
 });
 

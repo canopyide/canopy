@@ -496,6 +496,82 @@ describe("ActionService", () => {
         expect(result.error.message).toContain("Execution failed");
       }
     });
+
+    it("returns BINDING_STALE when contextOverride projectId differs from live context (#8432)", async () => {
+      const mockRun = vi.fn().mockResolvedValue(undefined);
+      const action: ActionDefinition = {
+        id: "actions.list" as ActionId,
+        title: "Test Action",
+        description: "A test action",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        run: mockRun,
+      };
+
+      service.register(action);
+      service.setContextProvider(() => ({ projectId: "project-B" }));
+
+      const result = await service.dispatch("actions.list", undefined, {
+        contextOverride: { projectId: "project-A" },
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("BINDING_STALE");
+        expect(result.error.message).toContain("Do not retry");
+      }
+      expect(mockRun).not.toHaveBeenCalled();
+    });
+
+    it("allows contextOverride when projectId matches live context (#8432)", async () => {
+      const mockRun = vi.fn().mockResolvedValue("ok");
+      const action: ActionDefinition<undefined, string> = {
+        id: "actions.list" as ActionId,
+        title: "Test Action",
+        description: "A test action",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        run: mockRun,
+      };
+
+      service.register(action);
+      service.setContextProvider(() => ({ projectId: "project-A" }));
+
+      const result = await service.dispatch("actions.list", undefined, {
+        contextOverride: { projectId: "project-A" },
+      });
+
+      expect(result.ok).toBe(true);
+      expect(mockRun).toHaveBeenCalled();
+    });
+
+    it("allows contextOverride when liveContext has no projectId (#8432)", async () => {
+      const mockRun = vi.fn().mockResolvedValue("ok");
+      const action: ActionDefinition<undefined, string> = {
+        id: "actions.list" as ActionId,
+        title: "Test Action",
+        description: "A test action",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        run: mockRun,
+      };
+
+      service.register(action);
+      service.setContextProvider(() => ({}));
+
+      const result = await service.dispatch("actions.list", undefined, {
+        contextOverride: { projectId: "project-A" },
+      });
+
+      expect(result.ok).toBe(true);
+      expect(mockRun).toHaveBeenCalled();
+    });
   });
 
   describe("list", () => {

@@ -255,6 +255,22 @@ export class ActionService {
 
     const context = options?.contextOverride ?? this.getActionContext();
 
+    if (options?.contextOverride) {
+      const liveContext = this.getActionContext();
+      if (
+        liveContext.projectId &&
+        options.contextOverride.projectId &&
+        liveContext.projectId !== options.contextOverride.projectId
+      ) {
+        const error: ActionError = {
+          code: "BINDING_STALE",
+          message:
+            "The session context no longer matches live state — this session was bound to a project that is no longer active. Do not retry.",
+        };
+        return { ok: false, error };
+      }
+    }
+
     let validatedArgs = args;
     if (definition.argsSchema) {
       const validation = definition.argsSchema.safeParse(args);
