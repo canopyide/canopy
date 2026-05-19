@@ -290,6 +290,17 @@ export interface ForgeProviderImpl {
   getIssue(repo: RepoRef, number: number): Promise<Issue | null>;
   getPR(repo: RepoRef, number: number): Promise<PR | null>;
   findPRByBranch(repo: RepoRef, branchName: string): Promise<PR | null>;
+  /**
+   * Optional batch variant of {@link findPRByBranch}. When present, callers
+   * resolving PRs for many branches in a single sweep (e.g. the worktree
+   * dashboard's PR-detection poll) should prefer this over N per-branch calls
+   * so the provider can amortize the round-trip. The returned `Map` is keyed
+   * by branch name; absent or `null` values mean no PR was found for that
+   * branch. Branches the implementation could not resolve (transient errors
+   * within a chunk) may be omitted; callers should treat omissions as the
+   * fallback path's responsibility.
+   */
+  findPRsByBranches?(repo: RepoRef, branches: string[]): Promise<Map<string, PR | null>>;
   getCIStatus(repo: RepoRef, prNumber: number): Promise<CIStatus | null>;
   getRepoMetadata(repo: RepoRef): Promise<RepoMetadata>;
 
@@ -335,6 +346,7 @@ export type ForgeCapabilityHint =
   | "releases"
   | "project-boards"
   | "milestones"
+  | "batch-branch-prs"
   | (string & {});
 
 /**

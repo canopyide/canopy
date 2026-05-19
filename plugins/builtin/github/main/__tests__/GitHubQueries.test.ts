@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  BATCH_BRANCH_CHUNK_SIZE,
+  buildBatchBranchPRQuery,
   buildBatchPRQuery,
   buildBatchRequiredChecksQuery,
   REPO_STATS_QUERY,
@@ -332,5 +334,96 @@ describe("buildBatchPRQuery", () => {
       const query = buildBatchRequiredChecksQuery("owner", "repo", [12]);
       expect(query).toContain("rateLimit {");
     });
+  });
+});
+
+describe("buildBatchBranchPRQuery", () => {
+  it("returns empty string for an empty branch list (caller must skip the request)", () => {
+    expect(buildBatchBranchPRQuery("owner", "repo", [])).toBe("");
+  });
+
+  it("uses index-based aliases (b0, b1, …) so special characters in branch names never appear as identifiers", () => {
+    const query = buildBatchBranchPRQuery("owner", "repo", [
+      "feature/x",
+      'has"quote',
+      "with spaces",
+    ]);
+    expect(query).toContain("b0: repository");
+    expect(query).toContain("b1: repository");
+    expect(query).toContain("b2: repository");
+  });
+
+  it("escapes owner, repo, and branch values in generated GraphQL query", () => {
+    const query = buildBatchBranchPRQuery('my"owner', "repo\\name", ['feat"branch']);
+    expect(query).toContain('owner: "my\\"owner"');
+    expect(query).toContain('name: "repo\\\\name"');
+    expect(query).toContain('headRefName: "feat\\"branch"');
+  });
+
+  it("queries one PR per branch with first: 1 and all PR states", () => {
+    const query = buildBatchBranchPRQuery("owner", "repo", ["main"]);
+    expect(query).toContain("first: 1");
+    expect(query).toContain("states: [OPEN, MERGED, CLOSED]");
+  });
+
+  it("uses inline orderBy literal (avoids the IssueOrder/PullRequestOrder variable trap)", () => {
+    // Past lesson #3339: Repository.pullRequests.orderBy expects IssueOrder,
+    // not PullRequestOrder. Inlining sidesteps the variable type entirely.
+    const query = buildBatchBranchPRQuery("owner", "repo", ["main"]);
+    expect(query).toContain("orderBy: {field: UPDATED_AT, direction: DESC}");
+    expect(query).not.toContain("PullRequestOrder");
+  });
+
+  it("does not declare a $query variable (rejected by @octokit/graphql)", () => {
+    // Past lesson #1376: @octokit/graphql reserves `query` for the operation
+    // document. The inline builder pattern sidesteps the trap entirely.
+    const query = buildBatchBranchPRQuery("owner", "repo", ["main", "dev"]);
+    expect(query).not.toContain("$query");
+  });
+
+  it("returns the PR fields toForgePR reads (number, title, bodyText, url, state, draft, merged, refs, timestamps, author)", () => {
+    const query = buildBatchBranchPRQuery("owner", "repo", ["main"]);
+    expect(query).toContain("number");
+    expect(query).toContain("title");
+    expect(query).toContain("bodyText");
+    expect(query).toContain("url");
+    expect(query).toContain("state");
+    expect(query).toContain("isDraft");
+    expect(query).toContain("merged");
+    expect(query).toContain("baseRefName");
+    expect(query).toContain("headRefName");
+    expect(query).toContain("createdAt");
+    expect(query).toContain("updatedAt");
+    expect(query).toContain("closedAt");
+    expect(query).toContain("mergedAt");
+    expect(query).toContain("author { login avatarUrl }");
+  });
+
+  it("uses bodyText (not body) — parity with SEARCH_QUERY and getPRTooltip", () => {
+    const query = buildBatchBranchPRQuery("owner", "repo", ["main"]);
+    expect(query).toContain("bodyText");
+    // Word-boundary match avoids matching `bodyText`.
+    expect(query).not.toMatch(/\bbody\b(?!Text)/);
+  });
+
+  it("includes rateLimit at operation root so rate-limit state stays in sync", () => {
+    const query = buildBatchBranchPRQuery("owner", "repo", ["main"]);
+    expect(query).toContain("rateLimit {");
+    expect(query).toContain("cost");
+    expect(query).toContain("remaining");
+    expect(query).toContain("resetAt");
+  });
+
+  it("emits one aliased block per branch in the caller's chunk", () => {
+    const branches = Array.from({ length: BATCH_BRANCH_CHUNK_SIZE }, (_, i) => `branch-${i}`);
+    const query = buildBatchBranchPRQuery("owner", "repo", branches);
+    for (let i = 0; i < branches.length; i++) {
+      expect(query).toContain(`b${i}: repository`);
+      expect(query).toContain(`headRefName: "branch-${i}"`);
+    }
+  });
+
+  it("exports BATCH_BRANCH_CHUNK_SIZE as 20 (per-chunk cap)", () => {
+    expect(BATCH_BRANCH_CHUNK_SIZE).toBe(20);
   });
 });

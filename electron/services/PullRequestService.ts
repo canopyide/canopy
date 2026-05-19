@@ -518,7 +518,10 @@ class PullRequestService {
     // semantics of a manual refresh.
     this.resolvedWorktrees.clear();
     // Re-resolve the forge provider on manual refresh so token changes
-    // and provider installs/uninstalls take effect immediately.
+    // and provider installs/uninstalls take effect immediately. Clear the
+    // in-flight branch-lookup dedup so a stale promise from the previous
+    // provider can't bind a wrong-repo PR to a worktree after refresh.
+    this.inFlightBranchLookups.clear();
     this.invalidateProvider();
     await this.resolveProvider();
     // Manual refresh is an explicit "I want fresh data now" — bypass the 5s
@@ -1005,24 +1008,12 @@ class PullRequestService {
         );
       }
 
-      // Per-branch PR lookups with concurrency limit
+      // Resolve unique branches → PR. Prefer the optional batch capability
+      // when present; on failure fall back per-branch so a single transient
+      // error doesn't blank every row's PR state. Truthiness guard per the
+      // forge.ts capability convention.
       const branches = [...uniqueBranches.keys()];
-      const prResults = await mapWithConcurrencyLimit(
-        branches,
-        5,
-        (branch): Promise<{ branch: string; pr: ForgePR | null }> => {
-          const existing = this.inFlightBranchLookups.get(branch);
-          if (existing) {
-            return existing.then((pr) => ({ branch, pr }));
-          }
-          const promise = provider.findPRByBranch(repo, branch).catch(() => null);
-          this.inFlightBranchLookups.set(branch, promise);
-          promise.finally(() => {
-            this.inFlightBranchLookups.delete(branch);
-          });
-          return promise.then((pr) => ({ branch, pr }));
-        }
-      );
+      const prResults = await this.resolvePRsForBranches(provider, repo, branches);
 
       // Fire issue lookups in parallel with PR lookups
       await Promise.allSettled(issueLookups);
@@ -1079,6 +1070,73 @@ class PullRequestService {
     } catch (error) {
       this.handleError(formatErrorMessage(error, "PR check failed"));
     }
+  }
+
+  /**
+   * Resolve a list of unique branches to PRs. Prefers the optional batch
+   * capability `findPRsByBranches` to collapse N round-trips into ceil(N/chunk)
+   * GraphQL requests. If the batch call throws — single transient error from
+   * one chunk shouldn't blank every row's PR state — falls back to the
+   * existing per-branch concurrency-5 path; branches missing from the batch
+   * result Map likewise get the per-branch fallback.
+   */
+  private async resolvePRsForBranches(
+    provider: ForgeProviderImpl,
+    repo: RepoRef,
+    branches: string[]
+  ): Promise<Array<{ branch: string; pr: ForgePR | null }>> {
+    if (branches.length === 0) return [];
+
+    if (provider.findPRsByBranches) {
+      try {
+        const batchMap = await provider.findPRsByBranches(repo, branches);
+        const results: Array<{ branch: string; pr: ForgePR | null }> = [];
+        const missing: string[] = [];
+        for (const branch of branches) {
+          if (batchMap.has(branch)) {
+            results.push({ branch, pr: batchMap.get(branch) ?? null });
+          } else {
+            missing.push(branch);
+          }
+        }
+        if (missing.length > 0) {
+          const fallback = await this.perBranchFallback(provider, repo, missing);
+          results.push(...fallback);
+        }
+        return results;
+      } catch (error) {
+        logWarn("Batched PR lookup failed; retrying per-branch", {
+          branchCount: branches.length,
+          error: formatErrorMessage(error, "findPRsByBranches failed"),
+        });
+        // Fall through to per-branch path below.
+      }
+    }
+
+    return this.perBranchFallback(provider, repo, branches);
+  }
+
+  private perBranchFallback(
+    provider: ForgeProviderImpl,
+    repo: RepoRef,
+    branches: string[]
+  ): Promise<Array<{ branch: string; pr: ForgePR | null }>> {
+    return mapWithConcurrencyLimit(
+      branches,
+      5,
+      (branch): Promise<{ branch: string; pr: ForgePR | null }> => {
+        const existing = this.inFlightBranchLookups.get(branch);
+        if (existing) {
+          return existing.then((pr) => ({ branch, pr }));
+        }
+        const promise = provider.findPRByBranch(repo, branch).catch(() => null);
+        this.inFlightBranchLookups.set(branch, promise);
+        promise.finally(() => {
+          this.inFlightBranchLookups.delete(branch);
+        });
+        return promise.then((pr) => ({ branch, pr }));
+      }
+    );
   }
 
   /**
