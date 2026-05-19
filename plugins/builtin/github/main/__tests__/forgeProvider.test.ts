@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { formatErrorMessage } from "../../../../../shared/utils/errorMessage.js";
 
 const mockGraphQLClient = vi.fn();
 
@@ -18,7 +19,7 @@ vi.mock("../GitHubRateLimitService.js", () => ({
 }));
 
 vi.mock("../GitHubErrors.js", () => ({
-  parseGitHubError: (e: unknown) => (e instanceof Error ? e.message : "unknown error"),
+  parseGitHubError: (e: unknown) => formatErrorMessage(e, "unknown error"),
 }));
 
 import { githubForgeProvider } from "../forgeProvider.js";
