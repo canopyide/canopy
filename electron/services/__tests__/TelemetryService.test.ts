@@ -1062,6 +1062,7 @@ describe("addActionBreadcrumb", () => {
     durationMs: 7,
     timestamp: 1_700_000_000_000,
     count: 1,
+    danger: "safe" as const,
   };
 
   beforeEach(() => {

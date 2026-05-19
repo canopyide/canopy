@@ -7,6 +7,7 @@ import type {
   ActionDispatchResult,
   ActionDispatchOptions,
   ActionSource,
+  ActionDanger,
   ActionError,
 } from "../../shared/types/actions.js";
 import type { AnyActionDefinition } from "./actions/actionTypes";
@@ -313,6 +314,7 @@ export class ActionService {
         timestamp: wallClockStartMs,
         category: definition.category,
         durationMs,
+        danger: definition.danger,
         safeArgs: this.extractSafeBreadcrumbArgs(args, definition),
       });
       this.emitShortcutHint(actionId, source);
@@ -498,6 +500,7 @@ export class ActionService {
     timestamp: number;
     category: string;
     durationMs: number;
+    danger: ActionDanger;
     safeArgs?: Record<string, unknown>;
   }): Promise<void> {
     if (!isElectronApiAvailable()) return;
@@ -511,6 +514,7 @@ export class ActionService {
         timestamp: payload.timestamp,
         category: payload.category,
         durationMs: payload.durationMs,
+        danger: payload.danger,
         ...(payload.safeArgs ? { safeArgs: payload.safeArgs } : {}),
       });
     } catch (err) {

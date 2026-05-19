@@ -635,6 +635,7 @@ export type DaintreeEventMap = {
     timestamp: number;
     category: string;
     durationMs: number;
+    danger: "safe" | "confirm" | "restricted";
   };
 
   // Terminal Trash Events
