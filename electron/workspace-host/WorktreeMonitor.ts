@@ -1,5 +1,5 @@
-import { readFile, access } from "fs/promises";
-import { join as pathJoin } from "path";
+import { readFile, access, stat } from "fs/promises";
+import { isAbsolute, join as pathJoin } from "path";
 import { createHardenedGit, createWslHardenedGit } from "../utils/hardenedGit.js";
 import type { WslGitInvocation } from "../utils/hardenedGit.js";
 import type PQueue from "p-queue";
@@ -35,6 +35,29 @@ const HEARTBEAT_GAP_FLOOR_MS = 30_000;
 // quiet repo doesn't false-positive — 360s leaves ~60s of headroom for
 // timer drift past the expected fire time.
 const HEARTBEAT_GAP_CEILING_MS = 360_000;
+// Startup jitter for the initial git-status poll. Mirrors the
+// FETCH_INITIAL_DELAY_* pattern in FetchScheduler so N background monitors
+// starting together don't all fire updateGitStatus at t=0. Foreground
+// (isCurrent=true) monitors still run immediately so the active card has
+// fresh data on app launch.
+const STATUS_INITIAL_DELAY_MIN_MS = 2_000;
+const STATUS_INITIAL_DELAY_MAX_MS = 5_000;
+// Sentinel for "this git path doesn't exist". Used so the baseline can
+// stably record absence (packed-refs, detached HEAD's branch ref) and still
+// match on the next stat pass without forcing a real git check.
+const STAT_ABSENT_SENTINEL = -1;
+
+function randomBetween(minMs: number, maxMs: number): number {
+  if (maxMs <= minMs) return minMs;
+  return minMs + Math.floor(Math.random() * (maxMs - minMs));
+}
+
+interface GitFileStatBaseline {
+  index: number;
+  head: number;
+  refsHead: number;
+  packedRefs: number;
+}
 
 export interface WorktreeMonitorConfig {
   basePollingInterval: number;
@@ -127,6 +150,21 @@ export class WorktreeMonitor {
   private gitWatchEnabled: boolean;
   private gitWatchDebounceMs: number;
   private lastGitStatusCompletedAt: number = 0;
+  // Stamped by the watcher's onTriggerUpdate hook before a forced refresh
+  // fires. The stat pre-check compares against `lastStatBaselineAt` to know
+  // whether an event arrived since the baseline was captured — if so, the
+  // skip is invalid and we must run the full git check.
+  private lastWatcherEventAt: number = 0;
+  // mtime cache for .git/index, HEAD, refs/heads/<branch>, packed-refs.
+  // Populated after every successful git check. When the next poll finds all
+  // four mtimes unchanged AND no watcher event has fired since, we skip the
+  // simple-git fork-exec. null = no baseline yet (first poll, or post-error).
+  private lastStatBaseline: GitFileStatBaseline | null = null;
+  private lastStatBaselineAt: number = 0;
+  // Timer used to defer the initial `updateGitStatus` call for background
+  // monitors so N monitors starting together don't fork git simultaneously.
+  // Cleared by `clearTimers()` so `stop()` cancels the deferred poll.
+  private initialStatusTimer: NodeJS.Timeout | null = null;
 
   // Extra state
   private _createdAt: number | undefined;
@@ -296,6 +334,11 @@ export class WorktreeMonitor {
         return monitor.lastGitStatusCompletedAt;
       },
       onTriggerUpdate: () => {
+        // Stamp the watcher event time before triggering so the stat
+        // pre-check on the next timed poll knows to invalidate any baseline
+        // captured before this event.
+        monitor.lastWatcherEventAt = Date.now();
+        monitor.pollingStrategy.recordStateChange();
         void monitor.updateGitStatus(true);
       },
       onInotifyLimitReached: (worktreeId: string) =>
@@ -457,6 +500,12 @@ export class WorktreeMonitor {
         this.pollingTimer = null;
         this.scheduleNextPoll();
       }
+    }
+    // Focus gain resets the idle backoff: the user is looking at this
+    // worktree now and expects the base cadence, even if the background
+    // tier had backed off after a quiet stretch.
+    if (changed && value && this._isRunning) {
+      this.pollingStrategy.recordStateChange();
     }
     // Fetch cadence flips between focused (~30-45s) and background (5-10min)
     // based on `isCurrent`. Reschedule from the new tier the moment focus
@@ -740,11 +789,38 @@ export class WorktreeMonitor {
       this.watcherController.start();
     }
 
-    await this.updateGitStatus(true);
+    // Foreground monitors run the initial git status synchronously — the
+    // user is looking at this card and expects fresh data on app launch.
+    // Background monitors defer through a 2-5s jitter so N monitors started
+    // together don't all fork git at t=0. The fetch scheduler already has
+    // its own initial jitter on a separate cadence.
+    if (this._isCurrent) {
+      await this.updateGitStatus(true);
 
-    if (this._isRunning && this.pollingEnabled) {
-      this.scheduleNextPoll();
+      if (this._isRunning && this.pollingEnabled) {
+        this.scheduleNextPoll();
+        this.fetchScheduler.schedule(true);
+      }
+    } else {
       this.fetchScheduler.schedule(true);
+      const delayMs = randomBetween(STATUS_INITIAL_DELAY_MIN_MS, STATUS_INITIAL_DELAY_MAX_MS);
+      this.initialStatusTimer = setTimeout(() => {
+        this.initialStatusTimer = null;
+        if (!this._isRunning) return;
+        // updateGitStatus already surfaces non-removal errors via mood=error
+        // + emit; the catch here just prevents the unhandled rejection from
+        // bubbling out of the fire-and-forget timer.
+        this.updateGitStatus(true)
+          .catch(() => {
+            // Already emitted as error mood inside updateGitStatus
+          })
+          .finally(() => {
+            if (this._isRunning && this.pollingEnabled) {
+              this.scheduleNextPoll();
+            }
+          });
+      }, delayMs);
+      this.initialStatusTimer.unref?.();
     }
   }
 
@@ -958,6 +1034,10 @@ export class WorktreeMonitor {
       clearTimeout(this.resumeTimer);
       this.resumeTimer = null;
     }
+    if (this.initialStatusTimer) {
+      clearTimeout(this.initialStatusTimer);
+      this.initialStatusTimer = null;
+    }
     this.watcherController.clearRetryTimer();
     this.clearResourcePollTimer();
     this.fetchScheduler.clearTimer();
@@ -1156,7 +1236,48 @@ export class WorktreeMonitor {
       return;
     }
 
+    // Cheap stat pre-check: when the four git files we care about haven't
+    // changed since the last baseline and no watcher event has fired since,
+    // the simple-git fork-exec would be redundant. Skip it. This is the
+    // common case on a quiet repo — the per-poll cost drops from ~15-50ms
+    // (fork + git status) to ~1ms (four stat() calls).
+    //
+    // The baseline only exists after the first real check, so this branch
+    // is a no-op on the very first poll. Forced refreshes (watcher events,
+    // user actions) always run the full check.
+    if (!forceRefresh && gitDir && this._hasInitialStatus && this.lastStatBaseline !== null) {
+      const baselineAt = this.lastStatBaselineAt;
+      const checkStartedAt = Date.now();
+      try {
+        const commonDir = await this.resolveCommonDirAsync(gitDir);
+        const fresh = await this.buildStatBaseline(gitDir, commonDir);
+        if (
+          fresh !== null &&
+          this.lastWatcherEventAt <= baselineAt &&
+          this.statBaselineMatches(this.lastStatBaseline, fresh)
+        ) {
+          // Treat the skip as a no-change observation so the idle backoff
+          // ramps up the next interval. lastGitStatusCompletedAt bumps too,
+          // otherwise the heartbeat-gap check would false-positive on a
+          // long quiet streak that only ran stat-skips.
+          this.pollingStrategy.recordNoChange();
+          this.lastStatBaselineAt = checkStartedAt;
+          this.lastGitStatusCompletedAt = Date.now();
+          return;
+        }
+      } catch {
+        // Unexpected stat error — fall through to the full git check.
+        // Don't poison the baseline; the post-check rebuild will refresh it.
+      }
+    }
+
     this._isUpdating = true;
+    // Tracks whether the try block reached a clean exit point — either the
+    // no-change early return or the post-emit fall-through. The catch block
+    // doesn't flip it (so the finally clears the stale baseline) which means
+    // a flaky git that throws here can't get its old baseline re-stamped and
+    // silently suppress the next retry.
+    let checkSucceeded = false;
 
     try {
       if (forceRefresh) {
@@ -1229,14 +1350,21 @@ export class WorktreeMonitor {
       const upstreamChanged =
         nextAheadCount !== this.aheadCount || nextBehindCount !== this.behindCount;
 
-      if (
-        !stateChanged &&
-        !noteChanged &&
-        !branchChanged &&
-        !planChanged &&
-        !upstreamChanged &&
-        !forceRefresh
-      ) {
+      const anythingChanged =
+        stateChanged || noteChanged || branchChanged || planChanged || upstreamChanged;
+
+      // Drive the idle backoff from what the git check actually observed —
+      // a real state change resets, otherwise we count one quiet tick. The
+      // skip path above runs its own recordNoChange so this branch only
+      // sees ticks that paid the full fork-exec cost.
+      if (anythingChanged) {
+        this.pollingStrategy.recordStateChange();
+      } else {
+        this.pollingStrategy.recordNoChange();
+      }
+
+      if (!anythingChanged && !forceRefresh) {
+        checkSucceeded = true;
         return;
       }
 
@@ -1293,6 +1421,7 @@ export class WorktreeMonitor {
       this._hasInitialStatus = true;
 
       this.emitUpdate();
+      checkSucceeded = true;
     } catch (error) {
       if (error instanceof WorktreeRemovedError) {
         this.stop();
@@ -1313,8 +1442,107 @@ export class WorktreeMonitor {
     } finally {
       this._isUpdating = false;
       this.lastGitStatusCompletedAt = Date.now();
+      // Rebuild the stat baseline only when a real git check finished
+      // cleanly. On failure (anything that didn't set checkSucceeded — git
+      // throw, WorktreeRemovedError, index.lock retry path) we drop the
+      // baseline so the next non-forced poll falls through to a full check
+      // rather than skipping against a snapshot that predates the failure.
+      if (checkSucceeded && gitDir) {
+        try {
+          const commonDir = await this.resolveCommonDirAsync(gitDir);
+          const fresh = await this.buildStatBaseline(gitDir, commonDir);
+          if (fresh !== null) {
+            this.lastStatBaseline = fresh;
+            this.lastStatBaselineAt = Date.now();
+          } else {
+            this.lastStatBaseline = null;
+          }
+        } catch {
+          this.lastStatBaseline = null;
+        }
+      } else {
+        this.lastStatBaseline = null;
+      }
       this.watcherController.flushPendingIfReady(true);
     }
+  }
+
+  /**
+   * Resolve the common git directory for a linked worktree (the `gitDir`
+   * inside `<repo>/.git/worktrees/<name>/` points at `commondir`, which
+   * holds packed-refs and the shared refs/heads tree). Returns `gitDir`
+   * itself for the main worktree, or when the commondir file is missing.
+   * Mirrors `GitFileWatcher.resolveCommonDir` but uses async `readFile`.
+   */
+  private async resolveCommonDirAsync(gitDir: string): Promise<string> {
+    try {
+      const commondirContent = await readFile(pathJoin(gitDir, "commondir"), "utf-8");
+      const trimmed = commondirContent.trim();
+      if (!trimmed) return gitDir;
+      return isAbsolute(trimmed) ? trimmed : pathJoin(gitDir, trimmed);
+    } catch {
+      return gitDir;
+    }
+  }
+
+  /**
+   * Capture mtimeMs for the four git files whose changes would invalidate
+   * the previous status snapshot: index, HEAD, refs/heads/<branch>, and
+   * packed-refs. Returns `null` if any unexpected error occurs (caller
+   * falls back to a full git check). ENOENT is normal for packed-refs and
+   * the branch ref (detached HEAD, or branch not pushed yet) — those paths
+   * return STAT_ABSENT_SENTINEL and the baseline comparison still works.
+   */
+  private async buildStatBaseline(
+    gitDir: string,
+    commonDir: string
+  ): Promise<GitFileStatBaseline | null> {
+    try {
+      const [indexStat, headStat, refsHeadStat, packedRefsStat] = await Promise.all([
+        this.statMtime(pathJoin(gitDir, "index")),
+        this.statMtime(pathJoin(gitDir, "HEAD")),
+        this._branch
+          ? this.statMtime(pathJoin(commonDir, "refs", "heads", this._branch))
+          : Promise.resolve(STAT_ABSENT_SENTINEL),
+        this.statMtime(pathJoin(commonDir, "packed-refs")),
+      ]);
+      return {
+        index: indexStat,
+        head: headStat,
+        refsHead: refsHeadStat,
+        packedRefs: packedRefsStat,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Stat one git path. Returns `STAT_ABSENT_SENTINEL` when the file is
+   * missing (the most common case for packed-refs and unpushed branch
+   * refs) so the baseline can still compare equal on the next pass without
+   * forcing a full git check. Other errors propagate up so the caller
+   * falls back to the full path — a permission flip or filesystem hiccup
+   * should not silently freeze the cached baseline.
+   */
+  private async statMtime(filePath: string): Promise<number> {
+    try {
+      const result = await stat(filePath);
+      return result.mtimeMs;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException)?.code;
+      if (code === "ENOENT") return STAT_ABSENT_SENTINEL;
+      throw error;
+    }
+  }
+
+  private statBaselineMatches(a: GitFileStatBaseline, b: GitFileStatBaseline): boolean {
+    return (
+      a.index === b.index &&
+      a.head === b.head &&
+      a.refsHead === b.refsHead &&
+      a.packedRefs === b.packedRefs
+    );
   }
 
   private async readCurrentBranch(): Promise<string | undefined> {
