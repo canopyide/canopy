@@ -404,9 +404,6 @@ export class TurnOutcomeService {
   clear(): void {
     this.hydrate();
     this.records = [];
-    this.stuckRecorded.clear();
-    this.recentOutput.clear();
-    this.turnStartByTerminal.clear();
     this.flushNow();
   }
 }
