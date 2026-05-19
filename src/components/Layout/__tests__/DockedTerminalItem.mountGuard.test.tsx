@@ -357,41 +357,8 @@ describe("DockedTerminalItem lifecycle and pop-out (#8160)", () => {
     expect(calls.some((c) => c[1] === TerminalRefreshTier.BACKGROUND)).toBe(true);
   });
 
-  it("renders an 'Open in grid' button that pops the terminal to the grid", () => {
-    mockActiveDockTerminalId = "t-1";
-
-    const { container } = render(<DockedTerminalItem terminal={makeTerminal({ id: "t-1" })} />);
-
-    const popOut = container.querySelector(
-      'button[aria-label="Open in grid"]'
-    ) as HTMLButtonElement | null;
-    expect(popOut).not.toBeNull();
-
-    moveTerminalToGridMock.mockReturnValue(true);
-    act(() => {
-      popOut?.click();
-    });
-
-    expect(moveTerminalToGridMock).toHaveBeenCalledWith("t-1");
-    expect(closeDockTerminalMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not close the dock when moveTerminalToGrid returns false", () => {
-    mockActiveDockTerminalId = "t-1";
-
-    const { container } = render(<DockedTerminalItem terminal={makeTerminal({ id: "t-1" })} />);
-
-    const popOut = container.querySelector(
-      'button[aria-label="Open in grid"]'
-    ) as HTMLButtonElement | null;
-    expect(popOut).not.toBeNull();
-
-    moveTerminalToGridMock.mockReturnValue(false);
-    act(() => {
-      popOut?.click();
-    });
-
-    expect(moveTerminalToGridMock).toHaveBeenCalledWith("t-1");
-    expect(closeDockTerminalMock).not.toHaveBeenCalled();
-  });
+  // The "Open in grid" affordance moved out of DockedTerminalItem's overlay and
+  // into PanelHeader's control slot (#8359). Button rendering + onRestore wiring
+  // is covered by PanelHeader.test.tsx; the conditional dock-close lives in
+  // DockedPanel.handleRestore.
 });

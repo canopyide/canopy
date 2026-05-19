@@ -259,6 +259,7 @@ export function DockPanelOffscreenContainer({ children }: DockPanelOffscreenCont
                 terminal={terminal}
                 onPopoverClose={handlePopoverClose}
                 onAddTab={isSinglePanel ? () => handleAddTabForPanel(terminal) : undefined}
+                showRestoreControl={isSinglePanel}
               />
             </div>
           </DockPopoverChildProvider>

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDndMonitor } from "@dnd-kit/core";
-import { SquareArrowOutUpRight } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn, getBaseTitle } from "@/lib/utils";
 import {
@@ -159,11 +158,6 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
     },
     [terminal.id, openDockTerminal, closeDockTerminal]
   );
-
-  const handlePopOut = useCallback(() => {
-    const moved = moveTerminalToGrid(terminal.id);
-    if (moved) closeDockTerminal();
-  }, [terminal.id, moveTerminalToGrid, closeDockTerminal]);
 
   const presetCustomPresets = useAgentSettingsStore((s) =>
     terminal.launchAgentId ? s.settings?.agents?.[terminal.launchAgentId]?.customPresets : undefined
@@ -381,23 +375,6 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
               className="w-full h-full flex flex-col"
               data-dock-portal-target={terminal.id}
             />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handlePopOut();
-                  }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  className="absolute top-1.5 right-1.5 p-1 rounded text-daintree-text/40 hover:text-daintree-text hover:bg-daintree-text/10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-1"
-                  aria-label="Open in grid"
-                >
-                  <SquareArrowOutUpRight className="w-3.5 h-3.5" aria-hidden="true" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Open in grid</TooltipContent>
-            </Tooltip>
           </div>
         </PopoverContent>
       </Popover>

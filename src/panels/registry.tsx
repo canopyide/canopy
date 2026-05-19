@@ -42,6 +42,7 @@ export interface PanelComponentProps {
   onTitleChange?: (newTitle: string) => void;
   onMinimize?: () => void;
   onRestore?: () => void;
+  showRestoreControl?: boolean;
   gridPanelCount?: number;
   extensionState?: Record<string, unknown>;
   [key: string]: unknown;
