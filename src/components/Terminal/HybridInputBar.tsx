@@ -490,6 +490,7 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
       const gen = focusGenerationRef.current;
       requestAnimationFrame(() => {
         if (focusGenerationRef.current !== gen) return;
+        if (editorViewRef.current !== view) return;
         if (usePanelStore.getState().preferredTerminalFocusTarget !== "hybridInput") return;
         view.focus();
       });
@@ -549,11 +550,11 @@ export const HybridInputBar = forwardRef<HybridInputBarHandle, HybridInputBarPro
           requestAnimationFrame(() => {
             if (focusGenerationRef.current !== gen) return;
             if (editorViewRef.current !== view) return;
+            if (usePanelStore.getState().preferredTerminalFocusTarget !== "hybridInput") return;
             view.dispatch({
               selection: EditorSelection.cursor(view.state.doc.length),
               scrollIntoView: true,
             });
-            if (usePanelStore.getState().preferredTerminalFocusTarget !== "hybridInput") return;
             view.focus();
           });
         },
