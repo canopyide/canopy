@@ -285,6 +285,64 @@ describe("PullRequestService", () => {
     expect(mockImpl.findPRByBranch).not.toHaveBeenCalled();
     expect(detected).toHaveLength(2);
 
+    const byWorktree = new Map(detected.map((d) => [d.worktreeId, d]));
+    expect(byWorktree.get("wt-1")).toMatchObject({
+      prNumber: 1,
+      prUrl: expect.stringMatching(/\/1$/),
+    });
+    expect(byWorktree.get("wt-2")).toMatchObject({
+      prNumber: 2,
+      prUrl: expect.stringMatching(/\/2$/),
+    });
+
+    unsubscribe();
+    pullRequestService.destroy();
+  });
+
+  it("fans out a single batched PR result to every worktree on the same branch", async () => {
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ clearPRCaches }));
+
+    const batchSpy = vi.fn(async (_repo: RepoRef, branches: string[]) => {
+      const map = new Map<string, ForgePR | null>();
+      for (const branch of branches) {
+        map.set(branch, makeMockForgePR({ number: 99, headRef: branch }));
+      }
+      return map;
+    });
+
+    mockForgeProviderResolved(undefined, batchSpy);
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    const detected: DaintreeEventMap["sys:pr:detected"][] = [];
+    const unsubscribe = events.on("sys:pr:detected", (payload) => detected.push(payload));
+
+    pullRequestService.initialize("/repo");
+
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-a", branch: "shared/branch" })
+    );
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-b", branch: "shared/branch" })
+    );
+
+    await pullRequestService.refresh();
+
+    // Branch deduplication: one batch call with a single unique branch
+    expect(batchSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.arrayContaining(["shared/branch"])
+    );
+    // Both worktrees get a detection event from the single PR
+    expect(detected).toHaveLength(2);
+    const worktreeIds = detected.map((d) => d.worktreeId).sort();
+    expect(worktreeIds).toEqual(["wt-a", "wt-b"]);
+    expect(detected.every((d) => d.prNumber === 99)).toBe(true);
+
     unsubscribe();
     pullRequestService.destroy();
   });
@@ -362,6 +420,10 @@ describe("PullRequestService", () => {
     expect(batchSpy).toHaveBeenCalledTimes(1);
     // Exactly one per-branch fallback call — for the omitted branch.
     expect(mockImpl.findPRByBranch).toHaveBeenCalledTimes(1);
+    expect(mockImpl.findPRByBranch).toHaveBeenCalledWith(
+      expect.objectContaining({ owner: "testowner", repo: "testrepo" }),
+      "feature/b"
+    );
 
     pullRequestService.destroy();
   });

@@ -320,8 +320,8 @@ async function findPRsByBranchesImpl(
   const result = new Map<string, PR | null>();
   if (branches.length === 0) return result;
 
-  // Deduplicate while preserving order; record original branches for each unique value
-  // so the result Map carries an entry for every input even when the caller passed duplicates.
+  // Deduplicate while preserving order. Duplicates in the input still land
+  // in the result via the same key, but each unique value is queried once.
   const unique: string[] = [];
   const seen = new Set<string>();
   for (const branch of branches) {
@@ -331,19 +331,34 @@ async function findPRsByBranchesImpl(
     }
   }
 
-  // Chunks run sequentially to keep rate-limit cost predictable; parallel
-  // chunks would spike GraphQL points during a fleet-wide refresh.
+  // Chunks run sequentially (parallel would spike GraphQL points during a
+  // fleet-wide refresh). Per-chunk failures are caught so a single transient
+  // chunk error doesn't blank every branch — the caller falls back per-branch
+  // for any branch the result Map omits.
   for (let start = 0; start < unique.length; start += BATCH_BRANCH_CHUNK_SIZE) {
     const chunk = unique.slice(start, start + BATCH_BRANCH_CHUNK_SIZE);
     const query = buildBatchBranchPRQuery(repo.owner, repo.repo, chunk);
-    const response = await runQuery(query, {});
+    let response: Record<string, unknown>;
+    try {
+      response = (await runQuery(query, {})) as Record<string, unknown>;
+    } catch {
+      // Omit this chunk's branches from the result — caller's missing-key
+      // fallback path handles them.
+      continue;
+    }
 
     for (let i = 0; i < chunk.length; i++) {
       const branch = chunk[i];
-      const aliasNode = (response as Record<string, unknown>)[`b${i}`] as
+      // A missing alias key (vs. a present key with empty nodes) indicates a
+      // partial GraphQL response. Omit so the caller routes to fallback rather
+      // than silently recording "no PR found".
+      if (!(`b${i}` in response)) continue;
+      const aliasNode = response[`b${i}`] as
         | { pullRequests?: { nodes?: unknown[] } }
+        | null
         | undefined;
-      const nodes = (aliasNode?.pullRequests?.nodes ?? []) as Array<Record<string, unknown>>;
+      if (aliasNode == null) continue;
+      const nodes = (aliasNode.pullRequests?.nodes ?? []) as Array<Record<string, unknown>>;
       const first = nodes.find(Boolean);
       result.set(branch, first ? toForgePR(first) : null);
     }

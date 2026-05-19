@@ -518,7 +518,10 @@ class PullRequestService {
     // semantics of a manual refresh.
     this.resolvedWorktrees.clear();
     // Re-resolve the forge provider on manual refresh so token changes
-    // and provider installs/uninstalls take effect immediately.
+    // and provider installs/uninstalls take effect immediately. Clear the
+    // in-flight branch-lookup dedup so a stale promise from the previous
+    // provider can't bind a wrong-repo PR to a worktree after refresh.
+    this.inFlightBranchLookups.clear();
     this.invalidateProvider();
     await this.resolveProvider();
     // Manual refresh is an explicit "I want fresh data now" — bypass the 5s
