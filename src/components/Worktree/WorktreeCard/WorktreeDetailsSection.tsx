@@ -10,6 +10,7 @@ import { ActivityLight } from "../ActivityLight";
 import { LiveTimeAgo } from "../LiveTimeAgo";
 import { WorktreeDetails } from "../WorktreeDetails";
 import { Avatar } from "@/components/ui/Avatar";
+import { Spinner } from "@/components/ui/Spinner";
 import { getGravatarUrl, isBotAuthor } from "@/utils/gravatar";
 import {
   Activity,
@@ -54,6 +55,11 @@ export interface WorktreeDetailsSectionProps {
   isLifecycleRunning?: boolean;
   lifecycleLabel?: string;
 
+  isBeingDeleted?: boolean;
+  deleteError?: string | null;
+  onRetryDelete?: () => void;
+  onDismissDeleteError?: () => void;
+
   hasResourceConfig?: boolean;
   resourceStatus?: string;
   onResourceResume?: () => void;
@@ -84,6 +90,10 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
     reviewState,
     isLifecycleRunning,
     lifecycleLabel,
+    isBeingDeleted,
+    deleteError,
+    onRetryDelete,
+    onDismissDeleteError,
 
     hasResourceConfig,
     resourceStatus,
@@ -167,49 +177,50 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
   const showResourceConnect = hasResourceConfig && !!onResourceConnect && rsLower === "running";
 
   return (
-    <div
-      id={detailsId}
-      className="mt-2 rounded-[var(--radius-lg)] border border-border-default bg-surface-inset p-3"
-    >
-      {isExpanded ? (
-        <div className="-m-3">
-          <button
-            onClick={onToggleExpand}
-            aria-expanded={true}
-            aria-controls={detailsPanelId}
-            className="worktree-section-button flex w-full items-center justify-between rounded-t-[var(--radius-lg)] border-b border-border-default bg-surface-inset px-3 py-2.5 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-[-2px]"
-            id={`${detailsId}-button`}
-          >
-            <span className="text-xs font-medium text-text-muted">Details</span>
-            <ChevronRight className="h-3 w-3 rotate-90 text-text-muted" />
-          </button>
-          <div
-            id={detailsPanelId}
-            role="region"
-            aria-labelledby={`${detailsId}-button`}
-            className="p-3"
-          >
-            <WorktreeDetails
-              worktree={worktree}
-              homeDir={homeDir}
-              effectiveNote={effectiveNote}
-              effectiveSummary={effectiveSummary}
-              worktreeErrors={worktreeErrors}
-              hasChanges={hasChanges}
-              isFocused={isFocused}
-              isStale={isStale}
-              onPathClick={onPathClick}
-              onDismissError={onDismissError}
-              onRetryError={onRetryError}
-              showLastCommit={true}
-              lastActivityTimestamp={worktree.lastActivityTimestamp}
-              showTime={true}
-            />
+    <>
+      <div
+        id={detailsId}
+        className="mt-2 rounded-[var(--radius-lg)] border border-border-default bg-surface-inset p-3"
+      >
+        {isExpanded ? (
+          <div className="-m-3">
+            <button
+              onClick={onToggleExpand}
+              aria-expanded={true}
+              aria-controls={detailsPanelId}
+              className="worktree-section-button flex w-full items-center justify-between rounded-t-[var(--radius-lg)] border-b border-border-default bg-surface-inset px-3 py-2.5 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-[-2px]"
+              id={`${detailsId}-button`}
+            >
+              <span className="text-xs font-medium text-text-muted">Details</span>
+              <ChevronRight className="h-3 w-3 rotate-90 text-text-muted" />
+            </button>
+            <div
+              id={detailsPanelId}
+              role="region"
+              aria-labelledby={`${detailsId}-button`}
+              className="p-3"
+            >
+              <WorktreeDetails
+                worktree={worktree}
+                homeDir={homeDir}
+                effectiveNote={effectiveNote}
+                effectiveSummary={effectiveSummary}
+                worktreeErrors={worktreeErrors}
+                hasChanges={hasChanges}
+                isFocused={isFocused}
+                isStale={isStale}
+                onPathClick={onPathClick}
+                onDismissError={onDismissError}
+                onRetryError={onRetryError}
+                showLastCommit={true}
+                lastActivityTimestamp={worktree.lastActivityTimestamp}
+                showTime={true}
+              />
+            </div>
           </div>
-        </div>
-      ) : (
-        <div className="-m-3 flex flex-col">
-          <div className="flex items-stretch">
+        ) : (
+          <div className="-m-3 flex flex-col">
+            <div className="flex items-stretch">
             <div
               onClick={onToggleExpand}
               className={cn(
@@ -234,7 +245,16 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
                 )}
               />
               <span className="relative z-10 text-xs truncate min-w-0 flex-1 pointer-events-none">
-                {isLifecycleRunning && lifecycleLabel ? (
+                {isBeingDeleted && !deleteError ? (
+                  <span
+                    className="flex items-center gap-1.5 text-text-secondary"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <Spinner size="xs" className="shrink-0" />
+                    <span className="truncate">Deleting…</span>
+                  </span>
+                ) : isLifecycleRunning && lifecycleLabel ? (
                   <span className="flex items-center gap-1.5 text-text-secondary">
                     <span
                       aria-hidden="true"
@@ -506,7 +526,46 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
             </div>
           )}
         </div>
+        )}
+      </div>
+      {deleteError && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          data-testid="worktree-delete-error-banner"
+          className="mt-2 flex items-start gap-2 rounded-[var(--radius-lg)] border border-status-error/20 bg-status-error/10 p-3 text-xs"
+        >
+          <AlertTriangle className="w-4 h-4 shrink-0 text-status-error" aria-hidden="true" />
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <div className="flex flex-col gap-0.5">
+              <span className="font-medium text-status-error">Couldn't delete worktree</span>
+              <span className="break-words text-text-secondary">{deleteError}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {onRetryDelete && (
+                <button
+                  type="button"
+                  onClick={onRetryDelete}
+                  data-testid="worktree-delete-retry"
+                  className="rounded border border-status-error/30 px-2 py-1 text-status-error transition-colors hover:bg-status-error/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+                >
+                  Retry
+                </button>
+              )}
+              {onDismissDeleteError && (
+                <button
+                  type="button"
+                  onClick={onDismissDeleteError}
+                  data-testid="worktree-delete-dismiss"
+                  className="rounded px-2 py-1 text-text-secondary transition-colors hover:bg-overlay-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+                >
+                  Dismiss
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
-    </div>
+    </>
   );
 }
