@@ -3,6 +3,7 @@ import { useBrowserActionListeners } from "@/hooks/useBrowserActionListeners";
 import {
   AlertTriangle,
   RotateCw,
+  ChevronDown,
   ExternalLink,
   Settings,
   Square,
@@ -11,6 +12,14 @@ import {
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { usePanelStore } from "@/store";
 import { useProjectStore } from "@/store/projectStore";
 import { useProjectSettingsStore } from "@/store/projectSettingsStore";
@@ -29,12 +38,12 @@ import { useDevServer, type UseDevServerReturn } from "@/hooks/useDevServer";
 import { ConsoleDrawer } from "./ConsoleDrawer";
 import { useIsDragging } from "@/components/DragDrop";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { computeDevServerUrl } from "./urlSync";
 import { findDevServerCandidate } from "@/utils/devServerDetection";
 import { useProjectSettings } from "@/hooks/useProjectSettings";
 import { projectClient } from "@/clients";
 import { actionService } from "@/services/ActionService";
-import type { ActionId } from "@shared/types/actions";
 import { useWebviewThrottle } from "@/hooks/useWebviewThrottle";
 import { useHasBeenVisible } from "@/hooks/useHasBeenVisible";
 import { useWebviewEviction } from "@/hooks/useWebviewEviction";
@@ -189,8 +198,8 @@ export interface DevPreviewPaneProps extends BasePanelProps {
 }
 
 const STUCK_REMEDY_LABELS: Record<string, string> = {
-  "devPreview.restartClearCache": "Restart and clear cache",
-  "devPreview.reinstall": "Reinstall dependencies",
+  "devPreview.restartAndClearCache": "Restart and clear cache",
+  "devPreview.reinstallAndRestart": "Reinstall dependencies",
 };
 
 interface DevPreviewStuckBannerProps {
@@ -713,9 +722,7 @@ export function DevPreviewPane({
     void start();
   }, [start]);
 
-  const handleHardRestart = useCallback(() => {
-    // Invalidate any in-flight async scroll captures so they can't write
-    // stale data back over the cleared position.
+  const resetPreviewWebviewState = useCallback(() => {
     scrollCaptureGenerationRef.current += 1;
     setDevPreviewScrollPosition(id, undefined);
     clearLoadTimers();
@@ -726,10 +733,8 @@ export function DevPreviewPane({
     setIsSlowLoad(false);
     setIsWebviewReady(false);
     setWebviewLoadError(null);
-    void restart();
   }, [
     id,
-    restart,
     setBrowserUrl,
     setDevPreviewScrollPosition,
     clearLoadTimers,
@@ -739,17 +744,66 @@ export function DevPreviewPane({
     setWebviewLoadError,
   ]);
 
-  const handleStuckRemedy = useCallback(
-    (actionId: string) => {
-      if (!currentProjectId) return;
-      void actionService.dispatch(
-        actionId as ActionId,
-        { panelId: id, projectId: currentProjectId },
-        { source: "user" }
-      );
-    },
-    [currentProjectId, id]
-  );
+  const handleRestartDevServer = useCallback(() => {
+    resetPreviewWebviewState();
+    void restart();
+  }, [resetPreviewWebviewState, restart]);
+
+  const confirmRestartInFlightRef = useRef(false);
+  const [pendingRestartTier, setPendingRestartTier] = useState<
+    "restartAndClearCache" | "reinstallAndRestart" | null
+  >(null);
+  const isRestartConfirmOpen = pendingRestartTier !== null;
+
+  const handleRequestRestartAndClearCache = useCallback(() => {
+    setPendingRestartTier("restartAndClearCache");
+  }, []);
+
+  const handleRequestReinstallAndRestart = useCallback(() => {
+    setPendingRestartTier("reinstallAndRestart");
+  }, []);
+
+  const handleRestartConfirmClose = useCallback(() => {
+    setPendingRestartTier(null);
+  }, []);
+
+  const handleRestartConfirm = useCallback(() => {
+    if (confirmRestartInFlightRef.current) return;
+    const tier = pendingRestartTier;
+    if (!tier || !currentProjectId) return;
+
+    confirmRestartInFlightRef.current = true;
+
+    const onSuccess = () => {
+      resetPreviewWebviewState();
+      confirmRestartInFlightRef.current = false;
+      setPendingRestartTier(null);
+    };
+
+    const onError = (err: unknown) => {
+      console.warn("[DevPreviewPane] Restart confirm failed", err);
+      confirmRestartInFlightRef.current = false;
+      setPendingRestartTier(null);
+    };
+
+    if (tier === "restartAndClearCache") {
+      window.electron.devPreview
+        .restartAndClearCache({ panelId: id, projectId: currentProjectId })
+        .then(onSuccess, onError);
+    } else {
+      window.electron.devPreview
+        .reinstallAndRestart({ panelId: id, projectId: currentProjectId })
+        .then(onSuccess, onError);
+    }
+  }, [pendingRestartTier, currentProjectId, id, resetPreviewWebviewState]);
+
+  const handleStuckRemedy = useCallback((actionId: string) => {
+    if (actionId === "devPreview.restartAndClearCache") {
+      setPendingRestartTier("restartAndClearCache");
+    } else if (actionId === "devPreview.reinstallAndRestart") {
+      setPendingRestartTier("reinstallAndRestart");
+    }
+  }, []);
 
   const handleAutoDetect = useCallback(async () => {
     if (!currentProjectId || isAutoDetecting) return;
@@ -1047,7 +1101,7 @@ export function DevPreviewPane({
             tier={stuckTier >= 3 ? 3 : 2}
             error={error}
             isRestarting={isRestarting}
-            onRestart={handleHardRestart}
+            onRestart={handleRestartDevServer}
             onRemedy={handleStuckRemedy}
           />
         )}
@@ -1255,23 +1309,74 @@ export function DevPreviewPane({
                         {webviewLoadError.message}
                       </p>
                       <div className="flex items-center gap-1">
-                        <Button
-                          onClick={
-                            webviewLoadError.code === "connection_refused"
-                              ? handleHardRestart
-                              : handleRetryWebviewLoad
-                          }
-                          variant="ghost"
-                          size="sm"
-                          className="gap-1.5 px-2.5 py-1.5 group"
-                        >
-                          <RotateCw className="h-3.5 w-3.5" />
-                          <span className="text-xs">
-                            {webviewLoadError.code === "connection_refused"
-                              ? "Hard restart"
-                              : "Retry"}
-                          </span>
-                        </Button>
+                        {webviewLoadError.code === "connection_refused" ? (
+                          <>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  onClick={handleRestartDevServer}
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={isRestarting}
+                                  className="gap-1.5 px-2.5 py-1.5 rounded-r-none group"
+                                >
+                                  <RotateCw
+                                    className={cn("h-3.5 w-3.5", isRestarting && "animate-spin")}
+                                  />
+                                  <span className="text-xs">Restart dev server</span>
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom">Restart dev server</TooltipContent>
+                            </Tooltip>
+                            <DropdownMenu>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      disabled={isRestarting}
+                                      className="px-1.5 rounded-l-none group"
+                                      aria-label="More restart options"
+                                    >
+                                      <ChevronDown className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom">More restart options</TooltipContent>
+                              </Tooltip>
+                              <DropdownMenuContent
+                                align="end"
+                                sideOffset={4}
+                                className="min-w-[14rem] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto"
+                              >
+                                <DropdownMenuItem onSelect={handleHardReload}>
+                                  Reload preview
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={handleRestartDevServer}>
+                                  Restart dev server
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onSelect={handleRequestRestartAndClearCache}>
+                                  Restart and clear cache
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={handleRequestReinstallAndRestart}>
+                                  Reinstall dependencies
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </>
+                        ) : (
+                          <Button
+                            onClick={handleRetryWebviewLoad}
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1.5 px-2.5 py-1.5 group"
+                          >
+                            <RotateCw className="h-3.5 w-3.5" />
+                            <span className="text-xs">Retry</span>
+                          </Button>
+                        )}
                         {currentUrl && (
                           <Button
                             onClick={handleOpenExternal}
@@ -1378,10 +1483,36 @@ export function DevPreviewPane({
             isOpen={isConsoleOpen}
             onOpenChange={(nextOpen) => setDevPreviewConsoleOpen(id, nextOpen)}
             isRestarting={isRestarting}
-            onHardRestart={handleHardRestart}
+            onReloadPreview={handleHardReload}
+            onRestartDevServer={handleRestartDevServer}
+            onRequestRestartAndClearCache={handleRequestRestartAndClearCache}
+            onRequestReinstallAndRestart={handleRequestReinstallAndRestart}
             onStop={stop}
           />
         )}
+        <ConfirmDialog
+          isOpen={isRestartConfirmOpen}
+          onClose={handleRestartConfirmClose}
+          variant="destructive"
+          title={
+            pendingRestartTier === "restartAndClearCache"
+              ? "Clear cache and restart?"
+              : "Reinstall dependencies?"
+          }
+          description={
+            pendingRestartTier === "restartAndClearCache"
+              ? "This will delete framework build caches (.next, .vite, .turbo) and respawn the dev server. Source files and installed dependencies are not affected."
+              : "This will delete node_modules and reinstall all dependencies, then respawn the dev server. Source files and git state are not affected."
+          }
+          confirmLabel={
+            pendingRestartTier === "restartAndClearCache" ? "Clear cache" : "Reinstall dependencies"
+          }
+          onConfirm={handleRestartConfirm}
+        >
+          {pendingRestartTier === "reinstallAndRestart" && (
+            <p className="text-xs text-daintree-text/50 font-mono break-all">{cwd}/node_modules</p>
+          )}
+        </ConfirmDialog>
       </div>
     </ContentPanel>
   );

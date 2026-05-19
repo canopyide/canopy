@@ -1,8 +1,15 @@
 import { Suspense, useState, useCallback, useEffect } from "react";
-import { ChevronUp, RotateCw, CircleStop } from "lucide-react";
+import { ChevronUp, ChevronDown, RotateCw, CircleStop } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { XtermAdapter } from "../Terminal/XtermAdapter";
 import { terminalInstanceService } from "../../services/TerminalInstanceService";
 import { TerminalRefreshTier } from "@/types";
@@ -15,7 +22,10 @@ interface ConsoleDrawerProps {
   onOpenChange?: (isOpen: boolean) => void;
   defaultOpen?: boolean;
   isRestarting?: boolean;
-  onHardRestart?: () => void;
+  onReloadPreview?: () => void;
+  onRestartDevServer?: () => void;
+  onRequestRestartAndClearCache?: () => void;
+  onRequestReinstallAndRestart?: () => void;
   onStop?: () => void;
 }
 
@@ -62,7 +72,10 @@ export function ConsoleDrawer({
   onOpenChange,
   defaultOpen = false,
   isRestarting = false,
-  onHardRestart,
+  onReloadPreview,
+  onRestartDevServer,
+  onRequestRestartAndClearCache,
+  onRequestReinstallAndRestart,
   onStop,
 }: ConsoleDrawerProps) {
   const [uncontrolledIsOpen, setUncontrolledIsOpen] = useState(defaultOpen);
@@ -88,11 +101,13 @@ export function ConsoleDrawer({
     ? { label: "Restarting", textClass: "text-server-starting", dotClass: "bg-server-starting" }
     : (STATUS_LABEL[status] ?? STATUS_LABEL.stopped);
   const toggleLabel = isOpen ? "Hide Terminal" : "Show Terminal";
-  const hardRestartDisabled = !onHardRestart || isRestarting || status === "starting";
+  const hasRestartControls = !!onRestartDevServer;
+  const restartDisabled = !hasRestartControls || isRestarting || status === "starting";
+  const chevronDisabled = restartDisabled;
   const restartTooltip =
     status === "installing"
-      ? "Hard restart dev preview (may interrupt installation)"
-      : "Hard restart dev preview";
+      ? "Restart dev server (may interrupt installation)"
+      : "Restart dev server";
   const stopVisible =
     onStop &&
     (status === "starting" ||
@@ -102,7 +117,7 @@ export function ConsoleDrawer({
   const stopDisabled = isRestarting || status === "stopping";
   const statusClass = cn(
     "inline-flex min-h-8 items-center px-3 text-[10px] font-semibold uppercase tracking-wide",
-    (onHardRestart || stopVisible) && "border-r border-overlay/70",
+    (hasRestartControls || stopVisible) && "border-r border-overlay/70",
     statusLabel.textClass
   );
 
@@ -152,27 +167,77 @@ export function ConsoleDrawer({
           </Tooltip>
         )}
 
-        {onHardRestart && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-flex">
-                <button
-                  type="button"
-                  onClick={onHardRestart}
-                  disabled={hardRestartDisabled}
-                  className={cn(
-                    "p-1.5 rounded hover:bg-overlay-medium disabled:opacity-30 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors",
-                    isRestarting && "animate-spin"
-                  )}
-                  aria-label={restartTooltip}
-                  aria-busy={isRestarting}
+        {hasRestartControls && (
+          <>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <button
+                    type="button"
+                    onClick={onRestartDevServer}
+                    disabled={restartDisabled}
+                    className={cn(
+                      "p-1.5 rounded-r-none hover:bg-overlay-medium disabled:opacity-30 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors",
+                      isRestarting && "animate-spin"
+                    )}
+                    aria-label={restartTooltip}
+                    aria-busy={isRestarting}
+                  >
+                    <RotateCw className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{restartTooltip}</TooltipContent>
+            </Tooltip>
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <span className="inline-flex">
+                      <button
+                        type="button"
+                        disabled={chevronDisabled}
+                        className={cn(
+                          "p-1 rounded-l-none hover:bg-overlay-medium disabled:opacity-30 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+                        )}
+                        aria-label="More restart options"
+                        aria-disabled={chevronDisabled || undefined}
+                        onClick={(e) => {
+                          if (chevronDisabled) e.preventDefault();
+                        }}
+                      >
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">More restart options</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent
+                align="end"
+                sideOffset={4}
+                className="min-w-[14rem] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto"
+              >
+                <DropdownMenuItem onSelect={onReloadPreview}>Reload preview</DropdownMenuItem>
+                <DropdownMenuItem onSelect={onRestartDevServer}>
+                  Restart dev server
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  disabled={isRestarting || status === "installing"}
+                  onSelect={onRequestRestartAndClearCache}
                 >
-                  <RotateCw className="h-3.5 w-3.5" />
-                </button>
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">{restartTooltip}</TooltipContent>
-          </Tooltip>
+                  Restart and clear cache
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={isRestarting || status === "installing"}
+                  onSelect={onRequestReinstallAndRestart}
+                >
+                  Reinstall dependencies
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
         )}
       </div>
 

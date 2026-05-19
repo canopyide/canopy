@@ -57,7 +57,7 @@ export function detectDevServerError(output: string): DevServerError | null {
           type: "port-conflict",
           message: `Port ${port} is already in use. Stop the other server or use a different port.`,
           port,
-          recommendedActionId: "devPreview.restartClearCache",
+          recommendedActionId: "devPreview.restartAndClearCache",
         };
       }
     }
@@ -72,7 +72,7 @@ export function detectDevServerError(output: string): DevServerError | null {
         type: "missing-dependencies",
         message: module ? `Missing dependency: ${module}` : "Missing dependencies detected",
         module,
-        recommendedActionId: "devPreview.reinstall",
+        recommendedActionId: "devPreview.reinstallAndRestart",
       };
     }
   }

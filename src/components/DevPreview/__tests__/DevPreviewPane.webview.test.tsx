@@ -153,6 +153,7 @@ const {
 
 vi.mock("@/store", () => ({
   usePanelStore: usePanelStoreMock,
+  usePortalStore: () => ({ isOpen: false, width: 0 }),
 }));
 
 vi.mock("@/store/projectStore", () => ({
@@ -201,15 +202,34 @@ vi.mock("@/components/Panel", () => ({
   ),
 }));
 
+vi.mock("@/components/ui/tooltip", () => ({
+  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
+vi.mock("@/components/ui/dropdown-menu", () => ({
+  DropdownMenu: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DropdownMenuItem: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  DropdownMenuSeparator: () => null,
+}));
+
+vi.mock("@/components/ui/ConfirmDialog", () => ({
+  ConfirmDialog: () => null,
+}));
+
 vi.mock("@/components/DevPreview/ConsoleDrawer", () => ({
-  ConsoleDrawer: ({ onHardRestart }: { onHardRestart?: () => void }) => (
+  ConsoleDrawer: ({ onRestartDevServer }: { onRestartDevServer?: () => void }) => (
     <button
       type="button"
       data-testid="hard-restart"
-      onClick={() => onHardRestart?.()}
+      onClick={() => onRestartDevServer?.()}
       aria-label="hard-restart"
     >
-      Hard restart
+      Restart dev server
     </button>
   ),
 }));
