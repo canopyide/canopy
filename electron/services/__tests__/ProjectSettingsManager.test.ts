@@ -231,12 +231,36 @@ describe("ProjectSettingsManager caching", () => {
   it("round-trips forgeProviderOverride through save/load", async () => {
     await manager.saveProjectSettings(projectId, {
       runCommands: [],
-      forgeProviderOverride: "github",
+      forgeProviderOverride: "daintree.github.github",
     });
 
     const freshManager = new ProjectSettingsManager(tempDir, createMockStore());
     const loaded = await freshManager.getProjectSettings(projectId);
-    expect(loaded.forgeProviderOverride).toBe("github");
+    expect(loaded.forgeProviderOverride).toBe("daintree.github.github");
+  });
+
+  it("canonicalizes legacy 'github' on load to 'daintree.github.github' (#8451)", async () => {
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    await fs.writeFile(
+      settingsPath,
+      JSON.stringify({ runCommands: [], forgeProviderOverride: "github" }),
+      "utf-8"
+    );
+
+    const loaded = await manager.getProjectSettings(projectId);
+    expect(loaded.forgeProviderOverride).toBe("daintree.github.github");
+  });
+
+  it("canonicalizes legacy 'builtin.github' on load to 'daintree.github.github' (#8451)", async () => {
+    const settingsPath = path.join(tempDir, projectId, "settings.json");
+    await fs.writeFile(
+      settingsPath,
+      JSON.stringify({ runCommands: [], forgeProviderOverride: "builtin.github" }),
+      "utf-8"
+    );
+
+    const loaded = await manager.getProjectSettings(projectId);
+    expect(loaded.forgeProviderOverride).toBe("daintree.github.github");
   });
 
   it("treats missing forgeProviderOverride as undefined", async () => {

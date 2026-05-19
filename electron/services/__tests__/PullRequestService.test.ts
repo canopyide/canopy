@@ -76,7 +76,7 @@ function mockForgeProviderResolved(
   vi.doMock("../forgeProviderResolver.js", () => ({
     resolveForgeProvider: vi.fn().mockReturnValue({
       entry: {
-        pluginId: "builtin",
+        pluginId: "daintree.github",
         contribution: { id: "github", name: "GitHub", matches: ["github.com"] },
       },
       resolvedVia: "hostname",
@@ -162,7 +162,7 @@ describe("PullRequestService", () => {
       prUrl: "https://github.com/o/r/pull/42",
       prState: "open",
       prTitle: "Add new feature",
-      providerId: "builtin.github",
+      providerId: "daintree.github.github",
     });
     expect(detected[0].issueNumber).toBeUndefined();
 

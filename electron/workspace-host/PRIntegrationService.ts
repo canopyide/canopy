@@ -2,6 +2,10 @@ import type { TypedEventBus } from "../services/events.js";
 import type { GitHubPRCIStatus } from "../../shared/types/github.js";
 import type { PRServiceStatus, WorktreeSnapshot } from "../../shared/types/workspace-host.js";
 import { GitHubAuth } from "../services/github/GitHubAuth.js";
+import {
+  BUILTIN_GITHUB_PROVIDER_ID,
+  normalizeProviderId,
+} from "../../shared/utils/forgeProviderIds.js";
 
 interface PullRequestServiceLike {
   initialize(rootPath: string): void;
@@ -33,7 +37,7 @@ export interface PRIntegrationCallbacks {
       issueLastUpdatedAt?: number;
       /** Branch the lookup was initiated against — used by the renderer to drop stale overlays. */
       branchName?: string;
-      /** Provider that resolved the PR (e.g. "builtin.github"). */
+      /** Provider that resolved the PR (e.g. `"daintree.github.github"`). */
       providerId?: string;
       /** Provider-agnostic CI status (forge format). */
       ciStatus?: import("../../shared/types/forge.js").CIStatus;
@@ -48,7 +52,7 @@ export interface PRIntegrationCallbacks {
       issueLastUpdatedAt?: number;
       /** Branch the lookup was initiated against — used by the renderer to drop stale overlays. */
       branchName?: string;
-      /** Provider that resolved the issue (e.g. "builtin.github"). */
+      /** Provider that resolved the issue (e.g. `"daintree.github.github"`). */
       providerId?: string;
     }
   ): void;
@@ -195,7 +199,7 @@ export class PRIntegrationService {
     credentials: import("../../shared/types/forge.js").Credentials | null,
     projectRootPath: string | null
   ): void {
-    if (providerId === "github" || providerId === "builtin.github") {
+    if (normalizeProviderId(providerId) === BUILTIN_GITHUB_PROVIDER_ID) {
       if (credentials === null) {
         GitHubAuth.setMemoryToken(null);
       } else if (credentials.kind === "bearer") {

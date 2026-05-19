@@ -12,6 +12,7 @@ import { GitHubAuth } from "./github/GitHubAuth.js";
 import { BrokerError } from "./rpc/RequestResponseBroker.js";
 import { createLogger } from "../utils/logger.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
+import { BUILTIN_GITHUB_PROVIDER_ID } from "../../shared/utils/forgeProviderIds.js";
 
 const logger = createLogger("main:WorkspaceHost");
 const logInfo = (msg: string, ctx?: Record<string, unknown>) =>
@@ -623,7 +624,7 @@ export class WorkspaceHostProcess extends EventEmitter {
         if (token) {
           this.send({
             type: "update-forge-credentials",
-            providerId: "builtin.github",
+            providerId: BUILTIN_GITHUB_PROVIDER_ID,
             credentials: { kind: "bearer" as const, value: token },
           });
         }

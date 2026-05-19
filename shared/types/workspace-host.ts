@@ -515,7 +515,7 @@ export type WorkspaceHostEvent =
       issueLastUpdatedAt?: number;
       /** Branch the lookup was initiated against — receiver drops the overlay if the worktree's branch has since changed. */
       branchName?: string;
-      /** Provider that resolved the PR (e.g. "builtin.github"). */
+      /** Provider that resolved the PR (e.g. `"daintree.github.github"`). */
       providerId?: string;
       /** Provider-agnostic linked projection (dual-shipped alongside legacy fields during migration). */
       linked?: PluginWorktreeLinked | null;
@@ -542,7 +542,7 @@ export type WorkspaceHostEvent =
       issueLastUpdatedAt?: number;
       /** Branch the lookup was initiated against — receiver drops the overlay if the worktree's branch has since changed. */
       branchName?: string;
-      /** Provider that resolved the issue (e.g. "builtin.github"). */
+      /** Provider that resolved the issue (e.g. `"daintree.github.github"`). */
       providerId?: string;
     }
   | {

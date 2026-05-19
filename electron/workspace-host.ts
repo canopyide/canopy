@@ -35,6 +35,7 @@ import { WorkspaceService } from "./workspace-host/WorkspaceService.js";
 import { gitHubRateLimitService } from "./services/github/index.js";
 import { ensureSerializable } from "../shared/utils/serialization.js";
 import { formatErrorMessage } from "../shared/utils/errorMessage.js";
+import { BUILTIN_GITHUB_PROVIDER_ID } from "../shared/utils/forgeProviderIds.js";
 
 // Validate we're running in UtilityProcess context
 if (!process.parentPort) {
@@ -323,7 +324,7 @@ gitHubRateLimitService.onStateChange((state) => {
   const rateLimitInfo = toRateLimitInfo(state);
   sendEvent({
     type: "forge-rate-limit-changed",
-    providerId: "builtin.github",
+    providerId: BUILTIN_GITHUB_PROVIDER_ID,
     state: rateLimitInfo,
   });
 });

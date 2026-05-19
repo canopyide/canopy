@@ -5,6 +5,7 @@ import type { WorktreeSnapshot as WorktreeState } from "../../shared/types/works
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
 import { resolveForgeProvider } from "./forgeProviderResolver.js";
 import { getForgeProviderImpl } from "./forgeProviderRegistry.js";
+import { makeForgeProviderId } from "../../shared/utils/forgeProviderIds.js";
 import { generateProjectId } from "./projectStorePaths.js";
 import { createHardenedGit } from "../utils/hardenedGit.js";
 import type {
@@ -359,7 +360,7 @@ class PullRequestService {
         return;
       }
       const { pluginId, contribution } = registered.entry;
-      const namespacedId = `${pluginId}.${contribution.id}`;
+      const namespacedId = makeForgeProviderId(pluginId, contribution.id);
       const impl = getForgeProviderImpl(namespacedId);
       if (!impl) {
         this.providerNamespacedId = null;

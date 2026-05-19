@@ -15,6 +15,7 @@ import { MainWorktreeSecondaryRow } from "./MainWorktreeSecondaryRow";
 import { NonMainSecondaryRow } from "./NonMainSecondaryRow";
 import { scheduleFlip } from "@/utils/flipScheduler";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { BUILTIN_GITHUB_PROVIDER_ID } from "@shared/utils/forgeProviderIds";
 
 export interface WorktreeHeaderProps {
   worktree: WorktreeState;
@@ -266,7 +267,7 @@ export function WorktreeHeader({
       !worktree.baseMatchesUpstream);
   const hasAuthFailedSignIn = Boolean(
     worktree.fetchAuthFailed &&
-    (worktree.isGitHubRemote || worktree.linked?.providerId === "builtin.github")
+    (worktree.isGitHubRemote || worktree.linked?.providerId === BUILTIN_GITHUB_PROVIDER_ID)
   );
   const isMainStandardLayout = !!(isMainOnStandardBranch && !hasIssueTitle);
 
@@ -420,7 +421,7 @@ export function WorktreeHeader({
           lastFetchedAt={worktree.lastFetchedAt}
           fetchAuthFailed={Boolean(worktree.fetchAuthFailed)}
           fetchNetworkFailed={Boolean(worktree.fetchNetworkFailed)}
-          isGitHubProvider={worktree.linked?.providerId === "builtin.github"}
+          isGitHubProvider={worktree.linked?.providerId === BUILTIN_GITHUB_PROVIDER_ID}
           aggregateCounts={aggregateCounts}
         />
       )}

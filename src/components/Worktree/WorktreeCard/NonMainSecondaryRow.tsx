@@ -8,6 +8,7 @@ import { FileText } from "lucide-react";
 import type { WorktreeState } from "@/types";
 import { usePRCircuitBreakerStore } from "@/store/prCircuitBreakerStore";
 import { useResourceProfileStore } from "@/store/resourceProfileStore";
+import { BUILTIN_GITHUB_PROVIDER_ID } from "@shared/utils/forgeProviderIds";
 
 interface NonMainSecondaryRowProps {
   worktree: WorktreeState;
@@ -83,7 +84,7 @@ export function NonMainSecondaryRow({
           lastFetchedAt={worktree.lastFetchedAt}
           fetchAuthFailed={Boolean(worktree.fetchAuthFailed)}
           fetchNetworkFailed={Boolean(worktree.fetchNetworkFailed)}
-          isGitHubProvider={worktree.linked?.providerId === "builtin.github"}
+          isGitHubProvider={worktree.linked?.providerId === BUILTIN_GITHUB_PROVIDER_ID}
           containerGapClass="gap-1.5"
           baseBranchName={worktree.baseBranchName}
           baseAheadCount={worktree.baseAheadCount}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { makeForgeProviderId } from "@shared/utils/forgeProviderIds";
 import type { RemoteInfo } from "@shared/types/ipc/github";
 import type { RegisteredForgeProvider } from "@shared/types/forge";
 
@@ -82,7 +83,9 @@ export function CodeForgeTab({
 
   const savedProviderKnown =
     forgeProviderOverride === null ||
-    providers.some((p) => p.contribution.id === forgeProviderOverride);
+    providers.some(
+      (p) => makeForgeProviderId(p.pluginId, p.contribution.id) === forgeProviderOverride
+    );
 
   return (
     <div className="space-y-6">
@@ -130,11 +133,14 @@ export function CodeForgeTab({
             className="w-full px-3 py-2 bg-daintree-bg border border-daintree-border rounded-[var(--radius-md)] text-sm text-daintree-text focus:outline-hidden focus:ring-2 focus:ring-daintree-accent"
           >
             <option value="">Default (GitHub)</option>
-            {providers.map((p) => (
-              <option key={`${p.pluginId}:${p.contribution.id}`} value={p.contribution.id}>
-                {p.contribution.name}
-              </option>
-            ))}
+            {providers.map((p) => {
+              const providerId = makeForgeProviderId(p.pluginId, p.contribution.id);
+              return (
+                <option key={providerId} value={providerId}>
+                  {p.contribution.name}
+                </option>
+              );
+            })}
             {!savedProviderKnown && forgeProviderOverride !== null ? (
               <option value={forgeProviderOverride}>{forgeProviderOverride} (unavailable)</option>
             ) : null}

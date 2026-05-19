@@ -9,6 +9,10 @@ import {
 import { resolveForgeProvider } from "../../services/forgeProviderResolver.js";
 import { gitServiceCache } from "../../services/GitServiceCache.js";
 import type { RepoRef } from "../../../shared/types/forge.js";
+import {
+  makeForgeProviderId,
+  normalizeProviderId,
+} from "../../../shared/utils/forgeProviderIds.js";
 
 interface ResolvedContext {
   namespaceId: string;
@@ -30,8 +34,7 @@ async function resolveForCwd(cwd: string): Promise<ResolvedContext> {
     throw new Error("No remote URL found for this repository");
   }
 
-  const globalDefault = store.get("forgeDefaultProviderId");
-  const globalDefaultProviderId = typeof globalDefault === "string" ? globalDefault : null;
+  const globalDefaultProviderId = normalizeProviderId(store.get("forgeDefaultProviderId"));
 
   const resolved = resolveForgeProvider({
     remoteUrl,
@@ -43,7 +46,7 @@ async function resolveForCwd(cwd: string): Promise<ResolvedContext> {
     throw new Error("No forge provider registered for this repository");
   }
 
-  const namespaceId = `${resolved.entry.pluginId}.${resolved.entry.contribution.id}`;
+  const namespaceId = makeForgeProviderId(resolved.entry.pluginId, resolved.entry.contribution.id);
   const impl = getForgeProviderImpl(namespaceId);
   if (!impl) {
     throw new Error(
@@ -163,21 +166,22 @@ export function registerForgeHandlers(): () => void {
         return { valid: false as const, error: "No forge provider configured" };
       }
 
-      const globalDefault = store.get("forgeDefaultProviderId");
-      const providerId = typeof globalDefault === "string" ? globalDefault.trim() : "";
+      const providerId = normalizeProviderId(store.get("forgeDefaultProviderId"));
 
-      // Resolve bare or namespaced id to the registered entry
+      // Match canonical first; bare `contribution.id` fallback preserves
+      // third-party providers whose stored ids predate canonicalization.
       let targetProvider: (typeof providers)[0] | undefined;
       if (providerId) {
         targetProvider = providers.find(
           (p) =>
-            p.contribution.id === providerId || `${p.pluginId}.${p.contribution.id}` === providerId
+            makeForgeProviderId(p.pluginId, p.contribution.id) === providerId ||
+            p.contribution.id === providerId
         );
       }
       // Fall back to first registered provider
       const entry = targetProvider ?? providers[0];
 
-      const namespaceId = `${entry.pluginId}.${entry.contribution.id}`;
+      const namespaceId = makeForgeProviderId(entry.pluginId, entry.contribution.id);
       const impl = getForgeProviderImpl(namespaceId);
       if (!impl) {
         return {

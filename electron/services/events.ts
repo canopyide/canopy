@@ -449,7 +449,7 @@ export type DaintreeEventMap = {
     issueTitle?: string;
     /** Branch the lookup was initiated against; receivers drop the overlay if the worktree's branch has changed. */
     branchName?: string;
-    /** Provider that resolved the PR (e.g. "builtin.github"). */
+    /** Provider that resolved the PR (e.g. `"daintree.github.github"`). */
     providerId?: string;
     /** Provider-agnostic CI status (forge format). */
     ciStatus?: import("../../shared/types/forge.js").CIStatus;
@@ -475,7 +475,7 @@ export type DaintreeEventMap = {
     issueTitle: string;
     /** Branch the lookup was initiated against; receivers drop the overlay if the worktree's branch has changed. */
     branchName?: string;
-    /** Provider that resolved the issue (e.g. "builtin.github"). */
+    /** Provider that resolved the issue (e.g. `"daintree.github.github"`). */
     providerId?: string;
     timestamp: number;
   };

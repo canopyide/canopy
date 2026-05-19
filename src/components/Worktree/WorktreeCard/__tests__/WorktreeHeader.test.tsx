@@ -46,9 +46,15 @@ const noop = () => {};
 function prLinked(num: number, state: "open" | "merged" | "closed" | "declined" = "open") {
   return {
     linked: {
-      providerId: "builtin.github",
+      providerId: "daintree.github.github",
       pr: {
-        ref: { providerId: "builtin.github", owner: "", repo: "", number: num, rawData: null },
+        ref: {
+          providerId: "daintree.github.github",
+          owner: "",
+          repo: "",
+          number: num,
+          rawData: null,
+        },
         state,
         url: `https://github.com/test/repo/pull/${num}`,
       },
@@ -1165,7 +1171,7 @@ describe("WorktreeHeader upstream sync indicator", () => {
         behindCount: 2,
         fetchAuthFailed: true,
         isGitHubRemote: true,
-        linked: { providerId: "builtin.github" },
+        linked: { providerId: "daintree.github.github" },
       },
     });
     const indicator = screen.getByTestId("upstream-sync-indicator");
@@ -1187,7 +1193,7 @@ describe("WorktreeHeader upstream sync indicator", () => {
         behindCount: 0,
         fetchAuthFailed: true,
         isGitHubRemote: true,
-        linked: { providerId: "builtin.github" },
+        linked: { providerId: "daintree.github.github" },
       },
     });
     const indicator = screen.getByTestId("upstream-sync-indicator");
@@ -1225,7 +1231,7 @@ describe("WorktreeHeader upstream sync indicator", () => {
         aheadCount: 1,
         fetchAuthFailed: true,
         isGitHubRemote: true,
-        linked: { providerId: "builtin.github" },
+        linked: { providerId: "daintree.github.github" },
       },
     });
     const indicator = screen.getByTestId("upstream-sync-indicator");
@@ -1279,7 +1285,7 @@ describe("WorktreeHeader upstream sync indicator", () => {
         fetchAuthFailed: true,
         fetchNetworkFailed: true,
         isGitHubRemote: true,
-        linked: { providerId: "builtin.github" },
+        linked: { providerId: "daintree.github.github" },
       },
     });
     const indicator = screen.getByTestId("upstream-sync-indicator");

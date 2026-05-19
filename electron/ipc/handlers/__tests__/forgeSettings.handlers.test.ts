@@ -150,6 +150,22 @@ describe("registerForgeSettingsHandlers", () => {
     expect(storeMock.set).toHaveBeenCalledWith("forgeDefaultProviderId", "acme.gitea");
   });
 
+  it("setDefaultProvider canonicalizes a legacy 'builtin.github' input before persisting (#8451)", () => {
+    registerForgeSettingsHandlers();
+    const setDefault = findHandler("forge:set-default-provider");
+    expect(setDefault(null, "builtin.github")).toEqual({
+      defaultProviderId: "daintree.github.github",
+    });
+    expect(storeMock.set).toHaveBeenCalledWith("forgeDefaultProviderId", "daintree.github.github");
+  });
+
+  it("setDefaultProvider canonicalizes a legacy bare 'github' input before persisting (#8451)", () => {
+    registerForgeSettingsHandlers();
+    const setDefault = findHandler("forge:set-default-provider");
+    expect(setDefault(null, "github")).toEqual({ defaultProviderId: "daintree.github.github" });
+    expect(storeMock.set).toHaveBeenCalledWith("forgeDefaultProviderId", "daintree.github.github");
+  });
+
   it("getSettings treats whitespace-only stored values as null", () => {
     storeMock._data["forgeDefaultProviderId"] = "   ";
     registerForgeSettingsHandlers();
@@ -266,14 +282,39 @@ describe("registerForgeSettingsHandlers", () => {
     );
   });
 
-  it("resolveProvider passes globalDefaultProviderId from the store to the resolver", async () => {
+  it("resolveProvider passes globalDefaultProviderId from the store to the resolver (canonical form)", async () => {
+    storeMock._data["forgeDefaultProviderId"] = "daintree.github.github";
+    resolverMock.resolveForgeProvider.mockReturnValueOnce({ entry: null, resolvedVia: null });
+    registerForgeSettingsHandlers();
+    const resolveProvider = findHandler("forge:resolve-provider");
+    await resolveProvider(null, "project-1");
+    expect(resolverMock.resolveForgeProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ globalDefaultProviderId: "daintree.github.github" })
+    );
+  });
+
+  it("getSettings normalizes legacy 'builtin.github' to canonical 'daintree.github.github' (#8451)", () => {
+    storeMock._data["forgeDefaultProviderId"] = "builtin.github";
+    registerForgeSettingsHandlers();
+    const getSettings = findHandler("forge:get-settings");
+    expect(getSettings(null)).toEqual({ defaultProviderId: "daintree.github.github" });
+  });
+
+  it("getSettings normalizes legacy bare 'github' to canonical 'daintree.github.github' (#8451)", () => {
+    storeMock._data["forgeDefaultProviderId"] = "github";
+    registerForgeSettingsHandlers();
+    const getSettings = findHandler("forge:get-settings");
+    expect(getSettings(null)).toEqual({ defaultProviderId: "daintree.github.github" });
+  });
+
+  it("resolveProvider normalizes legacy stored ids before delegating to the resolver", async () => {
     storeMock._data["forgeDefaultProviderId"] = "builtin.github";
     resolverMock.resolveForgeProvider.mockReturnValueOnce({ entry: null, resolvedVia: null });
     registerForgeSettingsHandlers();
     const resolveProvider = findHandler("forge:resolve-provider");
     await resolveProvider(null, "project-1");
     expect(resolverMock.resolveForgeProvider).toHaveBeenCalledWith(
-      expect.objectContaining({ globalDefaultProviderId: "builtin.github" })
+      expect.objectContaining({ globalDefaultProviderId: "daintree.github.github" })
     );
   });
 });

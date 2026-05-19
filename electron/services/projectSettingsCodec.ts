@@ -24,6 +24,7 @@ import type {
 } from "../../shared/types/project.js";
 import type { CommandOverride } from "../../shared/types/commands.js";
 import type { NotificationSettings } from "../../shared/types/ipc/api.js";
+import { normalizeProviderId } from "../../shared/utils/forgeProviderIds.js";
 
 export const PROJECT_SETTINGS_SCHEMA_VERSION = 1;
 
@@ -219,7 +220,10 @@ function decodeBranchPrefixMode(raw: unknown): "none" | "username" | "custom" | 
 }
 
 function decodeForgeProviderOverride(raw: unknown): string | null | undefined {
-  if (typeof raw === "string" && raw.trim()) return raw.trim();
+  if (typeof raw === "string") {
+    const normalized = normalizeProviderId(raw);
+    return normalized ?? undefined;
+  }
   if (raw === null) return null;
   return undefined;
 }

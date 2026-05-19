@@ -1,4 +1,5 @@
 import type { RegisteredForgeProvider, ResolvedForgeProvider } from "../../shared/types/forge.js";
+import { makeForgeProviderId } from "../../shared/utils/forgeProviderIds.js";
 import { getRegisteredForgeProviders, listMatchingProviders } from "./forgeProviderRegistry.js";
 
 const NO_MATCH: ResolvedForgeProvider = { entry: null, resolvedVia: null };
@@ -7,11 +8,13 @@ export interface ResolveForgeProviderInputs {
   /** Project's `origin` remote URL. Used for hostname matching when no override
    *  resolves. `null`/`undefined` skips hostname matching (no candidates). */
   remoteUrl: string | null | undefined;
-  /** Per-project override (`forgeProviderOverride`). Bare id (`"github"`) or
-   *  namespaced (`"builtin.github"`); both accepted. Set wins over default. */
+  /** Per-project override (`forgeProviderOverride`). Canonical id
+   *  (`"daintree.github.github"`, #8451). The storage read boundary normalizes
+   *  the known built-in aliases — third-party bare ids fall through unchanged
+   *  and `findById` still accepts them for backward compatibility. Set wins
+   *  over default. */
   forgeProviderOverride: string | null | undefined;
-  /** Global default (`forgeDefaultProviderId`). Same id forms as override.
-   *  Only matches when present in the remote's candidate set. */
+  /** Global default (`forgeDefaultProviderId`). Canonical id, same caveat. */
   globalDefaultProviderId: string | null | undefined;
 }
 
@@ -69,7 +72,13 @@ function findById(
   providers: RegisteredForgeProvider[],
   id: string
 ): RegisteredForgeProvider | undefined {
+  // Prefer the canonical `{pluginId}.{contributionId}` form (#8451). The bare
+  // `contribution.id` fallback stays for third-party plugins whose stored
+  // overrides predate the canonicalization migration — `normalizeProviderId`
+  // only rewrites the known built-in aliases and passes unknown strings
+  // through unchanged, so a legacy `"gitea"` value would otherwise stop
+  // resolving against an `acme.gitea` plugin.
   return providers.find(
-    (p) => p.contribution.id === id || `${p.pluginId}.${p.contribution.id}` === id
+    (p) => makeForgeProviderId(p.pluginId, p.contribution.id) === id || p.contribution.id === id
   );
 }
