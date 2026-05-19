@@ -1,8 +1,8 @@
 import { describe, expect } from "vitest";
 import { fc, test } from "@fast-check/vitest";
-import { summarizeMcpArgs } from "../mcpArgsSummary.js";
-import { scrubSecrets } from "../../../electron/utils/secretScrubber.js";
-import { sanitizePath } from "../../../electron/utils/pathScrubber.js";
+import { summarizeMcpArgs } from "../../../shared/utils/mcpArgsSummary.js";
+import { scrubSecrets } from "../secretScrubber.js";
+import { sanitizePath } from "../pathScrubber.js";
 
 function productionSummarize(args: unknown): string {
   return summarizeMcpArgs(args, (s) => scrubSecrets(sanitizePath(s)));
