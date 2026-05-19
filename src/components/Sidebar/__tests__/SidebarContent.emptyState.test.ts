@@ -135,27 +135,29 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       expect(branch).toContain('variant="filtered-empty"');
     });
 
-    it("collapses the quick-state empty state to a single 'Show all worktrees' CTA wired to clearAllFilters — issue #7971", () => {
-      // #6934 collapsed the dual-CTA shape ('Show all states' + 'Clear all
-      // filters') to a single button wired to clearAll(); #7971 renamed the
-      // label from "Clear filters" to "Show all worktrees" so the button
-      // describes the outcome rather than the action.
+    it("renders the quick-state empty state with dual recovery actions: clear filters and open overview — issue #8383", () => {
+      // #6934 collapsed the dual-CTA shape to a single button wired to
+      // clearAll(). #8383 intentionally restores a second action: "Open
+      // overview" gives users an alternative escape path to the full
+      // worktrees overview modal instead of clearing filters.
       const branchStart = source.indexOf("showQuickStateEmptyState ?");
       const branchEnd = source.indexOf(") : filteredWorktrees.length === 0 &&", branchStart);
       const branch = source.slice(branchStart, branchEnd);
       expect(branch).toMatch(/onClick=\{clearAllFilters\}[\s\S]*?>\s*Show all worktrees\s*</);
-      expect(branch).not.toContain("Show all states");
-      expect(branch).not.toContain("clearQuickStateFilter");
-      // Exactly one button — guards against the dual-CTA pattern returning by
-      // any other shape (e.g. an additional secondary action being added).
+      expect(branch).toMatch(/onClick=\{onOpenOverview\}[\s\S]*?>\s*Open overview\s*</);
+      // Two buttons — "Show all worktrees" and "Open overview"
       const buttonMatches = branch.match(/<button\b/g) ?? [];
-      expect(buttonMatches).toHaveLength(1);
+      expect(buttonMatches).toHaveLength(2);
     });
 
-    it("does not render two recovery CTAs side-by-side in the quick-state branch", () => {
-      // Regression guard against the dual-button anti-pattern returning.
+    it("renders the dual recovery actions in the quick-state branch with the overview shortcut in the title — issue #8383", () => {
+      // The "Open overview" button surfaces the keyboard shortcut via
+      // formatButtonTitle in a title attribute, matching the toolbar pattern.
+      // The old "Show all states" / "Clear all filters" strings from the
+      // pre-#6934 dual-CTA shape must not reappear.
       expect(source).not.toContain("Show all states");
       expect(source).not.toContain("Clear all filters");
+      expect(source).toContain('title={formatButtonTitle("Open overview", overviewShortcut)}');
     });
 
     it("does not render a description in the quick-state branch (single CTA conveys recovery)", () => {
@@ -180,6 +182,7 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
       expect(branch).toMatch(/hasQuery/);
       expect(branch).toMatch(/truncateSearchQuery/);
       expect(branch).toMatch(/onClick=\{clearAllFilters\}[\s\S]*?>\s*Show all worktrees\s*</);
+      expect(branch).toMatch(/onClick=\{onOpenOverview\}[\s\S]*?>\s*Open overview\s*</);
     });
   });
 });
