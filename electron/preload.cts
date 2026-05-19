@@ -2456,6 +2456,10 @@ const api: ElectronAPI = {
       _typedOn(CHANNELS.MCP_SERVER_RUNTIME_STATE_CHANGED, callback),
     setSessionTier: (sessionId: string, tier: "workbench" | "action" | "system") =>
       _unwrappingInvoke(CHANNELS.MCP_SERVER_SET_SESSION_TIER, { sessionId, tier }),
+    issueGrant: (sessionId: string, toolId: string) =>
+      _unwrappingInvoke(CHANNELS.MCP_SERVER_ISSUE_GRANT, { sessionId, toolId }),
+    revokeSessionGrants: (sessionId: string) =>
+      _unwrappingInvoke(CHANNELS.MCP_SERVER_REVOKE_SESSION_GRANTS, { sessionId }),
     onTierNotPermitted: (
       callback: (payload: {
         sessionId: string;
@@ -2464,6 +2468,16 @@ const api: ElectronAPI = {
         targetTier: "workbench" | "action" | "system" | null;
       }) => void
     ) => _typedOn(CHANNELS.MCP_TIER_NOT_PERMITTED, callback),
+    onGrantLifecycle: (
+      callback: (payload: {
+        type: "grant.issued" | "grant.expired" | "grant.revoked";
+        sessionId: string;
+        toolId: string;
+        ttlMs: number;
+        expiresAt?: number;
+        revokedReason?: "user" | "session-ended" | "session-idle";
+      }) => void
+    ) => _typedOn(CHANNELS.MCP_GRANT_LIFECYCLE, callback),
   },
 
   helpAssistant: {

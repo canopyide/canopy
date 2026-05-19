@@ -471,6 +471,12 @@ beforeEach(() => {
         mcpServer: {
           onTierNotPermitted: vi.fn(() => () => {}),
           setSessionTier: vi.fn().mockResolvedValue({ sessionId: "", tier: "workbench" }),
+          issueGrant: vi.fn().mockResolvedValue({
+            sessionId: "",
+            toolId: "",
+            ttlMs: 900_000,
+            expiresAt: Date.now() + 900_000,
+          }),
         },
         git: {
           snapshotGet: vi.fn().mockResolvedValue(null),

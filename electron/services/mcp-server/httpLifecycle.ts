@@ -17,6 +17,10 @@ import type {
   HelpSessionActionContextResolver,
   McpTier,
 } from "./shared.js";
+import type {
+  McpIssueGrantResult,
+  McpRevokeSessionGrantsResult,
+} from "../../../shared/types/ipc/mcpServer.js";
 import {
   extractBearerToken,
   isAuthorized,
@@ -536,8 +540,15 @@ export class HttpLifecycle {
           this.deps.sessionStore.sessions.delete(sessionId);
         }
         this.deps.sessionStore.sessionTierMap.delete(sessionId);
+        // Revoke before deleting the WebContents pin so the lifecycle
+        // emitter can still find the pinned renderer for the
+        // `grant.revoked` push. The audit record carries the
+        // `session-ended` reason. Without this, grants accumulate
+        // forever in the cache across a long-running session lifecycle.
+        this.deps.sessionStore.grantCache.revokeSession(sessionId, "session-ended");
         this.deps.sessionStore.sessionWebContentsMap.delete(sessionId);
         this.deps.sessionStore.sessionContextMap.delete(sessionId);
+        this.deps.sessionStore.clearDedupState(sessionId);
         cleanupResourceSubscriptions(sessionId, this.deps.sessionStore);
       };
 
@@ -547,8 +558,12 @@ export class HttpLifecycle {
         clearTimeout(idleTimer);
         this.deps.sessionStore.sessions.delete(sessionId);
         this.deps.sessionStore.sessionTierMap.delete(sessionId);
+        // Same pin-before-clear ordering — the connect failure path
+        // mirrors normal close cleanup.
+        this.deps.sessionStore.grantCache.revokeSession(sessionId, "session-ended");
         this.deps.sessionStore.sessionWebContentsMap.delete(sessionId);
         this.deps.sessionStore.sessionContextMap.delete(sessionId);
+        this.deps.sessionStore.clearDedupState(sessionId);
         transport.onclose = undefined;
         await transport.close().catch(() => {});
         throw err;
@@ -652,8 +667,12 @@ export class HttpLifecycle {
         this.deps.sessionStore.httpSessions.delete(id);
       }
       this.deps.sessionStore.sessionTierMap.delete(id);
+      // Pin-before-revoke ordering identical to the SSE path above —
+      // see `transport.onclose` in the GET /sse branch.
+      this.deps.sessionStore.grantCache.revokeSession(id, "session-ended");
       this.deps.sessionStore.sessionWebContentsMap.delete(id);
       this.deps.sessionStore.sessionContextMap.delete(id);
+      this.deps.sessionStore.clearDedupState(id);
       cleanupResourceSubscriptions(id, this.deps.sessionStore);
     };
 
@@ -670,13 +689,17 @@ export class HttpLifecycle {
           this.deps.sessionStore.httpSessions.delete(id);
         }
         this.deps.sessionStore.sessionTierMap.delete(id);
+        this.deps.sessionStore.grantCache.revokeSession(id, "session-ended");
         this.deps.sessionStore.sessionWebContentsMap.delete(id);
         this.deps.sessionStore.sessionContextMap.delete(id);
+        this.deps.sessionStore.clearDedupState(id);
         cleanupResourceSubscriptions(id, this.deps.sessionStore);
       } else {
         this.deps.sessionStore.sessionTierMap.delete(newSessionId);
+        this.deps.sessionStore.grantCache.revokeSession(newSessionId, "session-ended");
         this.deps.sessionStore.sessionWebContentsMap.delete(newSessionId);
         this.deps.sessionStore.sessionContextMap.delete(newSessionId);
+        this.deps.sessionStore.clearDedupState(newSessionId);
         cleanupResourceSubscriptions(newSessionId, this.deps.sessionStore);
       }
       await transport.close().catch(() => {});
@@ -834,6 +857,64 @@ export class HttpLifecycle {
     }
     this.deps.sessionStore.sessionTierMap.set(sessionId, tier);
     return { sessionId, tier };
+  }
+
+  /**
+   * Mint a time-bounded per-`(sessionId, toolId)` grant — the "Approve
+   * once" pathway that replaces sticky session-tier elevation for single
+   * tool calls (#8442). Validates the same caller-pin invariant as
+   * {@link setSessionTier}: only the renderer that minted the session
+   * can issue grants on its behalf.
+   */
+  issueGrant(sessionId: string, toolId: string, callerWcId?: number): McpIssueGrantResult {
+    if (!sessionId || typeof sessionId !== "string") {
+      throw new Error("Invalid sessionId");
+    }
+    if (!toolId || typeof toolId !== "string") {
+      throw new Error("Invalid toolId");
+    }
+    if (
+      !this.deps.sessionStore.sessions.has(sessionId) &&
+      !this.deps.sessionStore.httpSessions.has(sessionId)
+    ) {
+      throw new Error("Session is no longer active");
+    }
+    const pinnedWcId = this.deps.sessionStore.sessionWebContentsMap.get(sessionId);
+    if (pinnedWcId === undefined) {
+      throw new Error("Session is not eligible for renderer tier elevation");
+    }
+    if (callerWcId !== undefined && callerWcId !== pinnedWcId) {
+      throw new Error("Caller is not the pinned renderer for this session");
+    }
+    const entry = this.deps.sessionStore.grantCache.issueGrant(sessionId, toolId);
+    return {
+      sessionId,
+      toolId,
+      ttlMs: entry.ttlMs,
+      expiresAt: entry.expiresAt,
+    };
+  }
+
+  /**
+   * Drop every grant currently held by the session. Caller-pin checked
+   * identically to {@link issueGrant}. Returns the count of revoked
+   * grants for the renderer's confirmation copy.
+   */
+  revokeSessionGrants(sessionId: string, callerWcId?: number): McpRevokeSessionGrantsResult {
+    if (!sessionId || typeof sessionId !== "string") {
+      throw new Error("Invalid sessionId");
+    }
+    // Caller-pin is enforced when the session is still alive; if the
+    // session has already drained (idle reaper / explicit close) the
+    // pin map is empty and the revoke becomes an idempotent no-op so
+    // the renderer's cleanup pass after a banner dismissal succeeds
+    // even though there's nothing left to drop.
+    const pinnedWcId = this.deps.sessionStore.sessionWebContentsMap.get(sessionId);
+    if (pinnedWcId !== undefined && callerWcId !== undefined && callerWcId !== pinnedWcId) {
+      throw new Error("Caller is not the pinned renderer for this session");
+    }
+    const revokedCount = this.deps.sessionStore.grantCache.revokeSession(sessionId, "user");
+    return { sessionId, revokedCount };
   }
 
   getStatus(): {

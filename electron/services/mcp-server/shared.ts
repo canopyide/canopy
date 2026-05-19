@@ -67,6 +67,30 @@ export const DEFAULT_PORT = 45454;
 export const MAX_PORT_RETRIES = 10;
 export const MCP_SSE_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
+/**
+ * Sliding-TTL window for per-tool grants minted via "Approve once". A grant
+ * issued for `(sessionId, toolId)` permits that exact tool for this session
+ * for the duration, and any successful dispatch through the grant refreshes
+ * the window. Sized comfortably below `MCP_SSE_IDLE_TIMEOUT_MS` so the
+ * 30-minute idle reaper can never silently cut a grant short — see #8442.
+ */
+export const MCP_GRANT_TTL_MS = 15 * 60 * 1000;
+
+/**
+ * Periodic sweep cadence for the grant cache's lazy-expiry map. Lazy
+ * eviction on read is the source of truth; the sweep is a memory-hygiene
+ * pass that keeps idle sessions' expired entries from accumulating between
+ * reads.
+ */
+export const MCP_GRANT_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * Number of consecutive `(sessionId, toolId)` denials before the renderer
+ * banner is silenced. The audit record is always written. The counter
+ * resets when a grant is issued for the pair or when the session ends.
+ */
+export const MCP_DENIAL_SILENCE_THRESHOLD = 2;
+
 export const MCP_MANIFEST_REQUEST_TIMEOUT_MS = 5_000;
 export const MCP_DISPATCH_TIMEOUT_MS = 30_000;
 

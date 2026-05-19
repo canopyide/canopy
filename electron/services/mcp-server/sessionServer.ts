@@ -82,6 +82,7 @@ export interface SessionServerDeps {
     durationMs: number;
     outcome: AuditOutcome;
     confirmationDecision?: import("../../../shared/types/ipc/mcpServer.js").McpConfirmationDecision;
+    bannerSuppressed?: boolean;
   }) => void;
   getCachedManifest: () => import("../../../shared/types/actions.js").ActionManifestEntry[] | null;
   getFullToolSurface: () => boolean;
@@ -155,35 +156,64 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
     const tier = sessionStore.getTier(sessionId);
     const fullToolSurface = getFullToolSurface();
 
+    // Layered authorization (#8442):
+    //   1. Static tier floor (`TIER_ALLOWLISTS`) — workbench/action/system
+    //      membership stays the default. The "Always allow" project setting
+    //      elevates the session tier so this check passes for everything
+    //      below the chosen tier.
+    //   2. Per-`(sessionId, toolId)` grant cache — the "Approve once" flow
+    //      mints time-bounded grants that authorise a single tool without
+    //      elevating the whole session. If the static check denies but a
+    //      live grant exists, the dispatch proceeds and the grant's TTL
+    //      is refreshed on success.
+    //
+    // The order means that a session whose static tier already permits the
+    // action never consults the grant cache — grants are an additive layer,
+    // never required when the floor already grants access.
+    let grantIssuedAt: number | undefined;
     if (!isTierPermitted(tier, actionId, fullToolSurface)) {
-      try {
-        appendAuditRecord({
-          toolId: actionId,
-          sessionId,
-          tier,
-          args,
-          durationMs: Date.now() - startedAt,
-          outcome: { kind: "unauthorized" },
-        });
-      } catch (err) {
-        console.error("[MCP] Failed to append audit record:", err);
-      }
-      if (notifyTierMismatch) {
+      const grant = sessionStore.grantCache.check(sessionId, actionId);
+      if (!grant.granted) {
+        // Increment first, then ask the cache whether to suppress. The
+        // post-increment count reflects "this denial counted"; the cache's
+        // threshold compares against that. With threshold=2 the 1st and
+        // 2nd denials fire the banner and the 3rd+ are suppressed.
+        sessionStore.grantCache.incrementDenial(sessionId, actionId);
+        const suppressBanner = sessionStore.grantCache.shouldSuppressBanner(sessionId, actionId);
         try {
-          notifyTierMismatch({
-            sessionId,
+          appendAuditRecord({
             toolId: actionId,
+            sessionId,
             tier,
-            targetTier: minimumPermittingTier(actionId),
+            args,
+            durationMs: Date.now() - startedAt,
+            outcome: { kind: "unauthorized" },
+            bannerSuppressed: suppressBanner ? true : undefined,
           });
         } catch (err) {
-          console.error("[MCP] Failed to notify tier-mismatch:", err);
+          console.error("[MCP] Failed to append audit record:", err);
         }
+        if (notifyTierMismatch && !suppressBanner) {
+          try {
+            notifyTierMismatch({
+              sessionId,
+              toolId: actionId,
+              tier,
+              targetTier: minimumPermittingTier(actionId),
+            });
+          } catch (err) {
+            console.error("[MCP] Failed to notify tier-mismatch:", err);
+          }
+        }
+        return buildToolError({
+          code: TIER_NOT_PERMITTED_CODE,
+          message: `action '${actionId}' is not permitted for the '${tier}' tier.`,
+        });
       }
-      return buildToolError({
-        code: TIER_NOT_PERMITTED_CODE,
-        message: `action '${actionId}' is not permitted for the '${tier}' tier.`,
-      });
+      // Grant authorised the call. Capture the `issuedAt` token so the
+      // post-dispatch refresh can verify the entry wasn't revoked and
+      // re-issued under us (race guard, lesson #2243).
+      grantIssuedAt = grant.issuedAt;
     }
 
     // Idempotency dedup for the creation-tool allowlist. Same-moment duplicates
@@ -257,6 +287,20 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
           try {
             const result = await waitUntilIdle(args, extra.signal);
             outcome = { kind: "result", value: { ok: true, result } };
+            // Mirror the post-dispatch grant refresh in the main path:
+            // when the call was authorized by a grant, extend the TTL
+            // window and reset the idle timer on success. `waitUntilIdle`
+            // can run up to 30 minutes (longer than the 15-min grant
+            // window), so this is the only block that prevents the grant
+            // from silently aging out during a long wait (#8442).
+            if (grantIssuedAt !== undefined) {
+              sessionStore.grantCache.refresh(sessionId, actionId, grantIssuedAt);
+              if (sessionStore.sessions.has(sessionId)) {
+                sessionStore.resetIdleTimer(sessionId);
+              } else if (sessionStore.httpSessions.has(sessionId)) {
+                sessionStore.resetHttpIdleTimer(sessionId);
+              }
+            }
             return {
               content: [{ type: "text" as const, text: safeSerializeToolResult(result) }],
               structuredContent: result as unknown as Record<string, unknown>,
@@ -322,6 +366,21 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
         }
 
         if (outcome.value.ok) {
+          // Sliding-TTL refresh: a successful dispatch through a grant
+          // extends its window AND resets the session idle timer. Without
+          // resetting the idle timer, a 15-min grant could be silently
+          // truncated by a 30-min idle reaper that started before the
+          // grant was issued (#8442). The `grantIssuedAt` token guards
+          // against a revoke-and-reissue race (#2243): if the entry was
+          // replaced mid-dispatch, `refresh` is a silent no-op.
+          if (grantIssuedAt !== undefined) {
+            sessionStore.grantCache.refresh(sessionId, actionId, grantIssuedAt);
+            if (sessionStore.sessions.has(sessionId)) {
+              sessionStore.resetIdleTimer(sessionId);
+            } else if (sessionStore.httpSessions.has(sessionId)) {
+              sessionStore.resetHttpIdleTimer(sessionId);
+            }
+          }
           const structuredContent = buildStructuredContent(entry, outcome.value.result);
           return {
             content: [

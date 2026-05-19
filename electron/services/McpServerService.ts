@@ -1,11 +1,16 @@
 import { randomUUID } from "node:crypto";
+import { webContents as webContentsModule } from "electron";
 import { store } from "../store.js";
+import { CHANNELS } from "../ipc/channels.js";
 import type { WindowRegistry } from "../window/WindowRegistry.js";
 import { getWindowRegistry } from "../window/windowRef.js";
 import type {
   AssistantTurnRecord,
   McpAuditRecord,
   McpAuditStats,
+  McpGrantLifecyclePayload,
+  McpIssueGrantResult,
+  McpRevokeSessionGrantsResult,
   McpRuntimeSnapshot,
   McpRuntimeState,
   TurnOutcomeClass,
@@ -64,13 +69,18 @@ export class McpServerService {
   private readonly runtimeStateListeners = new Set<(snapshot: McpRuntimeSnapshot) => void>();
 
   constructor() {
-    this.sessionStore = new SessionStore((sessionId) => {
-      cleanupResourceSubscriptions(sessionId, this.sessionStore);
-    });
-
     this.auditService = new AuditService(
       (patch) => this.persistConfig(patch),
       () => this.getConfig()
+    );
+
+    this.sessionStore = new SessionStore(
+      (sessionId) => {
+        cleanupResourceSubscriptions(sessionId, this.sessionStore);
+      },
+      {
+        emitGrantLifecycle: (sessionId, payload) => this.emitGrantLifecycle(sessionId, payload),
+      }
     );
 
     this.turnOutcomeService = new TurnOutcomeService({
@@ -380,6 +390,57 @@ export class McpServerService {
     callerWcId?: number
   ): { sessionId: string; tier: McpTier } {
     return this.httpLifecycle.setSessionTier(sessionId, tier, callerWcId);
+  }
+
+  /**
+   * Mint a per-`(sessionId, toolId)` grant for the named tool (Approve
+   * once). Validates caller pin against the WebContents the session was
+   * minted in — only that renderer can issue grants on its behalf.
+   * Returns the grant metadata so the renderer can render a countdown.
+   */
+  issueGrant(sessionId: string, toolId: string, callerWcId?: number): McpIssueGrantResult {
+    return this.httpLifecycle.issueGrant(sessionId, toolId, callerWcId);
+  }
+
+  /**
+   * Revoke every grant for a session in one call. Caller-pin checked
+   * identically to {@link issueGrant}. Returns the count of grants
+   * dropped so the renderer can show a confirmation toast.
+   */
+  revokeSessionGrants(sessionId: string, callerWcId?: number): McpRevokeSessionGrantsResult {
+    return this.httpLifecycle.revokeSessionGrants(sessionId, callerWcId);
+  }
+
+  /**
+   * Emitter wired into the {@link SessionStore}'s `GrantCache` at
+   * construction time. Writes an audit-log entry and pushes a targeted
+   * lifecycle event to the renderer pinned at session handshake. Send
+   * is always targeted — grant state is session-scoped and broadcasting
+   * to every WebContents would leak security state to other windows.
+   */
+  private emitGrantLifecycle(sessionId: string, payload: McpGrantLifecyclePayload): void {
+    try {
+      this.auditService.appendGrantRecord({
+        type: payload.type,
+        sessionId: payload.sessionId,
+        toolId: payload.toolId,
+        ttlMs: payload.ttlMs,
+        expiresAt: payload.expiresAt,
+        revokedReason: payload.revokedReason,
+      });
+    } catch (err) {
+      console.error("[MCP] Failed to append grant audit record:", err);
+    }
+
+    const id = this.sessionStore.sessionWebContentsMap.get(sessionId);
+    if (id === undefined) return;
+    const wc = webContentsModule.fromId(id);
+    if (!wc || wc.isDestroyed()) return;
+    try {
+      wc.send(CHANNELS.MCP_GRANT_LIFECYCLE, payload);
+    } catch (err) {
+      console.error("[MCP] grant lifecycle send failed:", err);
+    }
   }
 
   // Delegates for test access — tests call .bind(service) on these.

@@ -1788,6 +1788,14 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
     args: [payload: { sessionId: string; tier: "workbench" | "action" | "system" }];
     result: { sessionId: string; tier: "workbench" | "action" | "system" };
   };
+  "mcp-server:issue-grant": {
+    args: [payload: { sessionId: string; toolId: string }];
+    result: import("./mcpServer.js").McpIssueGrantResult;
+  };
+  "mcp-server:revoke-session-grants": {
+    args: [payload: { sessionId: string }];
+    result: import("./mcpServer.js").McpRevokeSessionGrantsResult;
+  };
 
   // Webview console capture
   "webview:start-console-capture": {
@@ -2193,6 +2201,12 @@ export interface IpcEventMap {
     tier: string;
     targetTier: "workbench" | "action" | "system" | null;
   };
+
+  /**
+   * Targeted push: a grant lifecycle event for an MCP tool approval.
+   * Sent to the pinned WebContents so the renderer can track grant state.
+   */
+  "mcp-server:grant-lifecycle": import("./mcpServer.js").McpGrantLifecyclePayload;
 
   // Error events
   "error:notify": ErrorRecord;
