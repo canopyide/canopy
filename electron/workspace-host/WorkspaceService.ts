@@ -121,7 +121,7 @@ export class WorkspaceService {
   private topologyPendingSafetyTimers = new Map<string, ReturnType<typeof setTimeout>>();
   // Events accumulate here across the 300ms debounce window and are filtered
   // against the pending sets at drain time, preserving burst coalescing.
-  private topologyEventBuffer: Array<{ path: string }> = [];
+  private topologyEventBuffer: Array<{ path: string; type?: string }> = [];
   private topologyWatchCooldownUntil = 0;
   private topologyWatchCooldownDirty = false;
   private topologyDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -965,8 +965,13 @@ export class WorkspaceService {
       .subscribe(metadataDir, (_err, events) => {
         if (Array.isArray(events)) {
           for (const ev of events) {
-            const path = (ev as { path?: unknown } | null)?.path;
-            if (typeof path === "string") this.topologyEventBuffer.push({ path });
+            const e = ev as { path?: unknown; type?: unknown } | null;
+            if (typeof e?.path === "string") {
+              this.topologyEventBuffer.push({
+                path: e.path,
+                type: typeof e.type === "string" ? e.type : undefined,
+              });
+            }
           }
         }
         if (this.topologyDebounceTimer) {
@@ -1003,6 +1008,15 @@ export class WorkspaceService {
       this.topologyDebounceTimer = null;
     }
     this.topologyEventBuffer = [];
+    // Drop pending entries: with no watcher running nothing will drain them,
+    // and a stale entry surviving a pause/resume could suppress a real
+    // external change for up to 5s after the watcher restarts.
+    for (const timer of this.topologyPendingSafetyTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.topologyPendingSafetyTimers.clear();
+    this.topologyPendingCreate.clear();
+    this.topologyPendingDelete.clear();
     this.topologyReconcilePending = false;
     this.topologyWatchCooldownDirty = false;
   }
@@ -1049,7 +1063,17 @@ export class WorkspaceService {
     let hasUnmatched = false;
     for (const ev of events) {
       const key = basename(ev.path);
-      if (this.topologyPendingCreate.has(key) || this.topologyPendingDelete.has(key)) {
+      // Gate on event type so a pending *create* can't swallow an external
+      // *delete* of a same-named worktree (and vice versa). An absent/unknown
+      // type falls back to either set — better an idempotent reconcile than a
+      // dropped external change.
+      const matched =
+        ev.type === "create"
+          ? this.topologyPendingCreate.has(key)
+          : ev.type === "delete"
+            ? this.topologyPendingDelete.has(key)
+            : this.topologyPendingCreate.has(key) || this.topologyPendingDelete.has(key);
+      if (matched) {
         // App-owned op produced this event — drain the pending entry (and
         // cancel its safety valve) so a *subsequent* external change to the
         // same name is no longer treated as ours.
@@ -2257,13 +2281,8 @@ ${lines.map((l) => "+" + l).join("\n")}`;
 
   dispose(): void {
     this._shutdownController.abort();
+    // stopTopologyWatcher clears the pending sets and their safety timers.
     this.stopTopologyWatcher();
-    for (const timer of this.topologyPendingSafetyTimers.values()) {
-      clearTimeout(timer);
-    }
-    this.topologyPendingSafetyTimers.clear();
-    this.topologyPendingCreate.clear();
-    this.topologyPendingDelete.clear();
     this.topologyReconcileQueue.clear();
     this.prService.cleanup();
     this.resourceActionExecutor.dispose();

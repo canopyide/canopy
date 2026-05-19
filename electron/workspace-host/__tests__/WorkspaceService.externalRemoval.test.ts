@@ -513,6 +513,56 @@ describe("WorkspaceService external worktree removal", () => {
       expect((service as any)["topologyWatchSuppressUntil"]).toBeUndefined();
     });
 
+    it("does not let a pending create swallow an external delete of the same basename", async () => {
+      vi.useFakeTimers();
+      const discoverSpy = vi
+        .spyOn(service as any, "discoverAndSyncWorktrees")
+        .mockResolvedValue(undefined);
+
+      // App-owned create pending for "foo"; an external `git worktree remove`
+      // for a pre-existing worktree whose metadata dir is also "foo" fires a
+      // DELETE event — it must not be drained by the pending *create*.
+      service["topologyMarkPending"]("foo", service["topologyPendingCreate"]);
+
+      service["startTopologyWatcher"]();
+      await vi.advanceTimersByTimeAsync(0);
+
+      parcelWatcherCallbacks[0]!(null, [{ type: "delete", path: "/test/root/.git/worktrees/foo" }]);
+      await vi.advanceTimersByTimeAsync(350);
+
+      expect(discoverSpy).toHaveBeenCalledTimes(1);
+      // The pending create entry is untouched by the unrelated delete.
+      expect(service["topologyPendingCreate"].has("foo")).toBe(true);
+      vi.useRealTimers();
+    });
+
+    it("clears pending entries and safety timers on stopTopologyWatcher", async () => {
+      vi.useFakeTimers();
+      const discoverSpy = vi
+        .spyOn(service as any, "discoverAndSyncWorktrees")
+        .mockResolvedValue(undefined);
+
+      service["topologyMarkPending"]("paused-wt", service["topologyPendingDelete"]);
+      expect(service["topologyPendingDelete"].has("paused-wt")).toBe(true);
+      expect(service["topologyPendingSafetyTimers"].has("paused-wt")).toBe(true);
+
+      // Pause/teardown clears all pending state.
+      service["stopTopologyWatcher"]();
+      expect(service["topologyPendingDelete"].has("paused-wt")).toBe(false);
+      expect(service["topologyPendingSafetyTimers"].has("paused-wt")).toBe(false);
+
+      // After resume, an external change to that same name still reconciles.
+      service["startTopologyWatcher"]();
+      await vi.advanceTimersByTimeAsync(0);
+      parcelWatcherCallbacks.at(-1)!(null, [
+        { type: "delete", path: "/test/root/.git/worktrees/paused-wt" },
+      ]);
+      await vi.advanceTimersByTimeAsync(350);
+
+      expect(discoverSpy).toHaveBeenCalledTimes(1);
+      vi.useRealTimers();
+    });
+
     it("respects post-reconciliation cooldown", async () => {
       vi.useFakeTimers();
       const discoverSpy = vi
