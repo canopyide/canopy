@@ -130,7 +130,7 @@ export function registerWorktreeLifecycleHandlers(deps: HandlerDependencies): ()
     try {
       await deps.worktreeService.loadProject(project.path, windowId);
     } catch (error) {
-      throw new Error(formatErrorMessage(error, "Failed to load worktrees"));
+      throw new Error(formatErrorMessage(error, "Failed to load worktrees"), { cause: error });
     }
   };
   handlers.push(
