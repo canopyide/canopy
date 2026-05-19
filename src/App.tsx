@@ -594,14 +594,7 @@ function App() {
   usePluginActions();
   usePluginPanelKinds();
 
-  useMenuActions({
-    onOpenSettings: handleSettings,
-    onOpenSettingsTab: handleOpenSettingsTab,
-    onToggleSidebar: handleToggleSidebar,
-    onLaunchAgent: handleLaunchAgent,
-    defaultCwd: defaultTerminalCwd,
-    activeWorktreeId: activeWorktree?.id,
-  });
+  useMenuActions();
 
   // Global keybinding handler - provides chord support and priority resolution
   // All keybindings dispatch through ActionService via this centralized handler

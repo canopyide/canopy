@@ -92,12 +92,12 @@ export function createApplicationMenu(
     return null;
   };
 
-  const sendAction = (action: string, target: BrowserWindow | null) => {
+  const sendAction = (actionId: string, target: BrowserWindow | null, args?: unknown) => {
     if (target && !target.isDestroyed()) {
       const wc = getAppWebContents(target);
       if (!wc.isDestroyed()) {
         try {
-          wc.send(CHANNELS.MENU_ACTION, action);
+          wc.send(CHANNELS.MENU_ACTION, { actionId, args });
         } catch {
           // Silently ignore send failures during window disposal.
         }
@@ -116,7 +116,9 @@ export function createApplicationMenu(
           label: `New ${agent.name}`,
           accelerator: agent.shortcut ? convertShortcutToAccelerator(agent.shortcut) : undefined,
           click: (_item, browserWindow) =>
-            sendAction(`launch-agent:${agent.id}`, getTargetBrowserWindow(browserWindow)),
+            sendAction("agent.launch", getTargetBrowserWindow(browserWindow), {
+              agentId: agent.id,
+            }),
         });
       }
     });
@@ -132,7 +134,7 @@ export function createApplicationMenu(
         label: item.label,
         accelerator: item.accelerator ? convertShortcutToAccelerator(item.accelerator) : undefined,
         click: (_item, browserWindow) =>
-          sendAction(`plugin:${item.actionId}`, getTargetBrowserWindow(browserWindow)),
+          sendAction(item.actionId, getTargetBrowserWindow(browserWindow)),
       });
     }
     return items;
@@ -162,19 +164,19 @@ export function createApplicationMenu(
         {
           label: "Clone Repository...",
           click: (_item, browserWindow) =>
-            sendAction("clone-repo", getTargetBrowserWindow(browserWindow)),
+            sendAction("project.cloneRepo", getTargetBrowserWindow(browserWindow)),
         },
         {
           label: "New Window",
           accelerator: "CommandOrControl+Shift+Alt+N",
           click: (_item, browserWindow) =>
-            sendAction("new-window", getTargetBrowserWindow(browserWindow)),
+            sendAction("app.newWindow", getTargetBrowserWindow(browserWindow)),
         },
         {
           label: "New Worktree...",
           accelerator: "CommandOrControl+N",
           click: (_item, browserWindow) =>
-            sendAction("new-worktree", getTargetBrowserWindow(browserWindow)),
+            sendAction("worktree.createDialog.open", getTargetBrowserWindow(browserWindow)),
         },
         {
           label: "Open Recent",
@@ -187,14 +189,14 @@ export function createApplicationMenu(
                 label: "Settings...",
                 accelerator: "CommandOrControl+,",
                 click: (_item: Electron.MenuItem, browserWindow: Electron.BaseWindow | undefined) =>
-                  sendAction("open-settings", getTargetBrowserWindow(browserWindow)),
+                  sendAction("app.settings", getTargetBrowserWindow(browserWindow)),
               },
             ]
           : []),
         {
           label: "Project Settings",
           click: (_item, browserWindow) =>
-            sendAction("open-settings", getTargetBrowserWindow(browserWindow)),
+            sendAction("app.settings", getTargetBrowserWindow(browserWindow)),
         },
         ...(buildPluginMenuItems("file").length > 0
           ? [{ type: "separator" as const }, ...buildPluginMenuItems("file")]
@@ -204,7 +206,7 @@ export function createApplicationMenu(
           label: "Close Project",
           enabled: !!projectStore.getCurrentProjectId(),
           click: (_item, browserWindow) =>
-            sendAction("close-project", getTargetBrowserWindow(browserWindow)),
+            sendAction("project.closeActive", getTargetBrowserWindow(browserWindow)),
         },
         {
           label: "Close Window",
@@ -277,7 +279,7 @@ export function createApplicationMenu(
           label: "Toggle Sidebar",
           accelerator: "CommandOrControl+B",
           click: (_item, browserWindow) =>
-            sendAction("toggle-sidebar", getTargetBrowserWindow(browserWindow)),
+            sendAction("nav.toggleSidebar", getTargetBrowserWindow(browserWindow)),
         },
         { type: "separator" },
         {
@@ -371,13 +373,13 @@ export function createApplicationMenu(
           label: "Duplicate Panel",
           accelerator: "CommandOrControl+T",
           click: (_item, browserWindow) =>
-            sendAction("duplicate-panel", getTargetBrowserWindow(browserWindow)),
+            sendAction("terminal.duplicate", getTargetBrowserWindow(browserWindow)),
         },
         {
           label: "New Terminal",
           accelerator: "CommandOrControl+Alt+T",
           click: (_item, browserWindow) =>
-            sendAction("new-terminal", getTargetBrowserWindow(browserWindow)),
+            sendAction("terminal.new", getTargetBrowserWindow(browserWindow)),
         },
         ...(buildAgentMenuItems().length > 0
           ? [
@@ -393,13 +395,13 @@ export function createApplicationMenu(
           label: "Quick Switcher...",
           accelerator: "CommandOrControl+P",
           click: (_item, browserWindow) =>
-            sendAction("open-quick-switcher", getTargetBrowserWindow(browserWindow)),
+            sendAction("nav.quickSwitcher", getTargetBrowserWindow(browserWindow)),
         },
         {
           label: "Command Palette...",
           accelerator: "CommandOrControl+Shift+P",
           click: (_item, browserWindow) =>
-            sendAction("open-action-palette", getTargetBrowserWindow(browserWindow)),
+            sendAction("action.palette.open", getTargetBrowserWindow(browserWindow)),
         },
         { type: "separator" },
         {
@@ -450,19 +452,19 @@ export function createApplicationMenu(
         {
           label: "Getting Started",
           click: (_item, browserWindow) =>
-            sendAction("show-getting-started", getTargetBrowserWindow(browserWindow)),
+            sendAction("help.gettingStarted.show", getTargetBrowserWindow(browserWindow)),
         },
         { type: "separator" },
         {
           label: "Launch Help Agent",
           click: (_item, browserWindow) =>
-            sendAction("launch-help-agent", getTargetBrowserWindow(browserWindow)),
+            sendAction("help.launchAgent", getTargetBrowserWindow(browserWindow)),
         },
         { type: "separator" },
         {
           label: "Reload Configuration",
           click: (_item, browserWindow) =>
-            sendAction("reload-config", getTargetBrowserWindow(browserWindow)),
+            sendAction("app.reloadConfig", getTargetBrowserWindow(browserWindow)),
         },
         { type: "separator" },
         {
@@ -510,7 +512,7 @@ export function createApplicationMenu(
           label: "Settings...",
           accelerator: "CommandOrControl+,",
           click: (_item, browserWindow) =>
-            sendAction("open-settings", getTargetBrowserWindow(browserWindow)),
+            sendAction("app.settings", getTargetBrowserWindow(browserWindow)),
         },
         { type: "separator" },
         { role: "services" },

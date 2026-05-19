@@ -403,6 +403,9 @@ export const BUILT_IN_ACTION_IDS = [
   "portal.tabs.reorder",
   "portal.listTabs",
 
+  // -- helpActions --
+  "help.gettingStarted.show",
+
   // -- uiActions --
   "ui.sidebar.resetWidth",
 

@@ -77,7 +77,6 @@ export { useWorktreeActions } from "./useWorktreeActions";
 export type { UseWorktreeActionsOptions, WorktreeActions } from "./useWorktreeActions";
 
 export { useMenuActions } from "./useMenuActions";
-export type { UseMenuActionsOptions } from "./useMenuActions";
 
 export { useHorizontalScrollControls } from "./useHorizontalScrollControls";
 export type { UseHorizontalScrollControlsReturn } from "./useHorizontalScrollControls";

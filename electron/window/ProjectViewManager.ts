@@ -820,10 +820,9 @@ export class ProjectViewManager {
         !input.alt;
       if (isTerminalFocusShortcut) {
         event.preventDefault();
-        wc.send(
-          CHANNELS.MENU_ACTION,
-          input.shift ? "focus-previous-terminal" : "focus-next-terminal"
-        );
+        wc.send(CHANNELS.MENU_ACTION, {
+          actionId: input.shift ? "terminal.focusPrevious" : "terminal.focusNext",
+        });
         return;
       }
 

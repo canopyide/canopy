@@ -1118,7 +1118,8 @@ const api: ElectronAPI = {
 
     notifyViewPainted: () => _unwrappingInvoke(CHANNELS.APP_VIEW_PAINTED),
 
-    onMenuAction: (callback: (action: string) => void) => _typedOn(CHANNELS.MENU_ACTION, callback),
+    onMenuAction: (callback: (payload: { actionId: string; args?: unknown }) => void) =>
+      _typedOn(CHANNELS.MENU_ACTION, callback),
 
     reloadConfig: () => _unwrappingInvoke(CHANNELS.APP_RELOAD_CONFIG),
 

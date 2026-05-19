@@ -2191,7 +2191,7 @@ export interface IpcEventMap {
   "system-sleep:on-wake": number;
 
   // Menu events
-  "menu:action": string;
+  "menu:action": { actionId: string; args?: unknown };
 
   // Window events
   "window:fullscreen-change": boolean;
