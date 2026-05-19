@@ -60,6 +60,7 @@ import type { WorktreeState } from "@/types";
 import { actionService } from "@/services/ActionService";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SidebarWorktreeRow } from "./SidebarWorktreeRow";
+import { WorktreeLoadErrorBanner } from "./WorktreeLoadErrorBanner";
 import { StaticWorktreeRow } from "./StaticWorktreeRow";
 import { useScrollIndicator } from "./useScrollIndicator";
 import { useRecipeDialogState } from "./useRecipeDialogState";
@@ -256,6 +257,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   // takes 2–4s to recover, well past the threshold.
   const showReconnecting = useDeferredLoading(isReconnecting, UI_DOHERTY_THRESHOLD);
   const currentProject = useProjectStore((state) => state.currentProject);
+  const worktreeLoadError = useProjectStore((state) => state.worktreeLoadError);
   useProjectSettings();
   const { availability, agentSettings } = useAgentLauncher();
   const {
@@ -757,9 +759,18 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       </ErrorBoundary>
     );
 
+  // Hoisted before the early returns so the failed-switch banner (#8400)
+  // surfaces regardless of which loading/empty/error branch the sidebar is in
+  // — when a switch's worktree load throws, the store stays empty so every
+  // other branch would otherwise show no trace of the failure.
+  const worktreeLoadErrorBanner = worktreeLoadError ? (
+    <WorktreeLoadErrorBanner error={worktreeLoadError} />
+  ) : null;
+
   if (isLoading && worktrees.length === 0) {
     return (
       <div className="flex flex-col h-full">
+        {worktreeLoadErrorBanner}
         <div className="flex items-center px-4 py-4 border-b border-divider shrink-0">
           <h2 className="text-daintree-text font-semibold text-sm tracking-wide">Worktrees</h2>
         </div>
@@ -782,6 +793,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
   if (error) {
     return (
       <div className="flex flex-col h-full">
+        {worktreeLoadErrorBanner}
         <div className="flex items-center px-4 py-4 border-b border-divider shrink-0">
           <h2 className="text-daintree-text font-semibold text-sm tracking-wide">Worktrees</h2>
         </div>
@@ -814,6 +826,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     return (
       <>
         <div className="flex flex-col h-full">
+          {worktreeLoadErrorBanner}
           <div className="flex items-center px-4 py-4 border-b border-divider shrink-0">
             <h2 className="text-daintree-text font-semibold text-sm tracking-wide">Worktrees</h2>
           </div>
@@ -991,6 +1004,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
 
   return (
     <div className="flex flex-col h-full">
+      {worktreeLoadErrorBanner}
       {/* Header Section */}
       <div className="group/header flex items-center justify-between px-4 py-2 border-b border-divider bg-transparent shrink-0">
         <div className="flex items-baseline gap-1.5">

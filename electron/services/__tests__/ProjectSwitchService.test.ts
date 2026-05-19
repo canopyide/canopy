@@ -477,18 +477,22 @@ describe("ProjectSwitchService", () => {
     expect(secondResolved).toBe(true);
   });
 
-  it("preserves original switch error when rollback throws", async () => {
+  it("propagates the switch error without attempting a PTY rollback (#8400)", async () => {
     const originalError = new Error("setCurrent failed");
     projectStoreMock.setCurrentProject.mockRejectedValue(originalError);
 
-    const { service } = createService({
-      ptyClient: {
-        onProjectSwitch: () => {
-          throw new Error("rollback failed");
-        },
-      },
-    });
+    const { service, ptyClient } = createService();
 
     await expect(service.switchProject("project-new")).rejects.toThrow("setCurrent failed");
+
+    // The catch branch no longer reverts the PTY to the previous project —
+    // the forward-cleanup call targets the *new* project, never "project-old",
+    // and setActiveProject(null) is never used as a fallback rollback.
+    expect(ptyClient.onProjectSwitch).not.toHaveBeenCalledWith(
+      MOCK_WINDOW_ID,
+      "project-old",
+      expect.anything()
+    );
+    expect(ptyClient.setActiveProject).not.toHaveBeenCalled();
   });
 });

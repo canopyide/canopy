@@ -2,6 +2,7 @@ import type { ActionCallbacks, ActionRegistry } from "../actionTypes";
 import { defineAction } from "../defineAction";
 import { z } from "zod";
 import { getCurrentViewStoreOrNull } from "@/store/createWorktreeStore";
+import { useProjectStore } from "@/store/projectStore";
 import { worktreeClient } from "@/clients";
 
 export function registerWorktreeServiceActions(
@@ -62,6 +63,29 @@ export function registerWorktreeServiceActions(
     },
     run: async () => {
       await worktreeClient.restartService();
+    },
+  }));
+
+  actions.set("worktree.retryProjectLoad", () => ({
+    id: "worktree.retryProjectLoad",
+    title: "Retry loading worktrees",
+    description: "Retry loading worktrees after a project switch failed to load them",
+    category: "worktree",
+    kind: "command",
+    danger: "safe",
+    scope: "renderer",
+    nonRepeatable: true,
+    keywords: ["reload", "recover", "switch", "worktree"],
+    isEnabled: () => useProjectStore.getState().worktreeLoadError !== null,
+    disabledReason: () =>
+      useProjectStore.getState().worktreeLoadError === null
+        ? "No worktree load failure to retry"
+        : undefined,
+    run: async () => {
+      await worktreeClient.retryProjectLoad();
+      // The reload succeeded — clear the banner. A failure rejects above and
+      // leaves worktreeLoadError set so the banner stays visible.
+      useProjectStore.getState().setWorktreeLoadError(null);
     },
   }));
 

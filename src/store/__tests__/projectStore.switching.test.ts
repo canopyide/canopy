@@ -487,3 +487,56 @@ describe("fleet arming clear on project switch (#5298)", () => {
     expect(clearSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("worktreeLoadError surfacing (#8400)", () => {
+  it("clears a stale worktreeLoadError atomically when a switch starts", async () => {
+    const { useProjectStore } = await import("../projectStore");
+    useProjectStore.setState({
+      projects: [projectA, projectB],
+      currentProject: projectA,
+      worktreeLoadError: "Not a git repository",
+    });
+
+    await useProjectStore.getState().switchProject(projectB.id);
+
+    expect(useProjectStore.getState().worktreeLoadError).toBeNull();
+    expect(useProjectStore.getState().error).toBeNull();
+    expect(useProjectStore.getState().isLoading).toBe(true);
+  });
+
+  it("setWorktreeLoadError sets and clears the slice", async () => {
+    const { useProjectStore } = await import("../projectStore");
+
+    useProjectStore.getState().setWorktreeLoadError("boom");
+    expect(useProjectStore.getState().worktreeLoadError).toBe("boom");
+
+    useProjectStore.getState().setWorktreeLoadError(null);
+    expect(useProjectStore.getState().worktreeLoadError).toBeNull();
+  });
+
+  it("stores worktreeLoadError from the project switch broadcast and clears it on a clean switch", async () => {
+    delete (globalThis as { __daintreeProjectStoreListenerState?: unknown })
+      .__daintreeProjectStoreListenerState;
+    // The module-init listener block only registers when window.electron.project
+    // is present; provide a minimal stub so projectClient.onSwitch is wired.
+    (window as unknown as { electron: unknown }).electron = {
+      project: { onUpdated: vi.fn(), onRemoved: vi.fn() },
+    };
+    const { useProjectStore } = await import("../projectStore");
+
+    const onSwitchCb = projectClientMock.onSwitch.mock.calls.at(-1)?.[0] as
+      | ((payload: {
+          project: typeof projectB;
+          switchId: string;
+          worktreeLoadError?: string;
+        }) => void)
+      | undefined;
+    expect(typeof onSwitchCb).toBe("function");
+
+    onSwitchCb!({ project: projectB, switchId: "s1", worktreeLoadError: "Not a git repository" });
+    expect(useProjectStore.getState().worktreeLoadError).toBe("Not a git repository");
+
+    onSwitchCb!({ project: projectB, switchId: "s2" });
+    expect(useProjectStore.getState().worktreeLoadError).toBeNull();
+  });
+});

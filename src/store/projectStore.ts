@@ -74,6 +74,12 @@ interface ProjectState {
   currentProject: Project | null;
   isLoading: boolean;
   error: string | null;
+  /**
+   * Set when a project switch committed to the new project but its worktree
+   * load threw (#8400). Surfaced as a Tier 3 inline recovery banner. Transient
+   * — never persisted, cleared on the next switch start or a successful retry.
+   */
+  worktreeLoadError: string | null;
   gitInitDialogOpen: boolean;
   gitInitDirectoryPath: string | null;
   createFolderDialogOpen: boolean;
@@ -88,6 +94,7 @@ interface ProjectState {
   ) => Promise<void>;
   createProjectFolder: (parentPath: string, folderName: string) => Promise<void>;
   switchProject: (projectId: string) => Promise<void>;
+  setWorktreeLoadError: (error: string | null) => void;
   updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
   enableInRepoSettings: (id: string) => Promise<Project>;
   disableInRepoSettings: (id: string) => Promise<Project>;
@@ -125,8 +132,10 @@ interface ProjectState {
 interface ProjectStoreListenerState {
   applyUpdated: ((project: Project) => void) | null;
   applyRemoved: ((projectId: string) => void) | null;
+  applySwitch: ((worktreeLoadError: string | null) => void) | null;
   updatedRegistered: boolean;
   removedRegistered: boolean;
+  switchRegistered: boolean;
 }
 
 const PROJECT_STORE_LISTENER_STATE_KEY = "__daintreeProjectStoreListenerState";
@@ -146,8 +155,10 @@ function getProjectStoreListenerState(): ProjectStoreListenerState {
   const created: ProjectStoreListenerState = {
     applyUpdated: null,
     applyRemoved: null,
+    applySwitch: null,
     updatedRegistered: false,
     removedRegistered: false,
+    switchRegistered: false,
   };
   target[PROJECT_STORE_LISTENER_STATE_KEY] = created;
   return created;
@@ -226,6 +237,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
   createFolderDialogOpen: false,
   cloneRepoDialogOpen: false,
   error: null,
+  worktreeLoadError: null,
 
   addProjectByPath: async (path, options) => {
     set({ isLoading: true, error: null });
@@ -408,7 +420,10 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
     const currentProjectId = get().currentProject?.id;
     const outgoingState = currentProjectId ? buildOutgoingState(currentProjectId) : undefined;
 
-    set({ isLoading: true, error: null });
+    // Clear any stale worktree-load banner atomically with the switch start so
+    // the previous project's failure never coexists with the new project (#8400,
+    // mirrors the #4451 atomic-swap fix).
+    set({ isLoading: true, error: null, worktreeLoadError: null });
     // Fire-and-forget: the main process swaps WebContentsViews, so this
     // renderer gets detached. Don't write the response into stores — the
     // new view handles its own state independently.
@@ -438,6 +453,10 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
       });
       set({ error: message, isLoading: false });
     });
+  },
+
+  setWorktreeLoadError: (worktreeLoadError) => {
+    set({ worktreeLoadError });
   },
 
   updateProject: async (id, updates) => {
@@ -564,7 +583,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
     const currentProjectId = get().currentProject?.id;
     const outgoingState = currentProjectId ? buildOutgoingState(currentProjectId) : undefined;
 
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, error: null, worktreeLoadError: null });
     projectClient.reopen(projectId, outgoingState).catch((error) => {
       if (requestId !== projectTransitionRequestId) {
         return;
@@ -730,6 +749,12 @@ if (typeof window !== "undefined" && window.electron?.project) {
       return { projects, currentProject };
     });
   };
+  // A switch broadcast resolves the banner state for the project this view now
+  // shows: surface the failure when the new project's worktree load threw, or
+  // clear a stale banner when the switch (or a cross-view switch) succeeded.
+  listenerState.applySwitch = (worktreeLoadError) => {
+    useProjectStore.setState({ worktreeLoadError });
+  };
 
   const projectApi = window.electron.project;
   if (projectApi.onUpdated && !listenerState.updatedRegistered) {
@@ -743,6 +768,12 @@ if (typeof window !== "undefined" && window.electron?.project) {
     listenerState.removedRegistered = true;
     projectApi.onRemoved((projectId) => {
       listenerState.applyRemoved?.(projectId);
+    });
+  }
+  if (!listenerState.switchRegistered) {
+    listenerState.switchRegistered = true;
+    projectClient.onSwitch((payload) => {
+      listenerState.applySwitch?.(payload.worktreeLoadError ?? null);
     });
   }
 }

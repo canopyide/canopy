@@ -724,6 +724,8 @@ const api: ElectronAPI = {
 
     restartService: (): Promise<void> => _unwrappingInvoke(CHANNELS.WORKTREE_RESTART_SERVICE),
 
+    retryProjectLoad: (): Promise<void> => _unwrappingInvoke(CHANNELS.WORKTREE_RETRY_PROJECT_LOAD),
+
     onUpdate: (callback: (state: WorktreeState) => void) =>
       _eventBusOn("worktree:update", (payload) => callback(payload.worktree)),
 
