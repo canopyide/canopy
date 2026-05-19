@@ -358,6 +358,12 @@ describe("Worktree list keyboard grid — issue #6422", () => {
       // memoized by its own (id-only) props.
       expect(source).not.toMatch(/const renderWorktreeCard\s*=/);
       expect(source).not.toMatch(/renderWorktreeCard\(/);
+      // Guard against the same anti-pattern resurfacing under a different
+      // name — any per-render closure that returns a <StaticWorktreeRow/>
+      // factory re-creates row elements each poll and defeats memoization.
+      expect(source).not.toMatch(
+        /const \w*(?:render|make|build)\w*(?:Row|Card)\w*\s*=\s*\([^)]*\)\s*=>\s*\(?\s*<StaticWorktreeRow/
+      );
     });
 
     it("renders the integration and grouped-section rows as <StaticWorktreeRow worktreeId={...}/> (id only)", () => {
