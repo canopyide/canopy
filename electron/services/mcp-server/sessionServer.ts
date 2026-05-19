@@ -137,12 +137,15 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
       .filter((entry) => shouldExposeTool(entry, tier, fullToolSurface))
       .map((entry) => {
         const outputSchema = buildToolOutputSchema(entry);
+        const _meta =
+          entry.examples && entry.examples.length > 0 ? { examples: entry.examples } : undefined;
         return {
           name: entry.id,
           description: entry.description,
           inputSchema: buildToolInputSchema(entry),
           annotations: buildAnnotations(entry),
           ...(outputSchema ? { outputSchema } : {}),
+          ...(_meta ? { _meta } : {}),
         };
       });
 
@@ -930,10 +933,11 @@ async function runElicitationConfirmation(
   | { kind: "throw"; error: unknown }
 > {
   const argsSummary = summarizeMcpArgs(args);
+  const rationaleLine = entry.dangerRationale ? `\n${entry.dangerRationale}\n` : "";
   const message =
     argsSummary && argsSummary !== "{}"
-      ? `Confirm ${entry.title}: ${entry.description}\n\nArguments: ${argsSummary}`
-      : `Confirm ${entry.title}: ${entry.description}`;
+      ? `Confirm ${entry.title}: ${entry.description}${rationaleLine}\nArguments: ${argsSummary}`
+      : `Confirm ${entry.title}: ${entry.description}${rationaleLine}`;
 
   let result;
   try {

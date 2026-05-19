@@ -91,6 +91,7 @@ export function registerPortalActions(actions: ActionRegistry, _callbacks: Actio
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale: "Permanently removes a portal link by ID. The link configuration is lost.",
     argsSchema: z.object({ id: z.string() }),
     run: async (args: unknown) => {
       const { id } = args as { id: string };

@@ -198,6 +198,8 @@ export function registerFleetActions(actions: ActionRegistry): void {
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale:
+      "Restarts every armed agent terminal. All scrollback and session state are lost.",
     argsSchema: confirmedArgsSchema,
     run: async (args: unknown) => {
       const snap = snapshotArmed();
@@ -223,6 +225,8 @@ export function registerFleetActions(actions: ActionRegistry): void {
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale:
+      "Removes every armed terminal panel. All scrollback and session state are lost.",
     argsSchema: confirmedArgsSchema,
     run: async (args: unknown) => {
       const snap = snapshotArmed();
@@ -248,6 +252,8 @@ export function registerFleetActions(actions: ActionRegistry): void {
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale:
+      "Moves every armed terminal to trash. Scrollback is lost for each trashed terminal.",
     argsSchema: confirmedArgsSchema,
     run: async (args: unknown) => {
       const snap = snapshotArmed();
@@ -469,6 +475,8 @@ export function registerFleetActions(actions: ActionRegistry): void {
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale:
+      "Permanently deletes a saved fleet. The named fleet configuration cannot be recovered.",
     argsSchema: idArgSchema,
     run: async (args: unknown) => {
       const { id } = idArgSchema.parse(args);

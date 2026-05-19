@@ -212,6 +212,7 @@ export function registerGitActions(actions: ActionRegistry, _callbacks: ActionCa
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale: "Pushes local commits to the remote. Recovery requires a force-push to undo.",
     argsSchema: z
       .object({ cwd: z.string().optional(), setUpstream: z.boolean().optional() })
       .optional(),
@@ -237,6 +238,8 @@ export function registerGitActions(actions: ActionRegistry, _callbacks: ActionCa
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale:
+      "Rebases local commits onto remote changes. Local history is rewritten and unrecoverable until pushed.",
     argsSchema: z.object({ cwd: z.string().optional() }).optional(),
     run: async (args: unknown, ctx: ActionContext) => {
       const { cwd } = (args ?? {}) as { cwd?: string };
@@ -328,6 +331,8 @@ export function registerGitActions(actions: ActionRegistry, _callbacks: ActionCa
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale:
+      "Wipes the working tree to the pre-agent snapshot state. Unsaved changes are irrecoverable.",
     argsSchema: z.object({ worktreeId: z.string() }),
     run: async (args: unknown) => {
       const { worktreeId } = args as { worktreeId: string };
@@ -343,6 +348,7 @@ export function registerGitActions(actions: ActionRegistry, _callbacks: ActionCa
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale: "Permanently deletes the pre-agent snapshot. No recovery once deleted.",
     argsSchema: z.object({ worktreeId: z.string() }),
     run: async (args: unknown) => {
       const { worktreeId } = args as { worktreeId: string };

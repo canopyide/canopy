@@ -78,6 +78,8 @@ export function registerWorktreeResourceActions(
       kind: "command",
       danger: "confirm",
       scope: "renderer",
+      dangerRationale:
+        "Destroys the cloud resource associated with a worktree. Recovery requires re-provisioning.",
       argsSchema: z.object({ worktreeId: z.string().optional() }).optional(),
       isEnabled: (ctx: ActionContext) => {
         const worktreeId = ctx.focusedWorktreeId ?? ctx.activeWorktreeId;

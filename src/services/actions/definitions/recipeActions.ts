@@ -153,6 +153,8 @@ export function registerRecipeActions(actions: ActionRegistry, _callbacks: Actio
       kind: "command",
       danger: "confirm",
       scope: "renderer",
+      dangerRationale:
+        "Permanently deletes a recipe. The recipe configuration cannot be recovered.",
       argsSchema: z.object({ recipeId: z.string() }),
       run: async ({ recipeId }) => {
         await useRecipeStore.getState().deleteRecipe(recipeId);

@@ -55,6 +55,16 @@ export function registerSystemActions(actions: ActionRegistry, _callbacks: Actio
       danger: "safe",
       scope: "renderer",
       argsSchema: z.object({ command: z.string() }),
+      examples: [
+        {
+          args: { command: "node" },
+          description: "Check if Node.js is available on PATH",
+        },
+        {
+          args: { command: "gh" },
+          description: "Check if the GitHub CLI is installed",
+        },
+      ],
       run: async ({ command }) => {
         return await systemClient.checkCommand(command);
       },
@@ -127,6 +137,16 @@ export function registerSystemActions(actions: ActionRegistry, _callbacks: Actio
       danger: "safe",
       scope: "renderer",
       argsSchema: FileSearchPayloadSchema,
+      examples: [
+        {
+          args: { query: "*.test.ts" },
+          description: "Search for test files from the active worktree root",
+        },
+        {
+          args: { query: "ActionService", limit: 10 },
+          description: "Find up to 10 files matching 'ActionService'",
+        },
+      ],
       run: async (payload, ctx: ActionContext) => {
         const resolvedCwd = payload.cwd ?? ctx.activeWorktreePath;
         if (!resolvedCwd) throw new Error("No active worktree");

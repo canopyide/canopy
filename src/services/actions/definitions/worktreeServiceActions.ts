@@ -50,6 +50,8 @@ export function registerWorktreeServiceActions(
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale:
+      "Restarts the workspace host process. A hard restart drops in-flight watchers and may cause brief unavailability.",
     keywords: ["workspace", "backend", "recover", "host"],
     isEnabled: () => {
       const store = getCurrentViewStoreOrNull();
