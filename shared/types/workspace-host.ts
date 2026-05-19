@@ -462,6 +462,18 @@ export type WorkspaceHostEvent =
   // Spontaneous updates (no requestId - these are pushed events)
   | { type: "worktree-update"; worktree: WorktreeSnapshot; epoch: string; seq: number }
   | { type: "worktree-removed"; worktreeId: string; epoch: string; seq: number }
+  // Per-worktree lifecycle setup failure surfaced to the renderer's error
+  // banner. Emitted from sites that previously swallowed errors to
+  // `console.warn` (the `createWorktree` async tail and the
+  // `switchWorktreeEnvironment` catch). The main-process router translates
+  // this into a `notifyError` with `context.worktreeId` so the failure shows
+  // on the matching worktree card alongside the lifecycle status.
+  | {
+      type: "lifecycle-setup-error";
+      worktreeId: string;
+      message: string;
+      details?: string;
+    }
   // Linux-only: fired once per host-process lifetime when the recursive file
   // watcher hits the inotify watch limit (ENOSPC).
   | { type: "inotify-limit-reached" }

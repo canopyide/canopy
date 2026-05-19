@@ -168,6 +168,12 @@ async function handleWorktreePortRequest(
         break;
       }
 
+      case "run-lifecycle-setup": {
+        await workspaceService.retryLifecycleSetup(msg.payload.worktreeId);
+        result = { ok: true };
+        break;
+      }
+
       case "switch-worktree-environment": {
         const requestId = `port-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         await workspaceService.switchWorktreeEnvironment(

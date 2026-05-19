@@ -1629,7 +1629,15 @@ export class WorkspaceService {
           options.provisionResource ?? options.worktreeMode === "remote-worker"
         );
       })().catch((err) => {
+        const message = formatErrorMessage(err, "createWorktree async tail failed");
+        const stack = err instanceof Error ? err.stack : undefined;
         console.warn("[WorkspaceHost] createWorktree async tail failed:", err);
+        this.sendEvent({
+          type: "lifecycle-setup-error",
+          worktreeId: canonicalWorktreeId,
+          message,
+          details: stack,
+        });
       });
     } catch (error) {
       // Create failed — drop any pending entry so a real external change to
@@ -1679,6 +1687,39 @@ export class WorkspaceService {
     if (shouldProvision && this.projectRootPath) {
       await this.runResourceAction(`auto-provision-${worktreeId}`, worktreeId, "provision");
     }
+  }
+
+  /**
+   * Re-run the lifecycle setup script for an existing worktree without
+   * recreating it. Surfaced via the `run-lifecycle-setup` port action so the
+   * worktree card can offer a "Retry setup" affordance after a failed/timed-out
+   * setup. Same idempotence assumption as resource provisioning — the user
+   * authors setup scripts knowing they may be re-run in place.
+   */
+  async retryLifecycleSetup(worktreeId: string): Promise<void> {
+    const monitor = this.monitors.get(worktreeId);
+    if (!monitor) {
+      throw new Error(`Worktree not found: ${worktreeId}`);
+    }
+    if (!this.projectRootPath) {
+      throw new Error("Cannot retry setup before a project is loaded");
+    }
+    if (monitor.lifecycleStatus?.state === "running") {
+      throw new Error("Setup is already running");
+    }
+
+    // Set running synchronously *before* the first await so a second concurrent
+    // request (rapid clicks, multi-window, retry-after-error) sees the in-flight
+    // state and is rejected by the guard above. `runLifecycleSetup` re-sets the
+    // same state with full command-progress metadata once config loads.
+    monitor.setLifecycleStatus({
+      phase: "setup",
+      state: "running",
+      startedAt: Date.now(),
+    });
+    this.emitUpdate(monitor);
+
+    await this.runLifecycleSetup(worktreeId, monitor.path, this.projectRootPath, false);
   }
 
   private async runLifecycleTeardown(
@@ -1843,12 +1884,20 @@ export class WorkspaceService {
             console.log(`[WorkspaceHost] Branch already deleted: ${branchToDelete}`);
           } else if (errorMsg.includes("not fully merged")) {
             throw new Error(
-              `Branch '${branchToDelete}' has unmerged changes. Enable force delete to remove it.`
+              `Branch '${branchToDelete}' has unmerged changes. Enable force delete to remove it.`,
+              { cause: branchError }
             );
           } else if (errorMsg.includes("checked out at") || errorMsg.includes("Cannot delete")) {
-            throw new Error(`Cannot delete branch '${branchToDelete}': ${errorMsg.split("\n")[0]}`);
+            throw new Error(
+              `Cannot delete branch '${branchToDelete}': ${errorMsg.split("\n")[0]}`,
+              {
+                cause: branchError,
+              }
+            );
           } else {
-            throw new Error(`Failed to delete branch '${branchToDelete}': ${errorMsg}`);
+            throw new Error(`Failed to delete branch '${branchToDelete}': ${errorMsg}`, {
+              cause: branchError,
+            });
           }
         }
       }
@@ -2257,10 +2306,18 @@ ${lines.map((l) => "+" + l).join("\n")}`;
         await this.runLifecycleSetup(worktreeId, monitor.path, this.projectRootPath, false, envKey);
       }
     } catch (err) {
+      const message = formatErrorMessage(err, "switchWorktreeEnvironment lifecycle setup failed");
+      const stack = err instanceof Error ? err.stack : undefined;
       console.warn(
         `[WorkspaceService] switchWorktreeEnvironment config resolution failed (non-fatal):`,
         err
       );
+      this.sendEvent({
+        type: "lifecycle-setup-error",
+        worktreeId,
+        message,
+        details: stack,
+      });
     }
 
     this.emitUpdate(monitor);

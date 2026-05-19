@@ -62,6 +62,10 @@ export interface WorktreePortProtocol {
     payload: { worktreeId: string; action: WorktreePortResourceAction };
     result: { ok: true };
   };
+  "run-lifecycle-setup": {
+    payload: { worktreeId: string };
+    result: { ok: true };
+  };
   "switch-worktree-environment": {
     payload: { worktreeId: string; envKey: string };
     result: { ok: true };

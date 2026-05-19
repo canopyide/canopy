@@ -63,6 +63,9 @@ export const BUILT_IN_ACTION_IDS = [
   "worktree.resource.config.get",
   "worktree.resource.config.set",
 
+  // -- worktreeLifecycleActions --
+  "worktree.lifecycle.retrySetup",
+
   // -- worktreeSessionActions --
   "worktree.sessions.minimizeAll",
   "worktree.sessions.maximizeAll",
