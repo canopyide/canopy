@@ -96,7 +96,7 @@ CI runs `npm run check:help` (folded into `npm run check`) to catch drift betwee
 
 ## Tier Model
 
-Claude help sessions run at one of three authorization tiers, selected by user settings. The local `daintree` MCP server filters its `ListTools` response and rejects out-of-tier `CallTool` requests with `TIER_NOT_PERMITTED`. Tiers are additive: `action` is `workbench` plus addons, `system` is `action` plus addons.
+Help sessions run at one of three authorization tiers, selected by user settings. The local `daintree` MCP server filters its `ListTools` response and rejects out-of-tier `CallTool` requests with `TIER_NOT_PERMITTED`. Tiers are additive: `action` is `workbench` plus addons, `system` is `action` plus addons. Claude and Codex honor the selected tier directly; Gemini's `--approval-mode=plan` independently pins it to read-only behavior regardless of the configured tier.
 
 | Tier | Trigger | Capabilities (categories) |
 | --- | --- | --- |
@@ -106,7 +106,7 @@ Claude help sessions run at one of three authorization tiers, selected by user s
 
 Tier and `bypassPermissions` (skip Claude's per-tool prompt) are independent settings — both are configured under Settings → Assistant → Daintree Assistant.
 
-The authoritative tier definitions live in `shared/config/helpAssistantTierAllowlists.ts` (`WORKBENCH_TIER_TOOLS`, `ACTION_TIER_ADDONS`, `SYSTEM_TIER_ADDONS`); `electron/services/mcp-server/shared.ts` re-exports them as Sets for dispatch-time lookup. When local MCP is disabled in settings, the `daintree` server is omitted from the per-session `.mcp.json` entirely — Claude falls back to docs-only behavior.
+The authoritative tier definitions live in `shared/config/helpAssistantTierAllowlists.ts` (`WORKBENCH_TIER_TOOLS`, `ACTION_TIER_ADDONS`, `SYSTEM_TIER_ADDONS`); `electron/services/mcp-server/shared.ts` re-exports them as Sets for dispatch-time lookup. When local MCP is disabled in settings, the `daintree` server is omitted from the per-session config entirely (Claude's `.mcp.json`, Gemini's `.gemini/settings.json`, and Codex's `-c` flags alike) — every agent falls back to docs-only behavior.
 
 ## Permission Lockdown
 
