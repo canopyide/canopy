@@ -343,6 +343,12 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         setKeyboardReorderAnnouncement("Manual reorder available");
       }, KEYBOARD_REORDER_ANNOUNCEMENT_DEBOUNCE_MS);
     }
+    return () => {
+      if (reorderAnnouncementTimerRef.current !== null) {
+        clearTimeout(reorderAnnouncementTimerRef.current);
+        reorderAnnouncementTimerRef.current = null;
+      }
+    };
   }, [isGroupedByType, query]);
 
   const clearAllFilters = useWorktreeFilterStore((state) => state.clearAll);
@@ -1329,6 +1335,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                           agentSettings={agentSettings}
                           homeDir={homeDir}
                           ariaRowIndex={nextRowIndex++}
+                          isDragHandleDisabled
                         />
                       ));
                       return (

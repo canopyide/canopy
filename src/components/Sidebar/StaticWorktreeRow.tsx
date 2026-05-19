@@ -18,6 +18,7 @@ interface StaticWorktreeRowProps {
   agentSettings: UseAgentLauncherReturn["agentSettings"];
   homeDir: string | undefined;
   aggregateCounts?: WorktreeCardProps["aggregateCounts"];
+  isDragHandleDisabled?: boolean;
   ariaRowIndex: number;
 }
 
@@ -32,6 +33,7 @@ function StaticWorktreeRow({
   agentSettings,
   homeDir,
   aggregateCounts,
+  isDragHandleDisabled,
   ariaRowIndex,
 }: StaticWorktreeRowProps) {
   const worktreeSnap = useWorktreeStore((state) => state.worktrees.get(worktreeId));
@@ -99,6 +101,7 @@ function StaticWorktreeRow({
             agentAvailability={availability}
             agentSettings={agentSettings}
             homeDir={homeDir}
+            isDragHandleDisabled={isDragHandleDisabled}
           />
         </ErrorBoundary>
       </div>

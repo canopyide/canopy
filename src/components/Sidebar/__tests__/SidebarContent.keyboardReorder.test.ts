@@ -122,4 +122,10 @@ describe("SidebarContent reorder re-enable announcement — issue #8395", () => 
   it("gates on prev===true && current===false transition", () => {
     expect(source).toMatch(/prev\s*&&\s*!current/);
   });
+
+  it("cleans up the pending timer on effect teardown", () => {
+    expect(source).toMatch(
+      /return\s*\(\)\s*=>\s*\{[\s\S]*clearTimeout\(reorderAnnouncementTimerRef\.current\)[\s\S]*reorderAnnouncementTimerRef\.current\s*=\s*null/
+    );
+  });
 });

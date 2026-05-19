@@ -178,4 +178,8 @@ describe("WorktreeCard disabled drag handle (issue #8395)", () => {
   it("preserves the group-hover delay on the enabled grip", () => {
     expect(cardSource).toContain("group-hover/card:delay-[50ms]");
   });
+
+  it("gates the grip block on dragHandleListeners OR isDragHandleDisabled", () => {
+    expect(cardSource).toMatch(/\(dragHandleListeners\s*\|\|\s*isDragHandleDisabled\)\s*&&/);
+  });
 });

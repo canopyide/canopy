@@ -719,7 +719,7 @@ export function WorktreeCard({
             </Tooltip>
           )}
           <div className="relative z-10 flex">
-            {dragHandleListeners &&
+            {(dragHandleListeners || isDragHandleDisabled) &&
               (isDragHandleDisabled ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -753,7 +753,12 @@ export function WorktreeCard({
                   <GripVertical className="w-3 h-3" />
                 </div>
               ))}
-            <div className={cn("flex-1 min-w-0 py-3", dragHandleListeners ? "pl-1 pr-4" : "px-4")}>
+            <div
+              className={cn(
+                "flex-1 min-w-0 py-3",
+                dragHandleListeners || isDragHandleDisabled ? "pl-1 pr-4" : "px-4"
+              )}
+            >
               <WorktreeHeader
                 worktree={worktree}
                 isActive={isActive}
