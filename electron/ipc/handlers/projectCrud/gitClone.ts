@@ -23,7 +23,8 @@ import type {
 } from "../../../../shared/types/ipc/gitClone.js";
 import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
 import { validateFolderName } from "../../../../shared/utils/folderName.js";
-import { AppError } from "../../../utils/errorTypes.js";
+import { classifyGitError } from "../../../../shared/utils/gitOperationErrors.js";
+import { AppError, GitOperationError } from "../../../utils/errorTypes.js";
 
 const GH_AUTH_PROBE_TIMEOUT_MS = 3_000;
 const GH_CLONE_TIMEOUT_MS = 5 * 60 * 1_000;
@@ -372,11 +373,14 @@ export function registerGitCloneHandlers(): () => void {
 
       const errorMessage = formatErrorMessage(error, "Failed to clone repository");
       emitProgress("error", 0, `Clone failed: ${errorMessage}`);
-      throw new AppError({
-        code: "INTERNAL",
-        message: errorMessage,
-        context: { targetPath },
+      const reason = classifyGitError(error);
+      // `url` deliberately omitted from context — it can carry embedded
+      // credentials (e.g. https://x-access-token:TOKEN@github.com/...) and
+      // the renderer already has the input URL in local state.
+      throw new GitOperationError(reason, errorMessage, {
+        op: "clone",
         cause: error instanceof Error ? error : undefined,
+        context: { targetPath },
       });
     } finally {
       activeControllers.delete(localController);
