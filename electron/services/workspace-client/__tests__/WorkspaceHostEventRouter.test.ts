@@ -159,6 +159,14 @@ describe("WorkspaceHostEventRouter", () => {
       startedAt: number
     ) => ({ phase, state, startedAt });
 
+    const expectedToast = {
+      type: "error",
+      title: "Cloud resource may still be running",
+      message:
+        "The teardown script didn't complete — your cloud resource may still be active and billing",
+      rateLimitKey: "cloud-teardown-failure",
+    };
+
     it("fires inbox notification when resource-teardown fails", () => {
       const entry = makeEntry();
       const event = makeWorktreeUpdateEvent({
@@ -167,12 +175,11 @@ describe("WorkspaceHostEventRouter", () => {
 
       router.routeHostEvent(entry, event);
 
-      expect(broadcastToRenderer).toHaveBeenCalledWith(CHANNELS.NOTIFICATION_SHOW_TOAST, {
-        type: "error",
-        title: "Cloud resource may still be running",
-        message:
-          "The teardown script didn't complete — your cloud resource may still be active and billing",
-      });
+      expect(broadcastToRenderer).toHaveBeenCalledTimes(1);
+      expect(broadcastToRenderer).toHaveBeenCalledWith(
+        CHANNELS.NOTIFICATION_SHOW_TOAST,
+        expectedToast
+      );
     });
 
     it("fires inbox notification when resource-teardown times out", () => {
@@ -183,13 +190,22 @@ describe("WorkspaceHostEventRouter", () => {
 
       router.routeHostEvent(entry, event);
 
+      expect(broadcastToRenderer).toHaveBeenCalledTimes(1);
       expect(broadcastToRenderer).toHaveBeenCalledWith(
         CHANNELS.NOTIFICATION_SHOW_TOAST,
-        expect.objectContaining({
-          type: "error",
-          title: "Cloud resource may still be running",
-        })
+        expectedToast
       );
+    });
+
+    it("still emits the normal worktree-update side-effects when a toast fires", () => {
+      const entry = makeEntry();
+      const event = makeWorktreeUpdateEvent({
+        lifecycleStatus: lifecycleStatus("resource-teardown", "failed", 1000),
+      });
+
+      router.routeHostEvent(entry, event);
+
+      expect(events.emit).toHaveBeenCalledWith("sys:worktree:update", event.worktree);
     });
 
     it("does not fire on resource-teardown running snapshot", () => {
@@ -218,14 +234,15 @@ describe("WorkspaceHostEventRouter", () => {
 
     it("does not fire on local config-teardown failure (asymmetric rule)", () => {
       const entry = makeEntry();
-      router.routeHostEvent(
-        entry,
-        makeWorktreeUpdateEvent({
-          lifecycleStatus: lifecycleStatus("teardown", "failed", 1000),
-        })
-      );
+      const event = makeWorktreeUpdateEvent({
+        lifecycleStatus: lifecycleStatus("teardown", "failed", 1000),
+      });
+
+      router.routeHostEvent(entry, event);
 
       expect(broadcastToRenderer).not.toHaveBeenCalled();
+      // Normal routing must still happen even when the toast is skipped.
+      expect(events.emit).toHaveBeenCalledWith("sys:worktree:update", event.worktree);
     });
 
     it("does not fire on local config-teardown timeout (asymmetric rule)", () => {
@@ -291,6 +308,33 @@ describe("WorkspaceHostEventRouter", () => {
       );
 
       expect(broadcastToRenderer).toHaveBeenCalledTimes(2);
+    });
+
+    it("debounce covers different terminal states of the same attempt", () => {
+      const entry = makeEntry();
+      router.routeHostEvent(
+        entry,
+        makeWorktreeUpdateEvent({
+          lifecycleStatus: lifecycleStatus("resource-teardown", "failed", 1000),
+        })
+      );
+      router.routeHostEvent(
+        entry,
+        makeWorktreeUpdateEvent({
+          lifecycleStatus: lifecycleStatus("resource-teardown", "timed-out", 1000),
+        })
+      );
+
+      expect(broadcastToRenderer).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not throw when lifecycleStatus is absent", () => {
+      const entry = makeEntry();
+      const event = makeWorktreeUpdateEvent();
+
+      expect(() => router.routeHostEvent(entry, event)).not.toThrow();
+      expect(broadcastToRenderer).not.toHaveBeenCalled();
+      expect(events.emit).toHaveBeenCalledWith("sys:worktree:update", event.worktree);
     });
   });
 });

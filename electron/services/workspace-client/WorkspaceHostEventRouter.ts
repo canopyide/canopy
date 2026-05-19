@@ -102,6 +102,9 @@ export class WorkspaceHostEventRouter {
               title: "Cloud resource may still be running",
               message:
                 "The teardown script didn't complete — your cloud resource may still be active and billing",
+              // Dedicated bucket so an unrelated error burst can't absorb this
+              // billing-critical notification into a generic overflow row.
+              rateLimitKey: "cloud-teardown-failure",
             });
           }
         }
