@@ -187,9 +187,22 @@ export class PRIntegrationService {
     void this.prService.start(0);
   }
 
-  updateToken(token: string | null, projectRootPath: string | null): void {
-    GitHubAuth.setMemoryToken(token);
-    if (token) {
+  updateForgeCredentials(
+    providerId: string,
+    credentials: import("../../shared/types/forge.js").Credentials | null,
+    projectRootPath: string | null
+  ): void {
+    if (providerId === "github" || providerId === "builtin.github") {
+      if (credentials === null) {
+        GitHubAuth.setMemoryToken(null);
+      } else if (credentials.kind === "bearer") {
+        GitHubAuth.setMemoryToken(credentials.value);
+      }
+      // Non-bearer credentials are silently ignored — GitHub only supports bearer tokens.
+    }
+    // Additional providers dispatch through their own auth modules.
+
+    if (credentials) {
       void this.prService.refresh();
     } else {
       this.prService.reset();

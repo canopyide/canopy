@@ -278,6 +278,7 @@ export interface MilestoneCapability {
 export interface ForgeProviderImpl {
   // Auth — fully owned by the plugin; the host never inspects credentials.
   getCredentials(): Promise<Credentials | null>;
+  setCredentials?(credentials: Credentials | null): void;
   validateCredentials(): Promise<AuthValidation>;
 
   // Repository identity.

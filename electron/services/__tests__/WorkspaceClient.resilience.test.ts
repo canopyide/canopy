@@ -814,16 +814,34 @@ describe("WorkspaceClient multi-process manager", () => {
       expect(h(1).pauseHealthCheck).toHaveBeenCalled();
     });
 
-    it("updateGitHubToken sends to all hosts", async () => {
+    it("updateForgeCredentials sends to all hosts", async () => {
       const load1 = client.loadProject("/project-a", 1);
       await readyAndResolveLoad(0);
       await load1;
 
-      client.updateGitHubToken("test-token");
+      client.updateForgeCredentials("builtin.github", {
+        kind: "bearer",
+        value: "test-token",
+      });
 
       expect(h(0).send).toHaveBeenCalledWith({
-        type: "update-github-token",
-        token: "test-token",
+        type: "update-forge-credentials",
+        providerId: "builtin.github",
+        credentials: { kind: "bearer", value: "test-token" },
+      });
+    });
+
+    it("updateForgeCredentials propagates null credentials", async () => {
+      const load1 = client.loadProject("/project-a", 1);
+      await readyAndResolveLoad(0);
+      await load1;
+
+      client.updateForgeCredentials("builtin.github", null);
+
+      expect(h(0).send).toHaveBeenCalledWith({
+        type: "update-forge-credentials",
+        providerId: "builtin.github",
+        credentials: null,
       });
     });
   });

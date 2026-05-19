@@ -41,7 +41,7 @@ export class WorkspaceHostEventRouter {
   private worktreePathToProject: Map<string, string>;
   private copyTreeProgressCallbacks: Map<string, CopyTreeProgressCallback>;
 
-  private githubTokenChangeAt = 0;
+  private forgeCredentialChangeAt = new Map<string, number>();
   private inotifyLimitToastSent = false;
   private emfileLimitToastSent = false;
   private forgeRateLimitStates = new Map<string, RateLimitInfo>();
@@ -52,8 +52,11 @@ export class WorkspaceHostEventRouter {
     this.copyTreeProgressCallbacks = deps.copyTreeProgressCallbacks;
   }
 
-  updateGitHubToken(_token: string | null): void {
-    this.githubTokenChangeAt = Date.now();
+  updateForgeCredentials(
+    providerId: string,
+    _credentials: import("../../../shared/types/forge.js").Credentials | null
+  ): void {
+    this.forgeCredentialChangeAt.set(providerId, Date.now());
   }
 
   routeHostEvent(entry: ProcessEntry, event: WorkspaceHostEvent): void {
@@ -143,11 +146,11 @@ export class WorkspaceHostEventRouter {
         // and main-process callers see limits triggered by workspace-host polling.
         // Unknown providers get cached locally for future inspection.
         if (event.providerId === "builtin.github") {
+          const ghChangeAt = this.forgeCredentialChangeAt.get("builtin.github") ?? 0;
           if (
             event.state.remaining === 0 &&
-            this.githubTokenChangeAt > 0 &&
-            Date.now() - this.githubTokenChangeAt <
-              WorkspaceHostEventRouter.RATE_LIMIT_TOKEN_CHANGE_GUARD_MS
+            ghChangeAt > 0 &&
+            Date.now() - ghChangeAt < WorkspaceHostEventRouter.RATE_LIMIT_TOKEN_CHANGE_GUARD_MS
           ) {
             break;
           }

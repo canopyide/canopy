@@ -282,12 +282,15 @@ export class WorkspaceClient extends EventEmitter {
     }
   }
 
-  // ── GitHub token ──
+  // ── Forge credentials ──
 
-  updateGitHubToken(token: string | null): void {
-    this.eventRouter.updateGitHubToken(token);
+  updateForgeCredentials(
+    providerId: string,
+    credentials: import("../../shared/types/forge.js").Credentials | null
+  ): void {
+    this.eventRouter.updateForgeCredentials(providerId, credentials);
     for (const entry of this.pool.entries.values()) {
-      entry.host.send({ type: "update-github-token", token });
+      entry.host.send({ type: "update-forge-credentials", providerId, credentials });
     }
   }
 

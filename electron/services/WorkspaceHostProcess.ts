@@ -621,7 +621,11 @@ export class WorkspaceHostProcess extends EventEmitter {
 
         const token = GitHubAuth.getToken();
         if (token) {
-          this.send({ type: "update-github-token", token });
+          this.send({
+            type: "update-forge-credentials",
+            providerId: "builtin.github",
+            credentials: { kind: "bearer" as const, value: token },
+          });
         }
 
         // Replay cached log-level overrides on every ready (initial + restarts).

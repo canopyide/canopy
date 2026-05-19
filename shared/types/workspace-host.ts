@@ -23,6 +23,7 @@ import type {
   WorktreeLifecycleStatus,
   WorktreeResourceStatus,
 } from "./worktree.js";
+import type { Credentials } from "./forge.js";
 import type { GitHubPRCIStatus } from "./github.js";
 import type { PluginWorktreeLinked } from "./plugin.js";
 import type {
@@ -332,8 +333,8 @@ export type WorkspaceHostRequest =
   | { type: "has-resource-config"; requestId: string; rootPath: string }
   // Direct renderer port attachment (port transferred via postMessage transfer list)
   | { type: "attach-renderer-port" }
-  // GitHub token propagation
-  | { type: "update-github-token"; token: string | null }
+  // Forge credential propagation
+  | { type: "update-forge-credentials"; providerId: string; credentials: Credentials | null }
   // Project environment variable propagation
   | { type: "update-project-env"; vars: Record<string, string> }
   // File tree operations
