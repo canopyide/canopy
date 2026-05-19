@@ -10,6 +10,7 @@ import {
   useTransition,
 } from "react";
 import { FolderOpen, LayoutGrid, Plus, RefreshCw, Zap } from "lucide-react";
+import { HollowCircle } from "@/components/icons";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ScrollIndicator } from "@/components/Worktree/ScrollIndicator";
@@ -1044,6 +1045,30 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         </div>
         <div className="flex items-center gap-1">
           <div className="invisible opacity-0 pointer-events-none transition-[opacity,visibility] duration-150 delay-75 group-hover/header:visible group-hover/header:opacity-100 group-hover/header:pointer-events-auto group-hover/header:delay-75 group-focus-within/header:visible group-focus-within/header:opacity-100 group-focus-within/header:pointer-events-auto group-focus-within/header:delay-75 motion-reduce:transition-none flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                setQuickStateFilter("working");
+                onOpenOverview();
+              }}
+              className="p-1 text-daintree-text/40 hover:text-[var(--color-state-working)] hover:bg-tint/[0.06] rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent"
+              aria-label="View working worktrees"
+              title="View working worktrees"
+            >
+              <HollowCircle className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setQuickStateFilter("waiting");
+                onOpenOverview();
+              }}
+              className="p-1 text-daintree-text/40 hover:text-status-warning hover:bg-tint/[0.06] rounded transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent"
+              aria-label="View waiting worktrees"
+              title="View waiting worktrees"
+            >
+              <HollowCircle className="w-3.5 h-3.5" />
+            </button>
             <button
               type="button"
               onClick={onOpenOverview}
