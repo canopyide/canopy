@@ -47,7 +47,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "actions.list" as ActionId,
         title: "Test Action",
-        description: "A test action",
+        description:
+          "A test action for validating ActionService dispatch, registration, and manifest entry generation.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -66,7 +67,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "actions.list" as ActionId,
         title: "Test Action",
-        description: "A test action",
+        description:
+          "A test action for validating ActionService dispatch, registration, and manifest entry generation.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -82,7 +84,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "actions.list" as ActionId,
         title: "Test Action",
-        description: "A test action",
+        description:
+          "A test action for validating ActionService dispatch, registration, and manifest entry generation.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -106,7 +109,8 @@ describe("ActionService", () => {
       const action = {
         id: "acme.my-plugin.doThing" as ActionId,
         title: "Do Thing",
-        description: "Does a thing",
+        description:
+          "Does a thing from a plugin with raw input and output schemas for testing plugin action registration.",
         category: "plugin",
         kind: "command",
         danger: "safe",
@@ -133,7 +137,8 @@ describe("ActionService", () => {
       const action = {
         id: "acme.plugin.maybe" as ActionId,
         title: "Maybe",
-        description: "Optional args",
+        description:
+          "Optional args — an action whose argsSchema accepts undefined, for testing optional arg detection.",
         category: "plugin",
         kind: "command",
         danger: "safe",
@@ -154,7 +159,8 @@ describe("ActionService", () => {
       const action = {
         id: "acme.plugin.report" as ActionId,
         title: "Report",
-        description: "Returns a payload with a raw output schema",
+        description:
+          "Returns a payload with a raw output schema for testing result schema handling in ActionService.",
         category: "plugin",
         kind: "query",
         danger: "safe",
@@ -172,7 +178,8 @@ describe("ActionService", () => {
       const action = {
         id: "acme.plugin.both" as ActionId,
         title: "Both Schemas",
-        description: "Has both result and raw output",
+        description:
+          "Has both result and raw output schema for testing priority between zod and raw schema in ActionService.",
         category: "plugin",
         kind: "query",
         danger: "safe",
@@ -196,7 +203,8 @@ describe("ActionService", () => {
       const original: ActionDefinition = {
         id: "actions.list" as ActionId,
         title: "Original Action",
-        description: "Original",
+        description:
+          "Original action definition used for testing duplicate registration handling in ActionService.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -242,7 +250,8 @@ describe("ActionService", () => {
       const action: ActionDefinition<undefined, string> = {
         id: "actions.list" as ActionId,
         title: "Test Action",
-        description: "A test action",
+        description:
+          "A test action for validating ActionService dispatch, registration, and manifest entry generation.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -265,7 +274,8 @@ describe("ActionService", () => {
       const action: ActionDefinition<typeof nameSchema, void> = {
         id: "actions.list" as ActionId,
         title: "Test Action",
-        description: "A test action",
+        description:
+          "A test action for validating ActionService dispatch, registration, and manifest entry generation.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -291,7 +301,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "actions.list" as ActionId,
         title: "Test Action",
-        description: "A test action",
+        description:
+          "A test action for validating ActionService dispatch, registration, and manifest entry generation.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -316,7 +327,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "actions.list" as ActionId,
         title: "Test Action",
-        description: "A test action",
+        description:
+          "A test action for validating ActionService dispatch, registration, and manifest entry generation.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -345,7 +357,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "actions.list" as ActionId,
         title: "Test Action",
-        description: "A test action",
+        description:
+          "A test action for validating ActionService dispatch, registration, and manifest entry generation.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -365,7 +378,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "actions.list" as ActionId,
         title: "Test Action",
-        description: "A test action",
+        description:
+          "A test action for validating ActionService dispatch, registration, and manifest entry generation.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -393,7 +407,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "actions.list" as ActionId,
         title: "Test Action",
-        description: "A test action",
+        description:
+          "A test action for validating ActionService dispatch, registration, and manifest entry generation.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -420,7 +435,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "actions.list" as ActionId,
         title: "Test Action",
-        description: "A test action",
+        description:
+          "A test action for validating ActionService dispatch, registration, and manifest entry generation.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -439,7 +455,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "actions.list" as ActionId,
         title: "Test Action",
-        description: "A test action",
+        description:
+          "A test action for validating ActionService dispatch, registration, and manifest entry generation.",
         category: "test",
         kind: "command",
         danger: "restricted",
@@ -461,7 +478,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "actions.list" as ActionId,
         title: "Test Action",
-        description: "A test action",
+        description:
+          "A test action for validating ActionService dispatch, registration, and manifest entry generation.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -491,7 +509,8 @@ describe("ActionService", () => {
       const action: ActionDefinition<typeof countSchema, void> = {
         id: "actions.list" as ActionId,
         title: "Test Action",
-        description: "A test action",
+        description:
+          "A test action for validating ActionService dispatch, registration, and manifest entry generation.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -510,7 +529,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "actions.list" as ActionId,
         title: "Test Action",
-        description: "A test action",
+        description:
+          "A test action for validating ActionService dispatch, registration, and manifest entry generation.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -531,7 +551,8 @@ describe("ActionService", () => {
       const safeAction: ActionDefinition = {
         id: "actions.safe" as ActionId,
         title: "Safe Action",
-        description: "A safe action",
+        description:
+          "A safe action used for testing lastAction recording and repeat eligibility in ActionService.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -542,7 +563,8 @@ describe("ActionService", () => {
       const restrictedAction: ActionDefinition = {
         id: "actions.restricted" as ActionId,
         title: "Restricted Action",
-        description: "A restricted action",
+        description:
+          "A restricted action used for testing that restricted danger actions cannot be dispatched.",
         category: "test",
         kind: "command",
         danger: "restricted",
@@ -562,7 +584,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "actions.keyworded" as ActionId,
         title: "Keyworded Action",
-        description: "An action with keywords",
+        description:
+          "An action with keywords used for testing keyword propagation in manifest entries.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -581,7 +604,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "actions.noKeywords" as ActionId,
         title: "No Keywords Action",
-        description: "An action without keywords",
+        description:
+          "An action without keywords used for testing that keywords default to undefined in manifest entries.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -599,7 +623,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "actions.annotated" as ActionId,
         title: "Annotated Action",
-        description: "An action with explicit MCP overrides",
+        description:
+          "An action with explicit MCP overrides for testing mcpAnnotations propagation in manifest entries.",
         category: "test",
         kind: "query",
         danger: "confirm",
@@ -622,7 +647,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "actions.unannotated" as ActionId,
         title: "Unannotated Action",
-        description: "An action without explicit MCP overrides",
+        description:
+          "An action without explicit MCP overrides for testing that mcpAnnotations defaults to undefined.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -643,7 +669,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "actions.isolated" as ActionId,
         title: "Isolated Action",
-        description: "Mutation-isolation guard",
+        description:
+          "Mutation-isolation guard used for testing that manifest entry schemas are defensive copies.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -683,6 +710,52 @@ describe("ActionService", () => {
       expect(entry!.title).toBe("");
       expect(entry!.description).toBe("");
     });
+
+    it("propagates examples and dangerRationale from definition to manifest entry", () => {
+      const action: ActionDefinition = {
+        id: "test.examples" as ActionId,
+        title: "Test Examples Action",
+        description: "An action with examples and danger rationale for propagation testing.",
+        category: "test",
+        kind: "command",
+        danger: "confirm",
+        scope: "renderer",
+        examples: [{ args: { key: "value" }, description: "Example invocation" }],
+        dangerRationale: "This action is destructive because it mutates shared state.",
+        run: vi.fn().mockResolvedValue(undefined),
+      };
+
+      service.register(action);
+      const entry = service.get("test.examples" as ActionId);
+
+      expect(entry).not.toBeNull();
+      expect(entry!.examples).toEqual([
+        { args: { key: "value" }, description: "Example invocation" },
+      ]);
+      expect(entry!.dangerRationale).toBe(
+        "This action is destructive because it mutates shared state."
+      );
+    });
+
+    it("omits examples and dangerRationale from manifest entry when not defined", () => {
+      const action: ActionDefinition = {
+        id: "test.noexamples" as ActionId,
+        title: "Test No Examples",
+        description: "An action without examples or danger rationale for propagation testing.",
+        category: "test",
+        kind: "command",
+        danger: "safe",
+        scope: "renderer",
+        run: vi.fn().mockResolvedValue(undefined),
+      };
+
+      service.register(action);
+      const entry = service.get("test.noexamples" as ActionId);
+
+      expect(entry).not.toBeNull();
+      expect(entry!.examples).toBeUndefined();
+      expect(entry!.dangerRationale).toBeUndefined();
+    });
   });
 
   describe("get", () => {
@@ -695,7 +768,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "actions.list" as ActionId,
         title: "Test Action",
-        description: "A test action",
+        description:
+          "A test action for validating ActionService dispatch, registration, and manifest entry generation.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -737,7 +811,8 @@ describe("ActionService", () => {
         const action: ActionDefinition = {
           id: "actions.list" as ActionId,
           title: "T",
-          description: "T",
+          description:
+            "Test action with a short title for verifying title/description field propagation in manifest entries.",
           category: "preferences",
           kind: "command",
           danger: "safe",
@@ -767,7 +842,8 @@ describe("ActionService", () => {
         service.register({
           id: "actions.list" as ActionId,
           title: "T",
-          description: "T",
+          description:
+            "Test action with a short title for verifying title/description field propagation in manifest entries.",
           category: "test",
           kind: "command",
           danger: "safe",
@@ -791,7 +867,8 @@ describe("ActionService", () => {
         service.register({
           id: "actions.list" as ActionId,
           title: "T",
-          description: "T",
+          description:
+            "Test action with a short title for verifying title/description field propagation in manifest entries.",
           category: "test",
           kind: "command",
           danger: "safe",
@@ -814,7 +891,8 @@ describe("ActionService", () => {
         service.register({
           id: "actions.list" as ActionId,
           title: "T",
-          description: "T",
+          description:
+            "Test action with a short title for verifying title/description field propagation in manifest entries.",
           category: "preferences",
           kind: "command",
           danger: "safe",
@@ -843,7 +921,8 @@ describe("ActionService", () => {
         service.register({
           id: "actions.list" as ActionId,
           title: "T",
-          description: "T",
+          description:
+            "Test action with a short title for verifying title/description field propagation in manifest entries.",
           category: "test",
           kind: "command",
           danger: "safe",
@@ -866,7 +945,8 @@ describe("ActionService", () => {
         service.register({
           id: "actions.list" as ActionId,
           title: "T",
-          description: "T",
+          description:
+            "Test action with a short title for verifying title/description field propagation in manifest entries.",
           category: "preferences",
           kind: "command",
           danger: "safe",
@@ -891,7 +971,8 @@ describe("ActionService", () => {
         service.register({
           id: "actions.list" as ActionId,
           title: "T",
-          description: "T",
+          description:
+            "Test action with a short title for verifying title/description field propagation in manifest entries.",
           category: "test",
           kind: "command",
           danger: "confirm",
@@ -918,7 +999,8 @@ describe("ActionService", () => {
         service.register({
           id: "worktree.delete" as ActionId,
           title: "T",
-          description: "T",
+          description:
+            "Test action with a short title for verifying title/description field propagation in manifest entries.",
           category: "worktree",
           kind: "command",
           danger: "confirm",
@@ -1361,7 +1443,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "test.noDisabledReason" as ActionId,
         title: "Test",
-        description: "Test",
+        description:
+          "Test action for validating ActionService definition invariant warnings and registration behavior.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -1384,7 +1467,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "test.bothCallbacks" as ActionId,
         title: "Test",
-        description: "Test",
+        description:
+          "Test action for validating ActionService definition invariant warnings and registration behavior.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -1403,7 +1487,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "test.neither" as ActionId,
         title: "Test",
-        description: "Test",
+        description:
+          "Test action for validating ActionService definition invariant warnings and registration behavior.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -1420,7 +1505,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "test.onlyDisabledReason" as ActionId,
         title: "Test",
-        description: "Test",
+        description:
+          "Test action for validating ActionService definition invariant warnings and registration behavior.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -1438,7 +1524,8 @@ describe("ActionService", () => {
       const action1: ActionDefinition = {
         id: "test.offender1" as ActionId,
         title: "Test 1",
-        description: "Test 1",
+        description:
+          "Test action one for validating ActionService definition invariant warnings with multiple offending actions.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -1450,7 +1537,8 @@ describe("ActionService", () => {
       const action2: ActionDefinition = {
         id: "test.offender2" as ActionId,
         title: "Test 2",
-        description: "Test 2",
+        description:
+          "Test action two for validating ActionService definition invariant warnings with multiple offending actions.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -1463,7 +1551,8 @@ describe("ActionService", () => {
       const action3: ActionDefinition = {
         id: "test.offender3" as ActionId,
         title: "Test 3",
-        description: "Test 3",
+        description:
+          "Test action three for validating ActionService definition invariant warnings with multiple offending actions.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -1485,7 +1574,8 @@ describe("ActionService", () => {
       const action: ActionDefinition = {
         id: "test.duplicate" as ActionId,
         title: "Test",
-        description: "Test",
+        description:
+          "Test action for validating ActionService definition invariant warnings and registration behavior.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -1511,7 +1601,8 @@ describe("ActionService", () => {
       service.register({
         id: "actions.list" as ActionId,
         title: "Test",
-        description: "Test",
+        description:
+          "Test action for validating ActionService definition invariant warnings and registration behavior.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -1530,7 +1621,8 @@ describe("ActionService", () => {
       service.register({
         id: "actions.list" as ActionId,
         title: "Test",
-        description: "Test",
+        description:
+          "Test action for validating ActionService definition invariant warnings and registration behavior.",
         category: "test",
         kind: "command",
         danger: "safe",
@@ -1707,7 +1799,8 @@ describe("ActionService", () => {
         service.register({
           id: "actions.list" as ActionId,
           title: "T",
-          description: "T",
+          description:
+            "Test action with a short title for verifying title/description field propagation in manifest entries.",
           category: "test",
           kind: "command",
           danger: "safe",
@@ -1758,7 +1851,8 @@ describe("ActionService", () => {
         service.register({
           id: "actions.list" as ActionId,
           title: "T",
-          description: "T",
+          description:
+            "Test action with a short title for verifying title/description field propagation in manifest entries.",
           category: "test",
           kind: "command",
           danger: "safe",
@@ -1796,7 +1890,8 @@ describe("ActionService", () => {
         service.register({
           id: "actions.list" as ActionId,
           title: "T",
-          description: "T",
+          description:
+            "Test action with a short title for verifying title/description field propagation in manifest entries.",
           category: "test",
           kind: "command",
           danger: "safe",

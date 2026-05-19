@@ -89,6 +89,8 @@ export function registerWorktreeCreateActions(
       kind: "command",
       danger: "confirm",
       scope: "renderer",
+      dangerRationale:
+        "Deletes the working tree and optionally the branch from disk. Recovery requires re-creating the worktree.",
       argsSchema: z.object({
         worktreeId: z.string(),
         force: z.boolean().optional(),

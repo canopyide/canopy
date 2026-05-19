@@ -7,8 +7,8 @@ import { KEY_ACTION_VALUES } from "@shared/types/keymap";
 import { BUILT_IN_ACTION_IDS } from "@shared/config/actionIds";
 import type { ActionId } from "@shared/types/actions";
 import type { ActionRegistry, ActionCallbacks } from "../actionTypes";
-import { validateDefinitionInvariants } from "../../ActionService";
 import { DEFAULT_KEYBINDINGS } from "../../defaultKeybindings";
+import { WORKBENCH_TIER_TOOLS } from "@shared/config/helpAssistantTierAllowlists";
 
 /**
  * Action IDs that exist in BuiltInKeyAction but are intentionally NOT in the
@@ -189,8 +189,14 @@ describe("definition invariants", () => {
     const violations: string[] = [];
     for (const [_key, factory] of registry) {
       const def = factory();
-      const msgs = validateDefinitionInvariants(def);
-      violations.push(...msgs);
+      // Only check the isEnabled/disabledReason rule — description length,
+      // dangerRationale, and examples rules are warn-then-promote soft gates.
+      if (def.isEnabled && !def.disabledReason) {
+        violations.push(
+          `Action "${def.id}" defines isEnabled but no disabledReason callback. ` +
+            `Users may see a disabled command with no explanation.`
+        );
+      }
     }
 
     expect(violations).toEqual([]);
@@ -214,6 +220,72 @@ describe("definition invariants", () => {
       );
     }
     // TODO(#6305): Promote to hard assert once existing schemas are added.
+  });
+
+  it("every action description is at least 80 characters", async () => {
+    const { registry } = await createRegistryWithAudit();
+
+    const short: string[] = [];
+    for (const [key, factory] of registry) {
+      const def = factory();
+      const len = def.description?.length ?? 0;
+      if (len < 80) {
+        short.push(`${key} (${len} chars)`);
+      }
+    }
+
+    if (short.length > 0) {
+      console.warn(
+        `[quality-gate] ${short.length} action(s) with descriptions shorter than 80 chars:\n` +
+          short.map((s) => `  - ${s}`).join("\n")
+      );
+    }
+    // TODO(#8431): Promote to hard assert once descriptions are gradually improved.
+  });
+
+  it("every dangerous action has dangerRationale", async () => {
+    const { registry } = await createRegistryWithAudit();
+
+    const missing: string[] = [];
+    for (const [key, factory] of registry) {
+      const def = factory();
+      if (def.danger !== "safe" && !def.dangerRationale) {
+        missing.push(`${key} (danger="${def.danger}")`);
+      }
+    }
+
+    if (missing.length > 0) {
+      console.warn(
+        `[quality-gate] ${missing.length} dangerous action(s) missing dangerRationale:\n` +
+          missing.map((m) => `  - ${m}`).join("\n")
+      );
+    }
+    // TODO(#8431): Promote to hard assert once all dangerous actions have rationale.
+  });
+
+  it("every workbench-tier arg-requiring action has examples", async () => {
+    const { registry } = await createRegistryWithAudit();
+
+    const workbenchSet = new Set<string>(WORKBENCH_TIER_TOOLS as readonly string[]);
+    const missing: string[] = [];
+    for (const [key, factory] of registry) {
+      if (!workbenchSet.has(key)) continue;
+      const def = factory();
+      const requiresArgs = def.argsSchema
+        ? !def.argsSchema.safeParse(undefined).success && !def.argsSchema.safeParse({}).success
+        : false;
+      if (requiresArgs && (!def.examples || def.examples.length === 0)) {
+        missing.push(`${key} (${def.title})`);
+      }
+    }
+
+    if (missing.length > 0) {
+      console.warn(
+        `[quality-gate] ${missing.length} workbench-tier arg-requiring action(s) missing examples:\n` +
+          missing.map((m) => `  - ${m}`).join("\n")
+      );
+    }
+    // TODO(#8431): Promote to hard assert once all workbench-tier actions have examples.
   });
 });
 
@@ -422,5 +494,68 @@ describe("destructive-action danger metadata", () => {
     }
 
     expect(failures).toEqual([]);
+  });
+});
+
+describe("dangerRationale backfill", () => {
+  it("every EXPECTED_CONFIRM_DANGER action has a non-empty dangerRationale", async () => {
+    const { registry } = await createRegistryWithAudit();
+
+    const missing: string[] = [];
+    for (const id of EXPECTED_CONFIRM_DANGER) {
+      const factory = registry.get(id);
+      if (!factory) {
+        missing.push(`${id} (not registered)`);
+        continue;
+      }
+      const def = factory();
+      if (!def.dangerRationale || def.dangerRationale.trim().length === 0) {
+        missing.push(`${id}`);
+      }
+    }
+
+    expect(missing).toEqual([]);
+  });
+});
+
+describe("ActionService.list() snapshot", () => {
+  it("produces a stable, sorted manifest snapshot", async () => {
+    const { ActionService } = await import("../../ActionService");
+    const { registry } = await createRegistryWithAudit();
+    const service = new ActionService();
+    for (const [_key, factory] of registry) {
+      service.register(factory());
+    }
+
+    const entries = service
+      .list()
+      .map(
+        ({
+          id,
+          title,
+          description,
+          category,
+          kind,
+          danger,
+          requiresArgs,
+          keywords,
+          examples,
+          dangerRationale,
+        }) => ({
+          id,
+          title,
+          description,
+          category,
+          kind,
+          danger,
+          requiresArgs,
+          keywords,
+          examples,
+          dangerRationale,
+        })
+      )
+      .sort((a, b) => a.id.localeCompare(b.id));
+
+    expect(entries).toMatchSnapshot();
   });
 });

@@ -30,6 +30,11 @@ export type BuiltInActionId = BuiltInKeyAction | BuiltInRuntimeActionId;
 
 export type ActionId = BuiltInActionId | (string & {});
 
+export interface ActionExample {
+  args: Record<string, unknown>;
+  description: string;
+}
+
 export interface ActionContext {
   projectId?: string;
   projectName?: string;
@@ -97,6 +102,18 @@ export interface ActionDefinition<
    * defaults derived from `kind` and `danger` would mislead an MCP client.
    */
   mcpAnnotations?: ActionMcpAnnotations;
+  /**
+   * Concrete usage examples surfaced to MCP clients via `_meta.examples`.
+   * Each entry pairs args (matching `argsSchema` shape) with a short
+   * description of what the invocation accomplishes.
+   */
+  examples?: readonly ActionExample[];
+  /**
+   * Human-readable rationale for why this action carries its `danger` rating.
+   * Surfaces in the MCP elicitation confirmation message so the user sees the
+   * same reasoning the model would. Required when `danger !== "safe"`.
+   */
+  dangerRationale?: string;
 }
 
 export interface ActionManifestEntry {
@@ -121,6 +138,10 @@ export interface ActionManifestEntry {
   mcpAnnotations?: ActionMcpAnnotations;
   /** Set when this action was registered by a plugin (not a built-in). */
   pluginId?: string;
+  /** Concrete usage examples surfaced to MCP clients via `_meta.examples`. */
+  examples?: readonly ActionExample[];
+  /** Human-readable rationale for the action's `danger` rating. */
+  dangerRationale?: string;
 }
 
 export interface ActionDispatchSuccess<Result = unknown> {

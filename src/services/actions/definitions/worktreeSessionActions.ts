@@ -53,6 +53,8 @@ export function registerWorktreeSessionActions(
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale:
+      "Restarts all sessions for a worktree. Scrollback is lost for every restarted terminal.",
     argsSchema: z
       .object({
         worktreeId: z.string().optional(),
@@ -140,6 +142,8 @@ export function registerWorktreeSessionActions(
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale:
+      "Moves all sessions for a worktree to trash. Scrollback is lost for each trashed terminal.",
     argsSchema: z
       .object({
         worktreeId: z.string().optional(),
@@ -188,6 +192,7 @@ export function registerWorktreeSessionActions(
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale: "Permanently ends all sessions for a worktree. All scrollback is lost.",
     argsSchema: z.object({ worktreeId: z.string().optional() }),
     run: async (args: unknown, ctx: ActionContext) => {
       const { worktreeId } = args as { worktreeId?: string };

@@ -395,6 +395,16 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
           .describe("Working directory of the git repo. Defaults to the active worktree path."),
         issueNumber: z.number().int().positive().describe("Issue number to fetch"),
       }),
+      examples: [
+        {
+          args: { issueNumber: 42 },
+          description: "Fetch issue #42 from the active worktree's repo",
+        },
+        {
+          args: { issueNumber: 100, cwd: "/path/to/repo" },
+          description: "Fetch issue #100 from a specific repo",
+        },
+      ],
       run: async ({ cwd, issueNumber }, ctx: ActionContext) => {
         const resolvedCwd = cwd ?? ctx.activeWorktreePath;
         if (!resolvedCwd) throw new Error("No active worktree");

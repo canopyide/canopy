@@ -16,6 +16,7 @@ import { notify } from "@/lib/notify";
 import { keybindingService } from "./KeybindingService";
 import { shortcutHintStore } from "../store/shortcutHintStore";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { WORKBENCH_TIER_TOOLS } from "@shared/config/helpAssistantTierAllowlists";
 
 /**
  * Fields that should be redacted from event payloads to prevent secret leakage.
@@ -40,6 +41,37 @@ export function validateDefinitionInvariants(definition: AnyActionDefinition): s
     violations.push(
       `Action "${definition.id}" defines isEnabled but no disabledReason callback. ` +
         `Users may see a disabled command with no explanation.`
+    );
+  }
+
+  if ((definition.description?.length ?? 0) < 80) {
+    violations.push(
+      `Action "${definition.id}" description is ${definition.description?.length ?? 0} chars ` +
+        `(minimum 80). Descriptions are the primary MCP tool docs — short descriptions ` +
+        `degrade model routing accuracy.`
+    );
+  }
+
+  if (definition.danger !== "safe" && !definition.dangerRationale) {
+    violations.push(
+      `Action "${definition.id}" has danger="${definition.danger}" but no dangerRationale. ` +
+        `Rationale surfaces in elicitation confirmations so users see why the action is gated.`
+    );
+  }
+
+  const requiresArgs = definition.argsSchema
+    ? !definition.argsSchema.safeParse(undefined).success &&
+      !definition.argsSchema.safeParse({}).success
+    : rawSchemaRequiresArgs(definition.rawInputSchema);
+
+  if (
+    requiresArgs &&
+    (WORKBENCH_TIER_TOOLS as readonly string[]).includes(definition.id) &&
+    (!definition.examples || definition.examples.length === 0)
+  ) {
+    violations.push(
+      `Action "${definition.id}" is a workbench-tier arg-requiring action with no examples. ` +
+        `Examples improve MCP model accuracy by showing concrete arg shapes.`
     );
   }
 
@@ -403,6 +435,8 @@ export class ActionService {
       keywords: definition.keywords?.slice(),
       ...(definition.mcpAnnotations ? { mcpAnnotations: { ...definition.mcpAnnotations } } : {}),
       ...(definition.pluginId ? { pluginId: definition.pluginId } : {}),
+      ...(definition.examples ? { examples: definition.examples } : {}),
+      ...(definition.dangerRationale ? { dangerRationale: definition.dangerRationale } : {}),
     };
   }
 

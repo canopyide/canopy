@@ -72,6 +72,8 @@ export function registerDevPreviewActions(
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale:
+      "Wipes framework build caches (.next, .vite, .turbo) and respawns the dev server. Caches regenerate on next build.",
     argsSchema,
     run: async (args: unknown, ctx: ActionContext) => {
       const target = resolveTarget(args, ctx);
@@ -87,6 +89,8 @@ export function registerDevPreviewActions(
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale:
+      "Removes node_modules, reinstalls dependencies, and respawns the dev server. Recovery requires a full reinstall, network and lockfile dependent.",
     argsSchema,
     run: async (args: unknown, ctx: ActionContext) => {
       const target = resolveTarget(args, ctx);

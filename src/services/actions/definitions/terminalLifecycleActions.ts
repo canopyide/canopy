@@ -107,6 +107,7 @@ export function registerTerminalLifecycleActions(
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale: "Permanently kills the PTY process. Scrollback and session state are lost.",
     keywords: ["terminate", "stop", "remove", "delete"],
     argsSchema: z.object({
       terminalId: z.string().optional(),
@@ -143,6 +144,8 @@ export function registerTerminalLifecycleActions(
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale:
+      "Restarts the terminal process. Scrollback is lost and the process is re-spawned.",
     keywords: ["relaunch", "reset", "rerun", "process"],
     argsSchema: z.object({
       terminalId: z.string().optional(),
@@ -360,6 +363,8 @@ export function registerTerminalLifecycleActions(
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale:
+      "Permanently kills every non-ephemeral terminal. All scrollback and session state are lost.",
     keywords: ["terminate", "stop", "remove", "delete"],
     argsSchema: z.object({ confirmed: z.boolean().optional() }).optional(),
     run: async (args: unknown) => {
@@ -393,6 +398,8 @@ export function registerTerminalLifecycleActions(
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale:
+      "Restarts every non-trash terminal. All scrollback is lost across all terminals.",
     keywords: ["relaunch", "reset", "rerun", "processes"],
     argsSchema: z.object({ confirmed: z.boolean().optional() }).optional(),
     run: async (args: unknown) => {

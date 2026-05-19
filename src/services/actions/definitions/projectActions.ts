@@ -133,6 +133,8 @@ export function registerProjectActions(actions: ActionRegistry, callbacks: Actio
     kind: "command",
     danger: "confirm",
     scope: "renderer",
+    dangerRationale:
+      "Removes a project from the list. Worktrees on disk remain but the project entry is lost.",
     argsSchema: z.object({ projectId: z.string() }),
     run: async (args: unknown) => {
       const { projectId } = args as { projectId: string };

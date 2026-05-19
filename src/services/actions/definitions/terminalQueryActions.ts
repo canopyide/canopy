@@ -94,6 +94,16 @@ export function registerTerminalQueryActions(
         .default(true)
         .describe("Remove ANSI escape codes from output (default: true)"),
     }),
+    examples: [
+      {
+        args: { terminalId: "term-abc123" },
+        description: "Get last 100 lines from a terminal with ANSI stripped",
+      },
+      {
+        args: { terminalId: "term-abc123", maxLines: 500, stripAnsi: false },
+        description: "Get last 500 lines with ANSI codes preserved",
+      },
+    ],
     run: async (args: unknown) => {
       const {
         terminalId,
