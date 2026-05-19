@@ -800,6 +800,7 @@ function TerminalPaneComponent({
         cancelled = true;
         cancelAnimationFrame(outerRafId);
         if (innerRafId !== undefined) cancelAnimationFrame(innerRafId);
+        inputBarRef.current?.cancelPendingFocus();
       };
     }
 
