@@ -39,7 +39,10 @@ function makeMockForgePR(overrides?: Partial<ForgePR>): ForgePR {
   };
 }
 
-function mockForgeProviderResolved(findPRByBranch?: () => Promise<ForgePR | null>) {
+function mockForgeProviderResolved(
+  findPRByBranch?: () => Promise<ForgePR | null>,
+  findPRsByBranches?: (repo: RepoRef, branches: string[]) => Promise<Map<string, ForgePR | null>>
+) {
   const mockImpl: ForgeProviderImpl = {
     getCredentials: vi.fn(),
     validateCredentials: vi.fn(),
@@ -51,6 +54,13 @@ function mockForgeProviderResolved(findPRByBranch?: () => Promise<ForgePR | null
     findPRByBranch: vi
       .fn<() => Promise<ForgePR | null>>()
       .mockImplementation(findPRByBranch ?? (async () => makeMockForgePR())),
+    ...(findPRsByBranches
+      ? {
+          findPRsByBranches: vi
+            .fn<(repo: RepoRef, branches: string[]) => Promise<Map<string, ForgePR | null>>>()
+            .mockImplementation(findPRsByBranches),
+        }
+      : {}),
     getCIStatus: vi.fn().mockResolvedValue(null),
     getRepoMetadata: vi.fn(),
     buildIssueUrl: vi.fn(),
@@ -223,6 +233,136 @@ describe("PullRequestService", () => {
     expect(cleared[0]).toMatchObject({ worktreeId: "wt-1", timestamp: expect.any(Number) });
 
     unsubscribeCleared();
+    pullRequestService.destroy();
+  });
+
+  it("uses findPRsByBranches batch capability when present (single round-trip for many branches)", async () => {
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ clearPRCaches }));
+
+    const batchSpy = vi.fn(async (_repo: RepoRef, branches: string[]) => {
+      const map = new Map<string, ForgePR | null>();
+      for (const branch of branches) {
+        map.set(
+          branch,
+          makeMockForgePR({
+            number: branch === "feature/a" ? 1 : 2,
+            headRef: branch,
+            url: `https://github.com/o/r/pull/${branch === "feature/a" ? 1 : 2}`,
+          })
+        );
+      }
+      return map;
+    });
+
+    const mockImpl = mockForgeProviderResolved(undefined, batchSpy);
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    const detected: DaintreeEventMap["sys:pr:detected"][] = [];
+    const unsubscribe = events.on("sys:pr:detected", (payload) => detected.push(payload));
+
+    pullRequestService.initialize("/repo");
+
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/a" })
+    );
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-2", branch: "feature/b" })
+    );
+
+    await pullRequestService.refresh();
+
+    expect(batchSpy).toHaveBeenCalledTimes(1);
+    expect(batchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ owner: "testowner", repo: "testrepo" }),
+      expect.arrayContaining(["feature/a", "feature/b"])
+    );
+    // Per-branch path must NOT be used when the batch capability is present and succeeds.
+    expect(mockImpl.findPRByBranch).not.toHaveBeenCalled();
+    expect(detected).toHaveLength(2);
+
+    unsubscribe();
+    pullRequestService.destroy();
+  });
+
+  it("falls back to per-branch findPRByBranch when batch capability throws", async () => {
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ clearPRCaches }));
+
+    const batchSpy = vi.fn(async () => {
+      throw new Error("transient batch failure");
+    });
+
+    const mockImpl = mockForgeProviderResolved(undefined, batchSpy);
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    const detected: DaintreeEventMap["sys:pr:detected"][] = [];
+    const unsubscribe = events.on("sys:pr:detected", (payload) => detected.push(payload));
+
+    pullRequestService.initialize("/repo");
+
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/a" })
+    );
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-2", branch: "feature/b" })
+    );
+
+    await pullRequestService.refresh();
+
+    expect(batchSpy).toHaveBeenCalledTimes(1);
+    // Per-branch fallback fires for each unique branch on batch failure.
+    expect(mockImpl.findPRByBranch).toHaveBeenCalledTimes(2);
+    // Detection still completes — a single transient batch error must not blank every row.
+    expect(detected).toHaveLength(2);
+
+    unsubscribe();
+    pullRequestService.destroy();
+  });
+
+  it("uses per-branch fallback for branches the batch result omits", async () => {
+    const clearPRCaches = vi.fn();
+    vi.doMock("../GitHubService.js", () => ({ clearPRCaches }));
+
+    const batchSpy = vi.fn(async (_repo: RepoRef, branches: string[]) => {
+      const map = new Map<string, ForgePR | null>();
+      // Resolve only the first branch — omit the second to exercise the partial-result path.
+      if (branches.length > 0) {
+        map.set(branches[0], makeMockForgePR({ number: 10 }));
+      }
+      return map;
+    });
+
+    const mockImpl = mockForgeProviderResolved(undefined, batchSpy);
+
+    const { pullRequestService } = await import("../PullRequestService.js");
+    const { events } = await import("../events.js");
+
+    pullRequestService.initialize("/repo");
+
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-1", branch: "feature/a" })
+    );
+    events.emit(
+      "sys:worktree:update",
+      makeWorktreeSnapshot({ worktreeId: "wt-2", branch: "feature/b" })
+    );
+
+    await pullRequestService.refresh();
+
+    expect(batchSpy).toHaveBeenCalledTimes(1);
+    // Exactly one per-branch fallback call — for the omitted branch.
+    expect(mockImpl.findPRByBranch).toHaveBeenCalledTimes(1);
+
     pullRequestService.destroy();
   });
 

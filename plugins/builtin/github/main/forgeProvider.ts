@@ -28,6 +28,8 @@ import {
   GET_ISSUE_QUERY,
   GET_PR_QUERY,
   GET_PR_REVIEW_THREADS_QUERY,
+  BATCH_BRANCH_CHUNK_SIZE,
+  buildBatchBranchPRQuery,
 } from "./GitHubQueries.js";
 import { gitHubRateLimitService } from "./GitHubRateLimitService.js";
 import { parseGitHubError } from "./GitHubErrors.js";
@@ -311,6 +313,45 @@ async function getPRImpl(repo: RepoRef, number: number): Promise<PR | null> {
   return pr ? toForgePR(pr) : null;
 }
 
+async function findPRsByBranchesImpl(
+  repo: RepoRef,
+  branches: string[]
+): Promise<Map<string, PR | null>> {
+  const result = new Map<string, PR | null>();
+  if (branches.length === 0) return result;
+
+  // Deduplicate while preserving order; record original branches for each unique value
+  // so the result Map carries an entry for every input even when the caller passed duplicates.
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const branch of branches) {
+    if (!seen.has(branch)) {
+      seen.add(branch);
+      unique.push(branch);
+    }
+  }
+
+  // Chunks run sequentially to keep rate-limit cost predictable; parallel
+  // chunks would spike GraphQL points during a fleet-wide refresh.
+  for (let start = 0; start < unique.length; start += BATCH_BRANCH_CHUNK_SIZE) {
+    const chunk = unique.slice(start, start + BATCH_BRANCH_CHUNK_SIZE);
+    const query = buildBatchBranchPRQuery(repo.owner, repo.repo, chunk);
+    const response = await runQuery(query, {});
+
+    for (let i = 0; i < chunk.length; i++) {
+      const branch = chunk[i];
+      const aliasNode = (response as Record<string, unknown>)[`b${i}`] as
+        | { pullRequests?: { nodes?: unknown[] } }
+        | undefined;
+      const nodes = (aliasNode?.pullRequests?.nodes ?? []) as Array<Record<string, unknown>>;
+      const first = nodes.find(Boolean);
+      result.set(branch, first ? toForgePR(first) : null);
+    }
+  }
+
+  return result;
+}
+
 async function findPRByBranchImpl(repo: RepoRef, branchName: string): Promise<PR | null> {
   // Quote the branch name so refs containing spaces or characters that would
   // otherwise be parsed as a separate search operator (`sort:`, `head:`,
@@ -518,6 +559,7 @@ export const githubForgeProvider: ForgeProviderImpl = {
   getIssue: getIssueImpl,
   getPR: getPRImpl,
   findPRByBranch: findPRByBranchImpl,
+  findPRsByBranches: findPRsByBranchesImpl,
   getCIStatus: getCIStatusImpl,
   getRepoMetadata: getRepoMetadataImpl,
 

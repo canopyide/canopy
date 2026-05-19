@@ -635,6 +635,69 @@ export function buildBatchPRQuery(
 }
 
 /**
+ * Per-chunk cap for {@link buildBatchBranchPRQuery}. GitHub's GraphQL gateway
+ * caps complexity per request, and aliased `repository { pullRequests(...) }`
+ * blocks each carry a `first: 1` PR connection. 20 aliases per chunk is the
+ * empirically safe ceiling — well under the alias resource limit and small
+ * enough that retry blast radius stays bounded if one chunk fails.
+ */
+export const BATCH_BRANCH_CHUNK_SIZE = 20;
+
+/**
+ * Build a batched GraphQL query that resolves the most-recent PR for each of
+ * `branches` in a single round-trip. Returns one aliased
+ * `repository { pullRequests(headRefName: ..., first: 1, ...) }` block per
+ * branch; the alias name is index-based (`b0`, `b1`, …) so branch values with
+ * special characters never appear as identifiers — only as escaped string
+ * literals via {@link escapeGraphQLString}. The caller maps each result back
+ * to its branch using the same index order it passed in.
+ *
+ * The branch list is expected to be ≤ {@link BATCH_BRANCH_CHUNK_SIZE}; the
+ * implementation does not chunk internally because chunks must be separate
+ * HTTP requests (cost rolls up per-request on the rate limit).
+ *
+ * Returns an empty string for an empty `branches` array so the caller can
+ * skip the request entirely.
+ *
+ * Field shape matches the per-branch `SEARCH_QUERY` PR fragment subset that
+ * `toForgePR` reads: number, title, bodyText, url, state, isDraft, merged,
+ * baseRefName, headRefName, createdAt, updatedAt, closedAt, mergedAt, author.
+ */
+export function buildBatchBranchPRQuery(owner: string, repo: string, branches: string[]): string {
+  if (branches.length === 0) return "";
+  const escapedOwner = escapeGraphQLString(owner);
+  const escapedRepo = escapeGraphQLString(repo);
+
+  const parts = branches.map((branch, i) => {
+    const escapedBranch = escapeGraphQLString(branch);
+    return `
+      b${i}: repository(owner: "${escapedOwner}", name: "${escapedRepo}") {
+        pullRequests(first: 1, states: [OPEN, MERGED, CLOSED], headRefName: "${escapedBranch}", orderBy: {field: UPDATED_AT, direction: DESC}) {
+          nodes {
+            number
+            title
+            bodyText
+            url
+            state
+            isDraft
+            merged
+            baseRefName
+            headRefName
+            createdAt
+            updatedAt
+            closedAt
+            mergedAt
+            author { login avatarUrl }
+          }
+        }
+      }
+    `;
+  });
+
+  return `query { ${parts.join("\n")} rateLimit { cost remaining resetAt } }`;
+}
+
+/**
  * Build a batched GraphQL query that fetches statusCheckRollup.contexts with per-context
  * `isRequired` flags for each supplied PR number. `pullRequestNumber` must be inlined
  * as an integer literal per alias — GraphQL variables are global to an operation and
