@@ -155,7 +155,8 @@ The current GitHub action set is read-only (`openIssues`, `listPullRequests`, et
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `portal.links.add` / `update` / `toggle` / `reorder` | safe | n/a | n/a | reversible | one link | D0 | Leave | — |
 | `portal.links.remove` | **confirm** (updated #8023) | yes (`ConfirmDialog` in `PortalSettingsTab`) | Boolean via dispatch | local-irreversible (link gone) | one link | D1 | Done (#8023) — confirm wired at the Custom links delete control | — |
-| `portal.closeTab` / `closeOthers` / `closeToRight` / `closeAllTabs` | safe | none | n/a | local-irreversible (tab history lost) | 1..N tabs | D0 (single) → D1 (bulk) | Add confirm for `closeAllTabs` and `closeOthers` when 3+ tabs would close | TBD |
+| `portal.closeAllTabs` / `closeOthers` | safe (metadata unchanged — runtime escalation only) | yes — `portalPendingCloseStore` + `PortalCloseConfirmDialog`, escalated in `run()` via `deriveEffectiveTier` when 3+ tabs would close | n/a — `danger:"safe"` so no breadcrumb consent gate; the confirm re-dispatches with a `confirmed: true` **arg** (not `options.confirmed`) which the gate reads but the breadcrumb does not record | local-irreversible (tab history lost) | 3..N tabs | D0 (≤2) → D1 (3+) | Done (#8416) — first `deriveEffectiveTier` consumers; metadata stays `safe` so the single/2-tab case keeps MRU eligibility; `nonRepeatable: true` blocks `repeatLast` replay of a confirmed close | — |
+| `portal.closeTab` / `closeToRight` | safe | none | n/a | local-irreversible (tab history lost) | 1..N tabs | D0 (single) → D1 (bulk) | `closeTab` stays D0; `closeToRight` runtime escalation via `deriveEffectiveTier` is the next follow-up | #8416 |
 | `portal.duplicateTab` / `reload` / `goBack` / `goForward` | safe | n/a | n/a | reversible | one tab | D0 | Leave | — |
 
 ### Keybindings / preferences

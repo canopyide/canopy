@@ -6,6 +6,7 @@ import { AlertTriangle, Trash2 } from "lucide-react";
 import { FolderGit2 } from "@/components/icons";
 import { useWorktreeTerminals } from "@/hooks/useWorktreeTerminals";
 import { actionService } from "@/services/ActionService";
+import { deriveEffectiveTier } from "@/services/actions/deriveEffectiveTier";
 import type { WorktreeState } from "@/types";
 import { cn } from "@/lib/utils";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
@@ -49,7 +50,12 @@ export function WorktreeDeleteDialog({ isOpen, onClose, worktree }: WorktreeDele
       ? "Force-deleting this protected worktree is irreversible."
       : "Force-deleting this worktree discards uncommitted tracked changes — this is irreversible.";
   const isHighTier =
-    force && (isProtectedBranch || worktree.isMainWorktree === true || hasTrackedChanges);
+    deriveEffectiveTier("worktree.delete", {
+      force,
+      isProtectedBranch,
+      isMainWorktree: worktree.isMainWorktree === true,
+      hasTrackedChanges,
+    }) === "D3";
   const isConfirmMatched = confirmInput === confirmTarget;
   const canSubmit = !isDeleting && (!isHighTier || isConfirmMatched);
 
