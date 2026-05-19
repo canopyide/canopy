@@ -896,6 +896,26 @@ describe("WorktreeLifecycleService", () => {
       expect(result.logPath).toBeDefined();
       expect(mockAtomicWrite).toHaveBeenCalledTimes(1);
     });
+
+    it("truncates byte-accurately for multibyte UTF-8 content", async () => {
+      // 3000 CJK chars × 3 bytes = 9000 bytes, well over OUTPUT_TAIL_BYTES (8192).
+      // The char count (3000) is under the threshold; if the guard were
+      // char-based the output would not truncate — verifies the byte-correct fix.
+      const multibyte = "界".repeat(3000);
+      mockSpawn.mockReturnValue(makeOutputProcess(multibyte, 0));
+
+      const result = await service.runCommands(["./run.sh"], {
+        cwd: "/test",
+        env: {},
+        onProgress: vi.fn(),
+        logDir: "/some/log/dir",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain("...(truncated — omitted ");
+      // Total 9000 bytes − 8192-byte tail = 808 bytes dropped.
+      expect(result.output).toContain("omitted 808 bytes");
+    });
   });
 
   describe("runLifecycleSetup — return value contract", () => {
@@ -1106,6 +1126,136 @@ describe("WorktreeLifecycleService", () => {
       expect(result).toEqual({ shouldProvision: true });
       // No spawn should fire — no setup commands to run before provisioning
       expect(mockSpawn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("runLifecycleTeardown — log persistence wiring", () => {
+    function makeTeardownMonitor(opts: { hasResourceConfig?: boolean } = {}) {
+      const statuses: unknown[] = [];
+      return {
+        name: "wt-1",
+        branch: "feature/x",
+        path: "/wt",
+        worktreeMode: "local",
+        hasResourceConfig: opts.hasResourceConfig ?? false,
+        get lifecycleStatus() {
+          return statuses[statuses.length - 1];
+        },
+        recordedStatuses: statuses,
+        resourceStatus: undefined,
+        setLifecycleStatus(s: unknown) {
+          statuses.push(s);
+        },
+      };
+    }
+
+    function makeCtx(monitor: ReturnType<typeof makeTeardownMonitor>) {
+      return {
+        projectRootPath: "/projects/my-app",
+        projectEnvVars: {},
+        getMonitor: () => monitor as never,
+        emitUpdate: vi.fn(),
+      } as unknown as import("../WorktreeLifecycleService.js").WorkspaceHostContext;
+    }
+
+    function makeSpawnChild(exitCode: number) {
+      return () => {
+        const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
+        const child = {
+          pid: 1234,
+          stdout: { on: vi.fn() },
+          stderr: { on: vi.fn() },
+          on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+            listeners[event] ??= [];
+            listeners[event].push(cb);
+            if (event === "close") setTimeout(() => cb(exitCode), 0);
+          }),
+          kill: vi.fn(),
+        };
+        return child as never;
+      };
+    }
+
+    it("propagates logPath into the final teardown lifecycle status", async () => {
+      const config = { teardown: ["docker compose down"] };
+      mockAccess.mockImplementation(async (p: unknown) => {
+        if (n(p as string).endsWith("/projects/my-app/.daintree/config.json")) return undefined;
+        throw new Error("ENOENT");
+      });
+      mockReadFile.mockResolvedValue(JSON.stringify(config) as never);
+      mockSpawn.mockImplementation(makeSpawnChild(0));
+
+      const monitor = makeTeardownMonitor();
+      await service.runLifecycleTeardown("wt-1", monitor as never, false, makeCtx(monitor));
+
+      const finalStatus = monitor.recordedStatuses.at(-1) as {
+        phase: string;
+        state: string;
+        logPath?: string;
+      };
+      expect(finalStatus.phase).toBe("teardown");
+      expect(finalStatus.state).toBe("success");
+      expect(finalStatus.logPath).toBeDefined();
+      expect(n(finalStatus.logPath ?? "")).toContain(
+        "/home/testuser/.daintree/projects/_projects_my-app/teardown-logs/wt-1/"
+      );
+      expect(finalStatus.logPath).toMatch(/\d+\.log$/);
+    });
+
+    it("propagates logPath into the resource-teardown lifecycle status", async () => {
+      const config = {
+        resource: { teardown: ["terraform destroy"] },
+      };
+      mockAccess.mockImplementation(async (p: unknown) => {
+        if (n(p as string).endsWith("/projects/my-app/.daintree/config.json")) return undefined;
+        throw new Error("ENOENT");
+      });
+      mockReadFile.mockResolvedValue(JSON.stringify(config) as never);
+      mockSpawn.mockImplementation(makeSpawnChild(0));
+
+      const monitor = makeTeardownMonitor({ hasResourceConfig: true });
+      await service.runLifecycleTeardown("wt-1", monitor as never, false, makeCtx(monitor));
+
+      const resourceFinal = monitor.recordedStatuses
+        .filter(
+          (s): s is { phase: string; state: string; logPath?: string } =>
+            typeof s === "object" && s !== null && "phase" in s
+        )
+        .find((s) => s.phase === "resource-teardown" && s.state !== "running");
+      expect(resourceFinal).toBeDefined();
+      expect(resourceFinal?.logPath).toBeDefined();
+      expect(n(resourceFinal?.logPath ?? "")).toContain(
+        "/home/testuser/.daintree/projects/_projects_my-app/teardown-logs/wt-1/"
+      );
+    });
+
+    it("sanitizes path-unsafe characters in the project root segment", async () => {
+      const config = { teardown: ["true"] };
+      mockAccess.mockImplementation(async (p: unknown) => {
+        // Match the unsanitized path read; the config-lookup helper itself
+        // already sanitizes the segment to `_projects_my_app_with_colon` so
+        // the access predicate uses that form.
+        if (n(p as string).endsWith("/projects/my:app/.daintree/config.json")) return undefined;
+        throw new Error("ENOENT");
+      });
+      mockReadFile.mockResolvedValue(JSON.stringify(config) as never);
+      mockSpawn.mockImplementation(makeSpawnChild(0));
+
+      const monitor = makeTeardownMonitor();
+      const ctx = {
+        projectRootPath: "/projects/my:app",
+        projectEnvVars: {},
+        getMonitor: () => monitor as never,
+        emitUpdate: vi.fn(),
+      } as unknown as import("../WorktreeLifecycleService.js").WorkspaceHostContext;
+
+      await service.runLifecycleTeardown("wt-1", monitor as never, false, ctx);
+
+      const finalStatus = monitor.recordedStatuses.at(-1) as { logPath?: string };
+      expect(finalStatus.logPath).toBeDefined();
+      // Colon in the path must not appear in the persisted directory.
+      expect(finalStatus.logPath).not.toContain("my:app");
+      expect(n(finalStatus.logPath ?? "")).toContain("/_projects_my_app/teardown-logs/wt-1/");
     });
   });
 });

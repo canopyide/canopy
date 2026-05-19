@@ -216,6 +216,11 @@ export class WorktreeLifecycleService {
    * Each command is spawned with a minimal env + DAINTREE_* vars.
    * A shared timeout covers the entire set of commands.
    * On Unix, process group kill terminates the whole tree; on Windows, taskkill /T is used.
+   *
+   * When `options.logDir` is set, a per-run scrubbed log is persisted there
+   * after the run completes. Empty command arrays short-circuit with no log
+   * write (callers in `runLifecycleTeardown` already guard against this, so
+   * the early-return has no impact on the teardown log story).
    */
   async runCommands(commands: string[], options: RunCommandsOptions): Promise<RunCommandsResult> {
     const { cwd, env, onProgress, timeoutMs = DEFAULT_TIMEOUT_MS, signal, logDir } = options;
@@ -991,15 +996,18 @@ function buildSpawnEnv(customEnv: Record<string, string>): Record<string, string
 
 function tailOutput(chunks: string[], logPath?: string): string {
   const full = chunks.join("");
-  if (full.length <= OUTPUT_TAIL_BYTES) {
+  const buf = Buffer.from(full, "utf-8");
+  if (buf.length <= OUTPUT_TAIL_BYTES) {
     return scrubSecrets(full);
   }
-  const dropped =
-    Buffer.byteLength(full, "utf-8") -
-    Buffer.byteLength(full.slice(full.length - OUTPUT_TAIL_BYTES), "utf-8");
+  // Byte-accurate slice: matches the named cap (`*_BYTES`) for multibyte
+  // content. A cut mid-codepoint produces a leading U+FFFD in the tail snippet
+  // — acceptable since the persisted log file is the authoritative artifact.
+  const tail = buf.subarray(buf.length - OUTPUT_TAIL_BYTES).toString("utf-8");
+  const dropped = buf.length - OUTPUT_TAIL_BYTES;
   const where = logPath ? `full log: ${logPath}` : "full log unavailable";
   const marker = `...(truncated — omitted ${dropped} bytes; ${where})\n`;
-  return scrubSecrets(marker + full.slice(full.length - OUTPUT_TAIL_BYTES));
+  return scrubSecrets(marker + tail);
 }
 
 /**
