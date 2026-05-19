@@ -203,12 +203,9 @@ export class WorktreeLifecycleService {
       return;
     }
 
-    try {
-      // force:false preserves any files already present in dest (e.g. worktree-level overrides)
-      await cp(src, dest, { recursive: true, force: false, errorOnExist: false });
-    } catch (err) {
-      console.warn("[WorktreeLifecycle] Failed to copy .daintree dir:", err);
-    }
+    // force:false preserves any files already present in dest (e.g. worktree-level overrides).
+    // Caller is expected to catch — they hold the `worktreeId` needed to surface the error.
+    await cp(src, dest, { recursive: true, force: false, errorOnExist: false });
   }
 
   /**

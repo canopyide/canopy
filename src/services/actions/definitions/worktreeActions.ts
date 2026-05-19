@@ -6,6 +6,7 @@ import { registerWorktreeNavigationActions } from "./worktreeNavigationActions";
 import { registerWorktreeContextActions } from "./worktreeContextActions";
 import { registerWorktreeGitHubActions } from "./worktreeGitHubActions";
 import { registerWorktreeResourceActions } from "./worktreeResourceActions";
+import { registerWorktreeLifecycleActions } from "./worktreeLifecycleActions";
 
 export function registerWorktreeActions(actions: ActionRegistry, callbacks: ActionCallbacks): void {
   registerWorktreeQueryActions(actions, callbacks);
@@ -15,4 +16,5 @@ export function registerWorktreeActions(actions: ActionRegistry, callbacks: Acti
   registerWorktreeContextActions(actions, callbacks);
   registerWorktreeGitHubActions(actions, callbacks);
   registerWorktreeResourceActions(actions, callbacks);
+  registerWorktreeLifecycleActions(actions);
 }

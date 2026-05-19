@@ -108,6 +108,10 @@ export const worktreeClient = {
     await window.electron.worktreePort.request("resource-action", { worktreeId, action });
   },
 
+  retrySetup: async (worktreeId: string): Promise<void> => {
+    await window.electron.worktreePort.request("run-lifecycle-setup", { worktreeId });
+  },
+
   switchEnvironment: async (worktreeId: string, envKey: string): Promise<void> => {
     await window.electron.worktreePort.request("switch-worktree-environment", {
       worktreeId,

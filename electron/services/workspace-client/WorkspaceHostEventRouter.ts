@@ -3,6 +3,7 @@ import { events } from "../events.js";
 import { CHANNELS } from "../../ipc/channels.js";
 import { broadcastToRenderer } from "../../ipc/utils.js";
 import { gitHubRateLimitService } from "../github/index.js";
+import { notifyError } from "../../ipc/errorHandlers.js";
 import { type ProcessEntry, type CopyTreeProgressCallback, sendToEntryWindows } from "./types.js";
 import type { WorkspaceHostEvent } from "../../../shared/types/workspace-host.js";
 import type { RateLimitInfo } from "../../../shared/types/forge.js";
@@ -214,6 +215,19 @@ export class WorkspaceHostEventRouter {
             ipcChannel: CHANNELS.CLIPBOARD_WRITE_TEXT,
             data: "sudo sysctl fs.inotify.max_user_watches=524288",
           },
+        });
+        break;
+      }
+
+      case "lifecycle-setup-error": {
+        const err = new Error(event.message);
+        if (event.details !== undefined) {
+          err.stack = event.details;
+        }
+        notifyError(err, {
+          source: "worktree-lifecycle",
+          context: { worktreeId: event.worktreeId },
+          retryability: "user-gated",
         });
         break;
       }

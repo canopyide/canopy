@@ -1629,7 +1629,16 @@ export class WorkspaceService {
           options.provisionResource ?? options.worktreeMode === "remote-worker"
         );
       })().catch((err) => {
+        const message =
+          err instanceof Error ? err.message : `createWorktree async tail failed: ${String(err)}`;
+        const stack = err instanceof Error ? err.stack : undefined;
         console.warn("[WorkspaceHost] createWorktree async tail failed:", err);
+        this.sendEvent({
+          type: "lifecycle-setup-error",
+          worktreeId: canonicalWorktreeId,
+          message,
+          details: stack,
+        });
       });
     } catch (error) {
       // Create failed — drop any pending entry so a real external change to
@@ -1679,6 +1688,27 @@ export class WorkspaceService {
     if (shouldProvision && this.projectRootPath) {
       await this.runResourceAction(`auto-provision-${worktreeId}`, worktreeId, "provision");
     }
+  }
+
+  /**
+   * Re-run the lifecycle setup script for an existing worktree without
+   * recreating it. Surfaced via the `run-lifecycle-setup` port action so the
+   * worktree card can offer a "Retry setup" affordance after a failed/timed-out
+   * setup. Same idempotence assumption as resource provisioning — the user
+   * authors setup scripts knowing they may be re-run in place.
+   */
+  async retryLifecycleSetup(worktreeId: string): Promise<void> {
+    const monitor = this.monitors.get(worktreeId);
+    if (!monitor) {
+      throw new Error(`Worktree not found: ${worktreeId}`);
+    }
+    if (!this.projectRootPath) {
+      throw new Error("Cannot retry setup before a project is loaded");
+    }
+    if (monitor.lifecycleStatus?.state === "running") {
+      throw new Error("Setup is already running");
+    }
+    await this.runLifecycleSetup(worktreeId, monitor.path, this.projectRootPath, false);
   }
 
   private async runLifecycleTeardown(
@@ -2257,10 +2287,21 @@ ${lines.map((l) => "+" + l).join("\n")}`;
         await this.runLifecycleSetup(worktreeId, monitor.path, this.projectRootPath, false, envKey);
       }
     } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : `switchWorktreeEnvironment lifecycle setup failed: ${String(err)}`;
+      const stack = err instanceof Error ? err.stack : undefined;
       console.warn(
         `[WorkspaceService] switchWorktreeEnvironment config resolution failed (non-fatal):`,
         err
       );
+      this.sendEvent({
+        type: "lifecycle-setup-error",
+        worktreeId,
+        message,
+        details: stack,
+      });
     }
 
     this.emitUpdate(monitor);
