@@ -258,8 +258,12 @@ export function WorktreeHeader({
   const hasUpstreamDelta =
     (worktree.aheadCount !== undefined && worktree.aheadCount > 0) ||
     (worktree.behindCount !== undefined && worktree.behindCount > 0) ||
-    (worktree.baseAheadCount != null && worktree.baseAheadCount > 0 && !worktree.baseMatchesUpstream) ||
-    (worktree.baseBehindCount != null && worktree.baseBehindCount > 0 && !worktree.baseMatchesUpstream);
+    (worktree.baseAheadCount != null &&
+      worktree.baseAheadCount > 0 &&
+      !worktree.baseMatchesUpstream) ||
+    (worktree.baseBehindCount != null &&
+      worktree.baseBehindCount > 0 &&
+      !worktree.baseMatchesUpstream);
   const hasAuthFailedSignIn = Boolean(
     worktree.fetchAuthFailed &&
     (worktree.isGitHubRemote || worktree.linked?.providerId === "builtin.github")

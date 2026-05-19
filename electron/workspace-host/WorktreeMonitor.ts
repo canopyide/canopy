@@ -1708,9 +1708,7 @@ export class WorktreeMonitor {
     }
   }
 
-  private async computeBaseDivergence(
-    hasUpstream: boolean
-  ): Promise<{
+  private async computeBaseDivergence(hasUpstream: boolean): Promise<{
     baseBranchName: string | null;
     aheadCount: number | null;
     behindCount: number | null;
@@ -1741,7 +1739,12 @@ export class WorktreeMonitor {
       }
 
       const baseBranchName = this.mainBranch;
-      const result = await git.raw(["rev-list", "--count", "--left-right", `${resolvedRef}...HEAD`]);
+      const result = await git.raw([
+        "rev-list",
+        "--count",
+        "--left-right",
+        `${resolvedRef}...HEAD`,
+      ]);
       const trimmed = result.trim();
       const parts = trimmed.split("\t");
       const behindCount = parts[0] != null && parts[0] !== "" ? parseInt(parts[0], 10) : 0;

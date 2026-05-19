@@ -144,10 +144,14 @@ export function UpstreamSyncBadge({
         {showBaseDivergence && baseBranchName && (
           <div className="text-text-muted/70">
             {baseAheadCount != null && baseAheadCount > 0 && (
-              <span>{baseAheadCount} ahead of {baseBranchName}</span>
+              <span>
+                {baseAheadCount} ahead of {baseBranchName}
+              </span>
             )}
             {baseBehindCount != null && baseBehindCount > 0 && (
-              <span>{baseBehindCount} behind {baseBranchName}</span>
+              <span>
+                {baseBehindCount} behind {baseBranchName}
+              </span>
             )}
           </div>
         )}
@@ -157,7 +161,9 @@ export function UpstreamSyncBadge({
           </div>
         )}
         {isStale && lastFetchedAt != null && (
-          <div className="text-text-muted/70">Stale (last fetched {formatRelativeTime(lastFetchedAt)})</div>
+          <div className="text-text-muted/70">
+            Stale (last fetched {formatRelativeTime(lastFetchedAt)})
+          </div>
         )}
         {!isStale && lastFetchedAt != null && (
           <div className="text-text-muted">Last fetched {formatRelativeTime(lastFetchedAt)}</div>
