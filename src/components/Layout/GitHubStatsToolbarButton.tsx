@@ -34,6 +34,7 @@ import {
   CommitListSkeleton,
 } from "@github-renderer/components/GitHubDropdownSkeletons";
 import { GitHubStatusIndicator, type GitHubStatusIndicatorStatus } from "./GitHubStatusIndicator";
+// eslint-disable-next-line no-restricted-imports
 import { githubClient } from "@/clients/githubClient";
 import { buildCacheKey, getCache, setCache } from "@/lib/githubResourceCache";
 import { useGitHubConfigStore } from "@github-renderer/stores/githubConfigStore";

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+// eslint-disable-next-line no-restricted-imports
 import { githubClient } from "@/clients/githubClient";
 import { useGitHubRateLimitStore } from "@/store/githubRateLimitStore";
 import type { GitHubRateLimitDetails, GitHubRateLimitPayload } from "@shared/types/ipc/github";

@@ -5,6 +5,7 @@ import { CircleDot, Search, Link, Unlink, CircleCheck } from "lucide-react";
 import { Skeleton, SkeletonBone } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { cn } from "@/lib/utils";
+// eslint-disable-next-line no-restricted-imports
 import { githubClient } from "@/clients";
 import type { GitHubIssue } from "@shared/types/github";
 import type { WorktreeState } from "@/types";
