@@ -45,6 +45,7 @@ export class WorkspaceHostEventRouter {
   private inotifyLimitToastSent = false;
   private emfileLimitToastSent = false;
   private forgeRateLimitStates = new Map<string, RateLimitInfo>();
+  private cloudTeardownFailureToastKeys = new Set<string>();
 
   constructor(deps: WorkspaceHostEventRouterDeps) {
     this.emit = deps.emit;
@@ -75,6 +76,35 @@ export class WorkspaceHostEventRouter {
           projectPath: entry.projectPath,
         });
         events.emit("sys:worktree:update", worktree);
+
+        // Cloud-side teardown failure: when `phase: "resource-teardown"` ends in
+        // `failed` or `timed-out`, the user's cloud resource may still be running
+        // and billing — the worktree row is about to disappear, so the inbox is
+        // the only durable surface. Fired in transit (before the next phase's
+        // `running` snapshot overwrites the status) and debounced per
+        // `(worktreeId, startedAt)` so repeated snapshots of the same failure
+        // don't spam.
+        //
+        // Asymmetric: we deliberately do NOT mirror this for `phase: "teardown"`
+        // (local cleanup) failures. The directory is about to be removed and the
+        // user cannot act differently than by ignoring the signal — notify()'s
+        // four-question checklist demotes it. Do not "fix" this asymmetry.
+        const status = worktree.lifecycleStatus;
+        if (
+          status?.phase === "resource-teardown" &&
+          (status.state === "failed" || status.state === "timed-out")
+        ) {
+          const key = `${worktree.worktreeId}:${status.startedAt}`;
+          if (!this.cloudTeardownFailureToastKeys.has(key)) {
+            this.cloudTeardownFailureToastKeys.add(key);
+            broadcastToRenderer(CHANNELS.NOTIFICATION_SHOW_TOAST, {
+              type: "error",
+              title: "Cloud resource may still be running",
+              message:
+                "The teardown script didn't complete — your cloud resource may still be active and billing",
+            });
+          }
+        }
         break;
       }
 

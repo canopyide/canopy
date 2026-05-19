@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkspaceHostEventRouter } from "../WorkspaceHostEventRouter.js";
+import { CHANNELS } from "../../../ipc/channels.js";
 import type { WorkspaceHostEvent } from "../../../../shared/types/workspace-host.js";
+import type {
+  WorktreeLifecyclePhase,
+  WorktreeLifecycleState,
+} from "../../../../shared/types/worktree.js";
 import type { ProcessEntry, CopyTreeProgressCallback } from "../types.js";
 import type { WorkspaceHostProcess } from "../../WorkspaceHostProcess.js";
 
@@ -144,6 +149,148 @@ describe("WorkspaceHostEventRouter", () => {
       router.routeHostEvent(entry, event);
 
       expect(events.emit).toHaveBeenCalledWith("sys:worktree:update", event.worktree);
+    });
+  });
+
+  describe("cloud resource teardown failure notifications", () => {
+    const lifecycleStatus = (
+      phase: WorktreeLifecyclePhase,
+      state: WorktreeLifecycleState,
+      startedAt: number
+    ) => ({ phase, state, startedAt });
+
+    it("fires inbox notification when resource-teardown fails", () => {
+      const entry = makeEntry();
+      const event = makeWorktreeUpdateEvent({
+        lifecycleStatus: lifecycleStatus("resource-teardown", "failed", 1000),
+      });
+
+      router.routeHostEvent(entry, event);
+
+      expect(broadcastToRenderer).toHaveBeenCalledWith(CHANNELS.NOTIFICATION_SHOW_TOAST, {
+        type: "error",
+        title: "Cloud resource may still be running",
+        message:
+          "The teardown script didn't complete — your cloud resource may still be active and billing",
+      });
+    });
+
+    it("fires inbox notification when resource-teardown times out", () => {
+      const entry = makeEntry();
+      const event = makeWorktreeUpdateEvent({
+        lifecycleStatus: lifecycleStatus("resource-teardown", "timed-out", 1000),
+      });
+
+      router.routeHostEvent(entry, event);
+
+      expect(broadcastToRenderer).toHaveBeenCalledWith(
+        CHANNELS.NOTIFICATION_SHOW_TOAST,
+        expect.objectContaining({
+          type: "error",
+          title: "Cloud resource may still be running",
+        })
+      );
+    });
+
+    it("does not fire on resource-teardown running snapshot", () => {
+      const entry = makeEntry();
+      router.routeHostEvent(
+        entry,
+        makeWorktreeUpdateEvent({
+          lifecycleStatus: lifecycleStatus("resource-teardown", "running", 1000),
+        })
+      );
+
+      expect(broadcastToRenderer).not.toHaveBeenCalled();
+    });
+
+    it("does not fire on resource-teardown success", () => {
+      const entry = makeEntry();
+      router.routeHostEvent(
+        entry,
+        makeWorktreeUpdateEvent({
+          lifecycleStatus: lifecycleStatus("resource-teardown", "success", 1000),
+        })
+      );
+
+      expect(broadcastToRenderer).not.toHaveBeenCalled();
+    });
+
+    it("does not fire on local config-teardown failure (asymmetric rule)", () => {
+      const entry = makeEntry();
+      router.routeHostEvent(
+        entry,
+        makeWorktreeUpdateEvent({
+          lifecycleStatus: lifecycleStatus("teardown", "failed", 1000),
+        })
+      );
+
+      expect(broadcastToRenderer).not.toHaveBeenCalled();
+    });
+
+    it("does not fire on local config-teardown timeout (asymmetric rule)", () => {
+      const entry = makeEntry();
+      router.routeHostEvent(
+        entry,
+        makeWorktreeUpdateEvent({
+          lifecycleStatus: lifecycleStatus("teardown", "timed-out", 1000),
+        })
+      );
+
+      expect(broadcastToRenderer).not.toHaveBeenCalled();
+    });
+
+    it("debounces duplicate snapshots of the same (worktreeId, startedAt)", () => {
+      const entry = makeEntry();
+      const event = makeWorktreeUpdateEvent({
+        lifecycleStatus: lifecycleStatus("resource-teardown", "failed", 1000),
+      });
+
+      router.routeHostEvent(entry, event);
+      router.routeHostEvent(entry, event);
+      router.routeHostEvent(entry, event);
+
+      expect(broadcastToRenderer).toHaveBeenCalledTimes(1);
+    });
+
+    it("fires again for a new teardown attempt with a different startedAt", () => {
+      const entry = makeEntry();
+      router.routeHostEvent(
+        entry,
+        makeWorktreeUpdateEvent({
+          lifecycleStatus: lifecycleStatus("resource-teardown", "failed", 1000),
+        })
+      );
+      router.routeHostEvent(
+        entry,
+        makeWorktreeUpdateEvent({
+          lifecycleStatus: lifecycleStatus("resource-teardown", "failed", 2000),
+        })
+      );
+
+      expect(broadcastToRenderer).toHaveBeenCalledTimes(2);
+    });
+
+    it("fires independently for different worktrees with the same startedAt", () => {
+      const entry = makeEntry();
+      router.routeHostEvent(
+        entry,
+        makeWorktreeUpdateEvent({
+          id: "wt-1",
+          worktreeId: "wt-1",
+          lifecycleStatus: lifecycleStatus("resource-teardown", "failed", 1000),
+        })
+      );
+      router.routeHostEvent(
+        entry,
+        makeWorktreeUpdateEvent({
+          id: "wt-2",
+          worktreeId: "wt-2",
+          lifecycleStatus: lifecycleStatus("resource-teardown", "failed", 1000),
+        })
+      );
+
+      expect(broadcastToRenderer).toHaveBeenCalledTimes(2);
     });
   });
 });
