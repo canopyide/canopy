@@ -8,6 +8,7 @@ const PORTAL_BUTTON_PATH = path.resolve(__dirname, "../ToolbarPortalButton.tsx")
 const SETTINGS_BUTTON_PATH = path.resolve(__dirname, "../ToolbarSettingsButton.tsx");
 const LAUNCHER_BUTTON_PATH = path.resolve(__dirname, "../ToolbarLauncherButton.tsx");
 const AGENT_BUTTON_PATH = path.resolve(__dirname, "../AgentButton.tsx");
+const TOOLBAR_CSS_PATH = path.resolve(__dirname, "../../../styles/components/toolbar.css");
 
 describe("Toolbar shortcut tooltips — issue #3443", () => {
   let source: string;
@@ -190,6 +191,32 @@ describe("Toolbar shortcut tooltips — issue #3443", () => {
     it("uses sentence-case 'Context copied' aria-label", () => {
       expect(source).toContain('"Context copied"');
       expect(source).not.toContain('"Context Copied"');
+    });
+  });
+
+  describe("sidebar toggle drops always-on armed highlight — issue #8357", () => {
+    it("marks the sidebar toggle button with data-sidebar-toggle", () => {
+      const sidebarBlock = source.match(/"sidebar-toggle":\s*\{[\s\S]*?isAvailable/);
+      expect(sidebarBlock).not.toBeNull();
+      expect(sidebarBlock![0]).toContain("data-sidebar-toggle");
+    });
+
+    it("retains aria-pressed on the sidebar toggle for accessibility", () => {
+      const sidebarBlock = source.match(/"sidebar-toggle":\s*\{[\s\S]*?isAvailable/);
+      expect(sidebarBlock).not.toBeNull();
+      expect(sidebarBlock![0]).toContain("aria-pressed={!isFocusMode}");
+    });
+
+    it("carves the sidebar toggle out of the armed aria-pressed rule in toolbar.css", async () => {
+      const css = await fs.readFile(TOOLBAR_CSS_PATH, "utf-8");
+      expect(css).toContain(
+        '.toolbar-icon-button[aria-pressed="true"]:where(:not([data-sidebar-toggle]))'
+      );
+      // The carve-out must not regress to an un-excluded standalone selector.
+      expect(css).not.toMatch(/\.toolbar-icon-button\[aria-pressed="true"\],/);
+      // Other armed selectors stay intact so dropdowns/agent buttons keep the highlight.
+      expect(css).toContain('.toolbar-icon-button[aria-expanded="true"]');
+      expect(css).toContain('.toolbar-agent-button[aria-pressed="true"]');
     });
   });
 

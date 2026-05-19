@@ -502,6 +502,7 @@ export function Toolbar({
                 variant="ghost"
                 size="icon"
                 data-toolbar-item=""
+                data-sidebar-toggle=""
                 onClick={onToggleFocusMode}
                 className={toolbarIconButtonClass}
                 aria-label="Toggle Sidebar"
