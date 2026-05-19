@@ -8,6 +8,7 @@ import { type ProcessEntry, type CopyTreeProgressCallback, sendToEntryWindows } 
 import type { WorkspaceHostEvent } from "../../../shared/types/workspace-host.js";
 import type { RateLimitInfo } from "../../../shared/types/forge.js";
 import type { GitHubRateLimitPayload } from "../../../shared/types/ipc/github.js";
+import { BUILTIN_GITHUB_PROVIDER_ID } from "../../../shared/utils/forgeProviderIds.js";
 
 export type EmitFn = (event: string | symbol, ...args: unknown[]) => boolean;
 
@@ -179,8 +180,8 @@ export class WorkspaceHostEventRouter {
         // existing `gitHubRateLimitService` singleton so the toolbar countdown
         // and main-process callers see limits triggered by workspace-host polling.
         // Unknown providers get cached locally for future inspection.
-        if (event.providerId === "builtin.github") {
-          const ghChangeAt = this.forgeCredentialChangeAt.get("builtin.github") ?? 0;
+        if (event.providerId === BUILTIN_GITHUB_PROVIDER_ID) {
+          const ghChangeAt = this.forgeCredentialChangeAt.get(BUILTIN_GITHUB_PROVIDER_ID) ?? 0;
           if (
             event.state.remaining === 0 &&
             ghChangeAt > 0 &&

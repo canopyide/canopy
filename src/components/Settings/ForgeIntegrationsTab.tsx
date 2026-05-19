@@ -13,6 +13,7 @@ import { useProjectStore } from "@/store";
 import { useDeferredLoading } from "@/hooks";
 import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
+import { makeForgeProviderId } from "@shared/utils/forgeProviderIds";
 import { logError } from "@/utils/logger";
 
 // Non-empty sentinel because Radix's `SelectItem` rejects an empty string value
@@ -162,7 +163,7 @@ export function ForgeIntegrationsTab() {
       ...providers.map((entry) => {
         const matches = entry.contribution.matches.join(", ");
         return {
-          value: entry.contribution.id,
+          value: makeForgeProviderId(entry.pluginId, entry.contribution.id),
           label: entry.contribution.name,
           description: matches ? `Matches: ${matches}` : undefined,
         };
@@ -172,7 +173,9 @@ export function ForgeIntegrationsTab() {
     if (
       storedId !== null &&
       storedId.length > 0 &&
-      !providers.some((entry) => entry.contribution.id === storedId)
+      !providers.some(
+        (entry) => makeForgeProviderId(entry.pluginId, entry.contribution.id) === storedId
+      )
     ) {
       base.push({
         value: storedId,

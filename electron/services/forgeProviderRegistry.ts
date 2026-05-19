@@ -4,6 +4,7 @@ import type {
   RegisteredForgeProvider,
   RepoRef,
 } from "../../shared/types/forge.js";
+import { makeForgeProviderId } from "../../shared/utils/forgeProviderIds.js";
 
 export type { RegisteredForgeProvider } from "../../shared/types/forge.js";
 
@@ -23,12 +24,12 @@ const PLUGIN_FORGE_PROVIDERS = new Map<string, ForgeProviderContribution[]>();
 
 /**
  * Runtime implementation handlers bound via `host.registerForgeProvider`.
- * Keyed by the namespaced provider id `{pluginId}.{contributionId}` so the
- * router can resolve an impl from a descriptor without a second lookup
- * (built-in GitHub uses bare `github`). Separate from {@link PLUGIN_FORGE_PROVIDERS}
- * because descriptors register eagerly from the manifest while impls bind
- * lazily during `activate()` — callers must handle "descriptor present but
- * impl not yet bound" by treating an `undefined` result as absent.
+ * Keyed by the canonical provider id `{pluginId}.{contributionId}` (#8451) so
+ * the router can resolve an impl from a descriptor without a second lookup.
+ * Separate from {@link PLUGIN_FORGE_PROVIDERS} because descriptors register
+ * eagerly from the manifest while impls bind lazily during `activate()` —
+ * callers must handle "descriptor present but impl not yet bound" by treating
+ * an `undefined` result as absent.
  */
 const PLUGIN_FORGE_PROVIDER_IMPLS = new Map<string, ForgeProviderImpl>();
 
@@ -128,11 +129,11 @@ export function unregisterForgeProviderImpls(pluginId: string): void {
 }
 
 /**
- * Look up a runtime impl by its namespaced id (`{pluginId}.{contributionId}`,
- * or bare `github` for the built-in). Returns `undefined` when the descriptor
- * is registered but the plugin's `activate()` has not yet bound an impl, or
- * after the plugin unloads. Callers must treat `undefined` as "no impl
- * currently available" and avoid throwing.
+ * Look up a runtime impl by its canonical id (`{pluginId}.{contributionId}`).
+ * Returns `undefined` when the descriptor is registered but the plugin's
+ * `activate()` has not yet bound an impl, or after the plugin unloads.
+ * Callers must treat `undefined` as "no impl currently available" and avoid
+ * throwing.
  */
 export function getForgeProviderImpl(namespacedId: string): ForgeProviderImpl | undefined {
   if (typeof namespacedId !== "string" || namespacedId.length === 0) return undefined;
@@ -145,7 +146,7 @@ export function clearForgeProviderImplRegistry(): void {
 }
 
 function buildImplKey(pluginId: string, contributionId: string): string {
-  return `${pluginId}.${contributionId}`;
+  return makeForgeProviderId(pluginId, contributionId);
 }
 
 export function getRegisteredForgeProviders(): RegisteredForgeProvider[] {

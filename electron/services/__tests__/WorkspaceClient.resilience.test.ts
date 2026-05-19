@@ -819,14 +819,14 @@ describe("WorkspaceClient multi-process manager", () => {
       await readyAndResolveLoad(0);
       await load1;
 
-      client.updateForgeCredentials("builtin.github", {
+      client.updateForgeCredentials("daintree.github.github", {
         kind: "bearer",
         value: "test-token",
       });
 
       expect(h(0).send).toHaveBeenCalledWith({
         type: "update-forge-credentials",
-        providerId: "builtin.github",
+        providerId: "daintree.github.github",
         credentials: { kind: "bearer", value: "test-token" },
       });
     });
@@ -836,11 +836,11 @@ describe("WorkspaceClient multi-process manager", () => {
       await readyAndResolveLoad(0);
       await load1;
 
-      client.updateForgeCredentials("builtin.github", null);
+      client.updateForgeCredentials("daintree.github.github", null);
 
       expect(h(0).send).toHaveBeenCalledWith({
         type: "update-forge-credentials",
-        providerId: "builtin.github",
+        providerId: "daintree.github.github",
         credentials: null,
       });
     });

@@ -5,12 +5,15 @@ import { getRegisteredForgeProviders } from "../../services/forgeProviderRegistr
 import { resolveForgeProvider } from "../../services/forgeProviderResolver.js";
 import { projectStore } from "../../services/ProjectStore.js";
 import { gitServiceCache } from "../../services/GitServiceCache.js";
+import { normalizeProviderId } from "../../../shared/utils/forgeProviderIds.js";
 
+/**
+ * Read the persisted global default provider id, normalizing legacy forms
+ * (`"github"`, `"builtin.github"`) to the canonical `{pluginId}.{contributionId}`
+ * shape (#8451) so downstream resolution does not need to know about aliases.
+ */
 function readDefaultProviderId(): string | null {
-  const value = store.get("forgeDefaultProviderId");
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
+  return normalizeProviderId(store.get("forgeDefaultProviderId"));
 }
 
 export function registerForgeSettingsHandlers(): () => void {
@@ -64,8 +67,7 @@ export function registerForgeSettingsHandlers(): () => void {
           effectiveRemoteUrl = await gitService.getRemoteUrl(project.path).catch(() => null);
         }
 
-        const globalDefault = store.get("forgeDefaultProviderId");
-        const globalDefaultProviderId = typeof globalDefault === "string" ? globalDefault : null;
+        const globalDefaultProviderId = readDefaultProviderId();
 
         return resolveForgeProvider({
           remoteUrl: effectiveRemoteUrl,
