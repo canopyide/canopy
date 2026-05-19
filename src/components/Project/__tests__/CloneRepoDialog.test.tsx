@@ -271,6 +271,62 @@ describe("CloneRepoDialog", () => {
     });
   });
 
+  it("shows GitHub sign-in CTA even after an 'error' progress event is emitted", async () => {
+    // Reproduces the production flow: the handler calls emitProgress("error",
+    // ...) before throwing, so the renderer's progressEvents list contains
+    // {stage:"error"} by the time setError runs. The banner must still render.
+    let rejectClone: (err: unknown) => void = () => {};
+    cloneRepoMock.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectClone = reject;
+        })
+    );
+
+    render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    const urlInput = screen.getByPlaceholderText("owner/repo or https://github.com/user/repo.git");
+    fireEvent.change(urlInput, {
+      target: { value: "https://github.com/acme/private.git" },
+    });
+
+    const browseBtn = screen.getByText("Browse");
+    await act(async () => {
+      fireEvent.click(browseBtn);
+    });
+
+    const cloneBtn = screen.getByText("Clone");
+    await act(async () => {
+      fireEvent.click(cloneBtn);
+    });
+
+    await waitFor(() => expect(progressHandler).not.toBeNull());
+
+    // Emit the error progress event first (matches handler ordering), then
+    // reject the invoke — the banner must still appear.
+    act(() => {
+      progressHandler?.({
+        stage: "error",
+        progress: 0,
+        message: "Clone failed: Authentication failed",
+        timestamp: Date.now(),
+      });
+    });
+
+    await act(async () => {
+      rejectClone(
+        Object.assign(new Error("Authentication failed"), {
+          name: "GitOperationError",
+          gitReason: "auth-failed",
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Sign in with GitHub")).toBeTruthy();
+    });
+  });
+
   it("shows GitHub sign-in CTA when auth fails against a github.com URL", async () => {
     cloneRepoMock.mockRejectedValue(
       Object.assign(new Error("Authentication failed for 'https://github.com/acme/private.git/'"), {

@@ -374,10 +374,13 @@ export function registerGitCloneHandlers(): () => void {
       const errorMessage = formatErrorMessage(error, "Failed to clone repository");
       emitProgress("error", 0, `Clone failed: ${errorMessage}`);
       const reason = classifyGitError(error);
+      // `url` deliberately omitted from context — it can carry embedded
+      // credentials (e.g. https://x-access-token:TOKEN@github.com/...) and
+      // the renderer already has the input URL in local state.
       throw new GitOperationError(reason, errorMessage, {
         op: "clone",
         cause: error instanceof Error ? error : undefined,
-        context: { targetPath, url },
+        context: { targetPath },
       });
     } finally {
       activeControllers.delete(localController);

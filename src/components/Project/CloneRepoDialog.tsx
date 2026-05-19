@@ -332,9 +332,10 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
           </div>
         )}
 
-        {/* Error (not from progress events) */}
+        {/* Error block — rendered alongside the progress log so the recovery
+            banner is reachable even when emitProgress("error") has already
+            queued an "error" row in the log. */}
         {error &&
-          !progressEvents.some((e) => e.stage === "error") &&
           (() => {
             const showGitHubAuth =
               error.gitReason === "auth-failed" && isGitHubRemoteUrl(normalizeCloneUrl(url));
