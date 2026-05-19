@@ -7,10 +7,9 @@ import { safeFireAndForget } from "@/utils/safeFireAndForget";
  * Wires the main-process CDP console-capture pipeline to the renderer
  * `consoleCaptureStore` for a single dev-preview panel.
  *
- * Capture starts only while the webview is mounted and ready
- * (`isWebviewReady && !isEvicted`) and stops on unmount or eviction. The
- * webview DOM node is unmounted while evicted, so the webContentsId is
- * re-derived from the ref each time the effect re-runs rather than cached.
+ * Capture starts while the webview is mounted and stops on unmount or eviction.
+ * `isWebviewReady` is a retry signal for the rare window where the element is
+ * mounted but its WebContents ID is not available yet.
  *
  * Both IPC subscriptions filter by `paneId`: `onConsoleMessage` is a global
  * stream keyed by `row.paneId`, so an unfiltered handler in multiple mounted
@@ -18,28 +17,30 @@ import { safeFireAndForget } from "@/utils/safeFireAndForget";
  */
 export function useDevPreviewConsoleCapture(
   paneId: string,
-  webviewRef: React.RefObject<Electron.WebviewTag | null>,
+  webviewElement: Electron.WebviewTag | null,
   isWebviewReady: boolean,
   isEvicted: boolean
 ): void {
   useEffect(() => {
-    if (!isWebviewReady || isEvicted) return;
-
-    const webview = webviewRef.current;
-    if (!webview) return;
+    if (!webviewElement || isEvicted) return;
 
     let webContentsId: number;
     try {
-      webContentsId = webview.getWebContentsId();
+      webContentsId = webviewElement.getWebContentsId();
     } catch {
       // WebContents not attached yet — the next ready/evicted transition retries.
       return;
     }
 
+    // The main-process capture handler rejects unregistered guest webContents
+    // for ownership safety. Register here before starting capture instead of
+    // relying on useWebviewDialog's separate effect ordering.
     // Chain stop after start settles so a fast ready→evict cycle can't let a
     // slow startConsoleCapture resolve after cleanup already fired, which
     // would leave a CDP session attached with nothing to detach it.
-    const started = window.electron.webview.startConsoleCapture(webContentsId, paneId);
+    const started = window.electron.webview
+      .registerPanel(webContentsId, paneId)
+      .then(() => window.electron.webview.startConsoleCapture(webContentsId, paneId));
     safeFireAndForget(started, { context: "Starting dev-preview console capture" });
 
     const store = useConsoleCaptureStore.getState();
@@ -67,7 +68,7 @@ export function useDevPreviewConsoleCapture(
         .then(() => window.electron.webview.stopConsoleCapture(webContentsId, paneId));
       safeFireAndForget(stopped, { context: "Stopping dev-preview console capture" });
     };
-  }, [paneId, webviewRef, isWebviewReady, isEvicted]);
+  }, [paneId, webviewElement, isWebviewReady, isEvicted]);
 
   // Drop this pane's buffered rows + counts only when the panel is gone for
   // good. Unmount alone is not deletion: a DevPreview panel in a grid tab

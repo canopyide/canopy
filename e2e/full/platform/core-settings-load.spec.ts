@@ -236,12 +236,19 @@ test.describe.serial("Core: Settings Pages Load", () => {
     });
   });
 
-  test("GitHub tab loads", async () => {
+  test("Code Forge GitHub settings load", async () => {
     const { window } = ctx;
 
-    await window.locator(`${SEL.settings.navSidebar} button`, { hasText: "GitHub" }).click();
-    await expect(window.locator("h3", { hasText: "GitHub Integration" })).toBeVisible({
+    await window
+      .locator(SEL.settings.navSidebar)
+      .getByRole("tab", { name: "Code Forge", exact: true })
+      .click();
+    await expect(window.locator("h3", { hasText: "Code Forge" })).toBeVisible({
       timeout: T_SHORT,
+    });
+
+    await expect(window.locator("text=Loading forge settings...")).not.toBeVisible({
+      timeout: T_MEDIUM,
     });
 
     // Wait for loading to finish

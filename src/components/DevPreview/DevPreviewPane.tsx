@@ -962,7 +962,7 @@ export function DevPreviewPane({
   // Wire the guest-page CDP console capture into the renderer store. The hook
   // owns start/stop keyed on the ready/eviction lifecycle; here we only mirror
   // the live webContentsId so lazy object inspection can reach the right guest.
-  useDevPreviewConsoleCapture(id, webviewRef, isWebviewReady, isEvicted);
+  useDevPreviewConsoleCapture(id, webviewElement, isWebviewReady, isEvicted);
 
   useEffect(() => {
     if (!isWebviewReady || isEvicted) {

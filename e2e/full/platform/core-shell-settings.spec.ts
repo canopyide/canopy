@@ -75,7 +75,7 @@ test.describe.serial("Core: Shell & Settings", () => {
           "Toolbar",
           "Appearance",
           "CLI agents",
-          "GitHub",
+          "Code Forge",
           "Integrations",
           "Portal",
           "MCP Server",

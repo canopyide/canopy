@@ -70,8 +70,9 @@ test.describe.serial("Core: Dev Preview", () => {
         return;
       }
 
-      const configureText = window.locator("text=Configure Dev Server");
-      await expect(configureText).toBeVisible({ timeout: T_MEDIUM });
+      await expect(window.getByRole("heading", { name: "Set a dev command" })).toBeVisible({
+        timeout: T_MEDIUM,
+      });
     });
 
     test("address bar navigation updates display URL", async () => {
@@ -211,7 +212,7 @@ server.listen(0, '127.0.0.1', () => {
       await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(before + 1);
 
       // Confirm unconfigured state
-      await expect(window.locator("text=Configure Dev Server")).toBeVisible({
+      await expect(window.getByRole("heading", { name: "Set a dev command" })).toBeVisible({
         timeout: T_MEDIUM,
       });
 

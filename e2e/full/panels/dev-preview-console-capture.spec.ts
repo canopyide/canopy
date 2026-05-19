@@ -21,14 +21,14 @@ test.describe.serial("Dev Preview: guest-page console capture", () => {
     fixtureRepoPath = dir;
     fixtureCleanup = cleanup;
 
-    // Dev server returns a page that logs an error on load. We also push a
-    // second error via executeJavaScript after attach to make capture
-    // deterministic regardless of CDP attach timing on initial load.
+    // Dev server returns a page that logs on load and then emits a bounded
+    // delayed marker so capture can attach without using webview.executeJavaScript
+    // from the Trusted Types-protected host renderer.
     const serverScript = `
 const http = require('http');
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/html' });
-  res.end('<html><body><h1>Console Capture E2E</h1><script>console.error("${CAPTURE_MARKER}-initial")</script></body></html>');
+  res.end('<html><body><h1>Console Capture E2E</h1><script>console.error("${CAPTURE_MARKER}-initial");let count=0;const timer=setInterval(()=>{console.error("${CAPTURE_MARKER}-runtime");count+=1;if(count>=40)clearInterval(timer);},500);</script></body></html>');
 });
 server.listen(0, '127.0.0.1', () => {
   console.log('http://localhost:' + server.address().port);
@@ -58,7 +58,7 @@ server.listen(0, '127.0.0.1', () => {
     await devBtn.click();
     await expect.poll(() => getGridPanelCount(window), { timeout: T_LONG }).toBe(before + 1);
 
-    await expect(window.locator("text=Configure Dev Server")).toBeVisible({
+    await expect(window.getByRole("heading", { name: "Set a dev command" })).toBeVisible({
       timeout: T_MEDIUM,
     });
 
@@ -92,26 +92,6 @@ server.listen(0, '127.0.0.1', () => {
     });
     await window.locator(SEL.devPreview.consoleTab).click();
 
-    // Emit a deterministic error from the guest page after capture is active.
-    await expect
-      .poll(
-        async () => {
-          return window.evaluate(async (marker) => {
-            const wv = document.querySelector("webview") as Electron.WebviewTag | null;
-            if (!wv) return false;
-            try {
-              await wv.executeJavaScript(`console.error("${marker}-runtime")`);
-              return true;
-            } catch {
-              return false;
-            }
-          }, CAPTURE_MARKER);
-        },
-        { timeout: T_LONG }
-      )
-      .toBe(true);
-
-    // The captured row surfaces in the Console tab panel.
     await expect(window.locator(`text=${CAPTURE_MARKER}-runtime`).first()).toBeVisible({
       timeout: T_LONG,
     });

@@ -3,7 +3,6 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
-import { createRef } from "react";
 import { useDevPreviewConsoleCapture } from "../useDevPreviewConsoleCapture";
 import { useConsoleCaptureStore } from "@/store/consoleCaptureStore";
 import { usePanelStore } from "@/store";
@@ -18,11 +17,12 @@ let clearedCb: ((p: { paneId: string; navigationGeneration: number }) => void) |
 const offMessage = vi.fn();
 const offCleared = vi.fn();
 
+const registerPanel = vi.fn(() => Promise.resolve());
 const startConsoleCapture = vi.fn(() => Promise.resolve());
 const stopConsoleCapture = vi.fn(() => Promise.resolve());
 
-function makeWebviewRef(): React.RefObject<Electron.WebviewTag | null> {
-  return createRef<Electron.WebviewTag>();
+function makeWebviewElement(getWebContentsId: () => number = () => WC_ID): Electron.WebviewTag {
+  return { getWebContentsId } as unknown as Electron.WebviewTag;
 }
 
 function row(overrides: Partial<SerializedConsoleRow> = {}): SerializedConsoleRow {
@@ -49,6 +49,7 @@ beforeEach(() => {
   usePanelStore.setState({ panelsById: {} });
   (window as unknown as { electron: Record<string, unknown> }).electron = {
     webview: {
+      registerPanel,
       startConsoleCapture,
       stopConsoleCapture,
       onConsoleMessage: vi.fn((cb: (r: SerializedConsoleRow) => void) => {
@@ -70,42 +71,63 @@ afterEach(() => {
 });
 
 describe("useDevPreviewConsoleCapture", () => {
-  it("starts capture when the webview is ready and not evicted", () => {
-    const ref = makeWebviewRef();
-    ref.current = { getWebContentsId: () => WC_ID } as unknown as Electron.WebviewTag;
-    renderHook(() => useDevPreviewConsoleCapture(PANE_ID, ref, true, false));
-    expect(startConsoleCapture).toHaveBeenCalledWith(WC_ID, PANE_ID);
+  it("registers the panel before starting capture when the webview is mounted and not evicted", async () => {
+    const webview = makeWebviewElement();
+    renderHook(() => useDevPreviewConsoleCapture(PANE_ID, webview, false, false));
+    expect(registerPanel).toHaveBeenCalledWith(WC_ID, PANE_ID);
+    await waitFor(() => expect(startConsoleCapture).toHaveBeenCalledWith(WC_ID, PANE_ID));
+    const registerCallOrder = registerPanel.mock.invocationCallOrder[0];
+    const startCallOrder = startConsoleCapture.mock.invocationCallOrder[0];
+    expect(registerCallOrder).toBeDefined();
+    expect(startCallOrder).toBeDefined();
+    expect(registerCallOrder!).toBeLessThan(startCallOrder!);
   });
 
-  it("does not start capture before the webview is ready", () => {
-    const ref = makeWebviewRef();
-    ref.current = { getWebContentsId: () => WC_ID } as unknown as Electron.WebviewTag;
-    renderHook(() => useDevPreviewConsoleCapture(PANE_ID, ref, false, false));
+  it("does not start capture before the webview is mounted", () => {
+    renderHook(() => useDevPreviewConsoleCapture(PANE_ID, null, false, false));
     expect(startConsoleCapture).not.toHaveBeenCalled();
   });
 
   it("does not start capture while evicted", () => {
-    const ref = makeWebviewRef();
-    ref.current = { getWebContentsId: () => WC_ID } as unknown as Electron.WebviewTag;
-    renderHook(() => useDevPreviewConsoleCapture(PANE_ID, ref, true, true));
+    const webview = makeWebviewElement();
+    renderHook(() => useDevPreviewConsoleCapture(PANE_ID, webview, true, true));
     expect(startConsoleCapture).not.toHaveBeenCalled();
   });
 
   it("does not start capture when getWebContentsId throws", () => {
-    const ref = makeWebviewRef();
-    ref.current = {
-      getWebContentsId: () => {
-        throw new Error("not attached");
-      },
-    } as unknown as Electron.WebviewTag;
-    renderHook(() => useDevPreviewConsoleCapture(PANE_ID, ref, true, false));
+    const webview = makeWebviewElement(() => {
+      throw new Error("not attached");
+    });
+    renderHook(() => useDevPreviewConsoleCapture(PANE_ID, webview, true, false));
     expect(startConsoleCapture).not.toHaveBeenCalled();
   });
 
+  it("retries when the ready signal changes after getWebContentsId initially throws", async () => {
+    const getWebContentsId = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        throw new Error("not attached");
+      })
+      .mockReturnValue(WC_ID);
+    const webview = makeWebviewElement(getWebContentsId);
+    const { rerender } = renderHook(
+      ({ ready }: { ready: boolean }) =>
+        useDevPreviewConsoleCapture(PANE_ID, webview, ready, false),
+      { initialProps: { ready: false } }
+    );
+
+    expect(startConsoleCapture).not.toHaveBeenCalled();
+
+    rerender({ ready: true });
+    expect(registerPanel).toHaveBeenCalledWith(WC_ID, PANE_ID);
+    await waitFor(() => expect(startConsoleCapture).toHaveBeenCalledWith(WC_ID, PANE_ID));
+  });
+
   it("stops capture and unsubscribes on unmount", async () => {
-    const ref = makeWebviewRef();
-    ref.current = { getWebContentsId: () => WC_ID } as unknown as Electron.WebviewTag;
-    const { unmount } = renderHook(() => useDevPreviewConsoleCapture(PANE_ID, ref, true, false));
+    const webview = makeWebviewElement();
+    const { unmount } = renderHook(() =>
+      useDevPreviewConsoleCapture(PANE_ID, webview, true, false)
+    );
     unmount();
     expect(offMessage).toHaveBeenCalledTimes(1);
     expect(offCleared).toHaveBeenCalledTimes(1);
@@ -114,23 +136,21 @@ describe("useDevPreviewConsoleCapture", () => {
   });
 
   it("stops capture when the panel becomes evicted", async () => {
-    const ref = makeWebviewRef();
-    ref.current = { getWebContentsId: () => WC_ID } as unknown as Electron.WebviewTag;
+    const webview = makeWebviewElement();
     const { rerender } = renderHook(
       ({ evicted }: { evicted: boolean }) =>
-        useDevPreviewConsoleCapture(PANE_ID, ref, true, evicted),
+        useDevPreviewConsoleCapture(PANE_ID, webview, true, evicted),
       { initialProps: { evicted: false } }
     );
-    expect(startConsoleCapture).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(startConsoleCapture).toHaveBeenCalledTimes(1));
 
     rerender({ evicted: true });
     await waitFor(() => expect(stopConsoleCapture).toHaveBeenCalledWith(WC_ID, PANE_ID));
   });
 
   it("routes only matching-pane console messages into the store", () => {
-    const ref = makeWebviewRef();
-    ref.current = { getWebContentsId: () => WC_ID } as unknown as Electron.WebviewTag;
-    renderHook(() => useDevPreviewConsoleCapture(PANE_ID, ref, true, false));
+    const webview = makeWebviewElement();
+    renderHook(() => useDevPreviewConsoleCapture(PANE_ID, webview, true, false));
 
     messageCb?.(row({ paneId: "other-pane" }));
     expect(useConsoleCaptureStore.getState().getMessages(PANE_ID)).toHaveLength(0);
@@ -140,9 +160,8 @@ describe("useDevPreviewConsoleCapture", () => {
   });
 
   it("marks rows stale only for the matching pane on context-cleared", () => {
-    const ref = makeWebviewRef();
-    ref.current = { getWebContentsId: () => WC_ID } as unknown as Electron.WebviewTag;
-    renderHook(() => useDevPreviewConsoleCapture(PANE_ID, ref, true, false));
+    const webview = makeWebviewElement();
+    renderHook(() => useDevPreviewConsoleCapture(PANE_ID, webview, true, false));
 
     messageCb?.(row({ paneId: PANE_ID, navigationGeneration: 1 }));
     clearedCb?.({ paneId: "other-pane", navigationGeneration: 2 });
@@ -153,9 +172,10 @@ describe("useDevPreviewConsoleCapture", () => {
   });
 
   it("drops the pane's buffered rows when the panel is deleted (no longer registered)", () => {
-    const ref = makeWebviewRef();
-    ref.current = { getWebContentsId: () => WC_ID } as unknown as Electron.WebviewTag;
-    const { unmount } = renderHook(() => useDevPreviewConsoleCapture(PANE_ID, ref, true, false));
+    const webview = makeWebviewElement();
+    const { unmount } = renderHook(() =>
+      useDevPreviewConsoleCapture(PANE_ID, webview, true, false)
+    );
     messageCb?.(row({ paneId: PANE_ID }));
     expect(useConsoleCaptureStore.getState().getMessages(PANE_ID)).toHaveLength(1);
 
@@ -169,9 +189,10 @@ describe("useDevPreviewConsoleCapture", () => {
     usePanelStore.setState({
       panelsById: { [PANE_ID]: { id: PANE_ID } as unknown as TerminalInstance },
     });
-    const ref = makeWebviewRef();
-    ref.current = { getWebContentsId: () => WC_ID } as unknown as Electron.WebviewTag;
-    const { unmount } = renderHook(() => useDevPreviewConsoleCapture(PANE_ID, ref, true, false));
+    const webview = makeWebviewElement();
+    const { unmount } = renderHook(() =>
+      useDevPreviewConsoleCapture(PANE_ID, webview, true, false)
+    );
     messageCb?.(row({ paneId: PANE_ID }));
     expect(useConsoleCaptureStore.getState().getMessages(PANE_ID)).toHaveLength(1);
 
