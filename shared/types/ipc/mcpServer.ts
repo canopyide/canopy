@@ -50,6 +50,39 @@ export type McpAuditResult =
  */
 export type McpConfirmationDecision = "approved" | "rejected" | "timeout";
 
+export type McpAuditSeverity = "info" | "notice" | "warning" | "error" | "critical";
+
+export const MCP_AUDIT_SCHEMA_VERSION = 1;
+
+const SEVERITY_BY_RESULT: Record<McpAuditResult, McpAuditSeverity> = {
+  success: "info",
+  dedup: "info",
+  "confirmation-pending": "info",
+  unauthorized: "error",
+  error: "error",
+};
+
+const SEVERITY_BY_ERROR_CODE: Record<string, McpAuditSeverity> = {
+  USER_REJECTED: "warning",
+  CONFIRMATION_TIMEOUT: "warning",
+  CONFIRMATION_REQUIRED: "info",
+  TIER_NOT_PERMITTED: "error",
+  ELICITATION_FAILED: "error",
+  PRE_AUTH_FAILED: "error",
+  EXECUTION_ERROR: "critical",
+  DISPATCH_THREW: "critical",
+};
+
+export function computeMcpAuditSeverity(
+  result: McpAuditResult,
+  errorCode?: string
+): McpAuditSeverity {
+  if (errorCode !== undefined && errorCode in SEVERITY_BY_ERROR_CODE) {
+    return SEVERITY_BY_ERROR_CODE[errorCode]!;
+  }
+  return SEVERITY_BY_RESULT[result];
+}
+
 export interface McpAuditRecord {
   id: string;
   timestamp: number;
@@ -69,6 +102,14 @@ export interface McpAuditRecord {
    * non-unauthorized outcomes.
    */
   tierHint?: "workbench" | "action" | "system" | null;
+  /** Schema version for forward-compatible audit record parsing. */
+  schemaVersion: number;
+  /** Severity computed from `result` and `errorCode` at write time. */
+  severity: McpAuditSeverity;
+  /** Correlation key for future assistant turn linkage. */
+  turnId?: string;
+  /** Number of times this event repeated within the coalesce window. Absent when the event occurred once. */
+  repeatCount?: number;
 }
 
 /** Minimum and maximum values accepted for the configurable ring-buffer cap. */
