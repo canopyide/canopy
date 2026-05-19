@@ -545,8 +545,27 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     const nonMain = deferredWorktrees.filter(
       (w) => w.id !== mainWorktree?.id && w.id !== integrationWorktree?.id
     );
-    return computeChipCounts(nonMain, derivedMetaMap, activeWorktreeId);
-  }, [deferredWorktrees, derivedMetaMap, mainWorktree, integrationWorktree, activeWorktreeId]);
+    return computeChipCounts(nonMain, derivedMetaMap, activeWorktreeId, {
+      query,
+      statusFilters,
+      typeFilters,
+      githubFilters,
+      sessionFilters,
+      activityFilters,
+    });
+  }, [
+    deferredWorktrees,
+    derivedMetaMap,
+    mainWorktree,
+    integrationWorktree,
+    activeWorktreeId,
+    query,
+    statusFilters,
+    typeFilters,
+    githubFilters,
+    sessionFilters,
+    activityFilters,
+  ]);
 
   const mainWorktreeAggregateCounts = useMemo(() => {
     const nonMainCount = deferredWorktrees.length - 1 - (integrationWorktree ? 1 : 0);

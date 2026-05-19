@@ -254,8 +254,26 @@ export function WorktreeOverviewModal({
 
   const chipCounts = useMemo(() => {
     const candidates = hideMainWorktree ? worktrees.filter((w) => !w.isMainWorktree) : worktrees;
-    return computeChipCounts(candidates, derivedMetaMap, activeWorktreeId);
-  }, [worktrees, derivedMetaMap, activeWorktreeId, hideMainWorktree]);
+    return computeChipCounts(candidates, derivedMetaMap, activeWorktreeId, {
+      query,
+      statusFilters,
+      typeFilters,
+      githubFilters,
+      sessionFilters,
+      activityFilters,
+    });
+  }, [
+    worktrees,
+    derivedMetaMap,
+    activeWorktreeId,
+    hideMainWorktree,
+    query,
+    statusFilters,
+    typeFilters,
+    githubFilters,
+    sessionFilters,
+    activityFilters,
+  ]);
 
   // Compute aggregate statistics from derivedMetaMap
   const aggregateStats = useMemo(() => {
