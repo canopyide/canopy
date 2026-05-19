@@ -79,11 +79,13 @@ const {
   };
   const terminalStoreState = {
     activeDockTerminalId: undefined as string | undefined,
+    panelsById: {} as Record<string, unknown>,
     getTerminal: vi.fn(),
     setBrowserUrl: vi.fn(),
     setBrowserHistory: vi.fn(),
     setBrowserZoom: vi.fn(),
     setDevPreviewConsoleOpen: vi.fn(),
+    setDevPreviewConsoleTab: vi.fn(),
     setViewportPreset: vi.fn(),
     setDevPreviewScrollPosition: vi.fn(
       (_id: string, position: { url: string; scrollY: number } | undefined) => {
@@ -312,6 +314,10 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         onNavigationBlocked: vi.fn(() => vi.fn()),
         setLifecycleState: vi.fn().mockResolvedValue(undefined),
         getScrollPosition: vi.fn().mockResolvedValue(0),
+        startConsoleCapture: vi.fn(() => Promise.resolve()),
+        stopConsoleCapture: vi.fn(() => Promise.resolve()),
+        onConsoleMessage: vi.fn(() => vi.fn()),
+        onConsoleContextCleared: vi.fn(() => vi.fn()),
       },
     };
   });
@@ -651,6 +657,10 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         onNavigationBlocked: vi.fn(() => vi.fn()),
         setLifecycleState: vi.fn().mockResolvedValue(undefined),
         getScrollPosition,
+        startConsoleCapture: vi.fn(() => Promise.resolve()),
+        stopConsoleCapture: vi.fn(() => Promise.resolve()),
+        onConsoleMessage: vi.fn(() => vi.fn()),
+        onConsoleContextCleared: vi.fn(() => vi.fn()),
       },
     };
 
@@ -702,6 +712,10 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         onNavigationBlocked: vi.fn(() => vi.fn()),
         setLifecycleState: vi.fn().mockResolvedValue(undefined),
         getScrollPosition,
+        startConsoleCapture: vi.fn(() => Promise.resolve()),
+        stopConsoleCapture: vi.fn(() => Promise.resolve()),
+        onConsoleMessage: vi.fn(() => vi.fn()),
+        onConsoleContextCleared: vi.fn(() => vi.fn()),
       },
     };
 
@@ -743,6 +757,10 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         onNavigationBlocked: vi.fn(() => vi.fn()),
         setLifecycleState: vi.fn().mockResolvedValue(undefined),
         getScrollPosition,
+        startConsoleCapture: vi.fn(() => Promise.resolve()),
+        stopConsoleCapture: vi.fn(() => Promise.resolve()),
+        onConsoleMessage: vi.fn(() => vi.fn()),
+        onConsoleContextCleared: vi.fn(() => vi.fn()),
       },
     };
 

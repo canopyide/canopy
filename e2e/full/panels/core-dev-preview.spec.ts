@@ -157,12 +157,12 @@ test.describe.serial("Core: Dev Preview", () => {
       }
 
       await consoleToggle.click();
-      await expect(window.locator('[aria-label="Hide Terminal"]')).toBeVisible({
+      await expect(consoleToggle).toHaveAttribute("aria-expanded", "true", {
         timeout: T_SHORT,
       });
 
-      await window.locator('[aria-label="Hide Terminal"]').click();
-      await expect(window.locator('[aria-label="Show Terminal"]')).toBeVisible({
+      await consoleToggle.click();
+      await expect(consoleToggle).toHaveAttribute("aria-expanded", "false", {
         timeout: T_SHORT,
       });
     });
@@ -253,14 +253,14 @@ server.listen(0, '127.0.0.1', () => {
       const { window } = ctx;
 
       // Open console drawer
-      const consoleToggle = window.locator('[aria-label="Show Terminal"]').first();
+      const consoleToggle = window.locator(SEL.devPreview.consoleToggle).first();
       if (!(await consoleToggle.isVisible({ timeout: T_SHORT }).catch(() => false))) {
         test.skip();
         return;
       }
       await consoleToggle.click();
 
-      await expect(window.locator('[aria-label="Hide Terminal"]')).toBeVisible({
+      await expect(consoleToggle).toHaveAttribute("aria-expanded", "true", {
         timeout: T_SHORT,
       });
 
@@ -285,8 +285,8 @@ server.listen(0, '127.0.0.1', () => {
         .toContain("localhost:");
 
       // Close the console drawer
-      await window.locator('[aria-label="Hide Terminal"]').click();
-      await expect(window.locator('[aria-label="Show Terminal"]').first()).toBeVisible({
+      await consoleToggle.click();
+      await expect(consoleToggle).toHaveAttribute("aria-expanded", "false", {
         timeout: T_SHORT,
       });
     });

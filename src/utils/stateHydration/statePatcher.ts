@@ -36,6 +36,7 @@ export interface AddTerminalArgs extends AddPanelOptionsBase {
   devServerError?: { type: string; message: string } | null;
   devServerTerminalId?: string | null;
   devPreviewConsoleOpen?: boolean;
+  devPreviewConsoleTab?: "output" | "console";
   viewportPreset?: string;
   viewportRotated?: boolean;
   viewportDpr?: 1 | 2 | 3;
@@ -64,6 +65,7 @@ export interface SavedTerminalData {
   createdAt?: number;
   devCommand?: string;
   devPreviewConsoleOpen?: boolean;
+  devPreviewConsoleTab?: "output" | "console";
   viewportPreset?: string;
   viewportRotated?: boolean;
   viewportDpr?: 1 | 2 | 3;
@@ -223,6 +225,11 @@ export function buildArgsForBackendTerminal(
     browserHistory: isDevPreview ? saved.browserHistory : undefined,
     browserZoom: isDevPreview ? saved.browserZoom : undefined,
     devPreviewConsoleOpen: isDevPreview ? saved.devPreviewConsoleOpen : undefined,
+    devPreviewConsoleTab:
+      isDevPreview &&
+      (saved.devPreviewConsoleTab === "console" || saved.devPreviewConsoleTab === "output")
+        ? saved.devPreviewConsoleTab
+        : undefined,
     devPreviewScrollPosition: isDevPreview ? saved.devPreviewScrollPosition : undefined,
     exitBehavior: saved.exitBehavior,
     agentSessionId: backendTerminal.agentSessionId ?? saved.agentSessionId,
@@ -284,6 +291,11 @@ export function buildArgsForReconnectedFallback(
     browserHistory: isDevPreview ? saved.browserHistory : undefined,
     browserZoom: isDevPreview ? saved.browserZoom : undefined,
     devPreviewConsoleOpen: isDevPreview ? saved.devPreviewConsoleOpen : undefined,
+    devPreviewConsoleTab:
+      isDevPreview &&
+      (saved.devPreviewConsoleTab === "console" || saved.devPreviewConsoleTab === "output")
+        ? saved.devPreviewConsoleTab
+        : undefined,
     devPreviewScrollPosition: isDevPreview ? saved.devPreviewScrollPosition : undefined,
     exitBehavior: saved.exitBehavior,
     agentSessionId: reconnectedTerminal.agentSessionId ?? saved.agentSessionId,
