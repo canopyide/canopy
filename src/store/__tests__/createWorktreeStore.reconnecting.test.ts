@@ -1,8 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWorktreeStore } from "@/store/createWorktreeStore";
-import type { WorktreeSnapshot } from "@shared/types";
+import type { WorktreeSnapshot, WorktreeEventVersion } from "@shared/types";
 
-function makeSnapshot(id: string): WorktreeSnapshot {
+// Host-minted versions are now `(epoch, seq)` tuples (#8403). Each fresh store
+// starts at epoch "" so the first non-empty epoch is accepted as a transition;
+// within an epoch the higher seq wins.
+const TEST_EPOCH = "test-epoch";
+let _seq = 0;
+function nextV(): WorktreeEventVersion {
+  return { epoch: TEST_EPOCH, seq: ++_seq };
+}
+
+function makeSnapshot(id: string, overrides: Partial<WorktreeSnapshot> = {}): WorktreeSnapshot {
   return {
     id,
     name: id,
@@ -15,6 +24,7 @@ function makeSnapshot(id: string): WorktreeSnapshot {
     summary: "",
     mood: null,
     gitDir: "",
+    ...overrides,
   } as unknown as WorktreeSnapshot;
 }
 
@@ -35,7 +45,7 @@ describe("createWorktreeStore — reconnecting state", () => {
     store.getState().setReconnecting(true);
     expect(store.getState().isReconnecting).toBe(true);
 
-    const version = store.getState().nextVersion();
+    const version = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1")], version);
 
     expect(store.getState().isReconnecting).toBe(false);
@@ -47,7 +57,7 @@ describe("createWorktreeStore — reconnecting state", () => {
     const store = createWorktreeStore();
 
     // Advance version by applying a first snapshot
-    const v1 = store.getState().nextVersion();
+    const v1 = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1")], v1);
 
     // Start reconnecting, then deliver a stale snapshot (lower/equal version)
@@ -61,11 +71,11 @@ describe("createWorktreeStore — reconnecting state", () => {
     const store = createWorktreeStore();
 
     // Seed with a worktree so applyUpdate can modify it
-    const v1 = store.getState().nextVersion();
+    const v1 = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1")], v1);
 
     store.getState().setReconnecting(true);
-    const v2 = store.getState().nextVersion();
+    const v2 = nextV();
     store.getState().applyUpdate(makeSnapshot("wt-1"), v2);
 
     expect(store.getState().isReconnecting).toBe(true);
@@ -140,7 +150,7 @@ describe("createWorktreeStore — reconnectingAt timestamp", () => {
     store.getState().setReconnecting(true);
     expect(store.getState().reconnectingAt).not.toBeNull();
 
-    const version = store.getState().nextVersion();
+    const version = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1")], version);
 
     expect(store.getState().reconnectingAt).toBeNull();
@@ -150,12 +160,12 @@ describe("createWorktreeStore — reconnectingAt timestamp", () => {
     const store = createWorktreeStore();
 
     // Hydrate so the value-equality early-return path triggers on the next call
-    const v1 = store.getState().nextVersion();
+    const v1 = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1")], v1);
     store.getState().setReconnecting(true);
     expect(store.getState().reconnectingAt).not.toBeNull();
 
-    const v2 = store.getState().nextVersion();
+    const v2 = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1")], v2);
 
     expect(store.getState().reconnectingAt).toBeNull();
@@ -174,7 +184,7 @@ describe("createWorktreeStore — reconnectingAt timestamp", () => {
   it("stale-version applySnapshot does NOT clear reconnectingAt", () => {
     const store = createWorktreeStore();
 
-    const v1 = store.getState().nextVersion();
+    const v1 = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1")], v1);
 
     store.getState().setReconnecting(true);
@@ -189,11 +199,11 @@ describe("createWorktreeStore — applySnapshot identity preservation", () => {
   it("preserves Map identity when every snapshot is value-equal", () => {
     const store = createWorktreeStore();
 
-    const v1 = store.getState().nextVersion();
+    const v1 = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1"), makeSnapshot("wt-2")], v1);
     const firstMap = store.getState().worktrees;
 
-    const v2 = store.getState().nextVersion();
+    const v2 = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1"), makeSnapshot("wt-2")], v2);
 
     expect(store.getState().worktrees).toBe(firstMap);
@@ -203,14 +213,14 @@ describe("createWorktreeStore — applySnapshot identity preservation", () => {
   it("rebuilds the Map when any snapshot's value differs", () => {
     const store = createWorktreeStore();
 
-    const v1 = store.getState().nextVersion();
+    const v1 = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1")], v1);
     const firstMap = store.getState().worktrees;
 
     const changed = makeSnapshot("wt-1");
     (changed as { branch: string }).branch = "feature/x";
 
-    const v2 = store.getState().nextVersion();
+    const v2 = nextV();
     store.getState().applySnapshot([changed], v2);
 
     expect(store.getState().worktrees).not.toBe(firstMap);
@@ -220,11 +230,11 @@ describe("createWorktreeStore — applySnapshot identity preservation", () => {
   it("rebuilds when the snapshot set has different size", () => {
     const store = createWorktreeStore();
 
-    const v1 = store.getState().nextVersion();
+    const v1 = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1")], v1);
     const firstMap = store.getState().worktrees;
 
-    const v2 = store.getState().nextVersion();
+    const v2 = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1"), makeSnapshot("wt-2")], v2);
 
     expect(store.getState().worktrees).not.toBe(firstMap);
@@ -237,14 +247,14 @@ describe("createWorktreeStore — applySnapshot identity preservation", () => {
     const initial = makeSnapshot("wt-1");
     (initial as { prCiStatus?: string }).prCiStatus = "PENDING";
 
-    const v1 = store.getState().nextVersion();
+    const v1 = nextV();
     store.getState().applySnapshot([initial], v1);
     const firstMap = store.getState().worktrees;
 
     const updated = makeSnapshot("wt-1");
     (updated as { prCiStatus?: string }).prCiStatus = "SUCCESS";
 
-    const v2 = store.getState().nextVersion();
+    const v2 = nextV();
     store.getState().applySnapshot([updated], v2);
 
     // snapshotsEqual must include prCiStatus so the Map is rebuilt and
@@ -256,11 +266,11 @@ describe("createWorktreeStore — applySnapshot identity preservation", () => {
   it("rebuilds when an id is replaced (same size, different keys)", () => {
     const store = createWorktreeStore();
 
-    const v1 = store.getState().nextVersion();
+    const v1 = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1")], v1);
     const firstMap = store.getState().worktrees;
 
-    const v2 = store.getState().nextVersion();
+    const v2 = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-2")], v2);
 
     expect(store.getState().worktrees).not.toBe(firstMap);
@@ -273,7 +283,7 @@ describe("createWorktreeStore — applySnapshot identity preservation", () => {
     expect(store.getState().isInitialized).toBe(false);
     const initialMap = store.getState().worktrees;
 
-    const v1 = store.getState().nextVersion();
+    const v1 = nextV();
     store.getState().applySnapshot([], v1);
 
     expect(store.getState().isInitialized).toBe(true);
@@ -283,10 +293,10 @@ describe("createWorktreeStore — applySnapshot identity preservation", () => {
   it("advances version on a no-op snapshot", () => {
     const store = createWorktreeStore();
 
-    const v1 = store.getState().nextVersion();
+    const v1 = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1")], v1);
 
-    const v2 = store.getState().nextVersion();
+    const v2 = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1")], v2);
 
     expect(store.getState().version).toBe(v2);
@@ -295,11 +305,11 @@ describe("createWorktreeStore — applySnapshot identity preservation", () => {
   it("clears isReconnecting on a no-op snapshot", () => {
     const store = createWorktreeStore();
 
-    const v1 = store.getState().nextVersion();
+    const v1 = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1")], v1);
     store.getState().setReconnecting(true);
 
-    const v2 = store.getState().nextVersion();
+    const v2 = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1")], v2);
 
     expect(store.getState().isReconnecting).toBe(false);
@@ -311,7 +321,7 @@ describe("createWorktreeStore — fatal error state", () => {
     const store = createWorktreeStore();
 
     // Simulate a fully-hydrated store before the host crashes
-    const v1 = store.getState().nextVersion();
+    const v1 = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1")], v1);
     store.getState().setReconnecting(true);
     expect(store.getState().isInitialized).toBe(true);
@@ -347,11 +357,107 @@ describe("createWorktreeStore — fatal error state", () => {
     expect(store.getState().error).toBe("host crashed");
     expect(store.getState().isInitialized).toBe(false);
 
-    const version = store.getState().nextVersion();
+    const version = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1")], version);
 
     expect(store.getState().error).toBeNull();
     expect(store.getState().isInitialized).toBe(true);
     expect(store.getState().worktrees.size).toBe(1);
+  });
+});
+
+describe("createWorktreeStore — host epoch transitions (#8403)", () => {
+  it("a snapshot from a new epoch replaces state even with a lower seq", () => {
+    const store = createWorktreeStore();
+    store.getState().applySnapshot([makeSnapshot("wt-old")], { epoch: "epoch-A", seq: 50 });
+    expect(store.getState().worktrees.has("wt-old")).toBe(true);
+
+    // Host restarted: new epoch, seq reset to 1. Must still win.
+    store.getState().applySnapshot([makeSnapshot("wt-new")], { epoch: "epoch-B", seq: 1 });
+
+    expect(store.getState().worktrees.has("wt-old")).toBe(false);
+    expect(store.getState().worktrees.has("wt-new")).toBe(true);
+    expect(store.getState().version).toEqual({ epoch: "epoch-B", seq: 1 });
+  });
+
+  it("a stale same-epoch update is rejected (lower seq)", () => {
+    const store = createWorktreeStore();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], { epoch: "e", seq: 10 });
+
+    store.getState().applyUpdate(makeSnapshot("wt-1", { branch: "stale" }), { epoch: "e", seq: 9 });
+
+    expect(store.getState().worktrees.get("wt-1")?.branch).toBe("main");
+    expect(store.getState().version).toEqual({ epoch: "e", seq: 10 });
+  });
+
+  it("an update from a new epoch is always accepted", () => {
+    const store = createWorktreeStore();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], { epoch: "e1", seq: 99 });
+
+    store
+      .getState()
+      .applyUpdate(makeSnapshot("wt-1", { branch: "post-restart" }), { epoch: "e2", seq: 1 });
+
+    expect(store.getState().worktrees.get("wt-1")?.branch).toBe("post-restart");
+    expect(store.getState().version).toEqual({ epoch: "e2", seq: 1 });
+  });
+});
+
+describe("createWorktreeStore — removal tombstones (#8403)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("a late same-epoch update cannot resurrect a removed worktree within the TTL", () => {
+    const store = createWorktreeStore();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], { epoch: "e", seq: 1 });
+
+    store.getState().applyRemove("wt-1", { epoch: "e", seq: 2 });
+    expect(store.getState().worktrees.has("wt-1")).toBe(false);
+
+    // A buffered worktree-update for the just-removed id arrives late.
+    store.getState().applyUpdate(makeSnapshot("wt-1"), { epoch: "e", seq: 3 });
+
+    expect(store.getState().worktrees.has("wt-1")).toBe(false);
+  });
+
+  it("an update is accepted once the tombstone TTL has elapsed", () => {
+    const store = createWorktreeStore();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], { epoch: "e", seq: 1 });
+    store.getState().applyRemove("wt-1", { epoch: "e", seq: 2 });
+
+    vi.advanceTimersByTime(30_001);
+    store.getState().applyUpdate(makeSnapshot("wt-1"), { epoch: "e", seq: 3 });
+
+    expect(store.getState().worktrees.has("wt-1")).toBe(true);
+  });
+
+  it("an epoch transition clears tombstones so a fresh-host update lands", () => {
+    const store = createWorktreeStore();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], { epoch: "e1", seq: 1 });
+    store.getState().applyRemove("wt-1", { epoch: "e1", seq: 2 });
+    expect(store.getState().tombstones.size).toBe(1);
+
+    // New host run re-creates the same id — must not be suppressed.
+    store.getState().applyUpdate(makeSnapshot("wt-1"), { epoch: "e2", seq: 1 });
+
+    expect(store.getState().worktrees.has("wt-1")).toBe(true);
+    expect(store.getState().tombstones.size).toBe(0);
+  });
+
+  it("a snapshot clears all tombstones (host is authoritative)", () => {
+    const store = createWorktreeStore();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], { epoch: "e", seq: 1 });
+    store.getState().applyRemove("wt-1", { epoch: "e", seq: 2 });
+    expect(store.getState().tombstones.size).toBe(1);
+
+    store.getState().applySnapshot([makeSnapshot("wt-2")], { epoch: "e", seq: 3 });
+
+    expect(store.getState().tombstones.size).toBe(0);
   });
 });

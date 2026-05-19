@@ -410,6 +410,7 @@ export type {
   WorkspaceHostEvent,
   WorkspaceClientConfig,
   WorktreeSnapshot,
+  WorktreeEventVersion,
   MonitorConfig as WorkspaceMonitorConfig,
   CreateWorktreeOptions as WorkspaceCreateWorktreeOptions,
   BranchInfo as WorkspaceBranchInfo,
