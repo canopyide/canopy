@@ -1,4 +1,4 @@
-import { GitHubAuth, GITHUB_API_TIMEOUT_MS, captureAuthMetadata } from "./GitHubAuth.js";
+import { GitHubAuth, GITHUB_API_TIMEOUT_MS, rateLimitAwareFetch } from "./GitHubAuth.js";
 import { PRIMARY_RESET_BUFFER_MS } from "./GitHubRateLimitService.js";
 import type { GitHubRateLimitDetails } from "../../../../electron/types/index.js";
 
@@ -7,7 +7,7 @@ export async function fetchRateLimitDetails(): Promise<GitHubRateLimitDetails | 
   if (!token) return null;
 
   try {
-    const response = await fetch("https://api.github.com/rate_limit", {
+    const response = await rateLimitAwareFetch("https://api.github.com/rate_limit", {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/vnd.github.v3+json",
@@ -15,8 +15,6 @@ export async function fetchRateLimitDetails(): Promise<GitHubRateLimitDetails | 
       signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
     });
     if (!response.ok) return null;
-
-    captureAuthMetadata(response.headers);
 
     const body = (await response.json()) as {
       resources?: Record<

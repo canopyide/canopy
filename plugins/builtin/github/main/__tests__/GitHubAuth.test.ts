@@ -1,11 +1,19 @@
-import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import {
   GitHubAuth,
+  GITHUB_FETCH_CONCURRENCY,
+  _getGithubFetchSemaphoreForTests,
+  _resetGithubFetchSemaphoreForTests,
   captureAuthMetadata,
   getLastAuthMetadata,
   parseSsoHeader,
   parseSsoKind,
+  rateLimitAwareFetch,
 } from "../GitHubAuth.js";
+import {
+  gitHubRateLimitService,
+  GitHubRateLimitError,
+} from "../GitHubRateLimitService.js";
 
 function createStorage() {
   let token: string | undefined;
@@ -24,6 +32,8 @@ describe("GitHubAuth", () => {
   beforeEach(() => {
     GitHubAuth.initializeStorage(createStorage());
     GitHubAuth.clearToken();
+    gitHubRateLimitService._resetForTests();
+    _resetGithubFetchSemaphoreForTests();
   });
 
   it("clears cached user info when memory token changes", () => {
@@ -334,14 +344,21 @@ describe("GitHubAuth", () => {
     GitHubAuth.setToken("ghp_stale00000000000000000000000000000000000");
 
     let resolveFetch: ((value: Response) => void) | null = null;
-    (globalThis as unknown as { fetch: Mock }).fetch = vi.fn().mockImplementation(
+    const mockFetch = vi.fn().mockImplementation(
       () =>
         new Promise<Response>((resolve) => {
           resolveFetch = resolve;
         })
     );
+    (globalThis as unknown as { fetch: Mock }).fetch = mockFetch;
 
     const validatePromise = GitHubAuth.validate("ghp_stale00000000000000000000000000000000000");
+
+    // Wait until validate has acquired its semaphore slot and dispatched the
+    // mock fetch. The semaphore introduces one microtask between `validate()`
+    // and the fetch call, so without this we'd rotate the token before the
+    // mock's executor had a chance to capture `resolveFetch`.
+    await vi.waitFor(() => expect(mockFetch).toHaveBeenCalled());
 
     // Token rotates before the stale response lands.
     GitHubAuth.setToken("ghp_fresh00000000000000000000000000000000000");
@@ -360,6 +377,121 @@ describe("GitHubAuth", () => {
 
     // Stale SSO URL must not leak into current metadata.
     expect(getLastAuthMetadata()?.ssoUrl).toBeUndefined();
+  });
+
+  describe("rateLimitAwareFetch — preflight circuit-breaker", () => {
+    afterEach(() => {
+      gitHubRateLimitService._resetForTests();
+    });
+
+    it("throws GitHubRateLimitError when the service is currently blocked, without making a network request", async () => {
+      const mockFetch = vi.fn();
+      (globalThis as unknown as { fetch: Mock }).fetch = mockFetch;
+
+      // Seed an active secondary block.
+      gitHubRateLimitService.update(new Headers({ "retry-after": "30" }), 429);
+
+      await expect(rateLimitAwareFetch("https://api.github.com/user")).rejects.toBeInstanceOf(
+        GitHubRateLimitError
+      );
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("bypasses the preflight when daintreeSkipRateLimitPreflight is true", async () => {
+      gitHubRateLimitService.update(new Headers({ "retry-after": "30" }), 429);
+
+      const mockFetch = vi.fn().mockResolvedValue(
+        new Response('{"login":"user"}', {
+          status: 200,
+          headers: { "x-oauth-scopes": "repo" },
+        })
+      );
+      (globalThis as unknown as { fetch: Mock }).fetch = mockFetch;
+
+      const response = await rateLimitAwareFetch("https://api.github.com/user", {
+        daintreeSkipRateLimitPreflight: true,
+      });
+      expect(response.status).toBe(200);
+      expect(mockFetch).toHaveBeenCalled();
+    });
+
+    it("strips daintreeSkipRateLimitPreflight before forwarding init to fetch", async () => {
+      const mockFetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+      (globalThis as unknown as { fetch: Mock }).fetch = mockFetch;
+
+      await rateLimitAwareFetch("https://api.github.com/user", {
+        method: "GET",
+        daintreeSkipRateLimitPreflight: true,
+      });
+
+      const forwardedInit = mockFetch.mock.calls[0][1] as Record<string, unknown>;
+      expect(forwardedInit.daintreeSkipRateLimitPreflight).toBeUndefined();
+      expect(forwardedInit.method).toBe("GET");
+    });
+  });
+
+  describe("rateLimitAwareFetch — concurrency cap", () => {
+    afterEach(() => {
+      gitHubRateLimitService._resetForTests();
+    });
+
+    it("queues calls past the concurrency limit instead of dispatching all at once", async () => {
+      const pending: Array<(response: Response) => void> = [];
+      const mockFetch = vi.fn().mockImplementation(
+        () =>
+          new Promise<Response>((resolve) => {
+            pending.push(resolve);
+          })
+      );
+      (globalThis as unknown as { fetch: Mock }).fetch = mockFetch;
+
+      const totalRequests = GITHUB_FETCH_CONCURRENCY + 2;
+      const inflight = Array.from({ length: totalRequests }, (_, i) =>
+        rateLimitAwareFetch(`https://api.github.com/user?n=${i}`)
+      );
+
+      // Wait until the semaphore has granted exactly GITHUB_FETCH_CONCURRENCY
+      // slots — the remaining 2 must still be queued, not in flight.
+      await vi.waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(GITHUB_FETCH_CONCURRENCY);
+      });
+      expect(_getGithubFetchSemaphoreForTests().active).toBe(GITHUB_FETCH_CONCURRENCY);
+      expect(_getGithubFetchSemaphoreForTests().pending).toBe(
+        totalRequests - GITHUB_FETCH_CONCURRENCY
+      );
+
+      // Resolve one in-flight request; the next queued call should dispatch.
+      pending[0]!(new Response(null, { status: 200 }));
+      await vi.waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledTimes(GITHUB_FETCH_CONCURRENCY + 1);
+      });
+
+      // Drain the rest. Each resolved request may dispatch a new queued
+      // call (adding to `pending`), so loop until every in-flight finishes.
+      let nextIndex = 1;
+      while (nextIndex < totalRequests) {
+        if (nextIndex < pending.length) {
+          pending[nextIndex]!(new Response(null, { status: 200 }));
+          nextIndex++;
+        } else {
+          await new Promise((resolve) => setImmediate(resolve));
+        }
+      }
+      await Promise.all(inflight);
+      expect(_getGithubFetchSemaphoreForTests().active).toBe(0);
+      expect(_getGithubFetchSemaphoreForTests().pending).toBe(0);
+    });
+
+    it("releases the semaphore slot when fetch throws", async () => {
+      const mockFetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+      (globalThis as unknown as { fetch: Mock }).fetch = mockFetch;
+
+      const before = _getGithubFetchSemaphoreForTests().active;
+      await expect(rateLimitAwareFetch("https://api.github.com/user")).rejects.toThrow(
+        "ECONNREFUSED"
+      );
+      expect(_getGithubFetchSemaphoreForTests().active).toBe(before);
+    });
   });
 
   it("validate returns empty scopes for fine-grained PAT with empty x-oauth-scopes header", async () => {

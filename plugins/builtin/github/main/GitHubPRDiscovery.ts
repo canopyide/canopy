@@ -1,4 +1,4 @@
-import { GitHubAuth, GITHUB_API_TIMEOUT_MS } from "./GitHubAuth.js";
+import { GitHubAuth, GITHUB_API_TIMEOUT_MS, rateLimitAwareFetch } from "./GitHubAuth.js";
 import { buildBatchPRQuery } from "./GitHubQueries.js";
 import { gitHubRateLimitService } from "./GitHubRateLimitService.js";
 import { parseGitHubError, rateLimitMessage, rateLimitMeta } from "./GitHubErrors.js";
@@ -252,16 +252,10 @@ async function probePRChange(
   }
 
   try {
-    const response = await fetch(url, {
+    const response = await rateLimitAwareFetch(url, {
       headers,
       signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
     });
-
-    try {
-      gitHubRateLimitService.update(response.headers, response.status);
-    } catch {
-      // Rate-limit bookkeeping must never break the probe.
-    }
 
     if (response.status === 304 && getETagCacheVersion() === versionAtStart) {
       return "unchanged";
@@ -302,16 +296,10 @@ async function probeBranchPRListChange(
   }
 
   try {
-    const response = await fetch(url, {
+    const response = await rateLimitAwareFetch(url, {
       headers,
       signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
     });
-
-    try {
-      gitHubRateLimitService.update(response.headers, response.status);
-    } catch {
-      // Rate-limit bookkeeping must never break the probe.
-    }
 
     if (response.status === 304 && getETagCacheVersion() === versionAtStart) {
       return "unchanged";

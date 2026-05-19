@@ -1,9 +1,17 @@
 import { graphql } from "@octokit/graphql";
-import { gitHubRateLimitService } from "./GitHubRateLimitService.js";
+import { gitHubRateLimitService, GitHubRateLimitError } from "./GitHubRateLimitService.js";
 import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
 
 export const GITHUB_API_TIMEOUT_MS = 15_000;
 export const GITHUB_AUTH_TIMEOUT_MS = 10_000;
+
+/**
+ * Process-wide ceiling on concurrent GitHub API requests passing through
+ * {@link rateLimitAwareFetch}. GitHub's secondary rate limit kicks in at
+ * 100 concurrent requests per token; capping at 8 keeps us well clear even
+ * across multiple processes that share the same token.
+ */
+export const GITHUB_FETCH_CONCURRENCY = 8;
 
 /**
  * SSO re-authorization URLs returned via `X-GitHub-SSO` expire one hour
@@ -341,6 +349,11 @@ export class GitHubAuth {
           "X-GitHub-Api-Version": "2022-11-28",
         },
         signal: AbortSignal.timeout(GITHUB_AUTH_TIMEOUT_MS),
+        // Validation must succeed even when a previous token left the
+        // circuit-breaker in a blocked state — otherwise the user can never
+        // recover by entering a new token. The semaphore still applies so
+        // a flurry of validate calls can't drown background work.
+        daintreeSkipRateLimitPreflight: true,
       });
 
       if (!response.ok) {
@@ -424,68 +437,185 @@ export class GitHubAuth {
 }
 
 /**
+ * FIFO async semaphore. `acquire()` resolves to a `release` callback the
+ * caller must invoke (in `finally`) to free the slot. Queued waiters are
+ * resolved in order — never starved — and `release()` is idempotent so a
+ * double-call from an over-eager `finally` is harmless.
+ */
+class Semaphore {
+  private active = 0;
+  private readonly waiters: Array<() => void> = [];
+
+  constructor(private readonly max: number) {}
+
+  acquire(): Promise<() => void> {
+    return new Promise((resolve) => {
+      const grant = (): void => {
+        let released = false;
+        const release = (): void => {
+          if (released) return;
+          released = true;
+          this.active--;
+          const next = this.waiters.shift();
+          if (next) {
+            this.active++;
+            next();
+          }
+        };
+        resolve(release);
+      };
+      if (this.active < this.max) {
+        this.active++;
+        grant();
+      } else {
+        this.waiters.push(grant);
+      }
+    });
+  }
+
+  /** Test-only inspector. */
+  _getActiveForTests(): number {
+    return this.active;
+  }
+
+  /** Test-only inspector. */
+  _getPendingForTests(): number {
+    return this.waiters.length;
+  }
+
+  /** Test-only reset. Drops any queued waiters and zeroes the active count. */
+  _resetForTests(): void {
+    this.active = 0;
+    this.waiters.length = 0;
+  }
+}
+
+const githubFetchSemaphore = new Semaphore(GITHUB_FETCH_CONCURRENCY);
+
+/** Test-only helper for inspecting the shared semaphore in unit tests. */
+export function _getGithubFetchSemaphoreForTests(): {
+  active: number;
+  pending: number;
+  max: number;
+} {
+  return {
+    active: githubFetchSemaphore._getActiveForTests(),
+    pending: githubFetchSemaphore._getPendingForTests(),
+    max: GITHUB_FETCH_CONCURRENCY,
+  };
+}
+
+/** Test-only helper to reset the shared semaphore between unit tests. */
+export function _resetGithubFetchSemaphoreForTests(): void {
+  githubFetchSemaphore._resetForTests();
+}
+
+/**
  * Custom fetch wrapper used by `@octokit/graphql` via
- * `graphql.defaults({ request: { fetch } })`.
+ * `graphql.defaults({ request: { fetch } })` and by all direct REST callers
+ * in this package. Two protections live here:
+ *
+ * 1. Preflight circuit-breaker: if the rate-limit service is currently
+ *    blocking requests, throw {@link GitHubRateLimitError} before opening
+ *    a socket. Bypassable via `init.daintreeSkipRateLimitPreflight = true`
+ *    for the token-validation path, which must work even when stale state
+ *    from a previous token would otherwise gate it.
+ * 2. Process-wide concurrency cap of {@link GITHUB_FETCH_CONCURRENCY} —
+ *    bursty callers (PR discovery, batch checks) queue rather than fan out
+ *    100+ concurrent requests and trip GitHub's secondary limit.
  *
  * `@octokit/graphql` v9 resolves to the parsed `data.data` payload — the raw
  * `Response` (and its headers) are dropped before the promise resolves.
  * Installing this fetch wrapper is the only reliable place to observe GitHub
  * rate-limit headers on every response (both 2xx and error paths).
  *
- * The wrapper is intentionally two-phase: a synchronous header-only
+ * Response handling is intentionally two-phase: a synchronous header-only
  * classification runs first so the response can return to Octokit
  * immediately, and the body-text classification (used to detect secondary
  * rate limits that GitHub reports via a 403 body rather than a `retry-after`
  * header) runs off the critical path. This prevents a stuck response body
  * from blocking every GitHub call behind the fetch wrapper.
  */
-async function rateLimitAwareFetch(
+export interface RateLimitAwareFetchInit extends RequestInit {
+  /**
+   * Skip the preflight circuit-breaker check for this request. Used by
+   * `GitHubAuth.validate()` so a user explicitly testing a token isn't
+   * blocked by stale rate-limit state from a previous token. The semaphore
+   * is still honored.
+   */
+  daintreeSkipRateLimitPreflight?: boolean;
+}
+
+export async function rateLimitAwareFetch(
   input: RequestInfo | URL,
-  init?: RequestInit
+  init?: RateLimitAwareFetchInit
 ): Promise<Response> {
-  const versionAtStart = GitHubAuth.getTokenVersion();
-  const response = await globalThis.fetch(input, init);
+  const skipPreflight = init?.daintreeSkipRateLimitPreflight === true;
 
-  const requestId = response.headers.get("x-github-request-id") ?? undefined;
-
-  // Phase 1 — header-only classification runs immediately so the Response
-  // can flow back to Octokit without waiting on the body.
-  try {
-    gitHubRateLimitService.update(response.headers, response.status, undefined, requestId);
-  } catch {
-    // Rate-limit bookkeeping must never break the underlying request.
-  }
-
-  // Late-arriving response from a previous token: discard so it can't
-  // clobber `lastAuthMetadata` set by the currently-configured token.
-  // Mirrors the same guard in `GitHubTokenHealthService.runCheck()`.
-  if (GitHubAuth.getTokenVersion() === versionAtStart) {
-    try {
-      captureAuthMetadata(response.headers);
-    } catch {
-      // Metadata capture must never break the underlying request.
+  if (!skipPreflight) {
+    const block = gitHubRateLimitService.shouldBlockRequest();
+    if (block.blocked && block.reason && block.resumeAt) {
+      throw new GitHubRateLimitError(block.reason, block.resumeAt);
     }
   }
 
-  // Phase 2 — secondary-limit fallback classification when the 403/429
-  // response carries no `retry-after` but explains the block in its body.
-  // Scheduled off the hot path; any failures are swallowed.
-  if (!response.ok && (response.status === 403 || response.status === 429)) {
-    void response
-      .clone()
-      .text()
-      .then((bodyText) => {
-        try {
-          gitHubRateLimitService.update(response.headers, response.status, bodyText, requestId);
-        } catch {
-          // Swallow — see Phase 1 comment.
-        }
-      })
-      .catch(() => {
-        // Cloning can fail on aborted streams; header-only classification
-        // is already safe.
-      });
+  // Strip the custom property before forwarding so `globalThis.fetch`
+  // doesn't see an unknown init field.
+  let fetchInit: RequestInit | undefined = init;
+  if (init && "daintreeSkipRateLimitPreflight" in init) {
+    const { daintreeSkipRateLimitPreflight: _ignored, ...rest } = init;
+    void _ignored;
+    fetchInit = rest;
   }
 
-  return response;
+  const release = await githubFetchSemaphore.acquire();
+  const versionAtStart = GitHubAuth.getTokenVersion();
+  try {
+    const response = await globalThis.fetch(input, fetchInit);
+
+    const requestId = response.headers.get("x-github-request-id") ?? undefined;
+
+    // Phase 1 — header-only classification runs immediately so the Response
+    // can flow back to Octokit without waiting on the body.
+    try {
+      gitHubRateLimitService.update(response.headers, response.status, undefined, requestId);
+    } catch {
+      // Rate-limit bookkeeping must never break the underlying request.
+    }
+
+    // Late-arriving response from a previous token: discard so it can't
+    // clobber `lastAuthMetadata` set by the currently-configured token.
+    // Mirrors the same guard in `GitHubTokenHealthService.runCheck()`.
+    if (GitHubAuth.getTokenVersion() === versionAtStart) {
+      try {
+        captureAuthMetadata(response.headers);
+      } catch {
+        // Metadata capture must never break the underlying request.
+      }
+    }
+
+    // Phase 2 — secondary-limit fallback classification when the 403/429
+    // response carries no `retry-after` but explains the block in its body.
+    // Scheduled off the hot path; any failures are swallowed.
+    if (!response.ok && (response.status === 403 || response.status === 429)) {
+      void response
+        .clone()
+        .text()
+        .then((bodyText) => {
+          try {
+            gitHubRateLimitService.update(response.headers, response.status, bodyText, requestId);
+          } catch {
+            // Swallow — see Phase 1 comment.
+          }
+        })
+        .catch(() => {
+          // Cloning can fail on aborted streams; header-only classification
+          // is already safe.
+        });
+    }
+
+    return response;
+  } finally {
+    release();
+  }
 }

@@ -14,6 +14,10 @@ export const PRIMARY_RESET_BUFFER_MS = 7_000;
 // no primary-quota signal, matching GitHub's documented minimum.
 const SECONDARY_FALLBACK_PAUSE_MS = 60_000;
 
+// Ceiling on the jittered exponential backoff applied after repeated
+// secondary-limit hits. Keeps the wait bounded even if the limit persists.
+const SECONDARY_BACKOFF_MAX_MS = 5 * 60 * 1000;
+
 // Sentinel key used for blocks that aren't tied to a specific
 // `x-ratelimit-resource` bucket — secondary (abuse-detection) blocks and
 // primary blocks where the response header is absent.
@@ -37,6 +41,10 @@ type StateChangeListener = (state: GitHubRateLimitPayload) => void;
 class GitHubRateLimitServiceImpl {
   private readonly states = new Map<string, BlockState>();
   private readonly listeners = new Set<StateChangeListener>();
+  // Consecutive secondary-limit hits since the last `clear()` or 2xx response.
+  // Drives jittered exponential backoff when GitHub returns a 403/429 without
+  // an explicit `retry-after` header.
+  private consecutiveSecondaryHits = 0;
 
   /**
    * Register a subscriber that fires on every state transition (entering a
@@ -75,6 +83,7 @@ class GitHubRateLimitServiceImpl {
   update(headers: HeadersLike, status: number, bodyText?: string, requestId?: string): void {
     const retryAfter = parseRetryAfter(headers.get("retry-after"));
     if (retryAfter !== null) {
+      this.consecutiveSecondaryHits++;
       this.markBlocked("secondary", Date.now() + retryAfter * 1000, GLOBAL_RESOURCE_KEY, requestId);
       return;
     }
@@ -96,9 +105,10 @@ class GitHubRateLimitServiceImpl {
     }
 
     if ((status === 403 || status === 429) && looksLikeSecondaryLimit(bodyText)) {
+      this.consecutiveSecondaryHits++;
       this.markBlocked(
         "secondary",
-        Date.now() + SECONDARY_FALLBACK_PAUSE_MS,
+        Date.now() + this.computeSecondaryFallbackDelay(),
         GLOBAL_RESOURCE_KEY,
         requestId
       );
@@ -106,10 +116,31 @@ class GitHubRateLimitServiceImpl {
     }
 
     if (status >= 200 && status < 300 && remaining !== null && remaining > 0) {
+      this.consecutiveSecondaryHits = 0;
       if (headers.get("x-ratelimit-resource") !== null) {
         this.clearResource(resource);
       }
     }
+  }
+
+  /**
+   * Compute the wait duration for a fallback secondary-limit block (the
+   * 403/429 + body-classified path where GitHub gave us no `retry-after`).
+   * Applies full jitter on top of an exponential schedule that doubles per
+   * consecutive hit and caps at {@link SECONDARY_BACKOFF_MAX_MS}.
+   *
+   * Schedule: hit 1 → 60–120s, hit 2 → 120–180s, hit 3 → 240–300s,
+   * hit 4+ → capped at 5 min. The lower bound of 60s matches GitHub's
+   * documented minimum wait for headerless secondary blocks.
+   */
+  private computeSecondaryFallbackDelay(): number {
+    const k = Math.max(1, this.consecutiveSecondaryHits);
+    const base = Math.min(
+      SECONDARY_BACKOFF_MAX_MS,
+      SECONDARY_FALLBACK_PAUSE_MS * Math.pow(2, k - 1)
+    );
+    const jitter = Math.random() * SECONDARY_FALLBACK_PAUSE_MS;
+    return Math.min(SECONDARY_BACKOFF_MAX_MS, base + jitter);
   }
 
   /**
@@ -208,6 +239,7 @@ class GitHubRateLimitServiceImpl {
 
   /** Drop any active block (token change, fresh 2xx, manual reset). */
   clear(): void {
+    this.consecutiveSecondaryHits = 0;
     if (this.states.size === 0) return;
     this.states.clear();
     logInfo("GitHub rate limit cleared");
@@ -217,6 +249,12 @@ class GitHubRateLimitServiceImpl {
   /** Test-only helper. */
   _resetForTests(): void {
     this.states.clear();
+    this.consecutiveSecondaryHits = 0;
+  }
+
+  /** Test-only inspector. */
+  _getConsecutiveSecondaryHitsForTests(): number {
+    return this.consecutiveSecondaryHits;
   }
 
   private clearResource(resource: string): void {

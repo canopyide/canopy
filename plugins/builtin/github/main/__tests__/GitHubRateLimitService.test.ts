@@ -408,4 +408,107 @@ describe("GitHubRateLimitService", () => {
       expect(gitHubRateLimitService.shouldBlockRequest().blocked).toBe(true);
     });
   });
+
+  describe("jittered exponential backoff on consecutive secondary hits", () => {
+    it("increments consecutive-hits counter on retry-after secondary block", () => {
+      gitHubRateLimitService.update(makeHeaders({ "retry-after": "30" }), 429);
+      expect(gitHubRateLimitService._getConsecutiveSecondaryHitsForTests()).toBe(1);
+
+      gitHubRateLimitService.update(makeHeaders({ "retry-after": "30" }), 429);
+      expect(gitHubRateLimitService._getConsecutiveSecondaryHitsForTests()).toBe(2);
+    });
+
+    it("increments counter on body-classified secondary block", () => {
+      gitHubRateLimitService.update(
+        makeHeaders({}),
+        403,
+        "You have exceeded a secondary rate limit."
+      );
+      expect(gitHubRateLimitService._getConsecutiveSecondaryHitsForTests()).toBe(1);
+
+      gitHubRateLimitService.update(makeHeaders({}), 403, "abuse detection");
+      expect(gitHubRateLimitService._getConsecutiveSecondaryHitsForTests()).toBe(2);
+    });
+
+    it("applies exponential backoff on each consecutive body-classified secondary block", () => {
+      // Pin jitter to 0 so the lower bound is the bare exponential schedule.
+      const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
+      try {
+        gitHubRateLimitService.update(makeHeaders({}), 403, "secondary rate limit");
+        const hit1 = gitHubRateLimitService.shouldBlockRequest().resumeAt!;
+        const wait1 = hit1 - Date.now();
+        // Hit 1 base: 60s.
+        expect(wait1).toBeGreaterThanOrEqual(58_000);
+        expect(wait1).toBeLessThanOrEqual(62_000);
+
+        // Need to clear the block to register the next hit (otherwise
+        // the same global block is just refreshed in place).
+        gitHubRateLimitService._resetForTests();
+        // _resetForTests zeroes the counter, so re-seed to hit count 2.
+        gitHubRateLimitService.update(makeHeaders({}), 403, "secondary rate limit");
+        // Now we're at hit 1 after reset; do one more to reach hit 2.
+        gitHubRateLimitService.update(makeHeaders({}), 403, "secondary rate limit");
+        const hit2 = gitHubRateLimitService.shouldBlockRequest().resumeAt!;
+        const wait2 = hit2 - Date.now();
+        // Hit 2 base: 120s.
+        expect(wait2).toBeGreaterThanOrEqual(118_000);
+        expect(wait2).toBeLessThanOrEqual(122_000);
+      } finally {
+        randomSpy.mockRestore();
+      }
+    });
+
+    it("caps fallback delay at 5 minutes regardless of consecutive hit count", () => {
+      const randomSpy = vi.spyOn(Math, "random").mockReturnValue(1);
+      try {
+        // Force counter high.
+        for (let i = 0; i < 10; i++) {
+          gitHubRateLimitService.update(makeHeaders({}), 403, "secondary rate limit");
+        }
+        const resumeAt = gitHubRateLimitService.shouldBlockRequest().resumeAt!;
+        const wait = resumeAt - Date.now();
+        // Cap is 5 min = 300_000ms.
+        expect(wait).toBeLessThanOrEqual(300_500);
+      } finally {
+        randomSpy.mockRestore();
+      }
+    });
+
+    it("resets counter on clear()", () => {
+      gitHubRateLimitService.update(makeHeaders({ "retry-after": "30" }), 429);
+      expect(gitHubRateLimitService._getConsecutiveSecondaryHitsForTests()).toBe(1);
+
+      gitHubRateLimitService.clear();
+      expect(gitHubRateLimitService._getConsecutiveSecondaryHitsForTests()).toBe(0);
+    });
+
+    it("resets counter on a successful 2xx with remaining > 0", () => {
+      gitHubRateLimitService.update(makeHeaders({ "retry-after": "30" }), 429);
+      expect(gitHubRateLimitService._getConsecutiveSecondaryHitsForTests()).toBe(1);
+
+      gitHubRateLimitService.update(
+        makeHeaders({
+          "x-ratelimit-remaining": "4999",
+          "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + 3600),
+        }),
+        200
+      );
+
+      expect(gitHubRateLimitService._getConsecutiveSecondaryHitsForTests()).toBe(0);
+    });
+
+    it("honors explicit retry-after value without applying jitter override", () => {
+      const randomSpy = vi.spyOn(Math, "random").mockReturnValue(1);
+      try {
+        gitHubRateLimitService.update(makeHeaders({ "retry-after": "30" }), 429);
+        const resumeAt = gitHubRateLimitService.shouldBlockRequest().resumeAt!;
+        const wait = resumeAt - Date.now();
+        // Should be ~30s, not 60s+ from the jittered fallback.
+        expect(wait).toBeGreaterThan(25_000);
+        expect(wait).toBeLessThanOrEqual(30_500);
+      } finally {
+        randomSpy.mockRestore();
+      }
+    });
+  });
 });
