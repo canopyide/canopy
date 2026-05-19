@@ -65,13 +65,14 @@ export class SessionStore {
       if (!session) return;
       this.sessions.delete(sessionId);
       this.sessionTierMap.delete(sessionId);
+      // Revoke BEFORE deleting the WebContents pin so the lifecycle
+      // emitter can still resolve the pinned renderer and dispatch the
+      // `grant.revoked` event. The audit-record write tolerates a
+      // missing pin (it doesn't need one); the targeted `wc.send` does.
+      this.grantCache.revokeSession(sessionId, "session-idle");
       this.sessionWebContentsMap.delete(sessionId);
       this.sessionContextMap.delete(sessionId);
       this.clearDedupState(sessionId);
-      // Revoke through the audit-emitting path so the trail closes
-      // (`grant.revoked` with `session-idle` reason) instead of silently
-      // dropping the entries.
-      this.grantCache.revokeSession(sessionId, "session-idle");
       this.cleanupResourceSubscriptionsFn(sessionId);
       session.transport.close().catch(() => {
         // ignore close errors during idle timeout cleanup
@@ -94,10 +95,12 @@ export class SessionStore {
       if (!session) return;
       this.httpSessions.delete(sessionId);
       this.sessionTierMap.delete(sessionId);
+      // Revoke BEFORE deleting the WebContents pin — same reasoning
+      // as `createIdleTimer` above.
+      this.grantCache.revokeSession(sessionId, "session-idle");
       this.sessionWebContentsMap.delete(sessionId);
       this.sessionContextMap.delete(sessionId);
       this.clearDedupState(sessionId);
-      this.grantCache.revokeSession(sessionId, "session-idle");
       this.cleanupResourceSubscriptionsFn(sessionId);
       session.transport.close().catch(() => {
         // ignore close errors during idle timeout cleanup

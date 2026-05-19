@@ -1392,4 +1392,45 @@ describe("sessionServer grant cache fallback (#8442)", () => {
 
     sessionStore.grantCache.dispose();
   });
+
+  it("terminal.waitUntilIdle refreshes the grant TTL and resets idle timer on success", async () => {
+    const sessionStore = fakeSessionStore("workbench");
+    sessionStore.sessions.set("s", {
+      transport: {} as never,
+      idleTimer: setTimeout(() => {}, 1_000_000),
+    });
+    const resetIdle = sessionStore.resetIdleTimer as ReturnType<typeof vi.fn>;
+    resetIdle.mockClear();
+    sessionStore.grantCache.issueGrant("s", "terminal.waitUntilIdle");
+    const refreshSpy = vi.spyOn(sessionStore.grantCache, "refresh");
+
+    // waitUntilIdle is a main-process short-circuit, NOT a renderer
+    // dispatch — it has its own success-path block that must apply the
+    // grant-refresh + idle-timer reset.
+    const handleWaitUntilIdle = vi.fn().mockResolvedValue({
+      idleReason: "idle" as const,
+      durationMs: 1000,
+      finalState: "idle",
+    });
+    const dispatchAction = vi.fn();
+    const deps = fakeDeps({
+      sessionStore,
+      handleWaitUntilIdle,
+      dispatchAction,
+    });
+    const server = createSessionServer("s", deps);
+    await server.connect(makeMockTransport());
+
+    const result = (await callTool(server, {
+      name: "terminal.waitUntilIdle",
+      arguments: { terminalId: "t1", timeoutMs: 1000 },
+    })) as { isError?: boolean };
+
+    expect(result.isError).not.toBe(true);
+    expect(handleWaitUntilIdle).toHaveBeenCalled();
+    expect(dispatchAction).not.toHaveBeenCalled();
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(resetIdle).toHaveBeenCalledWith("s");
+    sessionStore.grantCache.dispose();
+  });
 });

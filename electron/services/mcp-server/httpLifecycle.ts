@@ -541,8 +541,15 @@ export class HttpLifecycle {
           this.deps.sessionStore.sessions.delete(sessionId);
         }
         this.deps.sessionStore.sessionTierMap.delete(sessionId);
+        // Revoke before deleting the WebContents pin so the lifecycle
+        // emitter can still find the pinned renderer for the
+        // `grant.revoked` push. The audit record carries the
+        // `session-ended` reason. Without this, grants accumulate
+        // forever in the cache across a long-running session lifecycle.
+        this.deps.sessionStore.grantCache.revokeSession(sessionId, "session-ended");
         this.deps.sessionStore.sessionWebContentsMap.delete(sessionId);
         this.deps.sessionStore.sessionContextMap.delete(sessionId);
+        this.deps.sessionStore.clearDedupState(sessionId);
         cleanupResourceSubscriptions(sessionId, this.deps.sessionStore);
       };
 
@@ -552,8 +559,12 @@ export class HttpLifecycle {
         clearTimeout(idleTimer);
         this.deps.sessionStore.sessions.delete(sessionId);
         this.deps.sessionStore.sessionTierMap.delete(sessionId);
+        // Same pin-before-clear ordering — the connect failure path
+        // mirrors normal close cleanup.
+        this.deps.sessionStore.grantCache.revokeSession(sessionId, "session-ended");
         this.deps.sessionStore.sessionWebContentsMap.delete(sessionId);
         this.deps.sessionStore.sessionContextMap.delete(sessionId);
+        this.deps.sessionStore.clearDedupState(sessionId);
         transport.onclose = undefined;
         await transport.close().catch(() => {});
         throw err;
@@ -657,8 +668,12 @@ export class HttpLifecycle {
         this.deps.sessionStore.httpSessions.delete(id);
       }
       this.deps.sessionStore.sessionTierMap.delete(id);
+      // Pin-before-revoke ordering identical to the SSE path above —
+      // see `transport.onclose` in the GET /sse branch.
+      this.deps.sessionStore.grantCache.revokeSession(id, "session-ended");
       this.deps.sessionStore.sessionWebContentsMap.delete(id);
       this.deps.sessionStore.sessionContextMap.delete(id);
+      this.deps.sessionStore.clearDedupState(id);
       cleanupResourceSubscriptions(id, this.deps.sessionStore);
     };
 
@@ -675,13 +690,17 @@ export class HttpLifecycle {
           this.deps.sessionStore.httpSessions.delete(id);
         }
         this.deps.sessionStore.sessionTierMap.delete(id);
+        this.deps.sessionStore.grantCache.revokeSession(id, "session-ended");
         this.deps.sessionStore.sessionWebContentsMap.delete(id);
         this.deps.sessionStore.sessionContextMap.delete(id);
+        this.deps.sessionStore.clearDedupState(id);
         cleanupResourceSubscriptions(id, this.deps.sessionStore);
       } else {
         this.deps.sessionStore.sessionTierMap.delete(newSessionId);
+        this.deps.sessionStore.grantCache.revokeSession(newSessionId, "session-ended");
         this.deps.sessionStore.sessionWebContentsMap.delete(newSessionId);
         this.deps.sessionStore.sessionContextMap.delete(newSessionId);
+        this.deps.sessionStore.clearDedupState(newSessionId);
         cleanupResourceSubscriptions(newSessionId, this.deps.sessionStore);
       }
       await transport.close().catch(() => {});

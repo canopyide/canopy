@@ -287,6 +287,20 @@ export function createSessionServer(sessionId: string, deps: SessionServerDeps):
           try {
             const result = await waitUntilIdle(args, extra.signal);
             outcome = { kind: "result", value: { ok: true, result } };
+            // Mirror the post-dispatch grant refresh in the main path:
+            // when the call was authorized by a grant, extend the TTL
+            // window and reset the idle timer on success. `waitUntilIdle`
+            // can run up to 30 minutes (longer than the 15-min grant
+            // window), so this is the only block that prevents the grant
+            // from silently aging out during a long wait (#8442).
+            if (grantIssuedAt !== undefined) {
+              sessionStore.grantCache.refresh(sessionId, actionId, grantIssuedAt);
+              if (sessionStore.sessions.has(sessionId)) {
+                sessionStore.resetIdleTimer(sessionId);
+              } else if (sessionStore.httpSessions.has(sessionId)) {
+                sessionStore.resetHttpIdleTimer(sessionId);
+              }
+            }
             return {
               content: [{ type: "text" as const, text: safeSerializeToolResult(result) }],
               structuredContent: result as unknown as Record<string, unknown>,
