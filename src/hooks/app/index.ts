@@ -17,3 +17,4 @@ export { useErrorRetry } from "./useErrorRetry";
 export { useActiveWorktreeSync } from "./useActiveWorktreeSync";
 export { useOrchestrationMilestones } from "./useOrchestrationMilestones";
 export { useAgentWaitingNudge } from "./useAgentWaitingNudge";
+export { useFocusOnActivateIntent } from "./useFocusOnActivateIntent";

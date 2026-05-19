@@ -93,7 +93,10 @@ interface ProjectState {
     options?: { skipDubiousOwnershipRetry?: boolean }
   ) => Promise<void>;
   createProjectFolder: (parentPath: string, folderName: string) => Promise<void>;
-  switchProject: (projectId: string) => Promise<void>;
+  switchProject: (
+    projectId: string,
+    options?: { focusIntent?: "focus-next-waiting" }
+  ) => Promise<void>;
   setWorktreeLoadError: (error: string | null) => void;
   updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
   enableInRepoSettings: (id: string) => Promise<Project>;
@@ -409,7 +412,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
     await get().addProjectByPath("");
   },
 
-  switchProject: async (projectId) => {
+  switchProject: async (projectId, options) => {
     if (get().currentProject?.id === projectId) return;
     const requestId = ++projectTransitionRequestId;
 
@@ -429,7 +432,7 @@ const createProjectStore: StateCreator<ProjectState> = (set, get) => ({
     // Fire-and-forget: the main process swaps WebContentsViews, so this
     // renderer gets detached. Don't write the response into stores — the
     // new view handles its own state independently.
-    projectClient.switch(projectId, outgoingState).catch((error) => {
+    projectClient.switch(projectId, outgoingState, options).catch((error) => {
       if (requestId !== projectTransitionRequestId) {
         return;
       }

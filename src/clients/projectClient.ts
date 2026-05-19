@@ -117,9 +117,13 @@ export const projectClient = {
     return window.electron.project.update(projectId, updates);
   },
 
-  switch: (projectId: string, outgoingState?: ProjectSwitchOutgoingState): Promise<Project> => {
+  switch: (
+    projectId: string,
+    outgoingState?: ProjectSwitchOutgoingState,
+    options?: { focusIntent?: "focus-next-waiting" }
+  ): Promise<Project> => {
     invalidateCurrentCache();
-    return window.electron.project.switch(projectId, outgoingState);
+    return window.electron.project.switch(projectId, outgoingState, options);
   },
 
   /**

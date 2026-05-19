@@ -443,7 +443,11 @@ export interface ElectronAPI {
     add(path: string): Promise<Project>;
     remove(projectId: string): Promise<void>;
     update(projectId: string, updates: Partial<Project>): Promise<Project>;
-    switch(projectId: string, outgoingState?: ProjectSwitchOutgoingState): Promise<Project>;
+    switch(
+      projectId: string,
+      outgoingState?: ProjectSwitchOutgoingState,
+      options?: { focusIntent?: "focus-next-waiting" }
+    ): Promise<Project>;
     /**
      * Hover-prefetch trigger for the project switcher palette. Fire-and-forget:
      * the main process builds the `HydrateResult` for the given project and
@@ -463,6 +467,7 @@ export interface ElectronAPI {
     onWorktreeLoadStatus(
       callback: (payload: { projectId: string; worktreeLoadError: string | null }) => void
     ): () => void;
+    onFocusOnActivate(callback: (payload: { intent: "focus-next-waiting" }) => void): () => void;
     onUpdated(callback: (project: Project) => void): () => void;
     onRemoved(callback: (projectId: string) => void): () => void;
     getSettings(projectId: string): Promise<ProjectSettings>;

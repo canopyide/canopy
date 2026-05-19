@@ -137,6 +137,7 @@ export type BuiltInKeyAction =
   | "agent.terminal"
   | "agent.browser"
   | "agent.focusNextWaiting"
+  | "agent.focusNextWaitingGlobal"
   | "agent.focusNextWorking"
   | "agent.focusNextAgent"
   | "agent.focusPreviousAgent"
@@ -318,6 +319,7 @@ export const KEY_ACTION_VALUES: ReadonlySet<string> = new Set<string>([
   "agent.terminal",
   "agent.browser",
   "agent.focusNextWaiting",
+  "agent.focusNextWaitingGlobal",
   "agent.focusNextWorking",
   "agent.focusNextAgent",
   "agent.focusPreviousAgent",

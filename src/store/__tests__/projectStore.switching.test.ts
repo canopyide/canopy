@@ -140,7 +140,8 @@ describe("buildOutgoingState draft propagation (#4985)", () => {
 
     expect(projectClientMock.switch).toHaveBeenCalledWith(
       projectB.id,
-      expect.objectContaining({ draftInputs: {} })
+      expect.objectContaining({ draftInputs: {} }),
+      undefined
     );
   });
 
@@ -175,7 +176,8 @@ describe("buildOutgoingState draft propagation (#4985)", () => {
 
     expect(projectClientMock.switch).toHaveBeenCalledWith(
       projectB.id,
-      expect.objectContaining({ draftInputs: { "terminal-1": "hello world" } })
+      expect.objectContaining({ draftInputs: { "terminal-1": "hello world" } }),
+      undefined
     );
   });
 
@@ -188,7 +190,7 @@ describe("buildOutgoingState draft propagation (#4985)", () => {
     await useProjectStore.getState().switchProject(projectB.id);
     await Promise.resolve();
 
-    expect(projectClientMock.switch).toHaveBeenCalledWith(projectB.id, undefined);
+    expect(projectClientMock.switch).toHaveBeenCalledWith(projectB.id, undefined, undefined);
   });
 });
 

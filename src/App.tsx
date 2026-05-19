@@ -61,6 +61,7 @@ import {
   useGettingStartedChecklist,
   useOrchestrationMilestones,
   useAgentWaitingNudge,
+  useFocusOnActivateIntent,
   useUnloadCleanup,
   useHomeDir,
   usePerformanceMonitors,
@@ -466,6 +467,12 @@ function App() {
     });
     return () => cancelAnimationFrame(id);
   }, []);
+  // Cross-project focus intent receiver. Subscribes unconditionally so the
+  // listener is registered before `notifyViewPainted` fires, then defers the
+  // local `agent.focusNextWaiting` dispatch until hydration completes (the
+  // paint signal arrives before panel state is loaded — a direct dispatch
+  // would silently no-op against an empty panelStore).
+  useFocusOnActivateIntent(isStateLoaded);
   // The skeleton is z-index 9999 and intercepts pointer events. The crash
   // recovery dialog is rendered before hydration completes, so without this
   // the dialog would be visible but unclickable until hydration finishes

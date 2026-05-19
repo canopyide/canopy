@@ -1230,8 +1230,9 @@ const api: ElectronAPI = {
 
     switch: (
       projectId: string,
-      outgoingState?: import("../shared/types/ipc/project.js").ProjectSwitchOutgoingState
-    ) => _unwrappingInvoke(CHANNELS.PROJECT_SWITCH, projectId, outgoingState),
+      outgoingState?: import("../shared/types/ipc/project.js").ProjectSwitchOutgoingState,
+      options?: { focusIntent?: "focus-next-waiting" }
+    ) => _unwrappingInvoke(CHANNELS.PROJECT_SWITCH, projectId, outgoingState, options),
 
     prefetchHydrate: (projectId: string) =>
       _unwrappingInvoke(CHANNELS.PROJECT_PREFETCH_HYDRATE, projectId),
@@ -1250,6 +1251,9 @@ const api: ElectronAPI = {
     onWorktreeLoadStatus: (
       callback: (payload: { projectId: string; worktreeLoadError: string | null }) => void
     ) => _typedOn(CHANNELS.PROJECT_WORKTREE_LOAD_STATUS, callback),
+
+    onFocusOnActivate: (callback: (payload: { intent: "focus-next-waiting" }) => void) =>
+      _typedOn(CHANNELS.PROJECT_FOCUS_ON_ACTIVATE, callback),
 
     onUpdated: (callback: (project: Project) => void) =>
       _typedOn(CHANNELS.PROJECT_UPDATED, callback),
