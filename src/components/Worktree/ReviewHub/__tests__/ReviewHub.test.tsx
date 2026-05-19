@@ -1747,7 +1747,7 @@ describe("ReviewHub", () => {
 
       expect(actionDispatchMock).toHaveBeenCalledWith(
         "app.settings.openTab",
-        { tab: "github" },
+        { tab: "code-forge", subtab: "github" },
         { source: "user" }
       );
     });

@@ -42,11 +42,11 @@ export function useGitHubTokenExpiryNotification(isTokenError: boolean): void {
         action: {
           label: "Open GitHub settings",
           actionId: "app.settings.openTab",
-          actionArgs: { tab: "github", sectionId: "github-token" },
+          actionArgs: { tab: "code-forge", subtab: "github", sectionId: "github-token" },
           onClick: () => {
             void actionService.dispatch(
               "app.settings.openTab",
-              { tab: "github", sectionId: "github-token" },
+              { tab: "code-forge", subtab: "github", sectionId: "github-token" },
               { source: "user" }
             );
           },

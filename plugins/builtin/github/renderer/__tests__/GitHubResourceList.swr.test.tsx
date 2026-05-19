@@ -912,7 +912,7 @@ describe("GitHubResourceList no-token empty state", () => {
 
     expect(dispatchMock).toHaveBeenCalledWith(
       "app.settings.openTab",
-      { tab: "github", sectionId: "github-token" },
+      { tab: "code-forge", subtab: "github", sectionId: "github-token" },
       { source: "user" }
     );
     expect(onClose).toHaveBeenCalled();

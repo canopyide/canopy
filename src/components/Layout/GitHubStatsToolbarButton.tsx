@@ -564,7 +564,7 @@ export const GitHubStatsToolbarButton = memo(
     const openSettingsForToken = useCallback(() => {
       void actionService.dispatch(
         "app.settings.openTab",
-        { tab: "github", sectionId: "github-token" },
+        { tab: "code-forge", subtab: "github", sectionId: "github-token" },
         { source: "user" }
       );
     }, []);
@@ -690,7 +690,7 @@ export const GitHubStatsToolbarButton = memo(
                   setIssueSearchQuery("");
                   void actionService.dispatch(
                     "app.settings.openTab",
-                    { tab: "github", sectionId: "github-token" },
+                    { tab: "code-forge", subtab: "github", sectionId: "github-token" },
                     { source: "user" }
                   );
                   return;
@@ -795,7 +795,7 @@ export const GitHubStatsToolbarButton = memo(
                   setPrSearchQuery("");
                   void actionService.dispatch(
                     "app.settings.openTab",
-                    { tab: "github", sectionId: "github-token" },
+                    { tab: "code-forge", subtab: "github", sectionId: "github-token" },
                     { source: "user" }
                   );
                   return;
