@@ -129,13 +129,22 @@ function createResponse(options: {
   status: number;
   statusText: string;
   json: () => Promise<unknown>;
+  headers?: Headers;
 }): Response {
+  const headers = options.headers ?? new Headers();
+  const body = JSON.stringify({});
   return {
     ok: options.ok,
     status: options.status,
     statusText: options.statusText,
     json: options.json,
-  } as Response;
+    headers,
+    clone() {
+      return {
+        text: () => Promise.resolve(body),
+      } as unknown as Response;
+    },
+  } as unknown as Response;
 }
 
 function createETagResponse(status: number, etag?: string): Response {
