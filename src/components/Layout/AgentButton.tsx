@@ -23,6 +23,7 @@ import { useWorktrees } from "@/hooks/useWorktrees";
 import { actionService } from "@/services/ActionService";
 import {
   ContextMenu,
+  ContextMenuActionItem,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuRadioGroup,
@@ -33,6 +34,7 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { MenuActionSourceContext, useMenuActionSource } from "@/components/ui/menu-source";
 import { ChevronDown, PanelBottom, Unplug } from "lucide-react";
 import type { BuiltInAgentId } from "@shared/config/agentIds";
 import type { AgentAvailabilityState, AgentState } from "@shared/types";
@@ -96,6 +98,7 @@ interface WorktreeMenuItemsProps {
 // treating the icon press as the row's primary selection event.
 function WorktreeMenuItems({ agentType, worktrees }: WorktreeMenuItemsProps) {
   const dockClickedRef = useRef(false);
+  const source = useMenuActionSource();
   return (
     <>
       {worktrees.map((wt) => {
@@ -113,7 +116,7 @@ function WorktreeMenuItems({ agentType, worktrees }: WorktreeMenuItemsProps) {
               void actionService.dispatch(
                 "agent.launch",
                 { agentId: agentType, worktreeId: wt.id, location: "grid" },
-                { source: "context-menu" }
+                { source }
               );
             }}
           >
@@ -130,7 +133,7 @@ function WorktreeMenuItems({ agentType, worktrees }: WorktreeMenuItemsProps) {
                 void actionService.dispatch(
                   "agent.launch",
                   { agentId: agentType, worktreeId: wt.id, location: "dock" },
-                  { source: "context-menu" }
+                  { source }
                 );
               }}
               className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-sm text-daintree-text/50 opacity-0 transition-opacity hover:bg-overlay-emphasis hover:text-daintree-text group-data-[highlighted]/wt-row:opacity-100"
@@ -386,30 +389,20 @@ export function AgentButton({
           </Tooltip>
         </ContextMenuTrigger>
         <ContextMenuContent className="max-h-[var(--radix-context-menu-content-available-height)] overflow-y-auto">
-          <ContextMenuItem
+          <ContextMenuActionItem
+            actionId="agent.launch"
+            args={{ agentId: type }}
             disabled={!isLaunchable}
-            onSelect={() =>
-              void actionService.dispatch(
-                "agent.launch",
-                { agentId: type },
-                { source: "context-menu" }
-              )
-            }
           >
             Launch {config.name}
-          </ContextMenuItem>
-          <ContextMenuItem
+          </ContextMenuActionItem>
+          <ContextMenuActionItem
+            actionId="agent.launch"
+            args={{ agentId: type, location: "dock" }}
             disabled={!isLaunchable}
-            onSelect={() =>
-              void actionService.dispatch(
-                "agent.launch",
-                { agentId: type, location: "dock" },
-                { source: "context-menu" }
-              )
-            }
           >
             Launch {config.name} in Dock
-          </ContextMenuItem>
+          </ContextMenuActionItem>
           {worktrees.length > 0 && (
             <ContextMenuSub>
               <ContextMenuSubTrigger disabled={!isLaunchable}>
@@ -425,28 +418,18 @@ export function AgentButton({
             <Unplug className="mr-2 h-3.5 w-3.5" />
             Unpin from Toolbar
           </ContextMenuItem>
-          <ContextMenuItem
-            onSelect={() =>
-              void actionService.dispatch(
-                "app.settings.openTab",
-                { tab: "agents", subtab: type, sectionId: "agents-presets" },
-                { source: "context-menu" }
-              )
-            }
+          <ContextMenuActionItem
+            actionId="app.settings.openTab"
+            args={{ tab: "agents", subtab: type, sectionId: "agents-presets" }}
           >
             Manage {config.name} Presets...
-          </ContextMenuItem>
-          <ContextMenuItem
-            onSelect={() =>
-              void actionService.dispatch(
-                "app.settings.openTab",
-                { tab: "agents", subtab: type },
-                { source: "context-menu" }
-              )
-            }
+          </ContextMenuActionItem>
+          <ContextMenuActionItem
+            actionId="app.settings.openTab"
+            args={{ tab: "agents", subtab: type }}
           >
             {config.name} Settings...
-          </ContextMenuItem>
+          </ContextMenuActionItem>
         </ContextMenuContent>
       </ContextMenu>
     );
@@ -642,30 +625,20 @@ export function AgentButton({
         </span>
       </ContextMenuTrigger>
       <ContextMenuContent className="max-h-[var(--radix-context-menu-content-available-height)] overflow-y-auto">
-        <ContextMenuItem
+        <ContextMenuActionItem
+          actionId="agent.launch"
+          args={{ agentId: type }}
           disabled={!isLaunchable}
-          onSelect={() =>
-            void actionService.dispatch(
-              "agent.launch",
-              { agentId: type },
-              { source: "context-menu" }
-            )
-          }
         >
           Launch {config.name}
-        </ContextMenuItem>
-        <ContextMenuItem
+        </ContextMenuActionItem>
+        <ContextMenuActionItem
+          actionId="agent.launch"
+          args={{ agentId: type, location: "dock" }}
           disabled={!isLaunchable}
-          onSelect={() =>
-            void actionService.dispatch(
-              "agent.launch",
-              { agentId: type, location: "dock" },
-              { source: "context-menu" }
-            )
-          }
         >
           Launch {config.name} in Dock
-        </ContextMenuItem>
+        </ContextMenuActionItem>
         {hasPresets && (
           <ContextMenuSub>
             <ContextMenuSubTrigger disabled={!isLaunchable}>
@@ -676,38 +649,48 @@ export function AgentButton({
               className="max-h-[var(--radix-context-menu-content-available-height)] overflow-y-auto"
             >
               <ContextMenuRadioGroup value={savedPresetId ?? ""}>
-                <ContextMenuRadioItem
-                  value=""
-                  onSelect={() => {
-                    void useAgentSettingsStore.getState().updateAgent(type, {
-                      presetId: undefined,
-                    });
-                    persistWorktreePick(undefined);
-                    void actionService.dispatch(
-                      "agent.launch",
-                      { agentId: type, presetId: null },
-                      { source: "context-menu" }
-                    );
-                  }}
-                >
-                  Agent default
-                </ContextMenuRadioItem>
-                {presets.map((preset) => (
-                  <ContextMenuRadioItem
-                    key={preset.id}
-                    value={preset.id}
-                    onSelect={() => {
-                      persistWorktreePick(preset.id);
-                      void actionService.dispatch(
-                        "agent.launch",
-                        { agentId: type, presetId: preset.id },
-                        { source: "context-menu" }
-                      );
-                    }}
-                  >
-                    {preset.name.replace(/^CCR:\s*/, "")}
-                  </ContextMenuRadioItem>
-                ))}
+                <MenuActionSourceContext.Consumer>
+                  {(menuSource) => (
+                    <ContextMenuRadioItem
+                      value=""
+                      onSelect={() => {
+                        void useAgentSettingsStore.getState().updateAgent(type, {
+                          presetId: undefined,
+                        });
+                        persistWorktreePick(undefined);
+                        void actionService.dispatch(
+                          "agent.launch",
+                          { agentId: type, presetId: null },
+                          { source: menuSource ?? "user" }
+                        );
+                      }}
+                    >
+                      Agent default
+                    </ContextMenuRadioItem>
+                  )}
+                </MenuActionSourceContext.Consumer>
+                <MenuActionSourceContext.Consumer>
+                  {(menuSource) => (
+                    <>
+                      {presets.map((preset) => (
+                        <ContextMenuRadioItem
+                          key={preset.id}
+                          value={preset.id}
+                          onSelect={() => {
+                            persistWorktreePick(preset.id);
+                            void actionService.dispatch(
+                              "agent.launch",
+                              { agentId: type, presetId: preset.id },
+                              { source: menuSource ?? "user" }
+                            );
+                          }}
+                        >
+                          {preset.name.replace(/^CCR:\s*/, "")}
+                        </ContextMenuRadioItem>
+                      ))}
+                    </>
+                  )}
+                </MenuActionSourceContext.Consumer>
               </ContextMenuRadioGroup>
             </ContextMenuSubContent>
           </ContextMenuSub>
@@ -727,28 +710,18 @@ export function AgentButton({
           <Unplug className="mr-2 h-3.5 w-3.5" />
           Unpin from Toolbar
         </ContextMenuItem>
-        <ContextMenuItem
-          onSelect={() =>
-            void actionService.dispatch(
-              "app.settings.openTab",
-              { tab: "agents", subtab: type, sectionId: "agents-presets" },
-              { source: "context-menu" }
-            )
-          }
+        <ContextMenuActionItem
+          actionId="app.settings.openTab"
+          args={{ tab: "agents", subtab: type, sectionId: "agents-presets" }}
         >
           Manage {config.name} Presets...
-        </ContextMenuItem>
-        <ContextMenuItem
-          onSelect={() =>
-            void actionService.dispatch(
-              "app.settings.openTab",
-              { tab: "agents", subtab: type },
-              { source: "context-menu" }
-            )
-          }
+        </ContextMenuActionItem>
+        <ContextMenuActionItem
+          actionId="app.settings.openTab"
+          args={{ tab: "agents", subtab: type }}
         >
           {config.name} Settings...
-        </ContextMenuItem>
+        </ContextMenuActionItem>
       </ContextMenuContent>
     </ContextMenu>
   );

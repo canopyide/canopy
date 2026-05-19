@@ -3,7 +3,6 @@ import { keybindingService, normalizeKeyForBinding } from "../services/Keybindin
 import { actionService } from "../services/ActionService";
 import { logError } from "@/utils/logger";
 import { dispatchEscape, hasHandlers } from "@/lib/escapeStack";
-import { openPanelContextMenu } from "../lib/panelContextMenu";
 import { usePanelStore } from "../store";
 
 /**
@@ -73,7 +72,11 @@ export function useGlobalKeybindings(enabled: boolean = true): void {
           e.stopPropagation();
           const focusedId = usePanelStore.getState().focusedId;
           if (focusedId) {
-            openPanelContextMenu(focusedId);
+            void actionService.dispatch(
+              "terminal.contextMenu",
+              { terminalId: focusedId },
+              { source: "keybinding" }
+            );
           }
           return;
         }

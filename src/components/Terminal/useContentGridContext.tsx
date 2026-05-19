@@ -35,14 +35,15 @@ import { useProjectBranding } from "@/hooks";
 import { useCliAvailabilityStore } from "@/store/cliAvailabilityStore";
 import type { CliAvailability } from "@shared/types";
 import {
+  ContextMenuActionItem,
   ContextMenuContent,
   ContextMenuCheckboxItem,
-  ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuSub,
   ContextMenuSubContent,
   ContextMenuSubTrigger,
 } from "@/components/ui/context-menu";
+import { MenuActionSourceContext } from "@/components/ui/menu-source";
 import { buildPanelDuplicateOptions } from "@/services/terminal/panelDuplicationService";
 import { getEffectiveAgentIds, getEffectiveAgentConfig } from "@shared/config/agentRegistry";
 import { getMaximizedGroupFocusTarget } from "./contentGridFocus";
@@ -501,7 +502,7 @@ export function useContentGridContext({
       void actionService.dispatch(
         "agent.launch",
         { agentId, location: "grid", cwd: defaultCwd || undefined },
-        { source: "context-menu" }
+        { source: "user" }
       );
     },
     [defaultCwd]
@@ -509,11 +510,7 @@ export function useContentGridContext({
 
   const handleGridLayoutChange = useCallback(
     (strategy: "automatic" | "fixed-columns" | "fixed-rows") => {
-      void actionService.dispatch(
-        "panel.gridLayout.setStrategy",
-        { strategy },
-        { source: "context-menu" }
-      );
+      void actionService.dispatch("panel.gridLayout.setStrategy", { strategy }, { source: "user" });
     },
     []
   );
@@ -745,54 +742,81 @@ export function useContentGridContext({
 
   const gridContextMenuContent = (
     <ContextMenuContent>
-      <ContextMenuItem onSelect={() => handleGridLaunch("terminal")}>New Terminal</ContextMenuItem>
-      <ContextMenuItem onSelect={() => handleGridLaunch("browser")}>New Browser</ContextMenuItem>
+      <ContextMenuActionItem
+        actionId="agent.launch"
+        args={{ agentId: "terminal", location: "grid", cwd: defaultCwd || undefined }}
+      >
+        New Terminal
+      </ContextMenuActionItem>
+      <ContextMenuActionItem
+        actionId="agent.launch"
+        args={{ agentId: "browser", location: "grid", cwd: defaultCwd || undefined }}
+      >
+        New Browser
+      </ContextMenuActionItem>
       {gridAgentMenuItems.length > 0 && <ContextMenuSeparator />}
       {gridAgentMenuItems.map((agent) => (
-        <ContextMenuItem
+        <ContextMenuActionItem
           key={agent.id}
+          actionId="agent.launch"
+          args={{ agentId: agent.id, location: "grid", cwd: defaultCwd || undefined }}
           disabled={!agent.canLaunch}
-          onSelect={() => handleGridLaunch(agent.id)}
         >
           New {agent.name}
-        </ContextMenuItem>
+        </ContextMenuActionItem>
       ))}
       <ContextMenuSeparator />
       <ContextMenuSub>
         <ContextMenuSubTrigger>Grid Layout</ContextMenuSubTrigger>
         <ContextMenuSubContent>
-          <ContextMenuCheckboxItem
-            checked={layoutConfig.strategy === "automatic"}
-            onSelect={() => handleGridLayoutChange("automatic")}
-          >
-            Automatic
-          </ContextMenuCheckboxItem>
-          <ContextMenuCheckboxItem
-            checked={layoutConfig.strategy === "fixed-columns"}
-            onSelect={() => handleGridLayoutChange("fixed-columns")}
-          >
-            Fixed Columns
-          </ContextMenuCheckboxItem>
-          <ContextMenuCheckboxItem
-            checked={layoutConfig.strategy === "fixed-rows"}
-            onSelect={() => handleGridLayoutChange("fixed-rows")}
-          >
-            Fixed Rows
-          </ContextMenuCheckboxItem>
+          <MenuActionSourceContext.Consumer>
+            {(menuSource) => (
+              <>
+                <ContextMenuCheckboxItem
+                  checked={layoutConfig.strategy === "automatic"}
+                  onSelect={() =>
+                    void actionService.dispatch(
+                      "panel.gridLayout.setStrategy",
+                      { strategy: "automatic" },
+                      { source: menuSource ?? "user" }
+                    )
+                  }
+                >
+                  Automatic
+                </ContextMenuCheckboxItem>
+                <ContextMenuCheckboxItem
+                  checked={layoutConfig.strategy === "fixed-columns"}
+                  onSelect={() =>
+                    void actionService.dispatch(
+                      "panel.gridLayout.setStrategy",
+                      { strategy: "fixed-columns" },
+                      { source: menuSource ?? "user" }
+                    )
+                  }
+                >
+                  Fixed Columns
+                </ContextMenuCheckboxItem>
+                <ContextMenuCheckboxItem
+                  checked={layoutConfig.strategy === "fixed-rows"}
+                  onSelect={() =>
+                    void actionService.dispatch(
+                      "panel.gridLayout.setStrategy",
+                      { strategy: "fixed-rows" },
+                      { source: menuSource ?? "user" }
+                    )
+                  }
+                >
+                  Fixed Rows
+                </ContextMenuCheckboxItem>
+              </>
+            )}
+          </MenuActionSourceContext.Consumer>
         </ContextMenuSubContent>
       </ContextMenuSub>
       <ContextMenuSeparator />
-      <ContextMenuItem
-        onSelect={() =>
-          void actionService.dispatch(
-            "app.settings.openTab",
-            { tab: "terminal" },
-            { source: "context-menu" }
-          )
-        }
-      >
+      <ContextMenuActionItem actionId="app.settings.openTab" args={{ tab: "terminal" }}>
         Terminal Settings...
-      </ContextMenuItem>
+      </ContextMenuActionItem>
     </ContextMenuContent>
   );
 

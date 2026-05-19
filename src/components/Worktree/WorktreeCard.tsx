@@ -338,7 +338,7 @@ export function WorktreeCard({
     void actionService.dispatch(
       "worktree.resource.resume",
       { worktreeId: worktree.id },
-      { source: "context-menu" }
+      { source: "user" }
     );
   };
 
@@ -346,7 +346,7 @@ export function WorktreeCard({
     void actionService.dispatch(
       "worktree.resource.pause",
       { worktreeId: worktree.id },
-      { source: "context-menu" }
+      { source: "user" }
     );
   };
 
@@ -354,7 +354,7 @@ export function WorktreeCard({
     void actionService.dispatch(
       "worktree.resource.connect",
       { worktreeId: worktree.id },
-      { source: "context-menu" }
+      { source: "user" }
     );
   };
 
@@ -368,7 +368,7 @@ export function WorktreeCard({
     void actionService.dispatch(
       "worktree.resource.provision",
       { worktreeId: worktree.id },
-      { source: "context-menu" }
+      { source: "user" }
     );
   };
 
@@ -376,16 +376,16 @@ export function WorktreeCard({
     void actionService.dispatch(
       "worktree.resource.status",
       { worktreeId: worktree.id },
-      { source: "context-menu" }
+      { source: "user" }
     );
   };
 
   const handleCopyContextFull = () => {
-    void copyContextWithFeedback(worktree.id);
+    void copyContextWithFeedback(worktree.id, "context-menu");
   };
 
   const handleCopyContextModified = () => {
-    void copyContextWithFeedback(worktree.id, { modified: true });
+    void copyContextWithFeedback(worktree.id, "context-menu", { modified: true });
   };
 
   const { copy: copyWorktreePath } = useCopyWithFeedback();
@@ -552,7 +552,10 @@ export function WorktreeCard({
 
   const handleOpenPanelPalette = () => {
     useWorktreeSelectionStore.getState().setActiveWorktree(worktree.id);
-    void actionService.dispatch("panel.palette", undefined, { source: "context-menu" });
+    void actionService.dispatch("panel.palette", undefined, {
+      // eslint-disable-next-line no-restricted-syntax -- context-menu-source: hardcoded because callback lives outside the ContextMenu Root (see #8322)
+      source: "context-menu",
+    });
   };
 
   const cardContent = (
@@ -746,6 +749,7 @@ export function WorktreeCard({
                   onOpenPanelPalette: () => {
                     useWorktreeSelectionStore.getState().setActiveWorktree(worktree.id);
                     void actionService.dispatch("panel.palette", undefined, {
+                      // eslint-disable-next-line no-restricted-syntax -- context-menu-source: hardcoded because callback lives outside the ContextMenu Root (see #8322)
                       source: "context-menu",
                     });
                   },

@@ -4,6 +4,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ShortcutRevealChip } from "@/components/ui/ShortcutRevealChip";
 import {
   ContextMenu,
+  ContextMenuActionItem,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
@@ -11,7 +12,6 @@ import {
 } from "@/components/ui/context-menu";
 import { createTooltipContent } from "@/lib/tooltipShortcut";
 import { useAriaKeyshortcuts, useKeybindingDisplay, useShortcutHintHover } from "@/hooks";
-import { actionService } from "@/services/ActionService";
 import { useToolbarPreferencesStore } from "@/store/toolbarPreferencesStore";
 
 const toolbarIconButtonClass = "toolbar-icon-button text-daintree-text relative";
@@ -74,42 +74,17 @@ export function ToolbarSettingsButton({
       </ContextMenuTrigger>
       <ContextMenuContent className="max-h-[var(--radix-context-menu-content-available-height)] overflow-y-auto">
         {SETTINGS_CONTEXT_MENU_TABS.map(({ tab, label }) => (
-          <ContextMenuItem
-            key={tab}
-            onSelect={() =>
-              void actionService.dispatch(
-                "app.settings.openTab",
-                { tab },
-                { source: "context-menu" }
-              )
-            }
-          >
+          <ContextMenuActionItem key={tab} actionId="app.settings.openTab" args={{ tab }}>
             {label}
-          </ContextMenuItem>
+          </ContextMenuActionItem>
         ))}
         <ContextMenuSeparator />
-        <ContextMenuItem
-          onSelect={() =>
-            void actionService.dispatch(
-              "app.settings.openTab",
-              { tab: "toolbar" },
-              { source: "context-menu" }
-            )
-          }
-        >
+        <ContextMenuActionItem actionId="app.settings.openTab" args={{ tab: "toolbar" }}>
           Customize Toolbar…
-        </ContextMenuItem>
-        <ContextMenuItem
-          onSelect={() =>
-            void actionService.dispatch(
-              "app.settings.openTab",
-              { tab: "troubleshooting" },
-              { source: "context-menu" }
-            )
-          }
-        >
+        </ContextMenuActionItem>
+        <ContextMenuActionItem actionId="app.settings.openTab" args={{ tab: "troubleshooting" }}>
           Troubleshooting
-        </ContextMenuItem>
+        </ContextMenuActionItem>
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={() => toggleButtonVisibility("settings", "right")}>
           <Unplug className="mr-2 h-3.5 w-3.5" />

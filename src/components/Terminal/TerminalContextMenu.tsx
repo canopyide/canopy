@@ -52,6 +52,7 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { MenuActionSourceContext, type MenuActionSourceValue } from "@/components/ui/menu-source";
 
 const ICON_CLASS = "w-3.5 h-3.5 mr-2 shrink-0";
 
@@ -96,6 +97,7 @@ export function TerminalContextMenu({
   // don't get the option, matching the gesture-level rules in
   // `multiSelectGestures`.
   const fleetEligible = isFleetArmEligible(terminal);
+  const sourceRef = useRef<MenuActionSourceValue>("user");
 
   const [hasSelection, setHasSelection] = useState(false);
   const [hoveredUrl, setHoveredUrl] = useState<string | null>(null);
@@ -146,7 +148,7 @@ export function TerminalContextMenu({
 
       if (actionId.startsWith("copy-link:")) {
         const url = actionId.slice("copy-link:".length);
-        void actionService.dispatch("terminal.copyLink", { url }, { source: "context-menu" });
+        void actionService.dispatch("terminal.copyLink", { url }, { source: sourceRef.current });
         return;
       }
 
@@ -155,7 +157,7 @@ export function TerminalContextMenu({
         void actionService.dispatch(
           "terminal.moveToWorktree",
           { terminalId, worktreeId },
-          { source: "context-menu" }
+          { source: sourceRef.current }
         );
         return;
       }
@@ -181,39 +183,47 @@ export function TerminalContextMenu({
           break;
         case "fleet-arm-worktree":
           void actionService.dispatch("terminal.bulkCommand", undefined, {
-            source: "context-menu",
+            source: sourceRef.current,
           });
           break;
         case "fleet-clear":
           void actionService.dispatch("terminal.disarmAll", undefined, {
-            source: "context-menu",
+            source: sourceRef.current,
           });
           break;
         case "copy":
-          void actionService.dispatch("terminal.copy", { terminalId }, { source: "context-menu" });
+          void actionService.dispatch(
+            "terminal.copy",
+            { terminalId },
+            { source: sourceRef.current }
+          );
           break;
         case "paste":
-          void actionService.dispatch("terminal.paste", { terminalId }, { source: "context-menu" });
+          void actionService.dispatch(
+            "terminal.paste",
+            { terminalId },
+            { source: sourceRef.current }
+          );
           break;
         case "move-to-dock":
           void actionService.dispatch(
             "terminal.moveToDock",
             { terminalId },
-            { source: "context-menu" }
+            { source: sourceRef.current }
           );
           break;
         case "move-to-grid":
           void actionService.dispatch(
             "terminal.moveToGrid",
             { terminalId },
-            { source: "context-menu" }
+            { source: sourceRef.current }
           );
           break;
         case "toggle-maximize":
           void actionService.dispatch(
             "terminal.toggleMaximize",
             { terminalId },
-            { source: "context-menu" }
+            { source: sourceRef.current }
           );
           break;
         case "restart":
@@ -230,31 +240,35 @@ export function TerminalContextMenu({
           void actionService.dispatch(
             "terminal.restart",
             { terminalId },
-            { source: "context-menu" }
+            { source: sourceRef.current }
           );
           break;
         case "force-resume":
           void actionService.dispatch(
             "terminal.forceResume",
             { terminalId },
-            { source: "context-menu" }
+            { source: sourceRef.current }
           );
           break;
         case "toggle-input-lock":
           void actionService.dispatch(
             "terminal.toggleInputLock",
             { terminalId },
-            { source: "context-menu" }
+            { source: sourceRef.current }
           );
           break;
         case "toggle-watch":
-          void actionService.dispatch("terminal.watch", { terminalId }, { source: "context-menu" });
+          void actionService.dispatch(
+            "terminal.watch",
+            { terminalId },
+            { source: sourceRef.current }
+          );
           break;
         case "duplicate":
           void actionService.dispatch(
             "terminal.duplicate",
             { terminalId },
-            { source: "context-menu" }
+            { source: sourceRef.current }
           );
           break;
         case "rename":
@@ -262,25 +276,29 @@ export function TerminalContextMenu({
           void actionService.dispatch(
             "terminal.rename",
             { terminalId },
-            { source: "context-menu" }
+            { source: sourceRef.current }
           );
           break;
         case "view-info":
           void actionService.dispatch(
             "terminal.viewInfo",
             { terminalId },
-            { source: "context-menu" }
+            { source: sourceRef.current }
           );
           break;
         case "background":
           void actionService.dispatch(
             "terminal.background",
             { terminalId },
-            { source: "context-menu" }
+            { source: sourceRef.current }
           );
           break;
         case "trash":
-          void actionService.dispatch("terminal.trash", { terminalId }, { source: "context-menu" });
+          void actionService.dispatch(
+            "terminal.trash",
+            { terminalId },
+            { source: sourceRef.current }
+          );
           break;
         case "kill":
           if (terminalHasRunningAgentSession(terminal)) {
@@ -293,17 +311,25 @@ export function TerminalContextMenu({
             });
             return;
           }
-          void actionService.dispatch("terminal.kill", { terminalId }, { source: "context-menu" });
+          void actionService.dispatch(
+            "terminal.kill",
+            { terminalId },
+            { source: sourceRef.current }
+          );
           break;
         case "reload-browser":
-          void actionService.dispatch("browser.reload", { terminalId }, { source: "context-menu" });
+          void actionService.dispatch(
+            "browser.reload",
+            { terminalId },
+            { source: sourceRef.current }
+          );
           break;
         case "open-external":
           if (terminal.browserUrl && isValidBrowserUrl(terminal.browserUrl)) {
             void actionService.dispatch(
               "browser.openExternal",
               { url: terminal.browserUrl },
-              { source: "context-menu" }
+              { source: sourceRef.current }
             );
           }
           break;
@@ -312,7 +338,7 @@ export function TerminalContextMenu({
             void actionService.dispatch(
               "browser.copyUrl",
               { url: terminal.browserUrl },
-              { source: "context-menu" }
+              { source: sourceRef.current }
             );
           }
           break;
@@ -333,7 +359,7 @@ export function TerminalContextMenu({
     void actionService.dispatch(
       actionId,
       { terminalId, confirmed: true },
-      { source: "context-menu" }
+      { source: sourceRef.current }
     );
     setDestructiveConfirm(null);
   }, [destructiveConfirm, terminalId]);
@@ -396,7 +422,7 @@ export function TerminalContextMenu({
             void actionService.dispatch(
               "terminal.moveToNewWorktree",
               { terminalId },
-              { source: "context-menu" }
+              { source: sourceRef.current }
             )
           }
         >
@@ -432,6 +458,12 @@ export function TerminalContextMenu({
     const hasUrl = Boolean(terminal.browserUrl && isValidBrowserUrl(terminal.browserUrl));
     return (
       <ContextMenu>
+        <MenuActionSourceContext.Consumer>
+          {(value) => {
+            sourceRef.current = value ?? "user";
+            return null;
+          }}
+        </MenuActionSourceContext.Consumer>
         <ContextMenuTrigger asChild>
           <div className="contents" data-context-trigger={terminalId}>
             {children}
@@ -483,6 +515,12 @@ export function TerminalContextMenu({
     const hasUrl = Boolean(terminal.browserUrl && isValidBrowserUrl(terminal.browserUrl));
     return (
       <ContextMenu>
+        <MenuActionSourceContext.Consumer>
+          {(value) => {
+            sourceRef.current = value ?? "user";
+            return null;
+          }}
+        </MenuActionSourceContext.Consumer>
         <ContextMenuTrigger asChild>
           <div className="contents" data-context-trigger={terminalId}>
             {children}
@@ -533,6 +571,12 @@ export function TerminalContextMenu({
   if (isReview) {
     return (
       <ContextMenu>
+        <MenuActionSourceContext.Consumer>
+          {(value) => {
+            sourceRef.current = value ?? "user";
+            return null;
+          }}
+        </MenuActionSourceContext.Consumer>
         <ContextMenuTrigger asChild>
           <div className="contents" data-context-trigger={terminalId}>
             {children}
@@ -571,6 +615,12 @@ export function TerminalContextMenu({
     <>
       {destructiveConfirmDialog}
       <ContextMenu>
+        <MenuActionSourceContext.Consumer>
+          {(value) => {
+            sourceRef.current = value ?? "user";
+            return null;
+          }}
+        </MenuActionSourceContext.Consumer>
         <ContextMenuTrigger asChild>
           <div
             className="contents"
@@ -599,7 +649,7 @@ export function TerminalContextMenu({
                   void actionService.dispatch(
                     "terminal.sendToAgent",
                     { terminalId },
-                    { source: "context-menu" }
+                    { source: sourceRef.current }
                   )
                 }
               >
