@@ -11,7 +11,10 @@ const projectClientMock = {
   reopen: vi.fn().mockResolvedValue(undefined),
   openDialog: vi.fn(),
   onSwitch: vi.fn(() => () => {}),
-  onWorktreeLoadStatus: vi.fn(() => () => {}),
+  onWorktreeLoadStatus:
+    vi.fn<
+      (cb: (p: { projectId: string; worktreeLoadError: string | null }) => void) => () => void
+    >(),
   getSettings: vi.fn(),
   saveSettings: vi.fn(),
   detectRunners: vi.fn(),
@@ -523,15 +526,9 @@ describe("worktreeLoadError surfacing (#8400)", () => {
     (window as unknown as { electron: unknown }).electron = {
       project: { onUpdated: vi.fn(), onRemoved: vi.fn() },
     };
-    let statusCb:
-      | ((payload: { projectId: string; worktreeLoadError: string | null }) => void)
-      | undefined;
-    projectClientMock.onWorktreeLoadStatus.mockImplementation((cb: typeof statusCb) => {
-      statusCb = cb;
-      return () => {};
-    });
-
     const { useProjectStore } = await import("../projectStore");
+
+    const statusCb = projectClientMock.onWorktreeLoadStatus.mock.calls[0]?.[0];
     expect(typeof statusCb).toBe("function");
 
     // Permissive: accepted while currentProject is still null (cold view).
