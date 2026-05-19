@@ -26,11 +26,7 @@ import { TerminalRefreshTier } from "@/types";
 import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { useDockPanelPortal } from "./DockPanelOffscreenContainer";
 import { getDockDisplayAgentState, useDockBlockedState } from "./useDockBlockedState";
-import {
-  handleDockInteractOutside,
-  handleDockEscapeKeyDown,
-  shouldSuppressDockClose,
-} from "./dockPopoverGuard";
+import { handleDockInteractOutside, handleDockEscapeKeyDown } from "./dockPopoverGuard";
 import { usePreferencesStore } from "@/store";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DockPopoverChildProvider } from "@/components/ui/DockPopoverChildContext";
@@ -156,12 +152,6 @@ export function DockedTerminalItem({ terminal }: DockedTerminalItemProps) {
       } else {
         // Ignore close events immediately after programmatic open
         if (wasJustOpenedRef.current) {
-          return;
-        }
-        // Ignore spurious closes while the user is typing into the portaled
-        // terminal/editor — Radix can misread xterm/CodeMirror focusin events
-        // as an outside interaction (#8368). Use the ref, not the state copy.
-        if (shouldSuppressDockClose(portalContainerElementRef.current)) {
           return;
         }
         closeDockTerminal();

@@ -104,11 +104,9 @@ vi.mock("../useDockBlockedState", () => ({
   isGroupDeprioritized: () => false,
 }));
 
-const shouldSuppressDockCloseMock = vi.fn(() => false);
 vi.mock("../dockPopoverGuard", () => ({
   handleDockInteractOutside: vi.fn(),
   handleDockEscapeKeyDown: vi.fn(),
-  shouldSuppressDockClose: (...args: unknown[]) => shouldSuppressDockCloseMock(...args),
 }));
 
 vi.mock("@/utils/terminalChrome", () => ({
@@ -282,8 +280,6 @@ describe("DockedTabGroup mount-time close guard (#6602)", () => {
     mockTabGroups.set("g-1", makeGroup(["t-1", "t-2"]));
     capturedOnOpenChange = null;
     capturedOnOpenAutoFocus = null;
-    shouldSuppressDockCloseMock.mockClear();
-    shouldSuppressDockCloseMock.mockReturnValue(false);
     vi.mocked(terminalInstanceService.focus).mockClear();
   });
 
@@ -312,44 +308,6 @@ describe("DockedTabGroup mount-time close guard (#6602)", () => {
       vi.advanceTimersByTime(150);
     });
 
-    act(() => {
-      capturedOnOpenChange?.(false);
-    });
-
-    expect(closeDockTerminalMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("ignores onOpenChange(false) while typing inside the portal (#8368)", () => {
-    mockActiveDockTerminalId = "t-1";
-    const panels = [makePanel({ id: "t-1" }), makePanel({ id: "t-2" })];
-
-    render(<DockedTabGroup group={makeGroup(["t-1", "t-2"], "t-1")} panels={panels} />);
-    expect(capturedOnOpenChange).not.toBeNull();
-
-    act(() => {
-      vi.advanceTimersByTime(150);
-    });
-
-    shouldSuppressDockCloseMock.mockReturnValue(true);
-    act(() => {
-      capturedOnOpenChange?.(false);
-    });
-
-    expect(closeDockTerminalMock).not.toHaveBeenCalled();
-  });
-
-  it("allows onOpenChange(false) when focus is outside the portal (#8368)", () => {
-    mockActiveDockTerminalId = "t-1";
-    const panels = [makePanel({ id: "t-1" }), makePanel({ id: "t-2" })];
-
-    render(<DockedTabGroup group={makeGroup(["t-1", "t-2"], "t-1")} panels={panels} />);
-    expect(capturedOnOpenChange).not.toBeNull();
-
-    act(() => {
-      vi.advanceTimersByTime(150);
-    });
-
-    shouldSuppressDockCloseMock.mockReturnValue(false);
     act(() => {
       capturedOnOpenChange?.(false);
     });
