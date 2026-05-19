@@ -941,6 +941,28 @@ describe("CloneRepoDialog", () => {
       expect(screen.getByText("Connecting…")).toBeTruthy();
     });
 
+    it("never flashes the placeholder when progress arrives before the threshold", async () => {
+      render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+      await startActiveClone();
+
+      act(() => {
+        vi.advanceTimersByTime(200);
+        progressHandler?.({
+          stage: "receiving",
+          progress: 5,
+          message: "Receiving: 5%",
+          timestamp: Date.now(),
+        });
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+
+      expect(screen.queryByText("Connecting…")).toBeNull();
+      expect(screen.getByText("Receiving: 5%")).toBeTruthy();
+    });
+
     it("replaces the placeholder with the live log when the first event arrives", async () => {
       render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
       await startActiveClone();
@@ -990,9 +1012,13 @@ describe("CloneRepoDialog", () => {
       const banner = screen.getByTestId("cleanup-banner");
       expect(banner).toBeTruthy();
       expect(banner.textContent).toContain("Couldn't remove the partial clone at /tmp/repo.");
-      // The cleanup message must not also appear as a deduped progress row.
-      const log = screen.getByText("Receiving: 40%").closest("div");
-      expect(log?.parentElement?.textContent).not.toContain("Partial clone not removed");
+      // The cleanup message must appear exactly once — only in the banner,
+      // never also as a deduped row in the progress log.
+      expect(screen.getAllByText("Couldn't remove the partial clone at /tmp/repo.")).toHaveLength(
+        1
+      );
+      // The real progress row is still there, unaffected.
+      expect(screen.getByText("Receiving: 40%")).toBeTruthy();
     });
 
     it("dismisses the cleanup banner via its close control", async () => {

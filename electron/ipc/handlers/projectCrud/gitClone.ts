@@ -348,7 +348,10 @@ export function registerGitCloneHandlers(): () => void {
         throw new AppError({ code: "CANCELLED", message: "Clone cancelled" });
       }
 
-      emitProgress("starting", 0, "Starting clone…");
+      // No "starting" event here on purpose: emitting one would populate the
+      // renderer's progress list immediately and defeat the Doherty gate that
+      // suppresses the connecting placeholder for sub-400ms clones. The
+      // renderer owns that phase via `isCloning` + `useDeferredLoading`.
 
       if (useGhPath && ghTarget) {
         await cloneWithGh(

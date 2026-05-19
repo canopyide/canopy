@@ -181,6 +181,28 @@ describe("registerGitCloneHandlers", () => {
       ["/T", "/F", "/PID", "4242"],
       expect.objectContaining({ windowsHide: true, timeout: 3000 })
     );
+    // The kill must run *before* the partial-clone removal, otherwise the
+    // orphaned git children still hold the .git/ file locks rm needs.
+    expect(spawnSyncMock.mock.invocationCallOrder[0]).toBeLessThan(
+      rmMock.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("emits cleanup-failed but still throws CANCELLED when an aborted clone can't be cleaned", async () => {
+    cloneImpl = async () => {
+      const err = new Error("The operation was aborted");
+      err.name = "AbortError";
+      throw err;
+    };
+    rmMock.mockRejectedValue(new Error("EBUSY"));
+
+    await expect(capturedHandler!(ctx, VALID_OPTIONS)).rejects.toMatchObject({
+      code: "CANCELLED",
+    });
+
+    expect(sentEvents.some((e) => e.stage === "cleanup-failed")).toBe(true);
+    expect(sentEvents.some((e) => e.stage === "cancelled")).toBe(true);
+    expect(sentEvents.some((e) => e.stage === "error")).toBe(false);
   });
 
   it("does not invoke taskkill on non-Windows platforms", async () => {
