@@ -41,7 +41,7 @@ describe("SidebarContent quick-state empty state — issue #6333 (CTA collapsed 
     it("returns hasResultsWithoutQuickState alongside the filtered list", () => {
       expect(source).toContain("hasResultsWithoutQuickState");
       expect(source).toMatch(
-        /const \{ filteredWorktrees, groupedSections, hasResultsWithoutQuickState.*\} = useMemo/
+        /const \{ filteredWorktrees, groupedSections, hasResultsWithoutQuickState[\s\S]*\} = useMemo/
       );
     });
 
