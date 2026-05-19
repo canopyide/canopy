@@ -117,10 +117,6 @@ function makeChild(opts: MakeChildOptions = {}) {
   return child;
 }
 
-function makeEmitProgress() {
-  return vi.fn();
-}
-
 function setAuthSuccess() {
   // execFile("gh", ["auth", "status"], opts, cb) — call cb with no error.
   childProcessMock.execFile.mockImplementation(
@@ -230,10 +226,7 @@ describe("gitClone — gh repo clone fast path", () => {
     const cleanup = registerGitCloneHandlers();
     const handler = getInvokeHandler(CHANNELS.PROJECT_CLONE_REPO);
 
-    await handler(
-      makeCtxEvent(),
-      makeOptions({ url: "https://gitlab.com/owner/repo" })
-    );
+    await handler(makeCtxEvent(), makeOptions({ url: "https://gitlab.com/owner/repo" }));
 
     expect(childProcessMock.execFile).not.toHaveBeenCalled();
     expect(childProcessMock.spawn).not.toHaveBeenCalled();

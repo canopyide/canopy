@@ -303,8 +303,7 @@ export function registerGitCloneHandlers(): () => void {
 
     // Detect github.com URL and probe `gh` auth — non-null + authed picks the gh path.
     const ghTarget = parseGitHubRepoUrl(url);
-    const useGhPath =
-      ghTarget !== null && (await probeGhAuth(localController.signal));
+    const useGhPath = ghTarget !== null && (await probeGhAuth(localController.signal));
 
     try {
       if (localController.signal.aborted) {
