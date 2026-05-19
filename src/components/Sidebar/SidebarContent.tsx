@@ -1164,12 +1164,21 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                       : `No ${quickStateFilter} worktrees`
                   }
                   action={
-                    <button
-                      onClick={clearAllFilters}
-                      className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
-                    >
-                      Show all worktrees
-                    </button>
+                    <>
+                      <button
+                        onClick={clearAllFilters}
+                        className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
+                      >
+                        Show all worktrees
+                      </button>
+                      <button
+                        onClick={onOpenOverview}
+                        className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors ml-1"
+                        title={formatButtonTitle("Open overview", overviewShortcut)}
+                      >
+                        Open overview
+                      </button>
+                    </>
                   }
                 />
               ) : filteredWorktrees.length === 0 &&
@@ -1186,12 +1195,21 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                       : "No matching worktrees"
                   }
                   action={
-                    <button
-                      onClick={clearAllFilters}
-                      className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
-                    >
-                      Show all worktrees
-                    </button>
+                    <>
+                      <button
+                        onClick={clearAllFilters}
+                        className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
+                      >
+                        Show all worktrees
+                      </button>
+                      <button
+                        onClick={onOpenOverview}
+                        className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors ml-1"
+                        title={formatButtonTitle("Open overview", overviewShortcut)}
+                      >
+                        Open overview
+                      </button>
+                    </>
                   }
                 />
               ) : groupedSections ? (

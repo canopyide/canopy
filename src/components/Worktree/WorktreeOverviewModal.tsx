@@ -555,9 +555,14 @@ export function WorktreeOverviewModal({
                   filters
                 </p>
               </div>
-              <Button variant="subtle" size="sm" onClick={clearAllFilters} className="mt-2">
-                Clear all filters
-              </Button>
+              <div className="flex items-center gap-2 mt-2">
+                <Button variant="subtle" size="sm" onClick={clearAllFilters}>
+                  Clear all filters
+                </Button>
+                <Button variant="subtle" size="sm" onClick={onClose}>
+                  Close overview
+                </Button>
+              </div>
             </div>
           ) : groupedSections ? (
             <div className="space-y-6">
