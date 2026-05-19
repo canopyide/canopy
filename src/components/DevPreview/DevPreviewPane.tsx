@@ -8,7 +8,6 @@ import {
   Settings,
   Square,
   OctagonAlert,
-  ChevronDown,
   Play,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
