@@ -512,8 +512,9 @@ export class HttpLifecycle {
       if (claimedSessionId) {
         const result = this.deps.abusePolicy.recordDenial(claimedSessionId, "auth401");
         if (result.tripped) {
-          this.deps.sessionStore.revokeSession(claimedSessionId);
           const pinnedId = this.deps.sessionStore.sessionWebContentsMap.get(claimedSessionId);
+          this.deps.sessionStore.revokeSession(claimedSessionId);
+          this.deps.abusePolicy.clearSession(claimedSessionId);
           if (pinnedId !== undefined) {
             const wc = webContentsModule.fromId(pinnedId);
             if (wc && !wc.isDestroyed()) {
@@ -804,7 +805,9 @@ export class HttpLifecycle {
 
     const notifySessionRevoked: import("./sessionServer.js").SessionServerDeps["notifySessionRevoked"] =
       (payload) => {
-        const id = this.deps.sessionStore.sessionWebContentsMap.get(payload.sessionId);
+        const id =
+          payload.pinnedWebContentsId ??
+          this.deps.sessionStore.sessionWebContentsMap.get(payload.sessionId);
         if (id === undefined) return;
         const wc = webContentsModule.fromId(id);
         if (!wc || wc.isDestroyed()) return;
@@ -838,6 +841,9 @@ export class HttpLifecycle {
       notifyTierMismatch,
       recordDenial,
       notifySessionRevoked,
+      clearDenialState: (sessionId) => {
+        this.deps.abusePolicy.clearSession(sessionId);
+      },
     };
   }
 
