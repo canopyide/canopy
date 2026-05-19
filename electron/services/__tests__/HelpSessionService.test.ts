@@ -88,8 +88,32 @@ async function makeBundledHelpFolder(root: string): Promise<string> {
     path.join(helpDir, ".claude", "settings.json"),
     JSON.stringify({
       permissions: {
-        allow: ["Read(**)", "WebFetch", "mcp__daintree-docs__*", "Bash(gh issue list*)"],
-        deny: ["Write(**)", "Edit(**)", "Bash(**)"],
+        allow: [
+          "Read(**)",
+          "Glob(**)",
+          "Grep(**)",
+          "LS(**)",
+          "WebFetch",
+          "mcp__daintree-docs__*",
+          "Bash(gh *)",
+          "Bash(glab *)",
+          "Bash(tea *)",
+        ],
+        deny: [
+          "Write(**)",
+          "Edit(**)",
+          "MultiEdit(**)",
+          "Bash(gh issue create*)",
+          "Bash(gh pr create*)",
+          "Bash(gh pr merge*)",
+          "Bash(gh repo create*)",
+          "Bash(gh repo delete*)",
+          "Bash(glab issue create*)",
+          "Bash(glab mr create*)",
+          "Bash(glab mr merge*)",
+          "Bash(tea issue create*)",
+          "Bash(tea pr create*)",
+        ],
       },
     })
   );
@@ -245,6 +269,24 @@ describe("HelpSessionService", () => {
     expect(settings.permissions.allow).toContain("mcp__daintree__*");
     expect(settings.permissions.allow).toContain("mcp__daintree-docs__*");
     expect(settings.permissions.deny).toContain("Write(**)");
+  });
+
+  it("opens the full forge CLI surface without a blanket Bash deny (#8360)", async () => {
+    const result = await service.provisionSession(provisionInput());
+    if (!result) throw new Error("expected result");
+
+    const settings = JSON.parse(
+      await fs.readFile(path.join(result.sessionPath, ".claude", "settings.json"), "utf-8")
+    );
+    // A blanket Bash(**) deny would win over every Bash allow (deny > allow),
+    // silently killing the gh/glab/tea allowlist — the #8360 root cause.
+    expect(settings.permissions.deny).not.toContain("Bash(**)");
+    expect(settings.permissions.allow).toContain("Bash(gh *)");
+    expect(settings.permissions.allow).toContain("Bash(glab *)");
+    expect(settings.permissions.allow).toContain("Bash(tea *)");
+    // Destructive write paths stay gated behind confirmation.
+    expect(settings.permissions.deny).toContain("Bash(gh issue create*)");
+    expect(settings.permissions.deny).toContain("Bash(gh pr merge*)");
   });
 
   it("sets defaultMode=bypassPermissions and tier=system when legacy skipPermissions is true", async () => {
@@ -1894,8 +1936,32 @@ describe("HelpSessionService", () => {
         path.join(altHelp, ".claude", "settings.json"),
         JSON.stringify({
           permissions: {
-            allow: ["Read(**)", "WebFetch", "mcp__daintree-docs__*", "Bash(gh issue list*)"],
-            deny: ["Write(**)", "Edit(**)", "Bash(**)"],
+            allow: [
+              "Read(**)",
+              "Glob(**)",
+              "Grep(**)",
+              "LS(**)",
+              "WebFetch",
+              "mcp__daintree-docs__*",
+              "Bash(gh *)",
+              "Bash(glab *)",
+              "Bash(tea *)",
+            ],
+            deny: [
+              "Write(**)",
+              "Edit(**)",
+              "MultiEdit(**)",
+              "Bash(gh issue create*)",
+              "Bash(gh pr create*)",
+              "Bash(gh pr merge*)",
+              "Bash(gh repo create*)",
+              "Bash(gh repo delete*)",
+              "Bash(glab issue create*)",
+              "Bash(glab mr create*)",
+              "Bash(glab mr merge*)",
+              "Bash(tea issue create*)",
+              "Bash(tea pr create*)",
+            ],
           },
         })
       );

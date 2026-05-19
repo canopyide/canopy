@@ -1396,8 +1396,32 @@ export class HelpSessionService {
     }
     return {
       permissions: {
-        allow: ["Read(**)", "Glob(**)", "Grep(**)", "LS(**)", "WebFetch"],
-        deny: ["Write(**)", "Edit(**)", "MultiEdit(**)", "Bash(**)"],
+        allow: [
+          "Read(**)",
+          "Glob(**)",
+          "Grep(**)",
+          "LS(**)",
+          "WebFetch",
+          "mcp__daintree-docs__*",
+          "Bash(gh *)",
+          "Bash(glab *)",
+          "Bash(tea *)",
+        ],
+        deny: [
+          "Write(**)",
+          "Edit(**)",
+          "MultiEdit(**)",
+          "Bash(gh issue create*)",
+          "Bash(gh pr create*)",
+          "Bash(gh pr merge*)",
+          "Bash(gh repo create*)",
+          "Bash(gh repo delete*)",
+          "Bash(glab issue create*)",
+          "Bash(glab mr create*)",
+          "Bash(glab mr merge*)",
+          "Bash(tea issue create*)",
+          "Bash(tea pr create*)",
+        ],
       },
     };
   }
