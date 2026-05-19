@@ -219,6 +219,18 @@ export interface Worktree {
   /** Number of commits behind the upstream tracking branch */
   behindCount?: number;
 
+  /** Name of the base branch (e.g. "develop") for divergence display */
+  baseBranchName?: string | null;
+
+  /** Commits the worktree branch is ahead of the base branch */
+  baseAheadCount?: number | null;
+
+  /** Commits the worktree branch is behind the base branch */
+  baseBehindCount?: number | null;
+
+  /** True when the upstream tracking branch and base branch point to the same commit */
+  baseMatchesUpstream?: boolean;
+
   /**
    * Epoch ms of the last successful background `git fetch` for this worktree's
    * repo. Mirrors `RepoFetchCoordinator`'s per-commondir `lastSuccessfulFetch`

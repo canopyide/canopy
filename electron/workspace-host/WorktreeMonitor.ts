@@ -70,6 +70,8 @@ export interface WorktreeMonitorConfig {
   circuitBreakerThreshold: number;
   gitWatchEnabled?: boolean;
   gitWatchDebounceMs?: number;
+  fetchIntervalActiveMs?: number;
+  fetchIntervalBackgroundMs?: number;
 }
 
 export interface WorktreeMonitorCallbacks {
@@ -125,6 +127,12 @@ export class WorktreeMonitor {
   // Upstream tracking state
   private aheadCount: number | undefined;
   private behindCount: number | undefined;
+
+  // Base-branch divergence state
+  private _baseBranchName: string | null | undefined;
+  private _baseAheadCount: number | null | undefined;
+  private _baseBehindCount: number | null | undefined;
+  private _baseMatchesUpstream: boolean | undefined;
 
   // Issue/PR state
   private _issueNumber: number | undefined;
@@ -819,6 +827,15 @@ export class WorktreeMonitor {
     if (config.gitWatchDebounceMs !== undefined) {
       this.gitWatchDebounceMs = config.gitWatchDebounceMs;
     }
+    if (
+      config.fetchIntervalActiveMs !== undefined ||
+      config.fetchIntervalBackgroundMs !== undefined
+    ) {
+      this.fetchScheduler.updateIntervals(
+        config.fetchIntervalActiveMs,
+        config.fetchIntervalBackgroundMs
+      );
+    }
     this.config = { ...this.config, ...config };
   }
 
@@ -1007,6 +1024,10 @@ export class WorktreeMonitor {
       planFilePath: this.planFilePath,
       aheadCount: this.aheadCount,
       behindCount: this.behindCount,
+      baseBranchName: this._baseBranchName ?? undefined,
+      baseAheadCount: this._baseAheadCount ?? undefined,
+      baseBehindCount: this._baseBehindCount ?? undefined,
+      baseMatchesUpstream: this._baseMatchesUpstream ?? undefined,
       lastFetchedAt: this._lastFetchedAt ?? undefined,
       lastGitStatusCheckedAt: this.lastGitStatusCompletedAt,
       fetchAuthFailed: this._fetchAuthFailed || undefined,
@@ -1398,6 +1419,9 @@ export class WorktreeMonitor {
       const nextAheadCount = hasUpstream ? (newChanges.ahead ?? 0) : undefined;
       const nextBehindCount = hasUpstream ? (newChanges.behind ?? 0) : undefined;
 
+      // Base-branch divergence — runs in parallel with plan file detection.
+      const baseDivergencePromise = this.computeBaseDivergence(hasUpstream);
+
       const planResults = await Promise.allSettled(
         PLAN_FILE_CANDIDATES.map((candidate) => access(pathJoin(this.path, candidate)))
       );
@@ -1407,6 +1431,12 @@ export class WorktreeMonitor {
       const nextHasPlanFile = detectedPlanFile !== undefined;
       const nextPlanFilePath = detectedPlanFile;
 
+      const baseDivergence = await baseDivergencePromise;
+      const nextBaseBranchName = baseDivergence?.baseBranchName ?? undefined;
+      const nextBaseAheadCount = baseDivergence?.aheadCount ?? undefined;
+      const nextBaseBehindCount = baseDivergence?.behindCount ?? undefined;
+      const nextBaseMatchesUpstream = baseDivergence?.matchesUpstream ?? undefined;
+
       const currentHash = this.calculateStateHash(newChanges);
       const stateChanged = currentHash !== this.previousStateHash;
       const noteChanged =
@@ -1415,6 +1445,11 @@ export class WorktreeMonitor {
         nextHasPlanFile !== this.hasPlanFile || nextPlanFilePath !== this.planFilePath;
       const upstreamChanged =
         nextAheadCount !== this.aheadCount || nextBehindCount !== this.behindCount;
+      const baseDivergenceChanged =
+        nextBaseBranchName !== this._baseBranchName ||
+        nextBaseAheadCount !== this._baseAheadCount ||
+        nextBaseBehindCount !== this._baseBehindCount ||
+        nextBaseMatchesUpstream !== this._baseMatchesUpstream;
 
       const gitStateChanged =
         this._isDetached !== this._prevEmittedIsDetached ||
@@ -1427,6 +1462,7 @@ export class WorktreeMonitor {
         branchChanged ||
         planChanged ||
         upstreamChanged ||
+        baseDivergenceChanged ||
         gitStateChanged;
 
       // Drive the idle backoff from what the git check actually observed —
@@ -1494,6 +1530,10 @@ export class WorktreeMonitor {
       this.planFilePath = nextPlanFilePath;
       this.aheadCount = nextAheadCount;
       this.behindCount = nextBehindCount;
+      this._baseBranchName = nextBaseBranchName;
+      this._baseAheadCount = nextBaseAheadCount;
+      this._baseBehindCount = nextBaseBehindCount;
+      this._baseMatchesUpstream = nextBaseMatchesUpstream;
       this._hasInitialStatus = true;
 
       this.emitUpdate();
@@ -1665,6 +1705,70 @@ export class WorktreeMonitor {
       }
     } catch {
       // Silently ignore extraction errors
+    }
+  }
+
+  private async computeBaseDivergence(hasUpstream: boolean): Promise<{
+    baseBranchName: string | null;
+    aheadCount: number | null;
+    behindCount: number | null;
+    matchesUpstream: boolean;
+  } | null> {
+    if (!this._branch || this._isMainWorktree) return null;
+    const wsl = this.wslInvocation;
+    const git = wsl
+      ? createWslHardenedGit(wsl, this._pollAbortController.signal)
+      : createHardenedGit(this.path, this._pollAbortController.signal);
+
+    try {
+      // Resolve base ref: try origin/<branch> first (remote ref stays fresh
+      // after fetch), fall back to local branch for repos without a remote.
+      const remoteRef = `origin/${this.mainBranch}`;
+      const localRef = this.mainBranch;
+      let resolvedRef: string;
+      try {
+        await git.raw(["rev-parse", "--verify", remoteRef]);
+        resolvedRef = remoteRef;
+      } catch {
+        try {
+          await git.raw(["rev-parse", "--verify", localRef]);
+          resolvedRef = localRef;
+        } catch {
+          return null;
+        }
+      }
+
+      const baseBranchName = this.mainBranch;
+      const result = await git.raw([
+        "rev-list",
+        "--count",
+        "--left-right",
+        `${resolvedRef}...HEAD`,
+      ]);
+      const trimmed = result.trim();
+      const parts = trimmed.split("\t");
+      const behindCount = parts[0] != null && parts[0] !== "" ? parseInt(parts[0], 10) : 0;
+      const aheadCount = parts[1] != null && parts[1] !== "" ? parseInt(parts[1], 10) : 0;
+
+      let matchesUpstream = false;
+      if (hasUpstream) {
+        try {
+          const upstreamCommit = await git.raw(["rev-parse", "@{u}"]);
+          const baseCommit = await git.raw(["rev-parse", resolvedRef]);
+          matchesUpstream = upstreamCommit.trim() === baseCommit.trim();
+        } catch {
+          matchesUpstream = false;
+        }
+      }
+
+      return {
+        baseBranchName,
+        aheadCount: Number.isFinite(aheadCount) ? aheadCount : null,
+        behindCount: Number.isFinite(behindCount) ? behindCount : null,
+        matchesUpstream,
+      };
+    } catch {
+      return null;
     }
   }
 

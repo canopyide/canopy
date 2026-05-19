@@ -510,7 +510,7 @@ describe("WorktreeMonitor", () => {
       monitor.stop();
     });
 
-    it("never spawns rev-list — counts come from the existing git status call", async () => {
+    it("computes base-branch divergence from rev-list in addition to upstream counts from git status", async () => {
       mockGetWorktreeChangesWithStats.mockResolvedValue(
         cleanChangesWith({ tracking: "origin/main", ahead: 2, behind: 0 })
       );
@@ -521,7 +521,7 @@ describe("WorktreeMonitor", () => {
       await flushInitialStatus();
       await monitor.updateGitStatus(false);
 
-      expect(mockGitRaw).not.toHaveBeenCalledWith(expect.arrayContaining(["rev-list"]));
+      expect(mockGitRaw).toHaveBeenCalledWith(expect.arrayContaining(["rev-list"]));
 
       monitor.stop();
     });

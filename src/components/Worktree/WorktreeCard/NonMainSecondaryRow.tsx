@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { BranchLabel } from "../BranchLabel";
 import { UpstreamSyncBadge } from "./UpstreamSyncBadge";
@@ -6,6 +7,7 @@ import { PRBadge } from "./PRBadge";
 import { FileText } from "lucide-react";
 import type { WorktreeState } from "@/types";
 import { usePRCircuitBreakerStore } from "@/store/prCircuitBreakerStore";
+import { useResourceProfileStore } from "@/store/resourceProfileStore";
 
 interface NonMainSecondaryRowProps {
   worktree: WorktreeState;
@@ -37,6 +39,14 @@ export function NonMainSecondaryRow({
   badges,
 }: NonMainSecondaryRowProps) {
   const prDetectionPaused = usePRCircuitBreakerStore((s) => s.tripped);
+  const fetchIntervalActiveMs = useResourceProfileStore((s) => s.fetchIntervalActiveMs);
+  const fetchIntervalBackgroundMs = useResourceProfileStore((s) => s.fetchIntervalBackgroundMs);
+
+  const fetchIntervalMs = useMemo(
+    () => (worktree.isCurrent ? fetchIntervalActiveMs : fetchIntervalBackgroundMs),
+    [worktree.isCurrent, fetchIntervalActiveMs, fetchIntervalBackgroundMs]
+  );
+
   return (
     <div className="flex flex-col gap-0.5 mt-1.5">
       {worktree.issueNumber && !hasIssueTitle && (
@@ -75,6 +85,11 @@ export function NonMainSecondaryRow({
           fetchNetworkFailed={Boolean(worktree.fetchNetworkFailed)}
           isGitHubProvider={worktree.linked?.providerId === "builtin.github"}
           containerGapClass="gap-1.5"
+          baseBranchName={worktree.baseBranchName}
+          baseAheadCount={worktree.baseAheadCount}
+          baseBehindCount={worktree.baseBehindCount}
+          baseMatchesUpstream={worktree.baseMatchesUpstream}
+          fetchIntervalMs={fetchIntervalMs}
         />
       )}
       {hasIssueTitle && (

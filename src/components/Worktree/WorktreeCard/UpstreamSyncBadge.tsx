@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import { actionService } from "@/services/ActionService";
@@ -15,7 +15,14 @@ interface UpstreamSyncBadgeProps {
   fetchNetworkFailed: boolean;
   isGitHubProvider: boolean;
   containerGapClass: string;
+  baseBranchName?: string | null;
+  baseAheadCount?: number | null;
+  baseBehindCount?: number | null;
+  baseMatchesUpstream?: boolean;
+  fetchIntervalMs?: number;
 }
+
+const STALENESS_MULTIPLIER = 1.5;
 
 export function UpstreamSyncBadge({
   aheadCount,
@@ -26,10 +33,26 @@ export function UpstreamSyncBadge({
   fetchNetworkFailed,
   isGitHubProvider,
   containerGapClass,
+  baseBranchName,
+  baseAheadCount,
+  baseBehindCount,
+  baseMatchesUpstream,
+  fetchIntervalMs,
 }: UpstreamSyncBadgeProps) {
   const hasAhead = aheadCount !== undefined && aheadCount > 0;
   const hasBehind = behindCount !== undefined && behindCount > 0;
   const showPulse = useDeferredLoading(isFetchInFlight, UI_SKELETON_GATE_MS);
+
+  const isStale = useMemo(() => {
+    if (lastFetchedAt == null || fetchIntervalMs == null) return false;
+    return Date.now() - lastFetchedAt > fetchIntervalMs * STALENESS_MULTIPLIER;
+  }, [lastFetchedAt, fetchIntervalMs]);
+
+  const showBaseDivergence =
+    baseBranchName != null &&
+    !baseMatchesUpstream &&
+    ((baseAheadCount != null && baseAheadCount > 0) ||
+      (baseBehindCount != null && baseBehindCount > 0));
 
   const handleSignInClick = useCallback((event: React.MouseEvent) => {
     event.stopPropagation();
@@ -74,7 +97,7 @@ export function UpstreamSyncBadge({
     );
   }
 
-  if (!hasAhead && !hasBehind) return null;
+  if (!hasAhead && !hasBehind && !showBaseDivergence) return null;
 
   return (
     <Tooltip>
@@ -84,14 +107,23 @@ export function UpstreamSyncBadge({
             "flex items-center text-[10px] font-mono tabular-nums",
             containerGapClass,
             isFetchInFlight && showPulse && "animate-pulse-immediate",
-            fetchNetworkFailed && "opacity-75"
+            fetchNetworkFailed && "opacity-75",
+            isStale && !isFetchInFlight && "opacity-50 transition-opacity duration-150"
           )}
           data-testid="upstream-sync-indicator"
           data-fetch-in-flight={isFetchInFlight ? "true" : undefined}
           data-fetch-network-failed={fetchNetworkFailed ? "true" : undefined}
+          data-stale={isStale ? "true" : undefined}
         >
           {hasAhead && <span className="text-status-success">↑{aheadCount}</span>}
           {hasBehind && <span className="text-status-warning">↓{behindCount}</span>}
+          {showBaseDivergence && (
+            <span className="text-text-muted/60">
+              &Delta; {baseBranchName}{" "}
+              {baseAheadCount != null && baseAheadCount > 0 && <>↑{baseAheadCount}</>}
+              {baseBehindCount != null && baseBehindCount > 0 && <>↓{baseBehindCount}</>}
+            </span>
+          )}
         </span>
       </TooltipTrigger>
       <TooltipContent side="right" className="text-xs">
@@ -109,12 +141,31 @@ export function UpstreamSyncBadge({
           )}
           <span> upstream</span>
         </div>
+        {showBaseDivergence && baseBranchName && (
+          <div className="text-text-muted/70">
+            {baseAheadCount != null && baseAheadCount > 0 && (
+              <span>
+                {baseAheadCount} ahead of {baseBranchName}
+              </span>
+            )}
+            {baseBehindCount != null && baseBehindCount > 0 && (
+              <span>
+                {baseBehindCount} behind {baseBranchName}
+              </span>
+            )}
+          </div>
+        )}
         {fetchNetworkFailed && (
           <div className="text-status-warning/80" data-testid="upstream-sync-network-warning">
             Couldn't reach origin
           </div>
         )}
-        {lastFetchedAt != null && (
+        {isStale && lastFetchedAt != null && (
+          <div className="text-text-muted/70">
+            Stale (last fetched {formatRelativeTime(lastFetchedAt)})
+          </div>
+        )}
+        {!isStale && lastFetchedAt != null && (
           <div className="text-text-muted">Last fetched {formatRelativeTime(lastFetchedAt)}</div>
         )}
       </TooltipContent>
