@@ -59,7 +59,7 @@ function killProcessTree(child: ChildProcess): void {
   } catch {
     // Already exited.
   }
-  setTimeout(() => {
+  const sigkillTimer = setTimeout(() => {
     try {
       if (child.pid !== undefined) {
         process.kill(-child.pid, "SIGKILL");
@@ -68,11 +68,18 @@ function killProcessTree(child: ChildProcess): void {
       // Already exited.
     }
   }, 5_000);
+  // Don't keep the event loop alive solely for the SIGKILL escalation.
+  sigkillTimer.unref();
 }
 
-async function probeGhAuth(): Promise<boolean> {
+async function probeGhAuth(externalSignal?: AbortSignal): Promise<boolean> {
+  if (externalSignal?.aborted) return false;
   return new Promise((resolve) => {
     const controller = new AbortController();
+    const onExternalAbort = () => controller.abort();
+    if (externalSignal) {
+      externalSignal.addEventListener("abort", onExternalAbort, { once: true });
+    }
     const timer = setTimeout(() => controller.abort(), GH_AUTH_PROBE_TIMEOUT_MS);
 
     execFile(
@@ -85,6 +92,7 @@ async function probeGhAuth(): Promise<boolean> {
       },
       (err) => {
         clearTimeout(timer);
+        if (externalSignal) externalSignal.removeEventListener("abort", onExternalAbort);
         resolve(!err);
       }
     );
@@ -206,7 +214,11 @@ async function cloneWithGh(
 export function registerGitCloneHandlers(): () => void {
   const handlers: Array<() => void> = [];
 
-  let cloneAbortController: AbortController | null = null;
+  // Track every in-flight clone so cancel aborts each one independently.
+  // Electron's ipcMain.handle permits concurrent invocations from multiple
+  // senders; sharing a single controller would let a later clone overwrite an
+  // earlier one's cancel target.
+  const activeControllers = new Set<AbortController>();
 
   const handleProjectCloneRepo = async (
     ctx: import("../../types.js").IpcContext,
@@ -286,13 +298,19 @@ export function registerGitCloneHandlers(): () => void {
       }
     };
 
-    cloneAbortController = new AbortController();
+    const localController = new AbortController();
+    activeControllers.add(localController);
 
     // Detect github.com URL and probe `gh` auth — non-null + authed picks the gh path.
     const ghTarget = parseGitHubRepoUrl(url);
-    const useGhPath = ghTarget !== null && (await probeGhAuth());
+    const useGhPath =
+      ghTarget !== null && (await probeGhAuth(localController.signal));
 
     try {
+      if (localController.signal.aborted) {
+        throw new AppError({ code: "CANCELLED", message: "Clone cancelled" });
+      }
+
       emitProgress("starting", 0, "Starting clone...");
 
       if (useGhPath && ghTarget) {
@@ -302,12 +320,12 @@ export function registerGitCloneHandlers(): () => void {
           parentPath,
           trimmedFolder,
           Boolean(shallowClone),
-          cloneAbortController.signal,
+          localController.signal,
           emitProgress
         );
       } else {
         const git = createAuthenticatedGit(parentPath, {
-          signal: cloneAbortController.signal,
+          signal: localController.signal,
           progress({ stage, progress }) {
             emitProgress(stage, progress, `${stage}: ${progress}%`);
           },
@@ -321,7 +339,7 @@ export function registerGitCloneHandlers(): () => void {
       return { clonedPath: targetPath };
     } catch (error) {
       const wasCancelled =
-        cloneAbortController?.signal.aborted ||
+        localController.signal.aborted ||
         (error instanceof Error &&
           (error.name === "AbortError" ||
             (error instanceof AppError && error.code === "CANCELLED") ||
@@ -362,14 +380,17 @@ export function registerGitCloneHandlers(): () => void {
         cause: error instanceof Error ? error : undefined,
       });
     } finally {
-      cloneAbortController = null;
+      activeControllers.delete(localController);
     }
   };
   handlers.push(typedHandleWithContext(CHANNELS.PROJECT_CLONE_REPO, handleProjectCloneRepo));
 
   const handleProjectCloneCancel = async (): Promise<void> => {
-    if (cloneAbortController) {
-      cloneAbortController.abort();
+    // Cancel every in-flight clone. The renderer's clone dialog is the only
+    // surface that fires this channel, and a per-clone identifier isn't
+    // plumbed through, so all-or-nothing matches the historical UX.
+    for (const controller of activeControllers) {
+      controller.abort();
     }
   };
   handlers.push(typedHandle(CHANNELS.PROJECT_CLONE_CANCEL, handleProjectCloneCancel));
