@@ -4,6 +4,7 @@ import { usePanelStore } from "./panelStore";
 import { worktreeClient } from "@/clients";
 import { closeTerminalsForWorktree } from "@/components/Worktree/worktreeDeleteHelper";
 import { logDebug } from "@/utils/logger";
+import { notify } from "@/lib/notify";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 
 /**
@@ -457,11 +458,20 @@ async function runDeleteAsync(
   } catch (err) {
     const message = formatErrorMessage(err, "Failed to delete worktree");
     const prev = get();
-    // Guard against a race where `worktree-removed` arrived first — the
-    // worktree is already gone and the card is unmounted, so writing an error
-    // would dangle in the Map. `applyRemove` cleans `deletingIds` too, so
-    // re-checking is enough.
+    // Partial-success path: the backend emits `worktree-removed` BEFORE the
+    // branch-delete step (WorkspaceService.deleteWorktree:1587 vs :1592), so a
+    // branch-delete failure arrives after `applyRemove` has already cleared
+    // the card. The card surface is gone — fall back to a toast so the user
+    // learns the branch was not cleaned up. Without this, the failure is
+    // silently swallowed (the original race guard's bug).
     if (!prev.deletingIds.has(worktreeId) && !prev.worktrees.has(worktreeId)) {
+      notify({
+        type: "error",
+        title: "Couldn't delete branch",
+        message,
+        priority: "high",
+        context: { worktreeId },
+      });
       return;
     }
     const nextDeletingIds = new Set(prev.deletingIds);

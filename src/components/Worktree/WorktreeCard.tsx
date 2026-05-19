@@ -29,7 +29,10 @@ import type { UseAgentLauncherReturn } from "@/hooks/useAgentLauncher";
 import { isAgentLaunchable } from "../../../shared/utils/agentAvailability";
 import { isAgentPinned } from "../../../shared/utils/agentPinned";
 import { FocusedSubLine } from "./WorktreeCard/FocusedSubLine";
-import { WorktreeDetailsSection } from "./WorktreeCard/WorktreeDetailsSection";
+import {
+  WorktreeDetailsSection,
+  WorktreeDeleteErrorBanner,
+} from "./WorktreeCard/WorktreeDetailsSection";
 import { WorktreeDialogs } from "./WorktreeCard/WorktreeDialogs";
 import { WorktreeHeader } from "./WorktreeCard/WorktreeHeader";
 import { WorktreeTerminalSection } from "./WorktreeCard/WorktreeTerminalSection";
@@ -925,8 +928,6 @@ export function WorktreeCard({
                     lifecycleLabel={lifecycleLabel}
                     isBeingDeleted={isBeingDeleted}
                     deleteError={deleteError}
-                    onRetryDelete={handleRetryDelete}
-                    onDismissDeleteError={handleDismissDeleteError}
                     hasResourceConfig={hasResourceConfig}
                     resourceStatus={worktree.resourceStatus?.lastStatus}
                     onResourceResume={hasResumeCommand ? handleResourceResume : undefined}
@@ -948,6 +949,14 @@ export function WorktreeCard({
                     onTerminalSelect={handleTerminalSelect}
                   />
                 </div>
+              )}
+
+              {deleteError && (
+                <WorktreeDeleteErrorBanner
+                  message={deleteError}
+                  onRetry={handleRetryDelete}
+                  onDismiss={handleDismissDeleteError}
+                />
               )}
 
               <WorktreeDialogs

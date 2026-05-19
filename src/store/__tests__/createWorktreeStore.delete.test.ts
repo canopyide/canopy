@@ -10,10 +10,11 @@ function nextV(): WorktreeEventVersion {
   return { epoch: TEST_EPOCH, seq: ++_seq };
 }
 
-const { worktreeClientDeleteMock, closeTerminalsForWorktreeMock } = vi.hoisted(() => ({
+const { worktreeClientDeleteMock, closeTerminalsForWorktreeMock, notifyMock } = vi.hoisted(() => ({
   worktreeClientDeleteMock:
     vi.fn<(id: string, force?: boolean, deleteBranch?: boolean) => Promise<void>>(),
   closeTerminalsForWorktreeMock: vi.fn<(id: string) => Promise<void>>(),
+  notifyMock: vi.fn(),
 }));
 
 vi.mock("@/clients", async () => {
@@ -29,6 +30,10 @@ vi.mock("@/clients", async () => {
 
 vi.mock("@/components/Worktree/worktreeDeleteHelper", () => ({
   closeTerminalsForWorktree: closeTerminalsForWorktreeMock,
+}));
+
+vi.mock("@/lib/notify", () => ({
+  notify: notifyMock,
 }));
 
 // Import after mocks so the store picks up the mocked deps.
@@ -58,6 +63,7 @@ describe("createWorktreeStore — delete in-flight state (#8417)", () => {
   beforeEach(() => {
     worktreeClientDeleteMock.mockReset();
     closeTerminalsForWorktreeMock.mockReset();
+    notifyMock.mockReset();
     worktreeClientDeleteMock.mockResolvedValue();
     closeTerminalsForWorktreeMock.mockResolvedValue();
   });
@@ -196,7 +202,10 @@ describe("createWorktreeStore — delete in-flight state (#8417)", () => {
     expect(store.getState().deleteErrorArgs.has("wt-1")).toBe(false);
   });
 
-  it("worktree-removed arriving before failure aborts the error write (race guard)", async () => {
+  it("partial-success path: when worktree-removed arrives first, failure routes to notify() so it is not swallowed", async () => {
+    // The backend emits `worktree-removed` BEFORE `git branch -d`. A branch
+    // deletion failure thus arrives after `applyRemove` has cleared the card.
+    // Falling back to a toast preserves user feedback for the branch leak.
     let rejectIpc: (reason: unknown) => void = () => {};
     worktreeClientDeleteMock.mockImplementationOnce(
       () =>
@@ -208,7 +217,7 @@ describe("createWorktreeStore — delete in-flight state (#8417)", () => {
     const store = createWorktreeStore();
     store.getState().applySnapshot([makeSnapshot("wt-1")], nextV());
 
-    store.getState().startDelete("wt-1", { force: false });
+    store.getState().startDelete("wt-1", { force: false, deleteBranch: true });
     await flushPromises();
 
     // Simulate `worktree-removed` arriving before the IPC rejection — common
@@ -219,14 +228,113 @@ describe("createWorktreeStore — delete in-flight state (#8417)", () => {
     expect(store.getState().deletingIds.has("wt-1")).toBe(false);
     expect(store.getState().worktrees.has("wt-1")).toBe(false);
 
-    rejectIpc(new Error("late fail"));
+    rejectIpc(new Error("Branch 'feature/x' has unmerged changes"));
     await flushPromises();
     await flushPromises();
 
-    // The error must NOT have been written — the worktree is gone, so a
-    // dangling error entry would never be rendered or cleared.
+    // No dangling Map entries (card is gone).
     expect(store.getState().deleteErrors.has("wt-1")).toBe(false);
     expect(store.getState().deleteErrorArgs.has("wt-1")).toBe(false);
+
+    // But the user MUST see the branch-leak error somewhere.
+    expect(notifyMock).toHaveBeenCalledTimes(1);
+    const payload = notifyMock.mock.calls[0]![0] as {
+      type: string;
+      title: string;
+      message: string;
+      context: { worktreeId: string };
+    };
+    expect(payload.type).toBe("error");
+    expect(payload.title).toContain("branch");
+    expect(payload.message).toContain("unmerged");
+    expect(payload.context.worktreeId).toBe("wt-1");
+  });
+
+  it("closeTerminalsForWorktree rejection short-circuits IPC and records the error on the card", async () => {
+    closeTerminalsForWorktreeMock.mockRejectedValueOnce(
+      new Error("Timed out waiting for 2 terminal(s) to close before deleting worktree")
+    );
+
+    const store = createWorktreeStore();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], store.getState().nextVersion());
+
+    store.getState().startDelete("wt-1", { closeTerminals: true, force: false });
+    await flushPromises();
+    await flushPromises();
+
+    expect(worktreeClientDeleteMock).not.toHaveBeenCalled();
+    expect(store.getState().deletingIds.has("wt-1")).toBe(false);
+    expect(store.getState().deleteErrors.get("wt-1")).toContain("Timed out waiting");
+    expect(store.getState().deleteErrorArgs.get("wt-1")).toEqual({
+      closeTerminals: true,
+      force: false,
+    });
+  });
+
+  it("concurrent deletes for different worktrees do not leak state across rows", async () => {
+    let resolveWt1: () => void = () => {};
+    let rejectWt2: (err: Error) => void = () => {};
+    worktreeClientDeleteMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveWt1 = resolve;
+        })
+    );
+    worktreeClientDeleteMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectWt2 = reject;
+        })
+    );
+
+    const store = createWorktreeStore();
+    store
+      .getState()
+      .applySnapshot([makeSnapshot("wt-1"), makeSnapshot("wt-2")], store.getState().nextVersion());
+
+    store.getState().startDelete("wt-1", { force: false });
+    store.getState().startDelete("wt-2", { force: true });
+
+    expect(store.getState().deletingIds.has("wt-1")).toBe(true);
+    expect(store.getState().deletingIds.has("wt-2")).toBe(true);
+
+    rejectWt2(new Error("wt-2 failed"));
+    await flushPromises();
+    await flushPromises();
+
+    expect(store.getState().deletingIds.has("wt-2")).toBe(false);
+    expect(store.getState().deleteErrors.get("wt-2")).toContain("wt-2 failed");
+    // wt-1 stays in flight — its row is not affected by wt-2's failure.
+    expect(store.getState().deletingIds.has("wt-1")).toBe(true);
+    expect(store.getState().deleteErrors.has("wt-1")).toBe(false);
+
+    resolveWt1();
+    store.getState().applyRemove("wt-1", store.getState().nextVersion());
+    expect(store.getState().deletingIds.has("wt-1")).toBe(false);
+    // wt-2's error survives wt-1's removal.
+    expect(store.getState().deleteErrors.get("wt-2")).toContain("wt-2 failed");
+  });
+
+  it("startDelete is idempotent — a second call while in flight does not fire a second IPC", async () => {
+    let resolveDelete: () => void = () => {};
+    worktreeClientDeleteMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDelete = resolve;
+        })
+    );
+
+    const store = createWorktreeStore();
+    store.getState().startDelete("wt-1", { force: false });
+    await flushPromises();
+    store.getState().startDelete("wt-1", { force: true });
+    await flushPromises();
+
+    expect(worktreeClientDeleteMock).toHaveBeenCalledTimes(1);
+    expect(worktreeClientDeleteMock).toHaveBeenCalledWith("wt-1", false, undefined);
+
+    resolveDelete();
+    await flushPromises();
   });
 
   it("applyRemove still works for worktrees with no in-flight delete (no regression)", () => {

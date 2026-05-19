@@ -57,8 +57,6 @@ export interface WorktreeDetailsSectionProps {
 
   isBeingDeleted?: boolean;
   deleteError?: string | null;
-  onRetryDelete?: () => void;
-  onDismissDeleteError?: () => void;
 
   hasResourceConfig?: boolean;
   resourceStatus?: string;
@@ -92,8 +90,6 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
     lifecycleLabel,
     isBeingDeleted,
     deleteError,
-    onRetryDelete,
-    onDismissDeleteError,
 
     hasResourceConfig,
     resourceStatus,
@@ -191,7 +187,18 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
               className="worktree-section-button flex w-full items-center justify-between rounded-t-[var(--radius-lg)] border-b border-border-default bg-surface-inset px-3 py-2.5 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-[-2px]"
               id={`${detailsId}-button`}
             >
-              <span className="text-xs font-medium text-text-muted">Details</span>
+              {isBeingDeleted && !deleteError ? (
+                <span
+                  className="flex items-center gap-1.5 text-xs font-medium text-text-secondary"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <Spinner size="xs" className="shrink-0" />
+                  <span>Deleting…</span>
+                </span>
+              ) : (
+                <span className="text-xs font-medium text-text-muted">Details</span>
+              )}
               <ChevronRight className="h-3 w-3 rotate-90 text-text-muted" />
             </button>
             <div
@@ -528,44 +535,63 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
         </div>
         )}
       </div>
-      {deleteError && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          data-testid="worktree-delete-error-banner"
-          className="mt-2 flex items-start gap-2 rounded-[var(--radius-lg)] border border-status-error/20 bg-status-error/10 p-3 text-xs"
-        >
-          <AlertTriangle className="w-4 h-4 shrink-0 text-status-error" aria-hidden="true" />
-          <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <div className="flex flex-col gap-0.5">
-              <span className="font-medium text-status-error">Couldn't delete worktree</span>
-              <span className="break-words text-text-secondary">{deleteError}</span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {onRetryDelete && (
-                <button
-                  type="button"
-                  onClick={onRetryDelete}
-                  data-testid="worktree-delete-retry"
-                  className="rounded border border-status-error/30 px-2 py-1 text-status-error transition-colors hover:bg-status-error/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
-                >
-                  Retry
-                </button>
-              )}
-              {onDismissDeleteError && (
-                <button
-                  type="button"
-                  onClick={onDismissDeleteError}
-                  data-testid="worktree-delete-dismiss"
-                  className="rounded px-2 py-1 text-text-secondary transition-colors hover:bg-overlay-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
-                >
-                  Dismiss
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </>
+  );
+}
+
+export interface WorktreeDeleteErrorBannerProps {
+  message: string;
+  onRetry?: () => void;
+  onDismiss?: () => void;
+}
+
+/**
+ * Stand-alone banner so the card can render it outside of the details section
+ * (which is hidden when the card is collapsed). The user must be able to see
+ * a delete failure regardless of collapse state — otherwise a collapsed card
+ * silently absorbs the error.
+ */
+export function WorktreeDeleteErrorBanner({
+  message,
+  onRetry,
+  onDismiss,
+}: WorktreeDeleteErrorBannerProps) {
+  return (
+    <div
+      role="alert"
+      aria-live="assertive"
+      data-testid="worktree-delete-error-banner"
+      className="mt-2 flex items-start gap-2 rounded-[var(--radius-lg)] border border-status-error/20 bg-status-error/10 p-3 text-xs"
+    >
+      <AlertTriangle className="w-4 h-4 shrink-0 text-status-error" aria-hidden="true" />
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <div className="flex flex-col gap-0.5">
+          <span className="font-medium text-status-error">Couldn't delete worktree</span>
+          <span className="break-words text-text-secondary">{message}</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              data-testid="worktree-delete-retry"
+              className="rounded border border-status-error/30 px-2 py-1 text-status-error transition-colors hover:bg-status-error/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+            >
+              Retry
+            </button>
+          )}
+          {onDismiss && (
+            <button
+              type="button"
+              onClick={onDismiss}
+              data-testid="worktree-delete-dismiss"
+              className="rounded px-2 py-1 text-text-secondary transition-colors hover:bg-overlay-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent focus-visible:outline-offset-2"
+            >
+              Dismiss
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
