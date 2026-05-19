@@ -1,6 +1,5 @@
 import { events } from "./events.js";
 import { clearPRCaches } from "./GitHubService.js";
-import { gitHubRateLimitService } from "./github/index.js";
 import { logInfo, logWarn, logDebug } from "../utils/logger.js";
 import type { WorktreeSnapshot as WorktreeState } from "../../shared/types/workspace-host.js";
 import { formatErrorMessage } from "../../shared/utils/errorMessage.js";
@@ -8,7 +7,12 @@ import { resolveForgeProvider } from "./forgeProviderResolver.js";
 import { getForgeProviderImpl } from "./forgeProviderRegistry.js";
 import { generateProjectId } from "./projectStorePaths.js";
 import { createHardenedGit } from "../utils/hardenedGit.js";
-import type { ForgeProviderImpl, RepoRef, PR as ForgePR } from "../../shared/types/forge.js";
+import type {
+  ForgeProviderImpl,
+  RepoRef,
+  PR as ForgePR,
+  RateLimitInfo,
+} from "../../shared/types/forge.js";
 
 // Focus-aware polling cadence: faster when any Daintree window is focused so
 // users see PR transitions promptly, slower when fully blurred to conserve the
@@ -63,6 +67,12 @@ const RESOLVED_REVALIDATION_INTERVAL_MS = 90 * 1000; // 90 seconds
 // slide the window forward.
 const RESOLVED_REVALIDATION_BOOST_INTERVAL_MS = 30 * 1000; // 30 seconds
 const RESOLVED_REVALIDATION_BOOST_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+
+// Rate-limit block constants extracted from the GitHub-specific service so the
+// polling loops consult the active provider's rate-limit state through
+// ForgeProviderImpl.getRateLimit() rather than the gitHubRateLimitService singleton.
+const RATE_LIMIT_CLOCK_SKEW_MS = 7_000; // buffer applied to server resetAt for clock skew
+const RATE_LIMIT_SECONDARY_FALLBACK_MS = 60_000; // pause when throttled without a retry-after
 
 interface WorktreeContext {
   issueNumber?: number;
@@ -741,18 +751,41 @@ class PullRequestService {
     }, intervalMs);
   }
 
+  /**
+   * Consult the active forge provider's rate-limit state and return a blocking
+   * decision. Fails open (unblocked) when the provider is absent, lacks
+   * `getRateLimit`, or the call throws — a provider bug must not stall polling.
+   */
+  private async checkRateLimitGate(): Promise<{
+    blocked: boolean;
+    resumeAt: number | null;
+  }> {
+    if (!this.providerImpl?.getRateLimit) {
+      return { blocked: false, resumeAt: null };
+    }
+    try {
+      const info: RateLimitInfo = await this.providerImpl.getRateLimit();
+      const now = Date.now();
+      if (info.secondaryThrottled) {
+        const resumeAt = info.resetAt ?? now + RATE_LIMIT_SECONDARY_FALLBACK_MS;
+        if (resumeAt <= now) return { blocked: false, resumeAt: null };
+        return { blocked: true, resumeAt };
+      }
+      if (info.remaining === 0) {
+        const resumeAt = info.resetAt
+          ? info.resetAt + RATE_LIMIT_CLOCK_SKEW_MS
+          : now + RATE_LIMIT_SECONDARY_FALLBACK_MS;
+        if (resumeAt <= now) return { blocked: false, resumeAt: null };
+        return { blocked: true, resumeAt };
+      }
+      return { blocked: false, resumeAt: null };
+    } catch {
+      return { blocked: false, resumeAt: null };
+    }
+  }
+
   private async revalidateResolvedPRs(): Promise<void> {
     if (!this.isEnabled || this.resolvedWorktrees.size === 0) {
-      return;
-    }
-
-    const rateLimitBlock = gitHubRateLimitService.shouldBlockRequest();
-    if (rateLimitBlock.blocked && rateLimitBlock.resumeAt) {
-      this.nextRetryAt = rateLimitBlock.resumeAt;
-      logDebug("Skipping PR revalidation — rate limit active", {
-        reason: rateLimitBlock.reason,
-        resumeAt: rateLimitBlock.resumeAt,
-      });
       return;
     }
 
@@ -760,6 +793,16 @@ class PullRequestService {
     const repo = this.repoRef;
     const providerId = this.providerNamespacedId;
     if (!provider || !repo || !providerId) return;
+
+    const { blocked, resumeAt } = await this.checkRateLimitGate();
+    if (blocked && resumeAt) {
+      this.nextRetryAt = resumeAt;
+      logDebug("Skipping PR revalidation — rate limit active", {
+        providerId,
+        resumeAt,
+      });
+      return;
+    }
 
     // Collect resolved worktrees that need revalidation
     const lookupBranchByWorktreeId = new Map<string, string | undefined>();
@@ -861,17 +904,6 @@ class PullRequestService {
   }
 
   private async checkForPRs(): Promise<void> {
-    const rateLimitBlock = gitHubRateLimitService.shouldBlockRequest();
-    if (rateLimitBlock.blocked && rateLimitBlock.resumeAt) {
-      this.nextRetryAt = rateLimitBlock.resumeAt;
-      logDebug("Skipping PR check — rate limit active", {
-        reason: rateLimitBlock.reason,
-        resumeAt: rateLimitBlock.resumeAt,
-        waitMs: rateLimitBlock.resumeAt - Date.now(),
-      });
-      return;
-    }
-
     const activeCandidates: Array<{
       worktreeId: string;
       issueNumber?: number;
@@ -911,6 +943,17 @@ class PullRequestService {
       // No forge provider resolved — all candidates get null linkage.
       // No error, no toast, no log spam (per issue spec).
       logDebug("Skipping PR check — no forge provider resolved");
+      return;
+    }
+
+    const { blocked, resumeAt } = await this.checkRateLimitGate();
+    if (blocked && resumeAt) {
+      this.nextRetryAt = resumeAt;
+      logDebug("Skipping PR check — rate limit active", {
+        providerId,
+        resumeAt,
+        waitMs: resumeAt - Date.now(),
+      });
       return;
     }
 
