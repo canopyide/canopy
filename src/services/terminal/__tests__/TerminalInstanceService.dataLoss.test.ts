@@ -86,7 +86,10 @@ describe("injectDataLossMarker", () => {
     // Leading CAN cancels any partial in-flight sequence; OSC carries the
     // byte count + reason code and is BEL-terminated. Presentation (the
     // yellow ANSI line) must NOT be on the wire.
-    expect(oscWrite).toMatch(/\x18\x1b\]57301;1234;backpressure\x07/);
+    const CAN = String.fromCharCode(0x18);
+    const BEL = String.fromCharCode(0x07);
+    const expectedPattern = `${CAN}\x1b]57301;1234;backpressure${BEL}`;
+    expect(oscWrite).toBe(expectedPattern);
     expect(oscWrite).not.toContain("Output dropped");
     expect(oscWrite).not.toContain("\x1b[33m");
   });
