@@ -220,6 +220,25 @@ describe("WorkspaceHostProcess", () => {
 
     host.dispose();
   });
+
+  it("routes watcher-recovered as host-event (spontaneous event)", async () => {
+    const { WorkspaceHostProcess } = await loadModule();
+    const host = new WorkspaceHostProcess("/tmp/project", {
+      maxRestartAttempts: 3,
+      healthCheckIntervalMs: 30000,
+    } as any);
+    host.waitForReady().catch(() => {});
+
+    const onHostEvent = vi.fn();
+    host.on("host-event", onHostEvent);
+
+    const child = mockChildren[0] as MockUtilityChild;
+    child.emit("message", { type: "watcher-recovered" });
+
+    expect(onHostEvent).toHaveBeenCalledWith({ type: "watcher-recovered" });
+
+    host.dispose();
+  });
 });
 
 // ── BrokerError contract tests ──

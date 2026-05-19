@@ -59,6 +59,13 @@ const DIRECT_RENDERER_EVENTS = new Set([
   "pr-detection-state",
   "issue-detected",
   "issue-not-found",
+  // Watcher degradation/recovery — delivered direct so each per-view store
+  // can drive the persistent degraded indicator. The one-shot toast still
+  // routes through the main-process relay (WorkspaceHostEventRouter); the two
+  // paths are independent and both fire (dual delivery, existing pattern).
+  "inotify-limit-reached",
+  "emfile-limit-reached",
+  "watcher-recovered",
 ]);
 
 function sendToWorktreePorts(event: WorkspaceHostEvent): void {
@@ -83,7 +90,12 @@ async function handleWorktreePortRequest(
       case "get-all-states": {
         const states = workspaceService.getSnapshotsSync();
         const { epoch, seq } = workspaceService.getVersion();
-        result = { states, epoch, seq };
+        result = {
+          states,
+          epoch,
+          seq,
+          watcherDegraded: workspaceService.isWatcherDegraded(),
+        };
         break;
       }
 

@@ -449,6 +449,10 @@ export type WorkspaceHostEvent =
   // macOS-only: fired once per host-process lifetime when the recursive file
   // watcher hits the FSEvents file descriptor ceiling (EMFILE).
   | { type: "emfile-limit-reached" }
+  // Fired when a previously-degraded recursive watcher successfully re-arms.
+  // Clears the one-shot degradation guards so a later relapse can re-signal,
+  // and hides the persistent degraded indicator in the renderer.
+  | { type: "watcher-recovered" }
   // PR events
   | {
       type: "pr-detected";

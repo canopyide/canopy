@@ -520,6 +520,7 @@ export class WorkspaceService {
         this.resourceActionExecutor.cleanupResourceActionState(id);
         monitor.stop();
         this.monitors.delete(id);
+        this.recoverWatcherIfNoMonitorsRemain();
         clearGitDirCache(monitor.path);
         invalidateGitStatusCache(monitor.path);
         this.sendEvent({
@@ -713,6 +714,7 @@ export class WorkspaceService {
         },
         onInotifyLimitReached: () => this.handleInotifyLimitReached(),
         onEmfileLimitReached: () => this.handleEmfileLimitReached(),
+        onWatcherRecovered: () => this.handleWatcherRecovered(),
         onScheduleFetch: async (worktreeId, _isCurrent, force) => {
           const target = this.monitors.get(worktreeId);
           if (!target || !target.isRunning) return;
@@ -943,6 +945,43 @@ export class WorkspaceService {
     this.sendEvent({ type: "emfile-limit-reached" });
   }
 
+  /**
+   * A recursive watcher re-armed after a degradation. Clear the one-shot
+   * notification guards so a later relapse can re-signal, and emit
+   * `watcher-recovered` so the renderer hides the persistent degraded
+   * indicator and the main-process router resets its toast guards. Idempotent
+   * — firing when nothing was degraded is a harmless no-op downstream.
+   */
+  private handleWatcherRecovered(): void {
+    this.inotifyLimitNotified = false;
+    this.emfileLimitNotified = false;
+    this.sendEvent({ type: "watcher-recovered" });
+  }
+
+  /**
+   * Whether any worktree's recursive watcher is currently degraded to the
+   * polling/git-only fallback. Bundled into the `get-all-states` handshake so
+   * a late-mounting view hydrates the persistent indicator without waiting
+   * for a live event.
+   */
+  isWatcherDegraded(): boolean {
+    return this.inotifyLimitNotified || this.emfileLimitNotified;
+  }
+
+  /**
+   * Called after a monitor is removed. If the last monitor is gone while the
+   * degradation guards are still set, the degraded watcher was torn down
+   * before it could recover — there is no longer anything degraded, so treat
+   * it as recovered. Otherwise a stale `watcherDegraded: true` would ride the
+   * next `get-all-states` handshake and pin the indicator on with no way to
+   * clear it.
+   */
+  private recoverWatcherIfNoMonitorsRemain(): void {
+    if (this.monitors.size === 0 && this.isWatcherDegraded()) {
+      this.handleWatcherRecovered();
+    }
+  }
+
   private worktreeMetadataDirPath(): string | null {
     if (!this.projectRootPath) return null;
     const commonDir = getGitCommonDir(this.projectRootPath);
@@ -1171,6 +1210,7 @@ export class WorkspaceService {
     this.resourceActionExecutor.cleanupResourceActionState(worktreeId);
     monitor.stop();
     this.monitors.delete(worktreeId);
+    this.recoverWatcherIfNoMonitorsRemain();
 
     clearGitDirCache(monitor.path);
     invalidateGitStatusCache(monitor.path);
@@ -1777,6 +1817,7 @@ export class WorkspaceService {
       this.resourceActionExecutor.cleanupResourceActionState(worktreeId);
       monitor.stop();
       this.monitors.delete(worktreeId);
+      this.recoverWatcherIfNoMonitorsRemain();
 
       // Monitor is cleaned up. Drop the pending entry now (cancelling its
       // safety valve): any still-buffered delete event for this name is

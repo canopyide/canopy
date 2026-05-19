@@ -26,7 +26,9 @@ export interface WorktreePortProtocol {
     // comparison baseline to the host's actual `(epoch, seq)` position rather
     // than a renderer-minted counter (#8403). `seq` is the high-water mark at
     // snapshot time — a state description, not a new event.
-    result: { states: WorktreeSnapshot[] } & WorktreeEventVersion;
+    // `watcherDegraded` hydrates the persistent watcher-degraded indicator on
+    // late-mounting views without waiting for a live event (#8413).
+    result: { states: WorktreeSnapshot[]; watcherDegraded: boolean } & WorktreeEventVersion;
   };
   "set-active": {
     payload: { worktreeId: string };
