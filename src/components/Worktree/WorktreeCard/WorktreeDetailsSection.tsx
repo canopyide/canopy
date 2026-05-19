@@ -377,7 +377,10 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
                         className="w-4 h-4"
                       />
                     )}
-                    <LiveTimeAgo timestamp={worktree.worktreeChanges.lastCommitTimestampMs} />
+                    <LiveTimeAgo
+                      timestamp={worktree.worktreeChanges.lastCommitTimestampMs}
+                      noTooltip
+                    />
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
@@ -400,7 +403,7 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
                         lastActivityTimestamp={worktree.lastActivityTimestamp}
                         className="w-1.5 h-1.5"
                       />
-                      <LiveTimeAgo timestamp={worktree.lastActivityTimestamp} />
+                      <LiveTimeAgo timestamp={worktree.lastActivityTimestamp} noTooltip />
                     </>
                   ) : (
                     <span>No activity</span>

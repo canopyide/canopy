@@ -373,7 +373,7 @@ export async function getWorktreeChangesWithStats(
 
       const [{ toplevelRaw, headOid }, logOutput] = await Promise.all([
         revParsePromise,
-        git.raw(["log", "-1", "--format=%ct%x09%an%x09%ae%x09%s"]).catch(() => ""),
+        git.raw(["log", "-1", "--format=%at%x09%an%x09%ae%x09%s"]).catch(() => ""),
       ]);
 
       const gitRoot = realpathSync(toplevelRaw.trim());

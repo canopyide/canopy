@@ -6,6 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 interface LiveTimeAgoProps {
   timestamp?: number | null;
   className?: string;
+  noTooltip?: boolean;
 }
 
 // Coarsest update cadence when the app is in performance mode — even a fast
@@ -75,7 +76,7 @@ function msUntilNextFlip(diffMs: number, now: number): number {
   return Infinity;
 }
 
-export function LiveTimeAgo({ timestamp, className }: LiveTimeAgoProps) {
+export function LiveTimeAgo({ timestamp, className, noTooltip }: LiveTimeAgoProps) {
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -103,27 +104,32 @@ export function LiveTimeAgo({ timestamp, className }: LiveTimeAgoProps) {
     const absoluteLabel = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
       new Date(timestamp)
     );
+    const timeEl = (
+      <time dateTime={isoDate} className={cn("tabular-nums", className)}>
+        {absoluteLabel}
+      </time>
+    );
+    if (noTooltip) return timeEl;
     return (
       <Tooltip>
-        <TooltipTrigger asChild>
-          <time dateTime={isoDate} className={cn("tabular-nums", className)}>
-            {absoluteLabel}
-          </time>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">{`Last commit: ${new Date(timestamp).toLocaleString()}`}</TooltipContent>
+        <TooltipTrigger asChild>{timeEl}</TooltipTrigger>
+        <TooltipContent side="bottom">{`Last activity: ${new Date(timestamp).toLocaleString()}`}</TooltipContent>
       </Tooltip>
     );
   }
 
   const formattedDate = new Date(timestamp).toLocaleString();
 
+  const timeEl = (
+    <time dateTime={isoDate} className={cn("tabular-nums", className)} aria-label={fullLabel}>
+      {label}
+    </time>
+  );
+  if (noTooltip) return timeEl;
+
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <time dateTime={isoDate} className={cn("tabular-nums", className)} aria-label={fullLabel}>
-          {label}
-        </time>
-      </TooltipTrigger>
+      <TooltipTrigger asChild>{timeEl}</TooltipTrigger>
       <TooltipContent side="bottom">{`${fullLabel} (${formattedDate})`}</TooltipContent>
     </Tooltip>
   );
