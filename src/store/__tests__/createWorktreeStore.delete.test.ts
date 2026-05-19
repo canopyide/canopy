@@ -256,7 +256,7 @@ describe("createWorktreeStore — delete in-flight state (#8417)", () => {
     );
 
     const store = createWorktreeStore();
-    store.getState().applySnapshot([makeSnapshot("wt-1")], store.getState().nextVersion());
+    store.getState().applySnapshot([makeSnapshot("wt-1")], nextV());
 
     store.getState().startDelete("wt-1", { closeTerminals: true, force: false });
     await flushPromises();
@@ -290,7 +290,7 @@ describe("createWorktreeStore — delete in-flight state (#8417)", () => {
     const store = createWorktreeStore();
     store
       .getState()
-      .applySnapshot([makeSnapshot("wt-1"), makeSnapshot("wt-2")], store.getState().nextVersion());
+      .applySnapshot([makeSnapshot("wt-1"), makeSnapshot("wt-2")], nextV());
 
     store.getState().startDelete("wt-1", { force: false });
     store.getState().startDelete("wt-2", { force: true });
@@ -309,7 +309,7 @@ describe("createWorktreeStore — delete in-flight state (#8417)", () => {
     expect(store.getState().deleteErrors.has("wt-1")).toBe(false);
 
     resolveWt1();
-    store.getState().applyRemove("wt-1", store.getState().nextVersion());
+    store.getState().applyRemove("wt-1", nextV());
     expect(store.getState().deletingIds.has("wt-1")).toBe(false);
     // wt-2's error survives wt-1's removal.
     expect(store.getState().deleteErrors.get("wt-2")).toContain("wt-2 failed");
