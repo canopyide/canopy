@@ -71,7 +71,6 @@ import { RecipeManager } from "@/components/TerminalRecipe/RecipeManager";
 import { isAgentTerminal } from "@/utils/terminalType";
 import { isTerminalVisible } from "@/lib/terminalVisibility";
 import { useWorktreeIds } from "@/hooks/useTerminalSelectors";
-import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import { logError } from "@/utils/logger";
 import { useWorktreeGridRovingFocus } from "./useWorktreeGridRovingFocus";
 
@@ -235,8 +234,11 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     },
   });
   const { worktrees, isLoading, isReconnecting, reconnectingAt, error, refresh } = useWorktrees();
-  const setError = useWorktreeStore((state) => state.setError);
-  const onBannerDismiss = useCallback(() => setError(null), [setError]);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  useEffect(() => {
+    setBannerDismissed(false);
+  }, [error]);
+  const onBannerDismiss = useCallback(() => setBannerDismissed(true), []);
   worktreesRef.current = worktrees;
 
   // 1Hz tick that drives the escalated "Reconnecting… last updated X ago"
@@ -794,6 +796,33 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
     <WorktreeLoadErrorBanner error={worktreeLoadError} />
   ) : null;
 
+  // Workspace-service error banner overlays cached data so the user can keep
+  // working through transient poll failures. Hoisted before the early returns
+  // so a `setFatalError` that fires before the first snapshot is still
+  // actionable from the zero-worktrees branch — its only recovery path is the
+  // banner's "Restart Service" button.
+  const errorBanner =
+    error !== null && !bannerDismissed ? (
+      <InlineStatusBanner
+        icon={AlertTriangle}
+        title="Workspace service unavailable"
+        contextLine={error}
+        severity="warning"
+        role="status"
+        ariaLive="polite"
+        onClose={onBannerDismiss}
+        closeAriaLabel="Dismiss error"
+        actions={[
+          {
+            id: "restart-workspace-service",
+            label: "Restart Service",
+            variant: "primary",
+            onClick: () => setIsRestartConfirmOpen(true),
+          },
+        ]}
+      />
+    ) : null;
+
   if (isLoading && worktrees.length === 0) {
     return (
       <div className="flex flex-col h-full">
@@ -825,6 +854,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
           <div className="flex items-center px-4 py-4 border-b border-divider shrink-0">
             <h2 className="text-daintree-text font-semibold text-sm tracking-wide">Worktrees</h2>
           </div>
+          {errorBanner}
 
           {/* A failed load already has an open project — the "Open a Git
               repository" nudge would contradict the banner, so the banner
@@ -1115,26 +1145,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         <WorktreeSidebarSearchBar inputRef={searchInputRef} chipCounts={chipCounts} />
       )}
 
-      {error && (
-        <InlineStatusBanner
-          icon={AlertTriangle}
-          title="Workspace service unavailable"
-          contextLine={error}
-          severity="warning"
-          role="status"
-          ariaLive="polite"
-          onClose={onBannerDismiss}
-          closeAriaLabel="Dismiss error"
-          actions={[
-            {
-              id: "restart-workspace-service",
-              label: "Restart Service",
-              variant: "primary",
-              onClick: () => setIsRestartConfirmOpen(true),
-            },
-          ]}
-        />
-      )}
+      {errorBanner}
 
       {/* SR-only live region for keyboard reorder announcements. dnd-kit's
           built-in announcer can't see external mutations like Alt+Arrow, so
@@ -1219,7 +1230,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                   trailing={armMatchingButton}
                 />
               )}
-              {showQuickStateEmptyState && !hasFacetFiltersActive ? (
+              {showQuickStateEmptyState && !hasFacetFiltersActive && !hasQuery ? (
                 <EmptyState variant="user-cleared" scale="sidebar" title="All caught up" />
               ) : showQuickStateEmptyState && hasFacetFiltersActive ? (
                 <EmptyState
