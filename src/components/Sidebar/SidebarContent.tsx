@@ -40,6 +40,7 @@ import {
 } from "@/components/DragDrop/SortableWorktreeCard";
 import { applyManualWorktreeReorder } from "@/lib/worktreeReorder";
 import { usePanelStore, useWorktreeSelectionStore, useProjectStore } from "@/store";
+import type { PendingCreation } from "@/store/worktreeStore";
 import { useFleetArmingStore, collectFilterArmEligibleIds } from "@/store/fleetArmingStore";
 import { useShallow } from "zustand/react/shallow";
 import { systemClient } from "@/clients";
@@ -64,6 +65,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SidebarWorktreeRow } from "./SidebarWorktreeRow";
 import { WorktreeLoadErrorBanner } from "./WorktreeLoadErrorBanner";
 import { StaticWorktreeRow } from "./StaticWorktreeRow";
+import { WorktreeCardPlaceholder } from "./WorktreeCardPlaceholder";
 import { useScrollIndicator } from "./useScrollIndicator";
 import { useRecipeDialogState } from "./useRecipeDialogState";
 import { RecipeEditor } from "@/components/TerminalRecipe/RecipeEditor";
@@ -286,6 +288,32 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       closeBulkCreateDialog: state.closeBulkCreateDialog,
     }))
   );
+  // Direct subscription (no useDeferredValue) so the skeleton renders the
+  // moment the dialog submits — defer would make the placeholder lag the
+  // dialog close by a frame and lose the perceived-responsiveness win.
+  const pendingCreations = useWorktreeSelectionStore((s) => s.pendingCreations);
+  const openCreateDialog = useWorktreeSelectionStore((s) => s.openCreateDialog);
+  const dismissPendingCreation = useWorktreeSelectionStore((s) => s.dismissPendingCreation);
+
+  const handleRetryPendingCreation = useCallback(
+    (pendingCreation: PendingCreation) => {
+      dismissPendingCreation(pendingCreation.path);
+      openCreateDialog(null, { initialBranchInput: pendingCreation.branch });
+    },
+    [dismissPendingCreation, openCreateDialog]
+  );
+
+  const pendingCreationRows = useMemo(() => {
+    if (pendingCreations.size === 0) return null;
+    return Array.from(pendingCreations.values()).map((pendingCreation) => (
+      <WorktreeCardPlaceholder
+        key={pendingCreation.path}
+        pendingCreation={pendingCreation}
+        onRetry={handleRetryPendingCreation}
+        onDismiss={dismissPendingCreation}
+      />
+    ));
+  }, [pendingCreations, handleRetryPendingCreation, dismissPendingCreation]);
 
   const [hasOpenedNewWorktree, setHasOpenedNewWorktree] = useState(false);
   useEffect(() => {
@@ -806,6 +834,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
             initialIssue={createDialog.initialIssue}
             initialPR={createDialog.initialPR}
             initialRecipeId={createDialog.initialRecipeId}
+            initialBranchInput={createDialog.initialBranchInput}
           />
         </Suspense>
       </ErrorBoundary>
@@ -1264,6 +1293,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         <div className="relative flex-1 min-h-0">
           <div ref={scrollContainerRef} className="h-full overflow-y-auto scrollbar-none">
             <div ref={scrollContentRef}>
+              {pendingCreationRows}
               {hasNonMainWorktrees && (
                 <QuickStateFilterBar
                   value={quickStateFilter}
