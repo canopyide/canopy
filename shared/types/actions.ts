@@ -8,6 +8,8 @@ export type ActionKind = "command" | "query";
 
 export type ActionDanger = "safe" | "confirm" | "restricted";
 
+export type McpVisibility = "core" | "discoverable" | "hidden";
+
 export type ActionScope = "renderer";
 
 /**
@@ -114,6 +116,14 @@ export interface ActionDefinition<
    * same reasoning the model would. Required when `danger !== "safe"`.
    */
   dangerRationale?: string;
+  /**
+   * MCP progressive-disclosure visibility. `core` tools always appear on
+   * `tools/list`; `discoverable` tools are reachable via `actions.search` +
+   * `actions.getSchema` but omitted from the default list; `hidden` tools
+   * never surface in discovery. Unset (undefined) preserves pre-existing
+   * behavior (tool appears on `tools/list` when tier-permitted).
+   */
+  mcpVisibility?: McpVisibility;
 }
 
 export interface ActionManifestEntry {
@@ -142,6 +152,8 @@ export interface ActionManifestEntry {
   examples?: readonly ActionExample[];
   /** Human-readable rationale for the action's `danger` rating. */
   dangerRationale?: string;
+  /** MCP progressive-disclosure visibility classification. */
+  mcpVisibility?: McpVisibility;
 }
 
 export interface ActionDispatchSuccess<Result = unknown> {
