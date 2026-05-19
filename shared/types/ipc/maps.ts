@@ -222,6 +222,13 @@ export interface MainProcessToastPayload {
   type: "success" | "error" | "info" | "warning";
   title?: string;
   message: string;
+  /**
+   * Rate-limit bucket override threaded through to `notify({ rateLimitKey })`.
+   * Without this, payloads share a bucket keyed only on `type` (e.g. all
+   * `"error"` toasts), so an unrelated burst of errors can absorb a billing-
+   * critical notification into a generic overflow row.
+   */
+  rateLimitKey?: string;
   action?: {
     label: string;
     /** IPC channel to invoke when the action button is clicked */
