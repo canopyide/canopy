@@ -354,6 +354,8 @@ export const CHANNELS = {
   WEBVIEW_FIND_SHORTCUT: "webview:find-shortcut",
   WEBVIEW_NAVIGATION_BLOCKED: "webview:navigation-blocked",
   WEBVIEW_OAUTH_LOOPBACK: "webview:oauth-loopback",
+  WEBVIEW_CANCEL_OAUTH_LOOPBACK: "webview:cancel-oauth-loopback",
+  WEBVIEW_OAUTH_LOOPBACK_STATUS: "webview:oauth-loopback-status",
   WEBVIEW_START_CONSOLE_CAPTURE: "webview:start-console-capture",
   WEBVIEW_STOP_CONSOLE_CAPTURE: "webview:stop-console-capture",
   WEBVIEW_CLEAR_CONSOLE_CAPTURE: "webview:clear-console-capture",

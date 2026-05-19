@@ -2059,8 +2059,11 @@ export interface IpcInvokeMap extends GeneratedIpcInvokeMap {
       webContentsId: number,
       sessionStorageSnapshot?: Array<[string, string]>,
     ];
-    /** Resolves with `{ success: true }` on success or `null` if the loopback was aborted. Throws `AppError` on hard failure. */
-    result: { success: true } | null;
+    result: import("../oauth.js").OAuthLoopbackResult;
+  };
+  "webview:cancel-oauth-loopback": {
+    args: [payload: { panelId: string }];
+    result: void;
   };
 
   // Additional worktree channels
@@ -2281,6 +2284,13 @@ export interface IpcEventMap {
     panelId: string;
     url: string;
     canOpenExternal: boolean;
+  };
+
+  // Webview OAuth loopback status — phase transitions from main process
+  "webview:oauth-loopback-status": {
+    panelId: string;
+    phase: "token-exchange-intercepted" | "completed" | "timed-out" | "error";
+    message?: string;
   };
 
   // Voice input events

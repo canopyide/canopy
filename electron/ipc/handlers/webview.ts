@@ -690,12 +690,25 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
     getWebviewDialogService().resolveDialog(dialogId, confirmed, response);
   };
 
+  const handleCancelOAuthLoopback = async (payload: unknown): Promise<void> => {
+    if (
+      typeof payload !== "object" ||
+      payload === null ||
+      typeof (payload as { panelId?: unknown }).panelId !== "string"
+    ) {
+      throw new Error("Invalid arguments: panelId must be string");
+    }
+    const { panelId } = payload as { panelId: string };
+    const { cancelOAuthLoopback } = await import("../../services/OAuthLoopbackService.js");
+    cancelOAuthLoopback(panelId);
+  };
+
   const handleOAuthLoopback = async (
     authUrl: unknown,
     panelId: unknown,
     webContentsId: unknown,
     providedSessionStorageSnapshot: unknown
-  ): Promise<{ success: true } | null> => {
+  ): Promise<import("../../../shared/types/oauth.js").OAuthLoopbackResult> => {
     if (
       typeof authUrl !== "string" ||
       typeof panelId !== "string" ||
@@ -766,9 +779,24 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
       }
     }
 
+    // Resolve owner window once — used for status event broadcasts.
+    const ownerWindow = getWindowForWebContents(wc);
+
     // Step 2: Start loopback server, open system browser, wait for callback
     const loopbackResult = await startOAuthLoopback(authUrl, panelId);
-    if (!loopbackResult) return null;
+    if (!loopbackResult.success) {
+      // Suppress status event for cancelled flows — the renderer already
+      // dismissed the banner via the Cancel button, and a second "Sign in"
+      // preempting a first would flash a misleading "error" phase.
+      if (loopbackResult.cause !== "cancelled" && ownerWindow) {
+        sendToRenderer(ownerWindow, CHANNELS.WEBVIEW_OAUTH_LOOPBACK_STATUS, {
+          panelId,
+          phase: loopbackResult.cause === "timed-out" ? "timed-out" : "error",
+          message: loopbackResult.cause === "timed-out" ? "Sign-in timed out" : undefined,
+        });
+      }
+      return loopbackResult;
+    }
 
     const { callbackUrl, loopbackRedirectUri, originalRedirectUri } = loopbackResult;
 
@@ -898,6 +926,13 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
             });
 
           clearTimeout(timeout);
+          // Broadcast token-exchange-intercepted status to the renderer
+          if (ownerWindow) {
+            sendToRenderer(ownerWindow, CHANNELS.WEBVIEW_OAUTH_LOOPBACK_STATUS, {
+              panelId,
+              phase: "token-exchange-intercepted",
+            });
+          }
           finishIntercept();
         };
 
@@ -953,6 +988,13 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
     }
 
     if (navigationError) {
+      if (ownerWindow) {
+        sendToRenderer(ownerWindow, CHANNELS.WEBVIEW_OAUTH_LOOPBACK_STATUS, {
+          panelId,
+          phase: "error",
+          message: `Navigation failed: ${(navigationError as Error).message}`,
+        });
+      }
       throw new AppError({
         code: "INTERNAL",
         message: `OAuth callback navigation failed: ${(navigationError as Error).message}`,
@@ -961,7 +1003,15 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
       });
     }
 
-    return { success: true };
+    // Broadcast completion status
+    if (ownerWindow) {
+      sendToRenderer(ownerWindow, CHANNELS.WEBVIEW_OAUTH_LOOPBACK_STATUS, {
+        panelId,
+        phase: "completed",
+      });
+    }
+
+    return { success: true, callbackUrl, loopbackRedirectUri, originalRedirectUri };
   };
 
   const handleReloadIgnoringCache = async (
@@ -1024,6 +1074,7 @@ export function registerWebviewHandlers(_deps: HandlerDependencies): () => void 
     typedHandle(CHANNELS.WEBVIEW_GET_CONSOLE_PROPERTIES, handleGetConsoleProperties),
     // @ts-expect-error: result type contains {success} | null — pending migration to throw AppError. See #6020.
     typedHandle(CHANNELS.WEBVIEW_OAUTH_LOOPBACK, handleOAuthLoopback),
+    typedHandle(CHANNELS.WEBVIEW_CANCEL_OAUTH_LOOPBACK, handleCancelOAuthLoopback),
     typedHandle(CHANNELS.WEBVIEW_RELOAD_IGNORING_CACHE, handleReloadIgnoringCache),
     typedHandle(CHANNELS.WEBVIEW_GET_SCROLL_POSITION, handleGetScrollPosition),
   ];

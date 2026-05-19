@@ -6,6 +6,7 @@ import type { ViewportPresetId } from "@shared/types/panel";
 import { getViewportPreset } from "@/panels/dev-preview/viewportPresets";
 import { pushBrowserHistory } from "../Browser/historyUtils";
 import { loadWebviewUrl } from "./loadWebviewUrl";
+import type { BlockedNavAction } from "./BlockedNavBanner";
 
 export type SessionStorageEntry = [string, string];
 
@@ -41,7 +42,7 @@ interface UseDevPreviewLoadLifecycleParams {
   lastSetUrlRef: React.MutableRefObject<string>;
   originalUaRef: React.MutableRefObject<string | null>;
   setHistory: React.Dispatch<React.SetStateAction<BrowserHistory>>;
-  setBlockedNav: React.Dispatch<React.SetStateAction<DevPreviewBlockedNav | null>>;
+  setBlockedNav: React.Dispatch<BlockedNavAction>;
 }
 
 interface UseDevPreviewLoadLifecycleResult {
@@ -330,7 +331,7 @@ export function useDevPreviewLoadLifecycle({
       const navigatedUrl = e.url;
       // Suppress about:blank navigations triggered by eviction
       if (navigatedUrl === "about:blank" && evictingRef.current) return;
-      setBlockedNav(null);
+      setBlockedNav({ type: "DISMISS" });
       setWebviewLoadError(null);
       setReconnectAttempt(0);
       // A confirmed new main-frame navigation means we're past any previous failure;
@@ -349,7 +350,7 @@ export function useDevPreviewLoadLifecycle({
 
     const handleDidNavigateInPage = (e: Electron.DidNavigateInPageEvent) => {
       if (!e.isMainFrame) return;
-      setBlockedNav(null);
+      setBlockedNav({ type: "DISMISS" });
       const navigatedUrl = e.url;
       if (navigatedUrl !== lastSetUrlRef.current) {
         setHistory((prev) => pushBrowserHistory(prev, navigatedUrl));
