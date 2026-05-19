@@ -196,7 +196,7 @@ export interface NotificationSettings {
 export interface ElectronAPI {
   worktree: {
     getAll(): Promise<WorktreeState[]>;
-    refresh(): Promise<void>;
+    refresh(worktreeId?: string): Promise<void>;
     refreshPullRequests(): Promise<void>;
     getPRStatus(): Promise<import("../workspace-host.js").PRServiceStatus | null>;
     setActive(worktreeId: string): Promise<void>;

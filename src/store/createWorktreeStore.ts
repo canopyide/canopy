@@ -427,6 +427,7 @@ function snapshotsEqual(a: WorktreeSnapshot, b: WorktreeSnapshot): boolean {
     a.aheadCount === b.aheadCount &&
     a.behindCount === b.behindCount &&
     a.lastFetchedAt === b.lastFetchedAt &&
+    a.lastGitStatusCheckedAt === b.lastGitStatusCheckedAt &&
     a.fetchAuthFailed === b.fetchAuthFailed &&
     a.fetchNetworkFailed === b.fetchNetworkFailed &&
     a.isFetchInFlight === b.isFetchInFlight &&

@@ -194,6 +194,9 @@ export interface Worktree {
    */
   lastFetchedAt?: number | null;
 
+  /** Epoch ms of the last completed git status check for this worktree. */
+  lastGitStatusCheckedAt?: number;
+
   /**
    * True when this worktree's repo is currently in an auth-failed fetch state
    * (mirrored from `RepoFetchCoordinator.failure.kind === "auth"`). The card

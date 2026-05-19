@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { WorktreeState } from "../../types";
 import type { GitHubIssue } from "@shared/types/github";
@@ -47,6 +47,17 @@ import { isAgentFleetActionEligible, isFleetArmEligible } from "@/store/fleetArm
 import { useWorktreeStatus } from "./WorktreeCard/hooks/useWorktreeStatus";
 import { computeChipState } from "./utils/computeChipState";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+
+const HOVER_REVALIDATE_DELAY = 150;
+const REVALIDATE_FRESHNESS_GATE = 10_000;
+const MAX_CONCURRENT_REVALIDATES = 3;
+const inFlightRevalidates = new Set<string>();
+
+function isRevalidationAllowed(worktreeId: string): boolean {
+  return (
+    inFlightRevalidates.size < MAX_CONCURRENT_REVALIDATES || inFlightRevalidates.has(worktreeId)
+  );
+}
 
 export interface WorktreeCardProps {
   worktree: WorktreeState;
@@ -550,6 +561,53 @@ export function WorktreeCard({
   const isMuted =
     (isIdleCard || isStaleCard) && !isWaitingCard && !isActive && !isFocused && !isOver;
 
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverWorktreeIdRef = useRef(worktree.id);
+  hoverWorktreeIdRef.current = worktree.id;
+
+  const handleRevalidate = useCallback(() => {
+    const id = hoverWorktreeIdRef.current;
+    if (
+      isActive ||
+      !isRevalidationAllowed(id) ||
+      (worktree.lastGitStatusCheckedAt &&
+        Date.now() - worktree.lastGitStatusCheckedAt < REVALIDATE_FRESHNESS_GATE)
+    ) {
+      return;
+    }
+    inFlightRevalidates.add(id);
+    void worktreeClient
+      .refresh(id)
+      .finally(() => {
+        inFlightRevalidates.delete(id);
+      })
+      .catch(() => {});
+  }, [isActive, worktree.lastGitStatusCheckedAt]);
+
+  const handlePointerEnter = useCallback(() => {
+    if (isActive || !worktree.lastGitStatusCheckedAt) return;
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = setTimeout(() => {
+      hoverTimerRef.current = null;
+      handleRevalidate();
+    }, HOVER_REVALIDATE_DELAY);
+  }, [isActive, worktree.lastGitStatusCheckedAt, handleRevalidate]);
+
+  const handlePointerLeave = useCallback(() => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current) {
+        clearTimeout(hoverTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleOpenPanelPalette = () => {
     useWorktreeSelectionStore.getState().setActiveWorktree(worktree.id);
     void actionService.dispatch("panel.palette", undefined, {
@@ -588,6 +646,8 @@ export function WorktreeCard({
           aria-label={`Worktree: ${worktree.issueTitle ?? branchLabel}${worktree.issueTitle ? ` (${branchLabel})` : ""}${worktree.isCurrent ? " (selected, current)" : ""}, Status: ${spineState}${hasChanges ? ", has uncommitted changes" : ""}`}
           onClick={onSelect}
           onDoubleClick={handleDoubleClick}
+          onPointerEnter={handlePointerEnter}
+          onPointerLeave={handlePointerLeave}
         >
           <button
             type="button"
@@ -696,6 +756,8 @@ export function WorktreeCard({
                 resourceLastOutput={worktree.resourceStatus?.lastOutput}
                 resourceEndpoint={worktree.resourceStatus?.endpoint}
                 resourceLastCheckedAt={worktree.resourceStatus?.lastCheckedAt}
+                lastGitStatusCheckedAt={worktree.lastGitStatusCheckedAt}
+                onRevalidateGitStatus={handleRevalidate}
                 onCheckResourceStatus={hasStatusCommand ? handleResourceStatus : undefined}
                 onCleanupWorktree={
                   chipState === "cleanup" && !isMainWorktree

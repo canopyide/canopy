@@ -21,8 +21,8 @@ export const worktreeClient = {
     return window.electron.worktree.getAll();
   },
 
-  refresh: (): Promise<void> => {
-    return window.electron.worktree.refresh();
+  refresh: (worktreeId?: string): Promise<void> => {
+    return window.electron.worktree.refresh(worktreeId);
   },
 
   refreshPullRequests: (): Promise<void> => {
