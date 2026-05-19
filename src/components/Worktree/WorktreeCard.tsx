@@ -303,6 +303,7 @@ export function WorktreeCard({
     handleResourceTeardown,
     hasSnapshot,
     handleRevertAgentChanges,
+    handleDeleteSnapshot,
   } = useWorktreeActions({
     worktree,
     onCopyTree,
@@ -825,6 +826,7 @@ export function WorktreeCard({
                   onSelectWorkingAgents: handleSelectWorkingAgents,
                   onDeleteWorktree: !isMainWorktree ? () => setShowDeleteDialog(true) : undefined,
                   onRevertAgentChanges: handleRevertAgentChanges,
+                  onDeleteSnapshot: handleDeleteSnapshot,
                   hasSnapshot,
                   hasResourceConfig,
                   worktreeMode: worktree.worktreeMode,
