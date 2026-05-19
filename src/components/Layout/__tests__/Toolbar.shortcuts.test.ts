@@ -209,7 +209,11 @@ describe("Toolbar shortcut tooltips — issue #3443", () => {
 
     it("carves the sidebar toggle out of the armed aria-pressed rule in toolbar.css", async () => {
       const css = await fs.readFile(TOOLBAR_CSS_PATH, "utf-8");
-      expect(css).toContain('.toolbar-icon-button[aria-pressed="true"]:not([data-sidebar-toggle])');
+      expect(css).toContain(
+        '.toolbar-icon-button[aria-pressed="true"]:where(:not([data-sidebar-toggle]))'
+      );
+      // The carve-out must not regress to an un-excluded standalone selector.
+      expect(css).not.toMatch(/\.toolbar-icon-button\[aria-pressed="true"\],/);
       // Other armed selectors stay intact so dropdowns/agent buttons keep the highlight.
       expect(css).toContain('.toolbar-icon-button[aria-expanded="true"]');
       expect(css).toContain('.toolbar-agent-button[aria-pressed="true"]');

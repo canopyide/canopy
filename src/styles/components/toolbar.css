@@ -93,9 +93,10 @@
  * [data-sidebar-toggle]: it's pressed nearly all the time (sidebar visible),
  * so an always-on armed state reads as noise rather than state — the
  * PanelLeftClose/PanelLeftOpen icon swap carries the signal instead (#8357).
- * The :not() lifts armed to (0,3,0); hover stays (0,2,0) so other buttons are
- * unaffected. */
-.toolbar-icon-button[aria-pressed="true"]:not([data-sidebar-toggle]),
+ * The exclusion is wrapped in :where() so armed stays (0,2,0) — equal to
+ * hover and :active, preserving both the source-order tiebreaker above and
+ * the momentary :active background on other pressed buttons. */
+.toolbar-icon-button[aria-pressed="true"]:where(:not([data-sidebar-toggle])),
 .toolbar-icon-button[aria-expanded="true"],
 .toolbar-icon-button[data-state="open"],
 .toolbar-agent-button[aria-pressed="true"],
