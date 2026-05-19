@@ -465,6 +465,7 @@ function snapshotsEqual(a: WorktreeSnapshot, b: WorktreeSnapshot): boolean {
     resourceStatusEqual(a.resourceStatus, b.resourceStatus) &&
     worktreeChangesEqual(a.worktreeChanges, b.worktreeChanges) &&
     lifecycleStatusEqual(a.lifecycleStatus, b.lifecycleStatus) &&
+    lifecyclePhaseResultsEqual(a.lifecyclePhaseResults, b.lifecyclePhaseResults) &&
     linkedEqual(a.linked ?? null, b.linked ?? null)
   );
 }
@@ -523,6 +524,37 @@ function lifecycleStatusEqual(
     a.completedAt === b.completedAt &&
     a.error === b.error
   );
+}
+
+function lifecyclePhaseResultsEqual(
+  a: WorktreeSnapshot["lifecyclePhaseResults"],
+  b: WorktreeSnapshot["lifecyclePhaseResults"]
+): boolean {
+  if (a === b) return true;
+  // getSnapshot omits the field when empty, so treat undefined and [] alike.
+  const al = a?.length ?? 0;
+  const bl = b?.length ?? 0;
+  if (al !== bl) return false;
+  if (al === 0) return true;
+  for (let i = 0; i < al; i++) {
+    const x = a![i]!;
+    const y = b![i]!;
+    if (
+      x.phase !== y.phase ||
+      x.state !== y.state ||
+      x.category !== y.category ||
+      x.exitCode !== y.exitCode ||
+      x.signalName !== y.signalName ||
+      x.error !== y.error ||
+      x.startedAt !== y.startedAt ||
+      x.completedAt !== y.completedAt ||
+      x.timedOut !== y.timedOut ||
+      x.aborted !== y.aborted
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function linkedEqual(
