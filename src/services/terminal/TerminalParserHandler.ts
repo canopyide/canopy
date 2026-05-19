@@ -89,8 +89,13 @@ export class TerminalParserHandler {
     const dataLossHandler = terminal.parser.registerOscHandler(OSC_DATA_LOSS, (data) => {
       const sepIdx = data.indexOf(";");
       if (sepIdx === -1) return true;
-      const droppedBytes = Number(data.slice(0, sepIdx));
-      if (!Number.isSafeInteger(droppedBytes) || droppedBytes < 0) return true;
+      const bytesField = data.slice(0, sepIdx);
+      // Strict decimal-only: reject "", "0x10", "1e3", "+1", " ", which
+      // Number() would otherwise coerce. Defensive against a crafted stream
+      // deliberately targeting this private-use OSC.
+      if (!/^\d+$/.test(bytesField)) return true;
+      const droppedBytes = Number(bytesField);
+      if (!Number.isSafeInteger(droppedBytes)) return true;
       this.onDataLoss?.(droppedBytes);
       return true;
     });

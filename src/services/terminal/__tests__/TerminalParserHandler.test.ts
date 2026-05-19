@@ -209,6 +209,7 @@ describe("TerminalParserHandler", () => {
 
       expect(osc.handler("1234;backpressure")).toBe(true);
       expect(onDataLoss).toHaveBeenCalledWith(1234);
+      expect(onDataLoss).toHaveBeenCalledTimes(1);
     });
 
     it("fires onDataLoss with 0 when no bytes were counted", () => {
@@ -225,7 +226,20 @@ describe("TerminalParserHandler", () => {
       new TerminalParserHandler(mockManaged, undefined, onDataLoss);
       const osc = oscHandlers.find((h) => h.ident === 57301);
 
-      for (const bad of ["abc;backpressure", "-1;backpressure", "", "1234", "1.5;x"]) {
+      const malformed = [
+        "abc;backpressure",
+        "-1;backpressure",
+        "",
+        "1234",
+        "1.5;x",
+        // Number() would coerce these; strict decimal parsing must reject them.
+        "0x10;backpressure",
+        "1e3;backpressure",
+        "+1;backpressure",
+        " ;backpressure",
+        ";backpressure",
+      ];
+      for (const bad of malformed) {
         expect(osc.handler(bad)).toBe(true);
       }
       expect(onDataLoss).not.toHaveBeenCalled();
