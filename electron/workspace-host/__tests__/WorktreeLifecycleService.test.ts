@@ -1456,5 +1456,58 @@ describe("WorktreeLifecycleService", () => {
         exitCode: 0,
       });
     });
+
+    it("records only the billing-critical phase for a resource-only teardown", async () => {
+      const config = { resource: { teardown: ["terraform destroy"], provider: "akash" } };
+      mockAccess.mockImplementation(async (p: unknown) => {
+        if (n(p as string).endsWith("/root/.daintree/config.json")) return undefined;
+        throw new Error("ENOENT");
+      });
+      mockReadFile.mockResolvedValue(JSON.stringify(config) as never);
+      mockSpawn.mockImplementation(() => {
+        const listeners: Record<string, ((...a: unknown[]) => void)[]> = {};
+        const child = {
+          pid: 1234,
+          stdout: { on: vi.fn() },
+          stderr: { on: vi.fn() },
+          on: vi.fn((event: string, cb: (...a: unknown[]) => void) => {
+            (listeners[event] ??= []).push(cb);
+            if (event === "close") setTimeout(() => cb(0), 0);
+          }),
+          kill: vi.fn(),
+        };
+        return child as never;
+      });
+
+      const monitor = makeTeardownMonitor();
+      await service.runLifecycleTeardown("wt-1", monitor as never, false, makeCtx(monitor));
+
+      const results = monitor.lifecyclePhaseResults;
+      expect(results).toHaveLength(1);
+      expect(results[0]).toMatchObject({
+        phase: "resource-teardown",
+        category: "billing-critical",
+      });
+    });
+
+    it("clears stale results when a re-invocation has no teardown configured", async () => {
+      const monitor = makeTeardownMonitor();
+      monitor.recordLifecyclePhaseResult({
+        phase: "resource-teardown",
+        state: "failed",
+        category: "billing-critical",
+        exitCode: 1,
+        signalName: null,
+        startedAt: 1,
+        completedAt: 2,
+      });
+
+      // No config file exists this time → early-return path.
+      mockAccess.mockRejectedValue(new Error("ENOENT"));
+
+      await service.runLifecycleTeardown("wt-1", monitor as never, false, makeCtx(monitor));
+
+      expect(monitor.lifecyclePhaseResults).toHaveLength(0);
+    });
   });
 });

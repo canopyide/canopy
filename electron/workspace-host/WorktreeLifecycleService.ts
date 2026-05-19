@@ -840,15 +840,17 @@ export class WorktreeLifecycleService {
       }
     }
 
+    // Start a fresh accumulation for this teardown invocation. Owned by the
+    // orchestrator (not coupled to setLifecycleStatus(undefined)) so a monitor
+    // reset elsewhere can't silently drop billing-critical failure data.
+    // Cleared before the early-return guard so a re-invocation whose config no
+    // longer has teardown commands doesn't leave stale results in the snapshot.
+    monitor.clearLifecyclePhaseResults();
+
     const hasResourceTeardown = teardownResource?.teardown?.length && monitor.hasResourceConfig;
     if (!config?.teardown?.length && !hasResourceTeardown) {
       return;
     }
-
-    // Start a fresh accumulation for this teardown run. Owned by the
-    // orchestrator (not coupled to setLifecycleStatus(undefined)) so a monitor
-    // reset elsewhere can't silently drop billing-critical failure data.
-    monitor.clearLifecyclePhaseResults();
 
     const vars = this.buildVariables(monitor.path, projectRootPath, monitor.name, monitor.branch);
     const sub = (cmd: string) => this.substituteVariables(cmd, vars);
