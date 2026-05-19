@@ -266,7 +266,6 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     initialPR: null,
     initialRecipeId: null,
     initialBranchInput: null,
-    initialWorktreePath: null,
     onCreated: undefined,
   },
   bulkCreateDialog: {

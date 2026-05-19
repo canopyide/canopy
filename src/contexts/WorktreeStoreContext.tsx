@@ -214,6 +214,17 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
             startTransition(() => {
               store.getState().applySnapshot(states, snapshotVersion, associations);
             });
+
+            // Mirror the per-event resolve below: a snapshot delivered after a
+            // host crash / port reconnect may carry the freshly created worktree
+            // without firing the per-id `worktree-update` event the placeholder
+            // normally listens for. Without this, the skeleton row would stay
+            // stuck in "creating" indefinitely. resolvePendingCreation is a
+            // no-op when no entry matches, so iterating every state is cheap.
+            const selectionStore = useWorktreeSelectionStore.getState();
+            for (const snap of states) {
+              selectionStore.resolvePendingCreation(snap.id);
+            }
           }
         )
         .catch((err: Error) => {
