@@ -1477,7 +1477,7 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
         onKeyDown={handleGridKeyDown}
         onFocus={handleGridFocus}
         onFocusCapture={handleGridFocusCapture}
-        className="flex flex-col flex-1 min-h-0 focus:outline-none"
+        className="flex flex-col flex-1 min-h-0 focus:outline-hidden"
       >
         {/* Main worktree — visible unless excluded by text search or facet filters */}
         {mainVisible && (
