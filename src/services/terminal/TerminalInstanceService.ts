@@ -68,8 +68,9 @@ function canAutoInitializeTerminalIngest(): boolean {
 
 class TerminalInstanceService {
   private instances = new Map<string, ManagedTerminal>();
-  private dataBuffer = new TerminalOutputIngestService((id, data) =>
-    this.writeToTerminal(id, data)
+  private dataBuffer = new TerminalOutputIngestService(
+    (id, data) => this.writeToTerminal(id, data),
+    (id) => this.instances.get(id)?.getRefreshTier?.() ?? TerminalRefreshTier.FOCUSED
   );
   private suppressedExitUntil = new Map<string, number>();
   private unseenTracker = new TerminalUnseenOutputTracker();
@@ -153,6 +154,7 @@ class TerminalInstanceService {
         return this.wakeManager.wakeAndRestore(id);
       },
       onPostWake: (id) => this.handlePostWake(id),
+      onResumeFlush: (id) => this.dataBuffer.resumeFlush(id),
       applyDeferredResize: (id) => this.resizeController.applyDeferredResize(id),
       onTierApplied: (id, tier, managed) => {
         if (this.isHibernationEligible(tier, managed) && !managed.isVisible) {

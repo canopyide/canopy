@@ -1,4 +1,5 @@
 import type { TerminalOutputWorkerInboundMessage } from "@shared/types/terminal-output-worker-messages";
+import { TerminalRefreshTier } from "@shared/types/panel";
 import { PERF_MARKS } from "@shared/perf/marks";
 import { markRendererPerformance } from "@/utils/performance";
 import { logDebug } from "@/utils/logger";
@@ -25,7 +26,10 @@ export class TerminalOutputIngestService {
   private perfSampleCounter = 0;
   private queues = new Map<string, TerminalIngestQueue>();
 
-  constructor(private readonly writeToTerminal: (id: string, data: string | Uint8Array) => void) {}
+  constructor(
+    private readonly writeToTerminal: (id: string, data: string | Uint8Array) => void,
+    private readonly getTier?: (id: string) => TerminalRefreshTier
+  ) {}
 
   public async initialize(): Promise<void> {
     if (this.initializePromise) return this.initializePromise;
@@ -74,6 +78,18 @@ export class TerminalOutputIngestService {
   public notifyParsed(id: string): void {
     const queue = this.queues.get(id);
     if (!queue || queue.chunks.length === 0 || queue.drainScheduled) return;
+    this.tryDrain(id, queue);
+  }
+
+  /**
+   * Drain bytes held while a panel was backgrounded. Routed through tryDrain
+   * (not forceDrain) so the 256KB COALESCE_BATCH_CAP_BYTES cap is respected —
+   * a backgrounded panel may have accumulated a large in-flight batch, and a
+   * single multi-MB xterm.write() on wake would block the main thread (#4853).
+   */
+  public resumeFlush(id: string): void {
+    const queue = this.queues.get(id);
+    if (!queue || queue.chunks.length === 0) return;
     this.tryDrain(id, queue);
   }
 
@@ -149,6 +165,15 @@ export class TerminalOutputIngestService {
     const bytes = this.chunkByteSize(data);
     queue.chunks.push(data);
     queue.queuedBytes += bytes;
+
+    // Backgrounded panels: hold bytes in the queue without parsing them into
+    // xterm. The producer-side gate in pty-host suppresses most output, but
+    // in-flight MessagePort batches still arrive after backgrounding; parsing
+    // them burns renderer main-thread CPU for a pane the user can't see. The
+    // queue is flushed via resumeFlush() when the tier upgrades back to active.
+    if (this.getTier?.(id) === TerminalRefreshTier.BACKGROUND) {
+      return;
+    }
 
     const stringData = typeof data === "string" ? data : "";
     if (stringData) {

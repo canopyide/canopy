@@ -7,6 +7,7 @@ export interface RendererPolicyDeps {
   getInstance: (id: string) => ManagedTerminal | undefined;
   wakeAndRestore: (id: string) => Promise<boolean>;
   onPostWake?: (id: string) => void;
+  onResumeFlush?: (id: string) => void;
   onTierApplied?: (id: string, tier: TerminalRefreshTier, managed: ManagedTerminal) => void;
   applyDeferredResize?: (id: string) => void;
 }
@@ -127,6 +128,11 @@ export class TerminalRendererPolicy {
             if (ok) {
               this.deps.onPostWake?.(id);
             }
+
+            // Flush bytes held while backgrounded AFTER scrollback restore +
+            // refresh. wakeAndRestore calls terminal.reset() during replay;
+            // flushing earlier would wipe these bytes.
+            this.deps.onResumeFlush?.(id);
           })
           .catch(() => {
             if (this.wakeGeneration.get(id) !== wakeGeneration) return;
@@ -139,12 +145,20 @@ export class TerminalRendererPolicy {
             // whatever content it has, preventing stuck display states.
             this.deps.applyDeferredResize?.(id);
             current.terminal.refresh(0, current.terminal.rows - 1);
+
+            // Wake failed, but the terminal is active again — flush held
+            // bytes so the user isn't left with a stalled pane.
+            this.deps.onResumeFlush?.(id);
           });
       } else {
         // needsWake is false, but we're transitioning to active tier.
         // Force a refresh to ensure the terminal renderer is in sync.
         this.deps.applyDeferredResize?.(id);
         managed.terminal.refresh(0, managed.terminal.rows - 1);
+
+        // No wake needed, but transitioning to active — flush any bytes
+        // held while backgrounded.
+        this.deps.onResumeFlush?.(id);
       }
     }
 
