@@ -148,7 +148,6 @@ async function main(): Promise<void> {
   // Metrics
   let confusionMatrix = undefined;
   let kappa: number | undefined;
-  let psi: number | undefined;
 
   if (calibrationMatched.length > 0 && judgePredictions.length > 0) {
     // Join on record ID: map judge predictions by ID, then pair with calibration labels
@@ -187,7 +186,7 @@ async function main(): Promise<void> {
     }
   }
 
-  psi = computePSI(recentDist, baselineDist);
+  const psi = computePSI(recentDist, baselineDist);
   const psiDrift = isPsiDrift(psi);
   if (psiDrift) {
     console.log(`PSI: ${psi.toFixed(4)} (DRIFT detected — exceeds ${0.2} threshold)`);
