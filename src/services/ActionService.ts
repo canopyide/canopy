@@ -450,6 +450,7 @@ export class ActionService {
       requiresArgs: cached.requiresArgs,
       keywords: definition.keywords?.slice(),
       ...(definition.mcpAnnotations ? { mcpAnnotations: { ...definition.mcpAnnotations } } : {}),
+      ...(definition.mcpVisibility ? { mcpVisibility: definition.mcpVisibility } : {}),
       ...(definition.pluginId ? { pluginId: definition.pluginId } : {}),
       ...(definition.examples ? { examples: [...definition.examples] } : {}),
       ...(definition.dangerRationale ? { dangerRationale: definition.dangerRationale } : {}),
