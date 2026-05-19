@@ -24,6 +24,7 @@ import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { logError } from "@/utils/logger";
 import {
   type McpAuditRecord,
+  type McpAuditStats,
   MCP_AUDIT_DEFAULT_MAX_RECORDS,
   MCP_AUDIT_MAX_RECORDS,
   MCP_AUDIT_MIN_RECORDS,
@@ -60,6 +61,7 @@ export function McpServerSettingsTab() {
   const auditCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [auditRecords, setAuditRecords] = useState<McpAuditRecord[]>([]);
+  const [auditStats, setAuditStats] = useState<McpAuditStats | null>(null);
   const [auditEnabled, setAuditEnabled] = useState(true);
   const [auditMaxRecords, setAuditMaxRecords] = useState(MCP_AUDIT_DEFAULT_MAX_RECORDS);
   const [maxRecordsInput, setMaxRecordsInput] = useState(MCP_AUDIT_DEFAULT_MAX_RECORDS.toString());
@@ -74,8 +76,20 @@ export function McpServerSettingsTab() {
 
   const refreshAuditRecords = async (): Promise<void> => {
     try {
-      const records = await window.electron.mcpServer.getAuditRecords();
-      setAuditRecords(records);
+      const [recordsResult, statsResult] = await Promise.allSettled([
+        window.electron.mcpServer.getAuditRecords(),
+        window.electron.mcpServer.getAuditStats(),
+      ]);
+      if (recordsResult.status === "fulfilled") {
+        setAuditRecords(recordsResult.value);
+      } else {
+        logError("Failed to load MCP audit log", recordsResult.reason);
+      }
+      if (statsResult.status === "fulfilled") {
+        setAuditStats(statsResult.value);
+      } else {
+        logError("Failed to load MCP audit stats", statsResult.reason);
+      }
     } catch (err) {
       logError("Failed to load MCP audit log", err);
     }
@@ -94,8 +108,9 @@ export function McpServerSettingsTab() {
       window.electron.mcpServer.getStatus(),
       window.electron.mcpServer.getAuditConfig(),
       window.electron.mcpServer.getAuditRecords(),
+      window.electron.mcpServer.getAuditStats(),
     ])
-      .then(([s, auditCfg, records]) => {
+      .then(([s, auditCfg, records, stats]) => {
         if (settled) return;
         setStatus(s);
         setPortInput(s.configuredPort?.toString() ?? "");
@@ -104,6 +119,7 @@ export function McpServerSettingsTab() {
         setAuditMaxRecords(auditCfg.maxRecords);
         setMaxRecordsInput(auditCfg.maxRecords.toString());
         setAuditRecords(records);
+        setAuditStats(stats);
         setError(null);
       })
       .catch((err) => {
@@ -277,6 +293,7 @@ export function McpServerSettingsTab() {
       setError(null);
       await window.electron.mcpServer.clearAuditLog();
       setAuditRecords([]);
+      setAuditStats(null);
       setShowClearConfirm(false);
     } catch (err) {
       setError(formatErrorMessage(err, "Failed to clear audit log"));
@@ -573,6 +590,8 @@ export function McpServerSettingsTab() {
                 onClear={() => setShowClearConfirm(true)}
                 copyFlashActive={copiedAudit}
                 maxRecords={auditMaxRecords}
+                anomalySignals={auditStats?.anomalySignals ?? []}
+                anomalySuppressed={auditStats?.anomalySuppressed ?? true}
               />
             </div>
           </SettingsSection>
