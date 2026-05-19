@@ -1,13 +1,22 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { AppDialog } from "@/components/ui/AppDialog";
-import { Check, AlertCircle, FolderOpen, X } from "lucide-react";
+import { Check, AlertCircle, FolderOpen, LogIn, X } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { FolderGit2 } from "@/components/icons";
+import { InlineStatusBanner, type BannerAction } from "@/components/Terminal/InlineStatusBanner";
 import { projectClient } from "@/clients";
+import { actionService } from "@/services/ActionService";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { validateFolderName } from "@shared/utils/folderName";
+import { isGitHubRemoteUrl } from "@shared/utils/githubUrl";
 import type { CloneRepoProgressEvent } from "@shared/types/ipc/gitClone";
+import type { GitOperationReason } from "@shared/types/ipc/errors";
+
+interface CloneError {
+  message: string;
+  gitReason?: GitOperationReason;
+}
 
 interface CloneRepoDialogProps {
   isOpen: boolean;
@@ -54,7 +63,7 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
   const [shallowClone, setShallowClone] = useState(false);
   const [progressEvents, setProgressEvents] = useState<CloneRepoProgressEvent[]>([]);
   const [isCloning, setIsCloning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<CloneError | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [clonedPath, setClonedPath] = useState<string | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -148,7 +157,14 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
       // CANCELLED is the user aborting via the cancel button — not a failure.
       const code = (err as { code?: string })?.code;
       if (code !== "CANCELLED") {
-        setError(formatErrorMessage(err, "Failed to clone repository"));
+        // `gitReason` is reattached duck-typed across the IPC realm boundary
+        // (see `deserializeError` in shared/utils/ipcErrorSerialization.ts);
+        // `instanceof GitOperationError` would fail here.
+        const gitReason = (err as { gitReason?: GitOperationReason })?.gitReason;
+        setError({
+          message: formatErrorMessage(err, "Failed to clone repository"),
+          gitReason,
+        });
       }
     } finally {
       setIsCloning(false);
@@ -317,15 +333,49 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
         )}
 
         {/* Error (not from progress events) */}
-        {error && !progressEvents.some((e) => e.stage === "error") && (
-          <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-            <div>
-              <div className="font-medium">Clone Failed</div>
-              <div className="text-xs mt-1">{error}</div>
-            </div>
-          </div>
-        )}
+        {error &&
+          !progressEvents.some((e) => e.stage === "error") &&
+          (() => {
+            const showGitHubAuth =
+              error.gitReason === "auth-failed" && isGitHubRemoteUrl(normalizeCloneUrl(url));
+            if (showGitHubAuth) {
+              const actions: BannerAction[] = [
+                {
+                  id: "signin-github",
+                  label: "Sign in with GitHub",
+                  icon: LogIn,
+                  variant: "accent",
+                  onClick: () => {
+                    void actionService.dispatch(
+                      "app.settings.openTab",
+                      { tab: "github" },
+                      { source: "user" }
+                    );
+                  },
+                  title: "Open GitHub sign-in",
+                  ariaLabel: "Sign in with GitHub",
+                },
+              ];
+              return (
+                <InlineStatusBanner
+                  icon={AlertCircle}
+                  title="Clone Failed"
+                  description={error.message}
+                  severity="error"
+                  actions={actions}
+                />
+              );
+            }
+            return (
+              <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                <div>
+                  <div className="font-medium">Clone Failed</div>
+                  <div className="text-xs mt-1">{error.message}</div>
+                </div>
+              </div>
+            );
+          })()}
 
         {/* Actions */}
         <div className="flex justify-end gap-2">

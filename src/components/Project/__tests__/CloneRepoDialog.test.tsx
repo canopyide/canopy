@@ -1,17 +1,42 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll, afterEach } from "vitest";
 import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import type { ReactNode, ButtonHTMLAttributes } from "react";
 import type { CloneRepoProgressEvent } from "@shared/types/ipc/gitClone";
 
-const { cloneRepoMock, onCloneProgressMock, openDialogMock, cancelCloneMock } = vi.hoisted(() => ({
-  cloneRepoMock: vi.fn(),
-  onCloneProgressMock: vi.fn(),
-  openDialogMock: vi.fn(),
-  cancelCloneMock: vi.fn(),
+vi.mock("@/components/ui/tooltip", () => ({
+  Tooltip: ({ children }: { children: ReactNode }) => <>{children}</>,
+  TooltipContent: ({ children }: { children: ReactNode }) => <>{children}</>,
+  TooltipProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  TooltipTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
+
+beforeAll(() => {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+});
+
+const { cloneRepoMock, onCloneProgressMock, openDialogMock, cancelCloneMock, dispatchMock } =
+  vi.hoisted(() => ({
+    cloneRepoMock: vi.fn(),
+    onCloneProgressMock: vi.fn(),
+    openDialogMock: vi.fn(),
+    cancelCloneMock: vi.fn(),
+    dispatchMock: vi.fn(),
+  }));
 
 vi.mock("@/clients", () => ({
   projectClient: {
@@ -19,6 +44,12 @@ vi.mock("@/clients", () => ({
     onCloneProgress: onCloneProgressMock,
     openDialog: openDialogMock,
     cancelClone: cancelCloneMock,
+  },
+}));
+
+vi.mock("@/services/ActionService", () => ({
+  actionService: {
+    dispatch: dispatchMock,
   },
 }));
 
@@ -238,6 +269,136 @@ describe("CloneRepoDialog", () => {
       expect(screen.getByText("Auth failed")).toBeTruthy();
       expect(screen.getByText("Retry")).toBeTruthy();
     });
+  });
+
+  it("shows GitHub sign-in CTA when auth fails against a github.com URL", async () => {
+    cloneRepoMock.mockRejectedValue(
+      Object.assign(new Error("Authentication failed for 'https://github.com/acme/private.git/'"), {
+        name: "GitOperationError",
+        gitReason: "auth-failed",
+      })
+    );
+
+    render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    const urlInput = screen.getByPlaceholderText("owner/repo or https://github.com/user/repo.git");
+    fireEvent.change(urlInput, {
+      target: { value: "https://github.com/acme/private.git" },
+    });
+
+    const browseBtn = screen.getByText("Browse");
+    await act(async () => {
+      fireEvent.click(browseBtn);
+    });
+
+    const cloneBtn = screen.getByText("Clone");
+    await act(async () => {
+      fireEvent.click(cloneBtn);
+    });
+
+    const signInBtn = await waitFor(() => screen.getByText("Sign in with GitHub"));
+    expect(signInBtn).toBeTruthy();
+    expect(screen.getByText("Clone Failed")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(signInBtn);
+    });
+
+    expect(dispatchMock).toHaveBeenCalledWith(
+      "app.settings.openTab",
+      { tab: "github" },
+      { source: "user" }
+    );
+  });
+
+  it("shows GitHub sign-in CTA when auth fails on owner/repo shorthand", async () => {
+    cloneRepoMock.mockRejectedValue(
+      Object.assign(new Error("Authentication failed"), {
+        name: "GitOperationError",
+        gitReason: "auth-failed",
+      })
+    );
+
+    render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    const urlInput = screen.getByPlaceholderText("owner/repo or https://github.com/user/repo.git");
+    fireEvent.change(urlInput, { target: { value: "acme/private" } });
+
+    const browseBtn = screen.getByText("Browse");
+    await act(async () => {
+      fireEvent.click(browseBtn);
+    });
+
+    const cloneBtn = screen.getByText("Clone");
+    await act(async () => {
+      fireEvent.click(cloneBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Sign in with GitHub")).toBeTruthy();
+    });
+  });
+
+  it("does not show GitHub CTA when auth fails on a non-GitHub URL", async () => {
+    cloneRepoMock.mockRejectedValue(
+      Object.assign(new Error("Authentication failed"), {
+        name: "GitOperationError",
+        gitReason: "auth-failed",
+      })
+    );
+
+    render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    const urlInput = screen.getByPlaceholderText("owner/repo or https://github.com/user/repo.git");
+    fireEvent.change(urlInput, {
+      target: { value: "https://gitlab.com/acme/private.git" },
+    });
+
+    const browseBtn = screen.getByText("Browse");
+    await act(async () => {
+      fireEvent.click(browseBtn);
+    });
+
+    const cloneBtn = screen.getByText("Clone");
+    await act(async () => {
+      fireEvent.click(cloneBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Clone Failed")).toBeTruthy();
+    });
+    expect(screen.queryByText("Sign in with GitHub")).toBeNull();
+  });
+
+  it("does not show GitHub CTA when failure reason is not auth-failed", async () => {
+    cloneRepoMock.mockRejectedValue(
+      Object.assign(new Error("Could not resolve host: github.com"), {
+        name: "GitOperationError",
+        gitReason: "network-unavailable",
+      })
+    );
+
+    render(<CloneRepoDialog isOpen={true} onSuccess={vi.fn()} onCancel={vi.fn()} />);
+
+    const urlInput = screen.getByPlaceholderText("owner/repo or https://github.com/user/repo.git");
+    fireEvent.change(urlInput, {
+      target: { value: "https://github.com/acme/private.git" },
+    });
+
+    const browseBtn = screen.getByText("Browse");
+    await act(async () => {
+      fireEvent.click(browseBtn);
+    });
+
+    const cloneBtn = screen.getByText("Clone");
+    await act(async () => {
+      fireEvent.click(cloneBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Clone Failed")).toBeTruthy();
+    });
+    expect(screen.queryByText("Sign in with GitHub")).toBeNull();
   });
 
   it("is not dismissible while cloning", async () => {
