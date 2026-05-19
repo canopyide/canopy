@@ -142,10 +142,12 @@ export function WorktreeDetailsSection(props: WorktreeDetailsSectionProps) {
     if (isRetryingSetup) return;
     setIsRetryingSetup(true);
     try {
+      // Pin the action context to this card's worktree so `isEnabled` evaluates
+      // against the failed card, not whichever worktree happens to be focused.
       await actionService.dispatch(
         "worktree.lifecycle.retrySetup",
         { worktreeId: worktree.id },
-        { source: "user" }
+        { source: "user", contextOverride: { focusedWorktreeId: worktree.id } }
       );
     } finally {
       setIsRetryingSetup(false);

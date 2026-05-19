@@ -1708,6 +1708,18 @@ export class WorkspaceService {
     if (monitor.lifecycleStatus?.state === "running") {
       throw new Error("Setup is already running");
     }
+
+    // Set running synchronously *before* the first await so a second concurrent
+    // request (rapid clicks, multi-window, retry-after-error) sees the in-flight
+    // state and is rejected by the guard above. `runLifecycleSetup` re-sets the
+    // same state with full command-progress metadata once config loads.
+    monitor.setLifecycleStatus({
+      phase: "setup",
+      state: "running",
+      startedAt: Date.now(),
+    });
+    this.emitUpdate(monitor);
+
     await this.runLifecycleSetup(worktreeId, monitor.path, this.projectRootPath, false);
   }
 
