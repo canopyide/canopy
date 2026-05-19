@@ -198,6 +198,9 @@ export interface McpAuditStats {
  *   agent went silent without resolving its turn.
  * - `tool-error`: the most recent tool dispatch in this session resolved
  *   with `result: "error"` (and is not a tier rejection).
+ * - `reasoning-loop`: the agent called the same tool with the same arguments
+ *   at least 3 times within the turn window — a tight tool-call loop not
+ *   covered by the watchdog-driven `agent-stuck` class.
  * - `refused`: the agent's recent output indicates it declined to act.
  * - `hedged`: the agent expressed uncertainty without producing a concrete
  *   answer.
@@ -219,6 +222,7 @@ export type TurnOutcomeClass =
   | "mcp-not-ready"
   | "agent-stuck"
   | "tool-error"
+  | "reasoning-loop"
   | "hibernate-resume-stale"
   | "unknown";
 

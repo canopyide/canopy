@@ -42,6 +42,8 @@ const MIN_CLASSIFY_LENGTH = 50;
  * avoid false matches on later output that happens to mention "no sessions".
  */
 const RESUME_STALE_PROBE_CHARS = 500;
+/** Number of identical (toolId, argsSummary) calls within a turn window that triggers `reasoning-loop`. */
+const REASONING_LOOP_THRESHOLD = 3;
 
 // eslint-disable-next-line no-control-regex
 const ANSI_PATTERN = /\[[0-9;?]*[A-Za-z]|\][^]*(?:|\\)/g;
@@ -149,6 +151,18 @@ export function classifyTurnOutcome(args: {
       }
       if (lastRecord.result === "error") {
         return "tool-error";
+      }
+    }
+
+    const callCounts = new Map<string, number>();
+    for (const r of recentAuditRecords) {
+      if (r.sessionId === sessionId && r.timestamp >= turnStartTimestamp) {
+        const key = `${r.toolId}::${r.argsSummary}`;
+        const count = (callCounts.get(key) ?? 0) + 1;
+        if (count >= REASONING_LOOP_THRESHOLD) {
+          return "reasoning-loop";
+        }
+        callCounts.set(key, count);
       }
     }
   }
