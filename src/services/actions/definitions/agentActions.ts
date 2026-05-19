@@ -40,6 +40,7 @@ export function registerAgentActions(actions: ActionRegistry, callbacks: ActionC
       terminalId: z.string(),
       location: LaunchLocationSchema,
     }),
+    mcpOutputSchema: true,
     run: async (args: unknown) => {
       const {
         agentId,
