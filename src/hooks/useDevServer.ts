@@ -27,6 +27,7 @@ export interface UseDevServerState {
   url: string | null;
   terminalId: string | null;
   error: DevServerError | null;
+  phaseLabel?: "Compiling";
 }
 
 export interface UseDevServerReturn extends UseDevServerState {
@@ -108,6 +109,7 @@ export function useDevServer({
   const [url, setUrl] = useState<string | null>(null);
   const [terminalId, setTerminalId] = useState<string | null>(null);
   const [error, setError] = useState<DevServerError | null>(null);
+  const [phaseLabel, setPhaseLabel] = useState<"Compiling" | undefined>(undefined);
   const [isRestarting, setIsRestarting] = useState(false);
   const [stuckTier, setStuckTier] = useState<DevServerStuckTier>(0);
   const [forceKilled, setForceKilled] = useState<boolean | undefined>(undefined);
@@ -180,6 +182,7 @@ export function useDevServer({
     setUrl(state.url);
     setTerminalId(state.terminalId);
     setError(state.error ?? null);
+    setPhaseLabel(state.phaseLabel);
     setIsRestarting(state.isRestarting);
     setForceKilled(state.forceKilled);
   }, []);
@@ -498,6 +501,7 @@ export function useDevServer({
     url,
     terminalId,
     error,
+    phaseLabel,
     start,
     stop,
     restart,

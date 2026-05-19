@@ -6,11 +6,9 @@ import {
   ChevronDown,
   ExternalLink,
   Settings,
-  Square,
   OctagonAlert,
   Play,
 } from "lucide-react";
-import { Spinner } from "@/components/ui/Spinner";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
@@ -20,6 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { Spinner } from "@/components/ui/Spinner";
 import { usePanelStore } from "@/store";
 import { useProjectStore } from "@/store/projectStore";
 import { useProjectSettingsStore } from "@/store/projectSettingsStore";
@@ -37,6 +36,7 @@ import {
 import { useDevServer, type UseDevServerReturn } from "@/hooks/useDevServer";
 import { ConsoleDrawer } from "./ConsoleDrawer";
 import { useDevPreviewConsoleCapture } from "./useDevPreviewConsoleCapture";
+import { DevPreviewLoadingState } from "./DevPreviewLoadingState";
 import { useIsDragging } from "@/components/DragDrop";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -251,6 +251,7 @@ export function DevPreviewPane({
     url,
     terminalId,
     error,
+    phaseLabel,
     start,
     stop,
     restart,
@@ -322,6 +323,7 @@ export function DevPreviewPane({
 
   const isMountedRef = useRef(true);
   const prevStatusRef = useRef(status);
+
   const loadTimeoutMs =
     Math.min(Math.max(projectSettings?.devServerLoadTimeout ?? 30, 1), 120) * 1000;
 
@@ -379,12 +381,47 @@ export function DevPreviewPane({
     };
   }, [isRecoveringFromEviction, webviewElement]);
 
+  const consoleAutoOpenedErrorRef = useRef<string | null>(null);
+  const consoleAutoOpenedStallRef = useRef(false);
+
+  useEffect(() => {
+    if (status === "error" && error && consoleAutoOpenedErrorRef.current !== error.message) {
+      consoleAutoOpenedErrorRef.current = error.message;
+      setDevPreviewConsoleOpen(id, true);
+    }
+    if (status !== "error") {
+      consoleAutoOpenedErrorRef.current = null;
+    }
+  }, [status, error, id, setDevPreviewConsoleOpen]);
+
+  useEffect(() => {
+    if (status !== "starting" && status !== "installing") {
+      consoleAutoOpenedStallRef.current = false;
+    }
+    if (
+      (status !== "starting" && status !== "installing") ||
+      url ||
+      phaseLabel ||
+      consoleAutoOpenedStallRef.current
+    ) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if ((status === "starting" || status === "installing") && !url && !phaseLabel) {
+        consoleAutoOpenedStallRef.current = true;
+        setDevPreviewConsoleOpen(id, true);
+      }
+    }, 15_000);
+
+    return () => clearTimeout(timer);
+  }, [status, url, phaseLabel, id, setDevPreviewConsoleOpen]);
+
   const {
     isWebviewReady,
     setIsWebviewReady,
     isLoading,
     setIsLoading,
-    isSlowLoad,
     setIsSlowLoad,
     webviewLoadError,
     setWebviewLoadError,
@@ -1111,13 +1148,17 @@ export function DevPreviewPane({
             </div>
           )}
           {isRestarting || status === "starting" || status === "installing" ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-daintree-bg">
-              <Spinner size="2xl" className="text-status-info mb-4" />
-              <p className="text-sm text-daintree-text/60">
-                {isRestarting ? "Restarting" : status === "installing" ? "Installing" : "Starting"}
-                ...
-              </p>
-            </div>
+            <DevPreviewLoadingState
+              variant="full"
+              isLoading={true}
+              phaseLabel={
+                isRestarting
+                  ? "Restarting"
+                  : status === "installing"
+                    ? "Installing dependencies"
+                    : (phaseLabel ?? "Starting dev server")
+              }
+            />
           ) : status === "error" && error ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-daintree-bg text-daintree-text p-6">
               <AlertTriangle className="w-6 h-6 text-status-warning mb-3" />
@@ -1351,7 +1392,7 @@ export function DevPreviewPane({
                 <>
                   {reconnectAttempt > 0 && !webviewLoadError && (
                     <div className="absolute bottom-0 left-0 right-0 z-20 flex items-center justify-center gap-2 px-3 py-1.5 text-xs bg-status-info/10 border-t border-status-info/20 text-daintree-text/70">
-                      <Spinner size="xs" className="text-status-info" />
+                      <Spinner size="xs" />
                       <span>Reconnecting (attempt {reconnectAttempt} of 5)...</span>
                     </div>
                   )}
@@ -1464,31 +1505,19 @@ export function DevPreviewPane({
                     onDispatch={dispatchBlockedNav}
                   />
                   {isLoading && (
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-daintree-bg gap-3">
-                      <Spinner size="2xl" className="text-status-info" />
-                      {isSlowLoad && (
-                        <>
-                          <p className="text-xs text-daintree-text/50">
-                            Taking longer than usual...
-                          </p>
-                          <Button
-                            onClick={handleCancelLoad}
-                            variant="ghost"
-                            size="sm"
-                            className="gap-1.5 px-2.5 py-1.5 group text-daintree-text/50 hover:text-daintree-text/70"
-                          >
-                            <Square className="h-3.5 w-3.5" />
-                            <span className="text-xs">Cancel</span>
-                          </Button>
-                        </>
-                      )}
-                    </div>
+                    <DevPreviewLoadingState
+                      variant="overlay"
+                      isLoading={isLoading}
+                      phaseLabel="Loading preview"
+                      onCancel={handleCancelLoad}
+                    />
                   )}
                   {showRecoverySpinner && !webviewLoadError && (
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-daintree-bg gap-3">
-                      <Spinner size="2xl" className="text-status-info" />
-                      <p className="text-xs text-daintree-text/50">Rehydrating preview...</p>
-                    </div>
+                    <DevPreviewLoadingState
+                      variant="overlay"
+                      isLoading={isRecoveringFromEviction}
+                      phaseLabel="Rehydrating preview"
+                    />
                   )}
                   {isDragging && <div className="absolute inset-0 z-10 bg-transparent" />}
                   {findInPage.isOpen && <FindBar find={findInPage} />}

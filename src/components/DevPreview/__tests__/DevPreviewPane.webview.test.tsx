@@ -1207,7 +1207,7 @@ describe("DevPreviewPane webview lifecycle regression", () => {
   });
 
   describe("slow-load and timeout escalation", () => {
-    it("shows slow-load message and Cancel after 5s of loading", () => {
+    it("shows phase label and Still working hint after loading threshold", () => {
       const { container } = render(<DevPreviewPane {...baseProps} />);
       const webview = getWebviewElement(container);
 
@@ -1216,17 +1216,22 @@ describe("DevPreviewPane webview lifecycle regression", () => {
         emitWebviewEvent(webview, "did-start-loading");
       });
 
-      expect(container.textContent).not.toContain("Taking longer than usual");
+      expect(container.textContent).not.toContain("Loading preview");
 
       act(() => {
-        vi.advanceTimersByTime(5000);
+        vi.advanceTimersByTime(500);
       });
 
-      expect(container.textContent).toContain("Taking longer than usual");
-      expect(container.textContent).toContain("Cancel");
+      expect(container.textContent).toContain("Loading preview");
+
+      act(() => {
+        vi.advanceTimersByTime(6000);
+      });
+
+      expect(container.textContent).toContain("Still working");
     });
 
-    it("Cancel stops the webview and shows cancelled error", () => {
+    it("Cancel appears after action threshold and stops the webview", () => {
       const { container } = render(<DevPreviewPane {...baseProps} />);
       const webview = getWebviewElement(container);
 
@@ -1236,7 +1241,11 @@ describe("DevPreviewPane webview lifecycle regression", () => {
       });
 
       act(() => {
-        vi.advanceTimersByTime(5000);
+        vi.advanceTimersByTime(500);
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(16000);
       });
 
       const cancelButton = Array.from(container.querySelectorAll("button")).find((b) =>

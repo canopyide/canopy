@@ -62,6 +62,7 @@ export const AppStateTerminalEntrySchema = z
     browserUrl: z.string().optional(),
     devCommand: z.string().optional(),
     devServerStatus: z.enum(["stopped", "starting", "installing", "running", "error"]).optional(),
+    devServerPhaseLabel: z.string().nullable().optional(),
     devServerUrl: z.string().optional(),
     devServerError: z
       .object({
@@ -121,6 +122,7 @@ export const TerminalSnapshotSchema = z
     browserUrl: z.string().optional(),
     devCommand: z.string().optional(),
     devServerStatus: z.enum(["stopped", "starting", "installing", "running", "error"]).optional(),
+    devServerPhaseLabel: z.string().nullable().optional(),
     devServerUrl: z.string().optional(),
     devServerError: z
       .object({

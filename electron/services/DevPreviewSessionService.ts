@@ -47,6 +47,9 @@ interface DevPreviewSession extends DevPreviewSessionState {
   installAttemptedGeneration: number | null;
   startupReplayTimer: ReturnType<typeof setTimeout> | null;
   updatedAtPerformanceMs: number;
+  phaseLabel?: "Compiling";
+  compilingEmitted: boolean;
+  compilingTimer: ReturnType<typeof setTimeout> | null;
   forceKilled?: boolean;
 }
 
@@ -126,6 +129,7 @@ export class DevPreviewSessionService {
     for (const session of this.sessions.values()) {
       this.clearStartupReplay(session);
       session.readinessAbort?.abort();
+      this.clearCompiling(session);
     }
     for (const terminalId of this.terminalToSession.keys()) {
       this.ptyClient.setIpcDataMirror(terminalId, false);
@@ -421,6 +425,7 @@ export class DevPreviewSessionService {
           terminalId: null,
           isRestarting: false,
           forceKilled,
+          phaseLabel: undefined,
         });
       } else {
         this.updateSession(session, {
@@ -430,6 +435,7 @@ export class DevPreviewSessionService {
           error: null,
           terminalId: null,
           isRestarting: false,
+          phaseLabel: undefined,
         });
       }
     });
@@ -537,6 +543,7 @@ export class DevPreviewSessionService {
       generation: 0,
       updatedAt: Date.now(),
       updatedAtPerformanceMs: performance.now(),
+      phaseLabel: undefined,
       cwd: "",
       devCommand: "",
       turbopackEnabled: true,
@@ -550,6 +557,8 @@ export class DevPreviewSessionService {
       isRunningInstall: false,
       installAttemptedGeneration: null,
       startupReplayTimer: null,
+      compilingEmitted: false,
+      compilingTimer: null,
     };
     this.sessions.set(key, session);
     return session;
@@ -572,6 +581,7 @@ export class DevPreviewSessionService {
         generation: 0,
         updatedAt: Date.now(),
         forceKilled: undefined,
+        phaseLabel: undefined,
       };
     }
     return this.toPublicState(session);
@@ -590,6 +600,7 @@ export class DevPreviewSessionService {
       isRestarting: session.isRestarting,
       generation: session.generation,
       updatedAt: session.updatedAt,
+      phaseLabel: session.phaseLabel,
       forceKilled: session.forceKilled,
     };
   }
@@ -607,6 +618,7 @@ export class DevPreviewSessionService {
         | "isRestarting"
         | "worktreeId"
         | "generation"
+        | "phaseLabel"
         | "forceKilled"
       >
     >
@@ -620,6 +632,7 @@ export class DevPreviewSessionService {
     if (updates.isRestarting !== undefined) session.isRestarting = updates.isRestarting;
     if (updates.worktreeId !== undefined) session.worktreeId = updates.worktreeId;
     if (updates.generation !== undefined) session.generation = updates.generation;
+    if ("phaseLabel" in updates) session.phaseLabel = updates.phaseLabel;
     if ("forceKilled" in updates) session.forceKilled = updates.forceKilled;
     session.updatedAt = Date.now();
     session.updatedAtPerformanceMs = performance.now();
@@ -715,6 +728,7 @@ export class DevPreviewSessionService {
     session.lastErrorKey = null;
     session.markerSeen = false;
     session.assignedUrl = assignedUrl;
+    this.clearCompiling(session);
     this.attachTerminal(session, terminalId);
     this.updateSession(session, {
       terminalId,
@@ -846,6 +860,7 @@ export class DevPreviewSessionService {
     session.readinessAbort = null;
     session.pendingUrl = null;
     session.markerSeen = false;
+    this.clearCompiling(session);
     session.needsInstall = false;
     session.isRunningInstall = false;
 
@@ -910,6 +925,17 @@ export class DevPreviewSessionService {
     }
   }
 
+  private clearCompiling(session: DevPreviewSession): void {
+    if (session.compilingTimer !== null) {
+      clearTimeout(session.compilingTimer);
+      session.compilingTimer = null;
+    }
+    session.compilingEmitted = false;
+    if (session.phaseLabel === "Compiling") {
+      session.phaseLabel = undefined;
+    }
+  }
+
   private handleData(id: string, data: string | Uint8Array): void {
     if (this.disposed) return;
     const sessionKey = this.terminalToSession.get(id);
@@ -940,6 +966,8 @@ export class DevPreviewSessionService {
       // readiness marker to accelerate it again.
       session.markerSeen = false;
 
+      this.clearCompiling(session);
+
       this.pollServerReadiness(session, result.url, abort.signal, session.generation);
       urlJustStarted = true;
     }
@@ -957,6 +985,31 @@ export class DevPreviewSessionService {
       this.pollServerReadiness(session, session.pendingUrl, abort.signal, session.generation);
     }
 
+    // A readyMarker without a pending URL (post-install, pre-URL detection)
+    // signals the framework is compiling. Debounce at 600ms to avoid label
+    // flicker from markers that fire on consecutive data chunks.
+    if (
+      result.readyMarker &&
+      !session.compilingEmitted &&
+      session.status === "starting" &&
+      !session.pendingUrl &&
+      !session.isRunningInstall &&
+      session.compilingTimer === null
+    ) {
+      session.compilingTimer = setTimeout(() => {
+        session.compilingTimer = null;
+        if (
+          session.status === "starting" &&
+          !session.pendingUrl &&
+          !session.url &&
+          !session.compilingEmitted
+        ) {
+          session.compilingEmitted = true;
+          this.updateSession(session, { phaseLabel: "Compiling" });
+        }
+      }, 600);
+    }
+
     if (!result.error) return;
     const errorKey = `${result.error.type}:${result.error.message}`;
     if (errorKey === session.lastErrorKey) return;
@@ -969,6 +1022,7 @@ export class DevPreviewSessionService {
     session.readinessAbort = null;
     session.pendingUrl = null;
     session.markerSeen = false;
+    this.clearCompiling(session);
 
     if (result.error.type === "missing-dependencies") {
       session.needsInstall = true;
@@ -986,6 +1040,7 @@ export class DevPreviewSessionService {
       url: null,
       assignedUrl: null,
       isRestarting: false,
+      phaseLabel: undefined,
     });
   }
 
@@ -1001,6 +1056,7 @@ export class DevPreviewSessionService {
     session.readinessAbort = null;
     session.pendingUrl = null;
     session.markerSeen = false;
+    this.clearCompiling(session);
 
     this.detachTerminal(session);
     session.buffer = "";
@@ -1022,6 +1078,7 @@ export class DevPreviewSessionService {
         },
         terminalId: null,
         isRestarting: false,
+        phaseLabel: undefined,
       });
       return;
     }
@@ -1045,6 +1102,7 @@ export class DevPreviewSessionService {
         error,
         terminalId: null,
         isRestarting: false,
+        phaseLabel: undefined,
       });
       return;
     }
@@ -1056,6 +1114,7 @@ export class DevPreviewSessionService {
       error: null,
       terminalId: null,
       isRestarting: false,
+      phaseLabel: undefined,
     });
   }
 
@@ -1140,11 +1199,13 @@ export class DevPreviewSessionService {
 
         if (ready) {
           session.needsInstall = false;
+          this.clearCompiling(session);
           this.updateSession(session, {
             status: "running",
             url,
             error: null,
             isRestarting: false,
+            phaseLabel: undefined,
           });
           markPerformance(PERF_MARKS.DEVPREVIEW_RUNNING, {
             panelId: session.panelId,
@@ -1162,6 +1223,7 @@ export class DevPreviewSessionService {
               message: `Dev server at ${url} did not respond within ${READINESS_TIMEOUT_MS / 1000} seconds`,
             },
             isRestarting: false,
+            phaseLabel: undefined,
           });
         }
       })
@@ -1187,6 +1249,7 @@ export class DevPreviewSessionService {
             message: `Dev server readiness check failed: ${message}`,
           },
           isRestarting: false,
+          phaseLabel: undefined,
         });
       });
   }

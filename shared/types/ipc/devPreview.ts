@@ -39,6 +39,7 @@ export interface DevPreviewSessionState {
   isRestarting: boolean;
   generation: number;
   updatedAt: number;
+  phaseLabel?: "Compiling";
   forceKilled?: boolean;
 }
 
