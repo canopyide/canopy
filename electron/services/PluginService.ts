@@ -13,6 +13,7 @@ import type {
   PluginActivate,
   PluginActionContribution,
   PluginActionDescriptor,
+  BuiltInPluginPermission,
 } from "../../shared/types/plugin.js";
 import type { WorktreeSnapshot } from "../../shared/types/workspace-host.js";
 import { toPluginWorktreeSnapshot } from "../../shared/utils/pluginWorktreeSnapshot.js";
@@ -48,6 +49,26 @@ const PLUGIN_ACTION_ID_RE = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-zA-Z0-9._-]*$/;
 
 const PLUGIN_ACTION_KINDS = new Set(["command", "query"]);
 const PLUGIN_ACTION_DANGERS = new Set(["safe", "confirm"]);
+
+/**
+ * Permissions whose presence in a plugin's manifest forces every action that
+ * plugin contributes up to `effectiveDanger: "confirm"`, regardless of the
+ * `danger` the plugin self-declared. These are the permissions that grant
+ * irreversible or hard-to-undo side effects: arbitrary process execution,
+ * git history mutation, project/user-config filesystem writes, and agent
+ * invocation. Read-only or trivially-reversible permissions (`*-read`,
+ * `network:fetch`, `clipboard:*`) are intentionally excluded — promoting on
+ * those would over-confirm and train users to dismiss the dialog. The host
+ * may only raise danger; a plugin declaring `"confirm"` always stays
+ * `"confirm"` even with none of these.
+ */
+const CONFIRM_TRIGGERING_PERMISSIONS: ReadonlySet<BuiltInPluginPermission> = new Set([
+  "shell:exec",
+  "git:write",
+  "fs:project-write",
+  "fs:user-data-write",
+  "agent:invoke",
+]);
 
 interface LoadedPlugin {
   manifest: PluginManifest;
@@ -857,6 +878,17 @@ export class PluginService {
       throw new Error(`Plugin action "${id}" is already registered`);
     }
 
+    // Host-authoritative danger: the plugin's self-reported `danger` is
+    // advisory. Raise it to "confirm" (never lower) when the plugin holds a
+    // high-risk permission, so a plugin can't declare "safe" on a destructive
+    // action to slip past the renderer's confirm/MRU/repeatLast gates.
+    const manifestPermissions = this.plugins.get(pluginId)?.manifest.permissions ?? [];
+    const hasHighRiskPermission = manifestPermissions.some((p) =>
+      CONFIRM_TRIGGERING_PERMISSIONS.has(p)
+    );
+    const effectiveDanger: "safe" | "confirm" =
+      danger === "confirm" || hasHighRiskPermission ? "confirm" : "safe";
+
     const descriptor: PluginActionDescriptor = {
       pluginId,
       id,
@@ -865,6 +897,7 @@ export class PluginService {
       category,
       kind,
       danger,
+      effectiveDanger,
       keywords: Array.isArray(contribution.keywords) ? [...contribution.keywords] : undefined,
       inputSchema:
         contribution.inputSchema && typeof contribution.inputSchema === "object"

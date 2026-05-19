@@ -254,4 +254,16 @@ export interface PluginActionContribution {
 
 export interface PluginActionDescriptor extends PluginActionContribution {
   pluginId: string;
+  /**
+   * Host-authoritative danger classification, computed in the main process by
+   * {@link PluginService.registerPluginAction} from the plugin's declared
+   * manifest permissions. The plugin's self-reported `danger` is advisory
+   * only — the host raises it (never lowers it) when the plugin holds a
+   * high-risk permission, so a plugin cannot self-declare `"safe"` on a
+   * destructive action to bypass MRU exclusion, repeatLast eligibility, and
+   * the user-source confirm dialog. The renderer must read this field — not
+   * `danger` — for any classification decision, and fail safe to `"confirm"`
+   * if it is absent (e.g. a stale descriptor from a pre-migration cache).
+   */
+  effectiveDanger: "safe" | "confirm";
 }
