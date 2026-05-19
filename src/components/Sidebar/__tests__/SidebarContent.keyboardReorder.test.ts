@@ -80,3 +80,46 @@ describe("SidebarContent keyboard reorder announcement — issue #8013", () => {
     });
   });
 });
+
+// Issue #8395 — When isSortDisabled transitions from true to false (filter
+// cleared or group-by-type toggled off), fire an sr-only announcement so
+// screen-reader users know reorder is available again.
+describe("SidebarContent reorder re-enable announcement — issue #8395", () => {
+  let source: string;
+
+  beforeEach(async () => {
+    source = await fs.readFile(SIDEBAR_CONTENT_PATH, "utf-8");
+  });
+
+  it("tracks the previous sort-disabled state in a ref", () => {
+    expect(source).toMatch(
+      /const\s+isSortDisabledPrevRef\s*=\s*useRef\(isGroupedByType\s*\|\|\s*query\.trim\(\)\.length\s*>\s*0\)/
+    );
+  });
+
+  it("fires useEffect when isGroupedByType or query changes", () => {
+    expect(source).toMatch(
+      /useEffect\(\(\)\s*=>\s*\{[\s\S]*isSortDisabledPrevRef[\s\S]*\},\s*\[isGroupedByType,\s*query\]\)/
+    );
+  });
+
+  it("announces 'Manual reorder available' on the enable transition", () => {
+    expect(source).toContain('setKeyboardReorderAnnouncement("Manual reorder available")');
+  });
+
+  it("debounces the re-enable announcement via the shared timer ref", () => {
+    expect(source).toMatch(
+      /reorderAnnouncementTimerRef\.current\s*=\s*setTimeout[\s\S]*"Manual reorder available"/
+    );
+  });
+
+  it("clears any pending reorder announcement before scheduling the re-enable", () => {
+    expect(source).toMatch(
+      /if\s*\(reorderAnnouncementTimerRef\.current\s*!==\s*null\)[\s\S]*clearTimeout[\s\S]*reorderAnnouncementTimerRef\.current\s*=\s*setTimeout[\s\S]*"Manual reorder available"/
+    );
+  });
+
+  it("gates on prev===true && current===false transition", () => {
+    expect(source).toMatch(/prev\s*&&\s*!current/);
+  });
+});

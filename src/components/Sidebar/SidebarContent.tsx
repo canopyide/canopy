@@ -328,6 +328,23 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
       quickStateFilter: state.quickStateFilter,
     }))
   );
+
+  const isSortDisabledPrevRef = useRef(isGroupedByType || query.trim().length > 0);
+  useEffect(() => {
+    const current = isGroupedByType || query.trim().length > 0;
+    const prev = isSortDisabledPrevRef.current;
+    isSortDisabledPrevRef.current = current;
+    if (prev && !current) {
+      if (reorderAnnouncementTimerRef.current !== null) {
+        clearTimeout(reorderAnnouncementTimerRef.current);
+      }
+      reorderAnnouncementTimerRef.current = setTimeout(() => {
+        reorderAnnouncementTimerRef.current = null;
+        setKeyboardReorderAnnouncement("Manual reorder available");
+      }, KEYBOARD_REORDER_ANNOUNCEMENT_DEBOUNCE_MS);
+    }
+  }, [isGroupedByType, query]);
+
   const clearAllFilters = useWorktreeFilterStore((state) => state.clearAll);
   const hasActiveFilters = useWorktreeFilterStore((state) => state.hasActiveFilters);
   const hasFacetFilters = useWorktreeFilterStore((state) => state.hasFacetFilters);
