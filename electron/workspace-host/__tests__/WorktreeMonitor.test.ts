@@ -60,8 +60,10 @@ vi.mock("../../utils/gitUtils.js", () => ({
 }));
 
 const mockIsRepoOperationInProgress = vi.fn().mockReturnValue(false);
+const mockGetRepoOperationStateSync = vi.fn().mockReturnValue(undefined);
 vi.mock("../../utils/gitRepoOperationState.js", () => ({
   isRepoOperationInProgress: (...args: unknown[]) => mockIsRepoOperationInProgress(...args),
+  getRepoOperationStateSync: (...args: unknown[]) => mockGetRepoOperationStateSync(...args),
   OPERATION_SENTINEL_NAMES: [
     "MERGE_HEAD",
     "rebase-merge",

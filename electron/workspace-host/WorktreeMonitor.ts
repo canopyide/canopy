@@ -179,6 +179,12 @@ export class WorktreeMonitor {
   private _head: string | undefined;
   private _repoState: import("../../shared/types/git.js").RepoState | undefined;
 
+  // Previously emitted git state for change detection (avoid suppressing
+  // detached↔branch transitions that don't touch file state).
+  private _prevEmittedIsDetached: boolean = false;
+  private _prevEmittedHead: string | undefined;
+  private _prevEmittedRepoState: import("../../shared/types/git.js").RepoState | undefined;
+
   // Resource state
   private _resourceStatus:
     | import("../../shared/types/worktree.js").WorktreeResourceStatus
@@ -250,6 +256,8 @@ export class WorktreeMonitor {
     this._gitDir = worktree.gitDir;
     this._isCurrent = worktree.isCurrent;
     this._isMainWorktree = Boolean(worktree.isMainWorktree);
+    this._isDetached = Boolean(worktree.isDetached);
+    this._head = worktree.head;
     this.gitWatchEnabled = config.gitWatchEnabled ?? true;
     this.gitWatchDebounceMs = config.gitWatchDebounceMs ?? 300;
     this.pollQueue = pollQueue;
@@ -1378,8 +1386,18 @@ export class WorktreeMonitor {
       const upstreamChanged =
         nextAheadCount !== this.aheadCount || nextBehindCount !== this.behindCount;
 
+      const gitStateChanged =
+        this._isDetached !== this._prevEmittedIsDetached ||
+        this._head !== this._prevEmittedHead ||
+        this._repoState !== this._prevEmittedRepoState;
+
       const anythingChanged =
-        stateChanged || noteChanged || branchChanged || planChanged || upstreamChanged;
+        stateChanged ||
+        noteChanged ||
+        branchChanged ||
+        planChanged ||
+        upstreamChanged ||
+        gitStateChanged;
 
       // Drive the idle backoff from what the git check actually observed —
       // a real state change resets, otherwise we count one quiet tick. The
@@ -1653,6 +1671,9 @@ export class WorktreeMonitor {
   }
 
   emitUpdate(): void {
+    this._prevEmittedIsDetached = this._isDetached;
+    this._prevEmittedHead = this._head;
+    this._prevEmittedRepoState = this._repoState;
     this.callbacks.onUpdate(this.getSnapshot());
   }
 }
