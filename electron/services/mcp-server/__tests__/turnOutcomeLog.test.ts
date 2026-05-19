@@ -136,6 +136,78 @@ describe("classifyTurnOutcome", () => {
     ).toBe("tool-error");
   });
 
+  it("returns reasoning-loop when 3+ identical (toolId, argsSummary) calls exist in the turn window", () => {
+    const records = [
+      makeAuditRecord({ id: "r1", toolId: "agent.getState", argsSummary: "{}" }),
+      makeAuditRecord({ id: "r2", toolId: "agent.getState", argsSummary: "{}" }),
+      makeAuditRecord({ id: "r3", toolId: "agent.getState", argsSummary: "{}" }),
+    ];
+    expect(
+      classifyTurnOutcome({
+        transition: makeTransition(),
+        recentOutput: "Let me check the state again.".padEnd(120, " "),
+        recentAuditRecords: records,
+        sessionId: "session-1",
+      })
+    ).toBe("reasoning-loop");
+  });
+
+  it("does not trigger reasoning-loop below the threshold (2 identical calls)", () => {
+    const records = [
+      makeAuditRecord({ id: "r1", toolId: "agent.getState", argsSummary: "{}" }),
+      makeAuditRecord({ id: "r2", toolId: "agent.getState", argsSummary: "{}" }),
+    ];
+    expect(
+      classifyTurnOutcome({
+        transition: makeTransition(),
+        recentOutput: "Here is the answer you asked for: the file was updated and tests pass.",
+        recentAuditRecords: records,
+        sessionId: "session-1",
+      })
+    ).toBe("answered");
+  });
+
+  it("counts interleaved identical calls toward the reasoning-loop threshold", () => {
+    const records = [
+      makeAuditRecord({ id: "r5", toolId: "agent.getState", argsSummary: "{}" }),
+      makeAuditRecord({ id: "r4", toolId: "files.list", argsSummary: '{"path":"/foo"}' }),
+      makeAuditRecord({ id: "r3", toolId: "agent.getState", argsSummary: "{}" }),
+      makeAuditRecord({ id: "r2", toolId: "terminal.run", argsSummary: '{"cmd":"ls"}' }),
+      makeAuditRecord({ id: "r1", toolId: "agent.getState", argsSummary: "{}" }),
+    ];
+    expect(
+      classifyTurnOutcome({
+        transition: makeTransition(),
+        recentOutput: "Let me check once more.".padEnd(120, " "),
+        recentAuditRecords: records,
+        sessionId: "session-1",
+      })
+    ).toBe("reasoning-loop");
+  });
+
+  it("returns tool-error over reasoning-loop when the most recent record is an error", () => {
+    const records = [
+      makeAuditRecord({
+        id: "r4",
+        toolId: "agent.getState",
+        argsSummary: "{}",
+        result: "error",
+        errorCode: "DISPATCH_THREW",
+      }),
+      makeAuditRecord({ id: "r3", toolId: "agent.getState", argsSummary: "{}" }),
+      makeAuditRecord({ id: "r2", toolId: "agent.getState", argsSummary: "{}" }),
+      makeAuditRecord({ id: "r1", toolId: "agent.getState", argsSummary: "{}" }),
+    ];
+    expect(
+      classifyTurnOutcome({
+        transition: makeTransition(),
+        recentOutput: "Let me try again.".padEnd(120, " "),
+        recentAuditRecords: records,
+        sessionId: "session-1",
+      })
+    ).toBe("tool-error");
+  });
+
   it("ignores audit records from other sessions", () => {
     const audit = makeAuditRecord({
       sessionId: "session-other",
