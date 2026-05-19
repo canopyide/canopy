@@ -301,7 +301,8 @@ describe("gitClone — gh repo clone fast path", () => {
     const handler = getInvokeHandler(CHANNELS.PROJECT_CLONE_REPO);
 
     await expect(handler(makeCtxEvent(), makeOptions())).rejects.toMatchObject({
-      code: "INTERNAL",
+      name: "GitOperationError",
+      op: "clone",
     });
     expect(createAuthenticatedGitMock).not.toHaveBeenCalled();
 
@@ -367,7 +368,8 @@ describe("gitClone — gh repo clone fast path", () => {
     const handler = getInvokeHandler(CHANNELS.PROJECT_CLONE_REPO);
 
     await expect(handler(makeCtxEvent(), makeOptions())).rejects.toMatchObject({
-      code: "INTERNAL",
+      name: "GitOperationError",
+      op: "clone",
     });
 
     expect(fsMock.promises.rm).toHaveBeenCalledWith(
