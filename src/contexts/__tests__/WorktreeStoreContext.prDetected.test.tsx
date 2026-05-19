@@ -1057,3 +1057,44 @@ describe("WorktreeStoreProvider visibilitychange (#8066 consolidation)", () => {
     expect(requestMock.mock.calls.length).toBe(initialCallCount);
   });
 });
+
+describe("WorktreeStoreProvider host restart re-hydration (#8403)", () => {
+  it("a new-epoch event triggers a re-hydrate that replaces the stale tree", async () => {
+    const store = await renderProvider();
+    // Initialized under TEST_EPOCH with a stale worktree.
+    act(() => {
+      store.getState().applyUpdate(makeWorktree("old-1"), nextV());
+    });
+    expect(store.getState().worktrees.has("old-1")).toBe(true);
+
+    // Host restarts: get-all-states now answers under a new epoch with the
+    // authoritative post-restart tree. The new-epoch push event's seq matches
+    // the high-water seq the snapshot reports — the equal-seq snapshot must
+    // still apply, or the re-hydrate is silently swallowed (review finding #2).
+    const electron = (globalThis as unknown as { window: Window }).window.electron as unknown as {
+      worktreePort: { request: (name: string) => Promise<unknown> };
+    };
+    electron.worktreePort.request = () =>
+      Promise.resolve({
+        states: [makeWorktree("post-1"), makeWorktree("post-2")],
+        epoch: "epoch-restarted",
+        seq: 1,
+      });
+
+    await act(async () => {
+      emit("worktree-update", {
+        type: "worktree-update",
+        worktree: makeWorktree("post-1"),
+        epoch: "epoch-restarted",
+        seq: 1,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(store.getState().worktrees.has("old-1")).toBe(false);
+    expect(store.getState().worktrees.has("post-2")).toBe(true);
+    expect(store.getState().version.epoch).toBe("epoch-restarted");
+  });
+});

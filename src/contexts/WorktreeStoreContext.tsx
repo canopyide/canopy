@@ -85,12 +85,14 @@ function branchesMatch(
 }
 
 // Overlay events (pr/issue detection) are renderer-synthesized — the host
-// mints no `(epoch, seq)` for them. Bump one seq past the current stamp within
-// the same epoch so the targeted field merge wins over the snapshot it was
-// derived from. It deliberately stays in the host's epoch so the next host
-// snapshot/epoch transition supersedes it cleanly (#8403).
+// mints no `(epoch, seq)` for them. Reuse the CURRENT stamp rather than
+// advancing the seq: the store accepts an equal same-epoch version (the guard
+// rejects only strictly-older), so the targeted field merge lands without
+// claiming a seq the host will later emit. Advancing it would shadow the real
+// host event that lands on that exact seq (#8403 review finding #3). A later
+// higher-seq host update or epoch transition still supersedes the overlay.
 function overlayVersion(current: WorktreeEventVersion): WorktreeEventVersion {
-  return { epoch: current.epoch, seq: current.seq + 1 };
+  return { epoch: current.epoch, seq: current.seq };
 }
 
 interface WorktreeActivatedEvent {
@@ -179,12 +181,15 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
           if (!worktreePort.isReady()) return;
 
           // A `worktree-update` raced ahead during the association fetch and
-          // already advanced the store past this snapshot (same epoch, higher
-          // seq). Don't revert it. On a cold start we still must hydrate, so
-          // retry the fetch (the generation guard prevents overlapping stale
-          // completions). A differing epoch means the host restarted — that
-          // always re-hydrates, so it never trips this guard.
-          if (compareVersion(snapshotVersion, store.getState().version) <= 0) {
+          // advanced the store STRICTLY past this snapshot (same epoch, higher
+          // seq). Don't revert it. An equal seq is the host's authoritative
+          // state at the same boundary (`get-all-states` reports the high-water
+          // seq without advancing), so it must still apply — otherwise cold
+          // start never initializes and an epoch-change re-hydrate is silently
+          // swallowed (#8403 review findings #1, #2). A differing epoch means
+          // the host restarted and always wins. On cold start we still must
+          // hydrate, so retry (the generation guard prevents stale overlaps).
+          if (compareVersion(snapshotVersion, store.getState().version) < 0) {
             if (!store.getState().isInitialized) fetchInitialState();
             return;
           }

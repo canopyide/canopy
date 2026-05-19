@@ -16,7 +16,14 @@ const TOMBSTONE_TTL_MS = 30_000;
  * Order two host-minted version stamps. A differing epoch means the events
  * came from different host runs — UUIDv4 epochs carry no ordering, so a new
  * epoch always wins (the renderer re-hydrates from the fresh host). Within an
- * epoch, the higher `seq` wins. Returns >0 when `incoming` should be applied.
+ * epoch, the higher `seq` wins.
+ *
+ * Returns <0 only when `incoming` is strictly older than `current`. Callers
+ * gate on `compareVersion(...) < 0` (reject), so an EQUAL same-epoch stamp is
+ * accepted: `get-all-states` reports the host's current high-water `seq`
+ * without advancing it, so a snapshot that races the event sitting at that
+ * same `seq` is the host's authoritative state at that boundary — applying it
+ * is idempotent, never a revert (#8403 review).
  */
 export function compareVersion(
   incoming: WorktreeEventVersion,
@@ -118,7 +125,7 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
       associations?: Record<string, ManualIssueAssociation>
     ) {
       const prev = get();
-      if (compareVersion(version, prev.version) <= 0) return;
+      if (compareVersion(version, prev.version) < 0) return;
       // A snapshot is the host's authoritative state. Drop every tombstone:
       // an epoch transition means the host rebuilt from scratch, and within
       // the same epoch any id the host still reports is alive by definition.
@@ -176,7 +183,7 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
 
     applyUpdate(state: WorktreeSnapshot, version: WorktreeEventVersion) {
       const prevState = get();
-      if (compareVersion(version, prevState.version) <= 0) return;
+      if (compareVersion(version, prevState.version) < 0) return;
       const prev = prevState.worktrees;
       const existing = prev.get(state.id);
 
@@ -240,14 +247,20 @@ export function createWorktreeStore(): WorktreeViewStoreApi {
 
     applyRemove(worktreeId: string, version: WorktreeEventVersion) {
       const prevState = get();
-      if (compareVersion(version, prevState.version) <= 0) return;
+      if (compareVersion(version, prevState.version) < 0) return;
 
       // Record a tombstone so a buffered same-epoch `worktree-update` can't
       // resurrect this row (#8403). An epoch transition starts the tombstone
       // set fresh — the prior run's removals don't apply to the new host.
+      const now = Date.now();
       const epochChanged = version.epoch !== prevState.version.epoch;
       const tombstones = epochChanged ? new Map<string, number>() : new Map(prevState.tombstones);
-      tombstones.set(worktreeId, Date.now());
+      // Reap expired tombstones on write so ids that never receive a follow-up
+      // update can't accumulate unbounded over a long high-churn session.
+      for (const [id, removedAt] of tombstones) {
+        if (now - removedAt >= TOMBSTONE_TTL_MS) tombstones.delete(id);
+      }
+      tombstones.set(worktreeId, now);
 
       const prev = prevState.worktrees;
       if (!prev.has(worktreeId)) {

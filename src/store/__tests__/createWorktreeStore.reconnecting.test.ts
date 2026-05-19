@@ -60,9 +60,13 @@ describe("createWorktreeStore — reconnecting state", () => {
     const v1 = nextV();
     store.getState().applySnapshot([makeSnapshot("wt-1")], v1);
 
-    // Start reconnecting, then deliver a stale snapshot (lower/equal version)
+    // Start reconnecting, then deliver a STRICTLY older snapshot. Equal seq is
+    // the host's authoritative state and is now accepted (#8403 review), so a
+    // genuinely stale snapshot must carry a lower seq in the same epoch.
     store.getState().setReconnecting(true);
-    store.getState().applySnapshot([makeSnapshot("wt-stale")], v1);
+    store
+      .getState()
+      .applySnapshot([makeSnapshot("wt-stale")], { epoch: v1.epoch, seq: v1.seq - 1 });
 
     expect(store.getState().isReconnecting).toBe(true);
   });
@@ -189,7 +193,10 @@ describe("createWorktreeStore — reconnectingAt timestamp", () => {
 
     store.getState().setReconnecting(true);
     const captured = store.getState().reconnectingAt;
-    store.getState().applySnapshot([makeSnapshot("wt-stale")], v1);
+    // Strictly older — equal seq is now accepted (#8403 review).
+    store
+      .getState()
+      .applySnapshot([makeSnapshot("wt-stale")], { epoch: v1.epoch, seq: v1.seq - 1 });
 
     expect(store.getState().reconnectingAt).toBe(captured);
   });
@@ -400,6 +407,56 @@ describe("createWorktreeStore — host epoch transitions (#8403)", () => {
 
     expect(store.getState().worktrees.get("wt-1")?.branch).toBe("post-restart");
     expect(store.getState().version).toEqual({ epoch: "e2", seq: 1 });
+  });
+
+  it("an equal-seq snapshot still hydrates a cold store (no init deadlock)", () => {
+    // `get-all-states` reports the host's high-water seq without advancing it,
+    // so a `worktree-update` racing the cold-start fetch lands at the SAME seq
+    // the snapshot carries. The equal-seq snapshot must still apply or the
+    // store never initializes (#8403 review finding #1).
+    const store = createWorktreeStore();
+    expect(store.getState().isInitialized).toBe(false);
+
+    store.getState().applyUpdate(makeSnapshot("wt-1", { branch: "live" }), { epoch: "e", seq: 1 });
+    store
+      .getState()
+      .applySnapshot([makeSnapshot("wt-1"), makeSnapshot("wt-2")], { epoch: "e", seq: 1 });
+
+    expect(store.getState().isInitialized).toBe(true);
+    expect(store.getState().worktrees.size).toBe(2);
+  });
+
+  it("an equal-seq snapshot replaces stale rows after an epoch-change re-hydrate", () => {
+    // After a restart the first new-epoch event advances the store to {B,1};
+    // the re-hydrate's `get-all-states` returns {B,1} too. That equal-seq
+    // snapshot must replace the stale epoch-A rows (#8403 review finding #2).
+    const store = createWorktreeStore();
+    store.getState().applySnapshot([makeSnapshot("old-1")], { epoch: "A", seq: 50 });
+    store.getState().applyUpdate(makeSnapshot("post-restart"), { epoch: "B", seq: 1 });
+    expect(store.getState().worktrees.has("old-1")).toBe(true);
+
+    store.getState().applySnapshot([makeSnapshot("post-restart"), makeSnapshot("fresh-2")], {
+      epoch: "B",
+      seq: 1,
+    });
+
+    expect(store.getState().worktrees.has("old-1")).toBe(false);
+    expect(store.getState().worktrees.has("fresh-2")).toBe(true);
+  });
+
+  it("an equal-seq host removal is not dropped by an overlay at the same seq", () => {
+    // Overlays reuse the current stamp (no seq bump), so the store can sit at
+    // {e,5} from a renderer overlay. A host `worktree-removed` minted at the
+    // same seq must still delete the row (#8403 review finding #3).
+    const store = createWorktreeStore();
+    store.getState().applySnapshot([makeSnapshot("wt-1")], { epoch: "e", seq: 5 });
+    // Overlay-style merge at the same seq (equal accepted).
+    store.getState().applyUpdate(makeSnapshot("wt-1", { prNumber: 7 }), { epoch: "e", seq: 5 });
+    expect(store.getState().worktrees.has("wt-1")).toBe(true);
+
+    store.getState().applyRemove("wt-1", { epoch: "e", seq: 5 });
+
+    expect(store.getState().worktrees.has("wt-1")).toBe(false);
   });
 });
 
