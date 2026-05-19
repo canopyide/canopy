@@ -702,6 +702,8 @@ export class WorkspaceService {
         circuitBreakerThreshold: this.circuitBreakerThreshold,
         gitWatchEnabled: this.gitWatchEnabled,
         gitWatchDebounceMs: this.gitWatchDebounceMs,
+        fetchIntervalActiveMs: this.fetchIntervalActiveMs,
+        fetchIntervalBackgroundMs: this.fetchIntervalBackgroundMs,
       },
       {
         onUpdate: (snapshot) => {

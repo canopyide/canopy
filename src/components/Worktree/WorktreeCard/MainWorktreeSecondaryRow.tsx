@@ -38,7 +38,9 @@ export function MainWorktreeSecondaryRow({
   isGitHubProvider,
   aggregateCounts,
 }: MainWorktreeSecondaryRowProps) {
-  const fetchIntervalMs = useResourceProfileStore((s) => s.fetchIntervalBackgroundMs);
+  const fetchIntervalActiveMs = useResourceProfileStore((s) => s.fetchIntervalActiveMs);
+  const fetchIntervalBackgroundMs = useResourceProfileStore((s) => s.fetchIntervalBackgroundMs);
+  const fetchIntervalMs = isActive ? fetchIntervalActiveMs : fetchIntervalBackgroundMs;
 
   return (
     <div className="flex items-center gap-2 mt-1" data-testid="main-worktree-meta-row">

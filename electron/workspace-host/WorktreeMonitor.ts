@@ -1723,17 +1723,18 @@ export class WorktreeMonitor {
       : createHardenedGit(this.path, this._pollAbortController.signal);
 
     try {
-      // Resolve base ref: try local branch first, then origin/<branch>
-      const localRef = this.mainBranch;
+      // Resolve base ref: try origin/<branch> first (remote ref stays fresh
+      // after fetch), fall back to local branch for repos without a remote.
       const remoteRef = `origin/${this.mainBranch}`;
+      const localRef = this.mainBranch;
       let resolvedRef: string;
       try {
-        await git.raw(["rev-parse", "--verify", localRef]);
-        resolvedRef = localRef;
+        await git.raw(["rev-parse", "--verify", remoteRef]);
+        resolvedRef = remoteRef;
       } catch {
         try {
-          await git.raw(["rev-parse", "--verify", remoteRef]);
-          resolvedRef = remoteRef;
+          await git.raw(["rev-parse", "--verify", localRef]);
+          resolvedRef = localRef;
         } catch {
           return null;
         }

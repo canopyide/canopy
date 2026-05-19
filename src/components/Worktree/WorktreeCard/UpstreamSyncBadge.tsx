@@ -97,7 +97,7 @@ export function UpstreamSyncBadge({
     );
   }
 
-  if (!hasAhead && !hasBehind) return null;
+  if (!hasAhead && !hasBehind && !showBaseDivergence) return null;
 
   return (
     <Tooltip>

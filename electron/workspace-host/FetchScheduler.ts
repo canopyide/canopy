@@ -102,8 +102,8 @@ export class FetchScheduler {
   private pickInterval(): number {
     const base = this.host.isCurrent ? this.focusedIntervalMs : this.backgroundIntervalMs;
     const jitterRange = Math.floor(base * FETCH_JITTER_FRACTION);
-    const minMs = Math.max(0, base - jitterRange);
-    const maxMs = base + jitterRange;
+    const minMs = Math.max(1000, base - jitterRange);
+    const maxMs = Math.max(minMs + 1000, base + jitterRange);
     return randomBetween(minMs, maxMs);
   }
 
