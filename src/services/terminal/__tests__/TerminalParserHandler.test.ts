@@ -107,9 +107,10 @@ describe("TerminalParserHandler", () => {
     );
     expect(dynamicBlockers.some((h) => h.handler([1049]))).toBe(false);
     expect(dynamicBlockers.some((h) => h.handler([1000]))).toBe(false);
-    // OSC 52 clipboard block applies unconditionally to all terminal kinds
-    expect(oscHandlers).toHaveLength(1);
-    expect(oscHandlers[0].ident).toBe(52);
+    // OSC 52 clipboard block + OSC 57301 data-loss marker apply
+    // unconditionally to all terminal kinds.
+    expect(oscHandlers).toHaveLength(2);
+    expect(oscHandlers.map((h) => h.ident).sort()).toEqual([52, 57301]);
   });
 
   it("should NOT block alt screen for OpenCode agent", () => {
@@ -192,5 +193,56 @@ describe("TerminalParserHandler", () => {
 
     handler.dispose();
     expect(osc52.disposable.dispose).toHaveBeenCalled();
+  });
+
+  describe("OSC 57301 data-loss marker", () => {
+    it("registers the OSC 57301 handler unconditionally", () => {
+      new TerminalParserHandler(mockManaged);
+      const osc = oscHandlers.find((h) => h.ident === 57301);
+      expect(osc).toBeDefined();
+    });
+
+    it("parses a valid payload and fires onDataLoss with the byte count", () => {
+      const onDataLoss = vi.fn();
+      new TerminalParserHandler(mockManaged, undefined, onDataLoss);
+      const osc = oscHandlers.find((h) => h.ident === 57301);
+
+      expect(osc.handler("1234;backpressure")).toBe(true);
+      expect(onDataLoss).toHaveBeenCalledWith(1234);
+    });
+
+    it("fires onDataLoss with 0 when no bytes were counted", () => {
+      const onDataLoss = vi.fn();
+      new TerminalParserHandler(mockManaged, undefined, onDataLoss);
+      const osc = oscHandlers.find((h) => h.ident === 57301);
+
+      expect(osc.handler("0;backpressure")).toBe(true);
+      expect(onDataLoss).toHaveBeenCalledWith(0);
+    });
+
+    it("consumes but ignores malformed payloads", () => {
+      const onDataLoss = vi.fn();
+      new TerminalParserHandler(mockManaged, undefined, onDataLoss);
+      const osc = oscHandlers.find((h) => h.ident === 57301);
+
+      for (const bad of ["abc;backpressure", "-1;backpressure", "", "1234", "1.5;x"]) {
+        expect(osc.handler(bad)).toBe(true);
+      }
+      expect(onDataLoss).not.toHaveBeenCalled();
+    });
+
+    it("does not throw when no onDataLoss callback is provided", () => {
+      new TerminalParserHandler(mockManaged);
+      const osc = oscHandlers.find((h) => h.ident === 57301);
+      expect(() => osc.handler("1234;backpressure")).not.toThrow();
+      expect(osc.handler("1234;backpressure")).toBe(true);
+    });
+
+    it("disposes the OSC 57301 handler", () => {
+      const handler = new TerminalParserHandler(mockManaged);
+      const osc = oscHandlers.find((h) => h.ident === 57301);
+      handler.dispose();
+      expect(osc.disposable.dispose).toHaveBeenCalled();
+    });
   });
 });
