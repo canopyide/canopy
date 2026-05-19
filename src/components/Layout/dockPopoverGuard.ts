@@ -40,6 +40,21 @@ export function handleDockInteractOutside(
     event.preventDefault();
     return;
   }
+
+  // Guard 3: Focus-driven dismissal (Radix FocusOutsideEvent) while focus lives
+  // inside the portal. Typing into the portaled xterm/CodeMirror surface emits
+  // `focusin`; during the portal migration the event's target can resolve to a
+  // stale offscreen node so Guard 1 misses it, dismissing mid-keystroke (#8368).
+  // The live `document.activeElement` is authoritative here. This is scoped to
+  // focus events only — a real pointer-down outside must still dismiss even
+  // while the terminal holds focus, so the pointer path never reaches here.
+  const originalType = event.detail?.originalEvent?.type;
+  if (
+    (originalType === "focusin" || originalType === "focus") &&
+    shouldSuppressDockClose(portalContainer)
+  ) {
+    event.preventDefault();
+  }
 }
 
 /**
@@ -54,4 +69,18 @@ export function handleDockEscapeKeyDown(
   if (portalContainer?.contains(document.activeElement)) {
     event.preventDefault();
   }
+}
+
+/**
+ * Returns `true` when focus currently lives inside the dock panel's portal
+ * container (the xterm surface or the hybrid input editor). Used by
+ * `handleDockInteractOutside`'s focus-event guard to suppress the spurious
+ * mid-keystroke dismissal in #8368, and mirrors `handleDockEscapeKeyDown`'s
+ * containment check. Deliberately *not* consulted on the pointer-down-outside
+ * path — a real outside click must still dismiss while the terminal holds
+ * focus, so this is only sound when the caller has already established the
+ * originating event is focus-driven.
+ */
+export function shouldSuppressDockClose(portalContainer: HTMLElement | null): boolean {
+  return portalContainer?.contains(document.activeElement) ?? false;
 }
