@@ -52,7 +52,7 @@ export function validateDefinitionInvariants(definition: AnyActionDefinition): s
     );
   }
 
-  if (definition.danger !== "safe" && !definition.dangerRationale) {
+  if (definition.danger !== "safe" && !definition.dangerRationale?.trim()) {
     violations.push(
       `Action "${definition.id}" has danger="${definition.danger}" but no dangerRationale. ` +
         `Rationale surfaces in elicitation confirmations so users see why the action is gated.`
@@ -435,7 +435,7 @@ export class ActionService {
       keywords: definition.keywords?.slice(),
       ...(definition.mcpAnnotations ? { mcpAnnotations: { ...definition.mcpAnnotations } } : {}),
       ...(definition.pluginId ? { pluginId: definition.pluginId } : {}),
-      ...(definition.examples ? { examples: definition.examples } : {}),
+      ...(definition.examples ? { examples: [...definition.examples] } : {}),
       ...(definition.dangerRationale ? { dangerRationale: definition.dangerRationale } : {}),
     };
   }
