@@ -1,15 +1,17 @@
 import { spawn, spawnSync, type ChildProcess } from "child_process";
-import { readFile, access, cp } from "fs/promises";
+import { readFile, access, cp, mkdir, readdir, unlink } from "fs/promises";
 import { join as pathJoin, basename, dirname } from "path";
 import os from "os";
 import { z } from "zod/v4";
 import { scrubSecrets } from "../utils/secretScrubber.js";
 import { buildProbeEnv } from "../utils/spawnEnv.js";
+import { resilientAtomicWriteFile } from "../utils/fs.js";
 import type { WorktreeMonitor } from "./WorktreeMonitor.js";
 import { applyResourceConfigToMonitor } from "./resourceConfigHelpers.js";
 
 const OUTPUT_TAIL_BYTES = 8192;
 const DEFAULT_TIMEOUT_MS = 120_000;
+const MAX_TEARDOWN_LOGS_PER_WORKTREE = 10;
 
 const ResourceTimeoutsSchema = z.object({
   provision: z.number().positive().optional(),
@@ -77,6 +79,14 @@ export interface RunCommandsOptions {
   timeoutMs?: number;
   signal?: AbortSignal;
   onProgress: (commandIndex: number, totalCommands: number, command: string) => void;
+  /**
+   * When set, the full scrubbed output for this run is persisted to a new file
+   * inside this directory. The returned `RunCommandsResult.logPath` is the
+   * absolute path on success, or undefined if the write or directory creation
+   * failed (failures never abort the run — log persistence is best-effort).
+   * Callers that don't want persistence (resource status polls, setup) omit it.
+   */
+  logDir?: string;
 }
 
 export interface RunCommandsResult {
@@ -85,6 +95,8 @@ export interface RunCommandsResult {
   error?: string;
   timedOut?: boolean;
   aborted?: boolean;
+  /** Absolute path to the persisted full-output log file, when one was written. */
+  logPath?: string;
 }
 
 async function fileExists(p: string): Promise<boolean> {
@@ -120,7 +132,7 @@ export class WorktreeLifecycleService {
     worktreePath: string,
     projectRootPath: string
   ): Promise<DaintreeLifecycleConfig | null> {
-    const sanitizedRoot = projectRootPath.replace(/[/\\:*?"<>|]/g, "_");
+    const sanitizedRoot = sanitizePathSegment(projectRootPath);
     const candidates = [
       pathJoin(this.homeDir, ".daintree", "projects", sanitizedRoot, "config.json"),
       pathJoin(worktreePath, ".daintree", "config.json"),
@@ -204,9 +216,14 @@ export class WorktreeLifecycleService {
    * Each command is spawned with a minimal env + DAINTREE_* vars.
    * A shared timeout covers the entire set of commands.
    * On Unix, process group kill terminates the whole tree; on Windows, taskkill /T is used.
+   *
+   * When `options.logDir` is set, a per-run scrubbed log is persisted there
+   * after the run completes. Empty command arrays short-circuit with no log
+   * write (callers in `runLifecycleTeardown` already guard against this, so
+   * the early-return has no impact on the teardown log story).
    */
   async runCommands(commands: string[], options: RunCommandsOptions): Promise<RunCommandsResult> {
-    const { cwd, env, onProgress, timeoutMs = DEFAULT_TIMEOUT_MS, signal } = options;
+    const { cwd, env, onProgress, timeoutMs = DEFAULT_TIMEOUT_MS, signal, logDir } = options;
 
     if (!commands.length) {
       return { success: true, output: "" };
@@ -217,11 +234,13 @@ export class WorktreeLifecycleService {
 
     for (let i = 0; i < commands.length; i++) {
       if (signal?.aborted) {
+        const logPath = await this.persistRunLog(outputChunks, logDir);
         return {
           success: false,
-          output: tailOutput(outputChunks),
+          output: tailOutput(outputChunks, logPath),
           aborted: true,
           error: "Aborted",
+          logPath,
         };
       }
 
@@ -229,11 +248,13 @@ export class WorktreeLifecycleService {
       const remainingMs = deadline - Date.now();
 
       if (remainingMs <= 0) {
+        const logPath = await this.persistRunLog(outputChunks, logDir);
         return {
           success: false,
-          output: tailOutput(outputChunks),
+          output: tailOutput(outputChunks, logPath),
           timedOut: true,
           error: `Timed out before running command ${i + 1}: ${command}`,
+          logPath,
         };
       }
 
@@ -249,25 +270,30 @@ export class WorktreeLifecycleService {
       );
 
       if (result.aborted) {
+        const logPath = await this.persistRunLog(outputChunks, logDir);
         return {
           success: false,
-          output: tailOutput(outputChunks),
+          output: tailOutput(outputChunks, logPath),
           aborted: true,
           error: "Aborted",
+          logPath,
         };
       }
 
       if (!result.success) {
+        const logPath = await this.persistRunLog(outputChunks, logDir);
         return {
           success: false,
-          output: tailOutput(outputChunks),
+          output: tailOutput(outputChunks, logPath),
           timedOut: result.timedOut,
           error: result.error,
+          logPath,
         };
       }
     }
 
-    return { success: true, output: tailOutput(outputChunks) };
+    const logPath = await this.persistRunLog(outputChunks, logDir);
+    return { success: true, output: tailOutput(outputChunks, logPath), logPath };
   }
 
   private runSingleCommand(
@@ -388,10 +414,79 @@ export class WorktreeLifecycleService {
     });
   }
 
+  /**
+   * Persist the full scrubbed output of a command run to a new log file inside
+   * `logDir` and prune the directory to `MAX_TEARDOWN_LOGS_PER_WORKTREE`
+   * entries. Best-effort — any failure resolves to `undefined` so the caller
+   * (teardown) can continue. Returns the absolute log path on success.
+   *
+   * Filename uses `Date.now()` so files sort lexicographically by write order,
+   * which keeps the prune step a simple sorted-by-name slice (no per-file
+   * `stat` round-trip). A collision is harmless: an atomic rename overwrite
+   * keeps the newer content.
+   */
+  private async persistRunLog(
+    chunks: string[],
+    logDir: string | undefined
+  ): Promise<string | undefined> {
+    if (!logDir) return undefined;
+    try {
+      const scrubbed = scrubSecrets(chunks.join(""));
+      await mkdir(logDir, { recursive: true });
+      const logPath = pathJoin(logDir, `${Date.now()}.log`);
+      await resilientAtomicWriteFile(logPath, scrubbed, "utf-8");
+      await this.pruneOldLogs(logDir);
+      return logPath;
+    } catch (err) {
+      console.warn("[WorktreeLifecycle] Failed to persist teardown log:", err);
+      return undefined;
+    }
+  }
+
+  /**
+   * Delete the oldest `.log` files beyond `MAX_TEARDOWN_LOGS_PER_WORKTREE`.
+   * Best-effort — every individual unlink is swallowed so one stuck file
+   * doesn't block pruning the rest, and a failed prune never aborts the run.
+   */
+  private async pruneOldLogs(logDir: string): Promise<void> {
+    try {
+      const entries = await readdir(logDir);
+      const logs = entries.filter((name) => name.endsWith(".log")).sort();
+      const excess = logs.length - MAX_TEARDOWN_LOGS_PER_WORKTREE;
+      if (excess <= 0) return;
+      const toDelete = logs.slice(0, excess);
+      for (const name of toDelete) {
+        try {
+          await unlink(pathJoin(logDir, name));
+        } catch {
+          // best-effort; permission errors or already-gone files are non-fatal
+        }
+      }
+    } catch (err) {
+      console.warn("[WorktreeLifecycle] Failed to prune teardown logs:", err);
+    }
+  }
+
+  /**
+   * Compute the per-worktree teardown-log directory under the user-level
+   * project config root. Returns an absolute path; callers don't need to
+   * create the directory — `persistRunLog` does that on demand.
+   */
+  private teardownLogDir(projectRootPath: string, worktreeName: string): string {
+    return pathJoin(
+      this.homeDir,
+      ".daintree",
+      "projects",
+      sanitizePathSegment(projectRootPath),
+      "teardown-logs",
+      sanitizePathSegment(worktreeName)
+    );
+  }
+
   async loadProjectResourceEnvironments(
     projectRootPath: string
   ): Promise<Record<string, ResourceConfig> | null> {
-    const sanitizedRoot = projectRootPath.replace(/[/\\:*?"<>|]/g, "_");
+    const sanitizedRoot = sanitizePathSegment(projectRootPath);
     const candidates = [
       pathJoin(this.homeDir, ".daintree", "projects", sanitizedRoot, "settings.json"),
       pathJoin(projectRootPath, ".daintree", "settings.json"),
@@ -711,6 +806,7 @@ export class WorktreeLifecycleService {
           cwd: monitor.path,
           env,
           timeoutMs: 300_000,
+          logDir: this.teardownLogDir(projectRootPath, monitor.name),
           onProgress: (commandIndex, totalCommands, command) => {
             const m = ctx.getMonitor(worktreeId);
             if (m) {
@@ -741,6 +837,7 @@ export class WorktreeLifecycleService {
             error: resourceResult.error,
             startedAt: resourceStartedAt,
             completedAt: Date.now(),
+            logPath: resourceResult.logPath,
           });
           ctx.emitUpdate(m);
         }
@@ -795,6 +892,7 @@ export class WorktreeLifecycleService {
         cwd: monitor.path,
         env,
         timeoutMs,
+        logDir: this.teardownLogDir(projectRootPath, monitor.name),
         onProgress: (commandIndex, totalCommands, command) => {
           const m = ctx.getMonitor(worktreeId);
           if (m) {
@@ -821,6 +919,7 @@ export class WorktreeLifecycleService {
           error: result.error,
           startedAt: teardownStartedAt,
           completedAt: Date.now(),
+          logPath: result.logPath,
         });
         ctx.emitUpdate(finalMonitor);
       }
@@ -895,11 +994,28 @@ function buildSpawnEnv(customEnv: Record<string, string>): Record<string, string
   return { ...buildProbeEnv(), ...customEnv };
 }
 
-function tailOutput(chunks: string[]): string {
+function tailOutput(chunks: string[], logPath?: string): string {
   const full = chunks.join("");
-  const tail =
-    full.length <= OUTPUT_TAIL_BYTES
-      ? full
-      : "...(truncated)\n" + full.slice(full.length - OUTPUT_TAIL_BYTES);
-  return scrubSecrets(tail);
+  const buf = Buffer.from(full, "utf-8");
+  if (buf.length <= OUTPUT_TAIL_BYTES) {
+    return scrubSecrets(full);
+  }
+  // Byte-accurate slice: matches the named cap (`*_BYTES`) for multibyte
+  // content. A cut mid-codepoint produces a leading U+FFFD in the tail snippet
+  // — acceptable since the persisted log file is the authoritative artifact.
+  const tail = buf.subarray(buf.length - OUTPUT_TAIL_BYTES).toString("utf-8");
+  const dropped = buf.length - OUTPUT_TAIL_BYTES;
+  const where = logPath ? `full log: ${logPath}` : "full log unavailable";
+  const marker = `...(truncated — omitted ${dropped} bytes; ${where})\n`;
+  return scrubSecrets(marker + tail);
+}
+
+/**
+ * Sanitize a path segment for the user-level config root so directory names
+ * remain valid on every supported OS. Mirrors the inline pattern already used
+ * in `loadConfig` and `loadProjectResourceEnvironments`. Exported at module
+ * scope so it can be reused by `teardownLogDir` without `this` binding.
+ */
+function sanitizePathSegment(value: string): string {
+  return value.replace(/[/\\:*?"<>|]/g, "_");
 }

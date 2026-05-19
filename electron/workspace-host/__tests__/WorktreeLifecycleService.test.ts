@@ -8,11 +8,18 @@ vi.mock("fs/promises", () => ({
   readFile: vi.fn(),
   access: vi.fn(),
   cp: vi.fn().mockResolvedValue(undefined),
+  mkdir: vi.fn().mockResolvedValue(undefined),
+  readdir: vi.fn().mockResolvedValue([]),
+  unlink: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("child_process", () => ({
   spawn: vi.fn(),
   spawnSync: vi.fn(),
+}));
+
+vi.mock("../../utils/fs.js", () => ({
+  resilientAtomicWriteFile: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe("WorktreeLifecycleService", () => {
@@ -645,6 +652,272 @@ describe("WorktreeLifecycleService", () => {
     });
   });
 
+  describe("teardown log persistence", () => {
+    let mockMkdir: ReturnType<typeof vi.fn>;
+    let mockReaddir: ReturnType<typeof vi.fn>;
+    let mockUnlink: ReturnType<typeof vi.fn>;
+    let mockAtomicWrite: ReturnType<typeof vi.fn>;
+
+    beforeEach(async () => {
+      const fsModule = await import("fs/promises");
+      mockMkdir = vi.mocked(fsModule.mkdir as unknown as () => Promise<undefined>);
+      mockReaddir = vi.mocked(fsModule.readdir as unknown as () => Promise<string[]>);
+      mockUnlink = vi.mocked(fsModule.unlink as unknown as () => Promise<void>);
+
+      const fsUtilsModule = await import("../../utils/fs.js");
+      mockAtomicWrite = vi.mocked(fsUtilsModule.resilientAtomicWriteFile);
+      mockAtomicWrite.mockResolvedValue(undefined);
+      mockMkdir.mockResolvedValue(undefined);
+      mockReaddir.mockResolvedValue([]);
+      mockUnlink.mockResolvedValue(undefined);
+    });
+
+    function makeOutputProcess(stdout: string, exitCode = 0) {
+      const stdoutListeners: ((chunk: Buffer) => void)[] = [];
+      const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
+      const child = {
+        pid: 12345,
+        stdout: {
+          on: vi.fn((event: string, cb: (chunk: Buffer) => void) => {
+            if (event === "data") stdoutListeners.push(cb);
+          }),
+        },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+          listeners[event] ??= [];
+          listeners[event].push(cb);
+        }),
+        kill: vi.fn(),
+        emit: (event: string, ...args: unknown[]) => {
+          listeners[event]?.forEach((cb) => cb(...args));
+        },
+      };
+      setTimeout(() => {
+        stdoutListeners.forEach((cb) => cb(Buffer.from(stdout)));
+        child.emit("close", exitCode);
+      }, 0);
+      return child;
+    }
+
+    it("does not create or write a log file when logDir is omitted", async () => {
+      mockSpawn.mockReturnValue(makeOutputProcess("setup output", 0));
+
+      const result = await service.runCommands(["./run.sh"], {
+        cwd: "/test",
+        env: {},
+        onProgress: vi.fn(),
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.logPath).toBeUndefined();
+      expect(mockMkdir).not.toHaveBeenCalled();
+      expect(mockAtomicWrite).not.toHaveBeenCalled();
+    });
+
+    it("writes a scrubbed full-output log when logDir is provided", async () => {
+      const token = "ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCD";
+      const stdout = `starting... token=${token} ...done`;
+      mockSpawn.mockReturnValue(makeOutputProcess(stdout, 0));
+
+      const result = await service.runCommands(["./run.sh"], {
+        cwd: "/test",
+        env: {},
+        onProgress: vi.fn(),
+        logDir: "/home/testuser/.daintree/projects/_path_root/teardown-logs/wt-1",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.logPath).toBeDefined();
+      expect(result.logPath).toMatch(
+        /\/home\/testuser\/\.daintree\/projects\/_path_root\/teardown-logs\/wt-1\/\d+\.log$/
+      );
+      expect(mockMkdir).toHaveBeenCalledWith(
+        "/home/testuser/.daintree/projects/_path_root/teardown-logs/wt-1",
+        { recursive: true }
+      );
+      const writtenContent = mockAtomicWrite.mock.calls[0][1];
+      expect(writtenContent).not.toContain(token);
+      expect(writtenContent).toContain("[REDACTED]");
+      expect(writtenContent).toContain("starting...");
+      expect(writtenContent).toContain("...done");
+    });
+
+    it("returns undefined logPath when the log write fails (run still succeeds)", async () => {
+      mockSpawn.mockReturnValue(makeOutputProcess("output", 0));
+      mockAtomicWrite.mockRejectedValueOnce(new Error("ENOSPC: no space left"));
+
+      const result = await service.runCommands(["./run.sh"], {
+        cwd: "/test",
+        env: {},
+        onProgress: vi.fn(),
+        logDir: "/some/log/dir",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.logPath).toBeUndefined();
+    });
+
+    it("returns undefined logPath when mkdir fails (run still succeeds)", async () => {
+      mockSpawn.mockReturnValue(makeOutputProcess("output", 0));
+      mockMkdir.mockRejectedValueOnce(new Error("EACCES: permission denied"));
+
+      const result = await service.runCommands(["./run.sh"], {
+        cwd: "/test",
+        env: {},
+        onProgress: vi.fn(),
+        logDir: "/some/log/dir",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.logPath).toBeUndefined();
+      expect(mockAtomicWrite).not.toHaveBeenCalled();
+    });
+
+    it("prunes oldest log files beyond MAX_TEARDOWN_LOGS_PER_WORKTREE", async () => {
+      mockSpawn.mockReturnValue(makeOutputProcess("output", 0));
+      // Simulate 12 existing log files (counting the freshly-written one); the
+      // two oldest should be deleted to bring the count back to the cap of 10.
+      const existing = Array.from({ length: 12 }, (_, i) => `${1000 + i}.log`);
+      mockReaddir.mockResolvedValueOnce(existing);
+
+      await service.runCommands(["./run.sh"], {
+        cwd: "/test",
+        env: {},
+        onProgress: vi.fn(),
+        logDir: "/some/log/dir",
+      });
+
+      expect(mockUnlink).toHaveBeenCalledTimes(2);
+      expect(mockUnlink).toHaveBeenNthCalledWith(1, expect.stringMatching(/1000\.log$/));
+      expect(mockUnlink).toHaveBeenNthCalledWith(2, expect.stringMatching(/1001\.log$/));
+    });
+
+    it("ignores non-.log entries when computing retention", async () => {
+      mockSpawn.mockReturnValue(makeOutputProcess("output", 0));
+      mockReaddir.mockResolvedValueOnce([
+        "README.md",
+        "1000.log",
+        "1001.log",
+        "1002.log",
+        "spurious.txt",
+      ]);
+
+      await service.runCommands(["./run.sh"], {
+        cwd: "/test",
+        env: {},
+        onProgress: vi.fn(),
+        logDir: "/some/log/dir",
+      });
+
+      // Only 3 .log files: under the cap of 10, so nothing is unlinked.
+      expect(mockUnlink).not.toHaveBeenCalled();
+    });
+
+    it("does not fail the run when readdir-based prune throws", async () => {
+      mockSpawn.mockReturnValue(makeOutputProcess("output", 0));
+      mockReaddir.mockRejectedValueOnce(new Error("EACCES"));
+
+      const result = await service.runCommands(["./run.sh"], {
+        cwd: "/test",
+        env: {},
+        onProgress: vi.fn(),
+        logDir: "/some/log/dir",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.logPath).toBeDefined();
+    });
+
+    it("does not fail the run when an individual unlink throws during prune", async () => {
+      mockSpawn.mockReturnValue(makeOutputProcess("output", 0));
+      const existing = Array.from({ length: 12 }, (_, i) => `${1000 + i}.log`);
+      mockReaddir.mockResolvedValueOnce(existing);
+      mockUnlink.mockRejectedValueOnce(new Error("EBUSY"));
+
+      const result = await service.runCommands(["./run.sh"], {
+        cwd: "/test",
+        env: {},
+        onProgress: vi.fn(),
+        logDir: "/some/log/dir",
+      });
+
+      // Both candidates still attempted even though the first throws.
+      expect(mockUnlink).toHaveBeenCalledTimes(2);
+      expect(result.success).toBe(true);
+      expect(result.logPath).toBeDefined();
+    });
+
+    it("includes byte count and log path in the truncation marker when output exceeds the tail cap", async () => {
+      const huge = "a".repeat(10_000); // > OUTPUT_TAIL_BYTES (8192)
+      mockSpawn.mockReturnValue(makeOutputProcess(huge, 0));
+
+      const result = await service.runCommands(["./run.sh"], {
+        cwd: "/test",
+        env: {},
+        onProgress: vi.fn(),
+        logDir: "/home/testuser/.daintree/projects/_root/teardown-logs/wt-1",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain("...(truncated — omitted ");
+      expect(result.output).toContain("bytes");
+      expect(result.output).toContain(`full log: ${result.logPath}`);
+    });
+
+    it("says 'full log unavailable' in the truncation marker when log persistence fails", async () => {
+      const huge = "x".repeat(10_000);
+      mockSpawn.mockReturnValue(makeOutputProcess(huge, 0));
+      mockAtomicWrite.mockRejectedValueOnce(new Error("disk full"));
+
+      const result = await service.runCommands(["./run.sh"], {
+        cwd: "/test",
+        env: {},
+        onProgress: vi.fn(),
+        logDir: "/some/log/dir",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.logPath).toBeUndefined();
+      expect(result.output).toContain("...(truncated — omitted ");
+      expect(result.output).toContain("full log unavailable");
+    });
+
+    it("writes a log on failure paths (non-zero exit) and surfaces logPath", async () => {
+      mockSpawn.mockReturnValue(makeOutputProcess("failed output", 1));
+
+      const result = await service.runCommands(["./run.sh"], {
+        cwd: "/test",
+        env: {},
+        onProgress: vi.fn(),
+        logDir: "/some/log/dir",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.logPath).toBeDefined();
+      expect(mockAtomicWrite).toHaveBeenCalledTimes(1);
+    });
+
+    it("truncates byte-accurately for multibyte UTF-8 content", async () => {
+      // 3000 CJK chars × 3 bytes = 9000 bytes, well over OUTPUT_TAIL_BYTES (8192).
+      // The char count (3000) is under the threshold; if the guard were
+      // char-based the output would not truncate — verifies the byte-correct fix.
+      const multibyte = "界".repeat(3000);
+      mockSpawn.mockReturnValue(makeOutputProcess(multibyte, 0));
+
+      const result = await service.runCommands(["./run.sh"], {
+        cwd: "/test",
+        env: {},
+        onProgress: vi.fn(),
+        logDir: "/some/log/dir",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain("...(truncated — omitted ");
+      // Total 9000 bytes − 8192-byte tail = 808 bytes dropped.
+      expect(result.output).toContain("omitted 808 bytes");
+    });
+  });
+
   describe("runLifecycleSetup — return value contract", () => {
     function makeFakeMonitor(opts: { worktreeMode?: string } = {}) {
       const status = {
@@ -853,6 +1126,136 @@ describe("WorktreeLifecycleService", () => {
       expect(result).toEqual({ shouldProvision: true });
       // No spawn should fire — no setup commands to run before provisioning
       expect(mockSpawn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("runLifecycleTeardown — log persistence wiring", () => {
+    function makeTeardownMonitor(opts: { hasResourceConfig?: boolean } = {}) {
+      const statuses: unknown[] = [];
+      return {
+        name: "wt-1",
+        branch: "feature/x",
+        path: "/wt",
+        worktreeMode: "local",
+        hasResourceConfig: opts.hasResourceConfig ?? false,
+        get lifecycleStatus() {
+          return statuses[statuses.length - 1];
+        },
+        recordedStatuses: statuses,
+        resourceStatus: undefined,
+        setLifecycleStatus(s: unknown) {
+          statuses.push(s);
+        },
+      };
+    }
+
+    function makeCtx(monitor: ReturnType<typeof makeTeardownMonitor>) {
+      return {
+        projectRootPath: "/projects/my-app",
+        projectEnvVars: {},
+        getMonitor: () => monitor as never,
+        emitUpdate: vi.fn(),
+      } as unknown as import("../WorktreeLifecycleService.js").WorkspaceHostContext;
+    }
+
+    function makeSpawnChild(exitCode: number) {
+      return () => {
+        const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
+        const child = {
+          pid: 1234,
+          stdout: { on: vi.fn() },
+          stderr: { on: vi.fn() },
+          on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+            listeners[event] ??= [];
+            listeners[event].push(cb);
+            if (event === "close") setTimeout(() => cb(exitCode), 0);
+          }),
+          kill: vi.fn(),
+        };
+        return child as never;
+      };
+    }
+
+    it("propagates logPath into the final teardown lifecycle status", async () => {
+      const config = { teardown: ["docker compose down"] };
+      mockAccess.mockImplementation(async (p: unknown) => {
+        if (n(p as string).endsWith("/projects/my-app/.daintree/config.json")) return undefined;
+        throw new Error("ENOENT");
+      });
+      mockReadFile.mockResolvedValue(JSON.stringify(config) as never);
+      mockSpawn.mockImplementation(makeSpawnChild(0));
+
+      const monitor = makeTeardownMonitor();
+      await service.runLifecycleTeardown("wt-1", monitor as never, false, makeCtx(monitor));
+
+      const finalStatus = monitor.recordedStatuses.at(-1) as {
+        phase: string;
+        state: string;
+        logPath?: string;
+      };
+      expect(finalStatus.phase).toBe("teardown");
+      expect(finalStatus.state).toBe("success");
+      expect(finalStatus.logPath).toBeDefined();
+      expect(n(finalStatus.logPath ?? "")).toContain(
+        "/home/testuser/.daintree/projects/_projects_my-app/teardown-logs/wt-1/"
+      );
+      expect(finalStatus.logPath).toMatch(/\d+\.log$/);
+    });
+
+    it("propagates logPath into the resource-teardown lifecycle status", async () => {
+      const config = {
+        resource: { teardown: ["terraform destroy"] },
+      };
+      mockAccess.mockImplementation(async (p: unknown) => {
+        if (n(p as string).endsWith("/projects/my-app/.daintree/config.json")) return undefined;
+        throw new Error("ENOENT");
+      });
+      mockReadFile.mockResolvedValue(JSON.stringify(config) as never);
+      mockSpawn.mockImplementation(makeSpawnChild(0));
+
+      const monitor = makeTeardownMonitor({ hasResourceConfig: true });
+      await service.runLifecycleTeardown("wt-1", monitor as never, false, makeCtx(monitor));
+
+      const resourceFinal = monitor.recordedStatuses
+        .filter(
+          (s): s is { phase: string; state: string; logPath?: string } =>
+            typeof s === "object" && s !== null && "phase" in s
+        )
+        .find((s) => s.phase === "resource-teardown" && s.state !== "running");
+      expect(resourceFinal).toBeDefined();
+      expect(resourceFinal?.logPath).toBeDefined();
+      expect(n(resourceFinal?.logPath ?? "")).toContain(
+        "/home/testuser/.daintree/projects/_projects_my-app/teardown-logs/wt-1/"
+      );
+    });
+
+    it("sanitizes path-unsafe characters in the project root segment", async () => {
+      const config = { teardown: ["true"] };
+      mockAccess.mockImplementation(async (p: unknown) => {
+        // Match the unsanitized path read; the config-lookup helper itself
+        // already sanitizes the segment to `_projects_my_app_with_colon` so
+        // the access predicate uses that form.
+        if (n(p as string).endsWith("/projects/my:app/.daintree/config.json")) return undefined;
+        throw new Error("ENOENT");
+      });
+      mockReadFile.mockResolvedValue(JSON.stringify(config) as never);
+      mockSpawn.mockImplementation(makeSpawnChild(0));
+
+      const monitor = makeTeardownMonitor();
+      const ctx = {
+        projectRootPath: "/projects/my:app",
+        projectEnvVars: {},
+        getMonitor: () => monitor as never,
+        emitUpdate: vi.fn(),
+      } as unknown as import("../WorktreeLifecycleService.js").WorkspaceHostContext;
+
+      await service.runLifecycleTeardown("wt-1", monitor as never, false, ctx);
+
+      const finalStatus = monitor.recordedStatuses.at(-1) as { logPath?: string };
+      expect(finalStatus.logPath).toBeDefined();
+      // Colon in the path must not appear in the persisted directory.
+      expect(finalStatus.logPath).not.toContain("my:app");
+      expect(n(finalStatus.logPath ?? "")).toContain("/_projects_my_app/teardown-logs/wt-1/");
     });
   });
 });

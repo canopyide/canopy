@@ -29,6 +29,12 @@ export interface WorktreeLifecycleStatus {
   startedAt: number;
   completedAt?: number;
   error?: string;
+  /**
+   * Absolute path to the persisted full-output log file for this run, when the
+   * caller (teardown / resource-teardown phases) opted into log persistence.
+   * Undefined for phases that don't persist a log, or when the write failed.
+   */
+  logPath?: string;
 }
 
 /** Resource status from the last manual status check */
