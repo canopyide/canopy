@@ -46,7 +46,7 @@ function formatTimeAgo(diffMs: number): { label: string; fullLabel: string; isAb
   } else if (days < 7) {
     label = `${days}d`;
     fullLabel = `${days} day${days !== 1 ? "s" : ""} ago`;
-  } else if (days < 30) {
+  } else {
     const weeks = Math.floor(days / 7);
     label = `${weeks}w`;
     fullLabel = `${weeks} week${weeks !== 1 ? "s" : ""} ago`;

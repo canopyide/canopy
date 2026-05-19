@@ -7,12 +7,14 @@ function sha256hex(input: string): string {
   const words: number[] = [];
   for (let i = 0; i < data.length; i++) {
     const wordIdx = i >> 2;
-    words[wordIdx] = (words[wordIdx] ?? 0) | (data[i] << (24 - (i & 3) * 8));
+    const prev = words[wordIdx] ?? 0;
+    words[wordIdx] = prev | (data[i]! << (24 - (i & 3) * 8));
   }
 
   const msgBitLen = data.length * 8;
   const msgLastWord = data.length >> 2;
-  words[msgLastWord] = (words[msgLastWord] ?? 0) | (0x80 << (24 - (data.length & 3) * 8));
+  const prevLast = words[msgLastWord] ?? 0;
+  words[msgLastWord] = prevLast | (0x80 << (24 - (data.length & 3) * 8));
 
   const blockWords = Math.ceil((msgBitLen + 1 + 64) / 512) * 16;
   for (let i = words.length; i < blockWords; i++) {
@@ -22,10 +24,75 @@ function sha256hex(input: string): string {
   words[blockWords - 1] = msgBitLen;
   words[blockWords - 2] = 0;
 
-  const H = [
+  const H: [number, number, number, number, number, number, number, number] = [
     0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
   ];
-  const K = [
+  const K: [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ] = [
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
     0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
     0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
@@ -36,7 +103,7 @@ function sha256hex(input: string): string {
     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
   ];
 
-  const w = new Array(64);
+  const w = new Array<number>(64);
   for (let i = 0; i < blockWords; i += 16) {
     for (let j = 0; j < 16; j++) w[j] = words[i + j]!;
     for (let j = 16; j < 64; j++) {
@@ -63,14 +130,14 @@ function sha256hex(input: string): string {
       a = (temp1 + temp2) | 0;
     }
 
-    H[0] = (H[0] + a) | 0;
-    H[1] = (H[1] + b) | 0;
-    H[2] = (H[2] + c) | 0;
-    H[3] = (H[3] + d) | 0;
-    H[4] = (H[4] + e) | 0;
-    H[5] = (H[5] + f) | 0;
-    H[6] = (H[6] + g) | 0;
-    H[7] = (H[7] + h) | 0;
+    H[0] = (H[0]! + a) | 0;
+    H[1] = (H[1]! + b) | 0;
+    H[2] = (H[2]! + c) | 0;
+    H[3] = (H[3]! + d) | 0;
+    H[4] = (H[4]! + e) | 0;
+    H[5] = (H[5]! + f) | 0;
+    H[6] = (H[6]! + g) | 0;
+    H[7] = (H[7]! + h) | 0;
   }
 
   let hex = "";
