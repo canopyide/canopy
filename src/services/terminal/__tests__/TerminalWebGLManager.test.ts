@@ -1312,6 +1312,25 @@ describe("TerminalWebGLManager", () => {
       expect(WebglAddonMock).toHaveBeenCalledTimes(3);
     });
 
+    it("keeps a suppressed terminal on DOM until the caller re-ensures it", async () => {
+      const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
+      TerminalWebGLManager.setPassiveThreshold(2);
+
+      manager.ensureContext("t1", makeManagedTerminal());
+      manager.ensureContext("t2", makeManagedTerminal());
+      manager.ensureContext("t3", makeManagedTerminal());
+      expect(manager.isActive("t3")).toBe(false);
+
+      // Releasing t1 frees a slot, but t3 must NOT auto-resume — the gate only
+      // suppresses, it doesn't track suppressed terminals. The caller drives
+      // re-acquisition on the next attach/focus signal.
+      manager.releaseContext("t1");
+      expect(manager.isActive("t3")).toBe(false);
+
+      manager.ensureContext("t3", makeManagedTerminal());
+      expect(manager.isActive("t3")).toBe(true);
+    });
+
     it("clamps the threshold to a minimum of 1", async () => {
       const { TerminalWebGLManager } = await import("../TerminalWebGLManager");
       TerminalWebGLManager.setPassiveThreshold(0);
