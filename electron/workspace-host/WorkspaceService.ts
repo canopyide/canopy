@@ -1629,8 +1629,7 @@ export class WorkspaceService {
           options.provisionResource ?? options.worktreeMode === "remote-worker"
         );
       })().catch((err) => {
-        const message =
-          err instanceof Error ? err.message : `createWorktree async tail failed: ${String(err)}`;
+        const message = formatErrorMessage(err, "createWorktree async tail failed");
         const stack = err instanceof Error ? err.stack : undefined;
         console.warn("[WorkspaceHost] createWorktree async tail failed:", err);
         this.sendEvent({
@@ -1885,12 +1884,20 @@ export class WorkspaceService {
             console.log(`[WorkspaceHost] Branch already deleted: ${branchToDelete}`);
           } else if (errorMsg.includes("not fully merged")) {
             throw new Error(
-              `Branch '${branchToDelete}' has unmerged changes. Enable force delete to remove it.`
+              `Branch '${branchToDelete}' has unmerged changes. Enable force delete to remove it.`,
+              { cause: branchError }
             );
           } else if (errorMsg.includes("checked out at") || errorMsg.includes("Cannot delete")) {
-            throw new Error(`Cannot delete branch '${branchToDelete}': ${errorMsg.split("\n")[0]}`);
+            throw new Error(
+              `Cannot delete branch '${branchToDelete}': ${errorMsg.split("\n")[0]}`,
+              {
+                cause: branchError,
+              }
+            );
           } else {
-            throw new Error(`Failed to delete branch '${branchToDelete}': ${errorMsg}`);
+            throw new Error(`Failed to delete branch '${branchToDelete}': ${errorMsg}`, {
+              cause: branchError,
+            });
           }
         }
       }
@@ -2299,10 +2306,7 @@ ${lines.map((l) => "+" + l).join("\n")}`;
         await this.runLifecycleSetup(worktreeId, monitor.path, this.projectRootPath, false, envKey);
       }
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : `switchWorktreeEnvironment lifecycle setup failed: ${String(err)}`;
+      const message = formatErrorMessage(err, "switchWorktreeEnvironment lifecycle setup failed");
       const stack = err instanceof Error ? err.stack : undefined;
       console.warn(
         `[WorkspaceService] switchWorktreeEnvironment config resolution failed (non-fatal):`,
