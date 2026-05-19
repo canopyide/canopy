@@ -259,12 +259,15 @@ export const IPC_LOW_WATERMARK_PERCENT = 33; // Resume PTY when drops to 33% (~1
 // occluded:
 //   - BackgroundTimerThrottling: setTimeout/setInterval clamped to 1Hz immediately.
 //   - requestAnimationFrame: suspended entirely (0Hz) while the document is hidden.
-//   - IntensiveWakeUpThrottling: with QuickIntensiveThrottling default-on in
-//     Chromium 146, this escalates at the 10s-hidden mark (not the historical 5min),
-//     clamping wakeups to 1/minute.
-// 10s aligns the forced resume with the IntensiveWakeUpThrottling boundary: if a
-// paused PTY isn't resumed before that escalation, a backgrounded pane could go up
-// to 60s between drain ticks and freeze visibly. (history: #3508, #4682, #4683)
+//   - IntensiveWakeUpThrottling: escalates wakeups to 1/minute. With
+//     QuickIntensiveWakeUpThrottlingAfterLoading default-on in Chromium 146,
+//     this engages at the 60s-hidden mark for fully-loaded pages (the baseline
+//     without that flag is 5min).
+// 10s keeps the forced resume comfortably below the 60s IntensiveWakeUpThrottling
+// boundary: it fires the drain while still only under 1Hz BackgroundTimerThrottling,
+// before the far worse 1/minute intensive throttle can engage. Without it, a paused
+// PTY left untouched past 60s could go a full minute between drain ticks and freeze
+// visibly. (history: #3508, #4682, #4683)
 export const IPC_MAX_PAUSE_MS = 10000;
 
 // MessagePort adaptive batching configuration
