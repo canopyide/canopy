@@ -422,23 +422,29 @@ describe("Worktree list keyboard grid — issue #6422 / virtualized rewrite", ()
       );
     });
 
-    it("renders the integration and grouped-section rows as <StaticWorktreeRow worktreeId={...}/> (id only)", () => {
-      // Integration (pinned) row.
+    it("threads only the worktreeId (not a full worktree object) into StaticWorktreeRow across all render paths", () => {
+      // Integration (pinned) row stays as inline JSX outside the Virtuoso
+      // surface; its id-only prop shape is preserved.
       expect(source).toMatch(
         /<StaticWorktreeRow\s+key=\{integrationWorktree\.id\}\s+worktreeId=\{integrationWorktree\.id\}/
       );
-      // Grouped-section rows.
-      expect(source).toMatch(
-        /section\.worktrees\.map\(\(worktree\)\s*=>\s*\(\s*<StaticWorktreeRow\s+key=\{worktree\.id\}\s+worktreeId=\{worktree\.id\}/
-      );
+      // Virtualized rows are produced by renderSidebarFlatItem which reads
+      // `item.worktreeId` off each Virtuoso item — never a full worktree
+      // object — and the sidebarItems memo iterates `section.worktrees` to
+      // push those items.
+      expect(source).toMatch(/<StaticWorktreeRow\s+worktreeId=\{item\.worktreeId\}/);
+      expect(source).toMatch(/for \(const w of section\.worktrees\)/);
+      expect(source).toMatch(/worktreeId:\s*w\.id/);
       // No render path threads a full worktree object into the row.
       expect(source).not.toMatch(/<StaticWorktreeRow[^>]*\bworktree=\{/);
     });
 
     it("preserves the side-effecting aria-rowindex counter in the grouped path", () => {
-      // The 1-based aria-rowindex slot advances per rendered data row; the
-      // inline conversion must keep the post-increment exactly.
-      expect(source).toMatch(/ariaRowIndex=\{nextRowIndex\+\+\}/);
+      // The 1-based aria-rowindex slot advances per item the sidebarItems
+      // memo emits (header sentinel + each row). Virtuoso renders the items;
+      // the counter still post-increments inside the iteration so each
+      // emitted item carries the next 1-based row slot.
+      expect(source).toMatch(/ariaRowIndex:\s*nextRowIndex\+\+/);
     });
   });
 

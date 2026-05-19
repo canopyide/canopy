@@ -1571,22 +1571,6 @@ function SidebarContent({ onOpenOverview }: SidebarContentProps) {
                 </>
               }
             />
-          ) : showQuickStateEmptyState ? (
-            <EmptyState
-              variant="filtered-empty"
-              scale="sidebar"
-              instant
-              title={`No ${quickStateFilter} worktrees`}
-              action={
-                <button
-                  type="button"
-                  onClick={clearAllFilters}
-                  className="text-xs px-3 py-1.5 text-daintree-text/60 hover:text-daintree-text hover:bg-overlay-soft rounded transition-colors"
-                >
-                  Show all worktrees
-                </button>
-              }
-            />
           ) : filteredWorktrees.length === 0 &&
             hasFilters &&
             hasNonMainWorktrees &&
