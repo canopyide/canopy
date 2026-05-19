@@ -9,6 +9,10 @@ vi.mock("../GitHubAuth.js", () => ({
     createClient: vi.fn(() => null),
   },
   GITHUB_API_TIMEOUT_MS: 5000,
+  // Thin pass-through so assignIssue's mocked REST path keeps working — the
+  // test stubs globalThis.fetch directly.
+  rateLimitAwareFetch: (input: RequestInfo | URL, init?: RequestInit) =>
+    globalThis.fetch(input, init),
 }));
 
 vi.mock("../GitHubRateLimitService.js", () => ({

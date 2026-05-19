@@ -4,6 +4,7 @@ import type {
 } from "../../../../shared/types/ipc/github.js";
 import { logDebug, logInfo, logWarn } from "../../../../electron/utils/logger.js";
 import { GitHubAuth, captureAuthMetadata, getLastAuthMetadata } from "./GitHubAuth.js";
+import { gitHubRateLimitService } from "./GitHubRateLimitService.js";
 import { formatErrorMessage } from "../../../../shared/utils/errorMessage.js";
 
 /** How often background probes run when the app is actively used. */
@@ -173,6 +174,18 @@ class GitHubTokenHealthServiceImpl {
         this.lastCheckedAt = this.now();
         this.notifyListeners();
       }
+      return;
+    }
+
+    // Don't probe while a rate-limit block is active — the probe would just
+    // count against the limit. The block clears itself on `resumeAt`, and
+    // the next interval/refresh tick will pick up the check.
+    const block = gitHubRateLimitService.shouldBlockRequest();
+    if (block.blocked) {
+      logDebug("GitHub token health: skipping probe — rate limit active", {
+        reason: block.reason,
+        resumeAt: block.resumeAt,
+      });
       return;
     }
 

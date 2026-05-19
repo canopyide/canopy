@@ -1,5 +1,5 @@
 import type { GraphQlQueryResponseData } from "@octokit/graphql";
-import { GitHubAuth, GITHUB_API_TIMEOUT_MS } from "./GitHubAuth.js";
+import { GitHubAuth, GITHUB_API_TIMEOUT_MS, rateLimitAwareFetch } from "./GitHubAuth.js";
 import { LIST_ISSUES_QUERY, SEARCH_QUERY, GET_ISSUE_QUERY } from "./GitHubQueries.js";
 import { gitHubRateLimitService } from "./GitHubRateLimitService.js";
 import { parseGitHubError } from "./GitHubErrors.js";
@@ -121,7 +121,7 @@ export async function assignIssue(
     const url = `https://api.github.com/repos/${context.owner}/${context.repo}/issues/${issueNumber}/assignees`;
 
     try {
-      const response = await fetch(url, {
+      const response = await rateLimitAwareFetch(url, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
