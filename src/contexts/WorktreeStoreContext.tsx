@@ -138,82 +138,84 @@ export function WorktreeStoreProvider({ children }: { children: ReactNode }) {
 
       worktreePort
         .request("get-all-states")
-        .then(async (response: {
-          states: WorktreeSnapshot[];
-          epoch: string;
-          seq: number;
-          watcherDegraded: boolean;
-        }) => {
-          if (thisGen !== generation) return;
-
-          // Hydrate the persistent watcher-degraded indicator from the
-          // handshake so a late-mounting view reflects current state without
-          // waiting for a live event. Set before the async associations fetch
-          // so a degradation/recovery event delivered during that await wins
-          // over this now-stale snapshot value.
-          store.getState().setWatcherDegraded(response.watcherDegraded ?? false);
-
-          // Hydrate manual issue associations from electron store.
-          // Auto-detected issues (from branch names) arrive in the snapshots,
-          // but user-attached associations are stored separately and must
-          // survive subsequent `worktree-update` events (#8079). The store
-          // merges them (MANUAL_OVER_AUTO) and caches the map so later events
-          // can re-merge without another IPC round-trip.
-          const states = response.states;
-          // The host stamps this response with its current `(epoch, seq)`
-          // high-water mark, so the snapshot version is fixed at request time
-          // — no renderer-side minting. A `worktree-update` delivered during
-          // the association await carries a strictly higher host `seq` (same
-          // epoch) and `applySnapshot`'s own compare guard rejects this older
-          // snapshot, so the live update is never reverted (#8079, #8403).
-          const snapshotVersion: WorktreeEventVersion = {
-            epoch: response.epoch,
-            seq: response.seq,
-          };
-
-          // `undefined` (not `{}`) means "couldn't load — keep whatever's
-          // cached". An empty object means "authoritatively no associations".
-          // Defaulting to `{}` on failure would wipe cached manual
-          // associations on a transient IPC error (#8079 review).
-          let associations:
-            | Record<string, { issueNumber: number; issueTitle?: string }>
-            | undefined;
-          try {
-            associations = await worktreeClient.getAllIssueAssociations();
+        .then(
+          async (response: {
+            states: WorktreeSnapshot[];
+            epoch: string;
+            seq: number;
+            watcherDegraded: boolean;
+          }) => {
             if (thisGen !== generation) return;
-          } catch {
-            // Non-critical — keep cached associations (associations stays undefined)
-            if (thisGen !== generation) return;
+
+            // Hydrate the persistent watcher-degraded indicator from the
+            // handshake so a late-mounting view reflects current state without
+            // waiting for a live event. Set before the async associations fetch
+            // so a degradation/recovery event delivered during that await wins
+            // over this now-stale snapshot value.
+            store.getState().setWatcherDegraded(response.watcherDegraded ?? false);
+
+            // Hydrate manual issue associations from electron store.
+            // Auto-detected issues (from branch names) arrive in the snapshots,
+            // but user-attached associations are stored separately and must
+            // survive subsequent `worktree-update` events (#8079). The store
+            // merges them (MANUAL_OVER_AUTO) and caches the map so later events
+            // can re-merge without another IPC round-trip.
+            const states = response.states;
+            // The host stamps this response with its current `(epoch, seq)`
+            // high-water mark, so the snapshot version is fixed at request time
+            // — no renderer-side minting. A `worktree-update` delivered during
+            // the association await carries a strictly higher host `seq` (same
+            // epoch) and `applySnapshot`'s own compare guard rejects this older
+            // snapshot, so the live update is never reverted (#8079, #8403).
+            const snapshotVersion: WorktreeEventVersion = {
+              epoch: response.epoch,
+              seq: response.seq,
+            };
+
+            // `undefined` (not `{}`) means "couldn't load — keep whatever's
+            // cached". An empty object means "authoritatively no associations".
+            // Defaulting to `{}` on failure would wipe cached manual
+            // associations on a transient IPC error (#8079 review).
+            let associations:
+              | Record<string, { issueNumber: number; issueTitle?: string }>
+              | undefined;
+            try {
+              associations = await worktreeClient.getAllIssueAssociations();
+              if (thisGen !== generation) return;
+            } catch {
+              // Non-critical — keep cached associations (associations stays undefined)
+              if (thisGen !== generation) return;
+            }
+
+            // If the host crashed during the associations fetch (a separate IPC
+            // that port-close cannot reject), skip applySnapshot so it does not
+            // spuriously clear the Reconnecting… indicator.  The next onReady
+            // cycle will deliver fresh data.
+            if (!worktreePort.isReady()) return;
+
+            // A `worktree-update` raced ahead during the association fetch and
+            // advanced the store STRICTLY past this snapshot (same epoch, higher
+            // seq). Don't revert it. An equal seq is the host's authoritative
+            // state at the same boundary (`get-all-states` reports the high-water
+            // seq without advancing), so it must still apply — otherwise cold
+            // start never initializes and an epoch-change re-hydrate is silently
+            // swallowed (#8403 review findings #1, #2). A differing epoch means
+            // the host restarted and always wins. On cold start we still must
+            // hydrate, so retry (the generation guard prevents stale overlaps).
+            if (compareVersion(snapshotVersion, store.getState().version) < 0) {
+              if (!store.getState().isInitialized) fetchInitialState();
+              return;
+            }
+
+            // Wrap the wholesale Map replacement in a transition so the
+            // cascade of `useSyncExternalStore` worktree subscribers re-renders
+            // at non-urgent priority instead of synchronously blocking the
+            // event that delivered the snapshot (#8403).
+            startTransition(() => {
+              store.getState().applySnapshot(states, snapshotVersion, associations);
+            });
           }
-
-          // If the host crashed during the associations fetch (a separate IPC
-          // that port-close cannot reject), skip applySnapshot so it does not
-          // spuriously clear the Reconnecting… indicator.  The next onReady
-          // cycle will deliver fresh data.
-          if (!worktreePort.isReady()) return;
-
-          // A `worktree-update` raced ahead during the association fetch and
-          // advanced the store STRICTLY past this snapshot (same epoch, higher
-          // seq). Don't revert it. An equal seq is the host's authoritative
-          // state at the same boundary (`get-all-states` reports the high-water
-          // seq without advancing), so it must still apply — otherwise cold
-          // start never initializes and an epoch-change re-hydrate is silently
-          // swallowed (#8403 review findings #1, #2). A differing epoch means
-          // the host restarted and always wins. On cold start we still must
-          // hydrate, so retry (the generation guard prevents stale overlaps).
-          if (compareVersion(snapshotVersion, store.getState().version) < 0) {
-            if (!store.getState().isInitialized) fetchInitialState();
-            return;
-          }
-
-          // Wrap the wholesale Map replacement in a transition so the
-          // cascade of `useSyncExternalStore` worktree subscribers re-renders
-          // at non-urgent priority instead of synchronously blocking the
-          // event that delivered the snapshot (#8403).
-          startTransition(() => {
-            store.getState().applySnapshot(states, snapshotVersion, associations);
-          });
-        })
+        )
         .catch((err: Error) => {
           if (thisGen !== generation) return;
           // On wake, preserve existing data — don't show error screen
