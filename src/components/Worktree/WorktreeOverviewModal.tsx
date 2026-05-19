@@ -13,6 +13,7 @@ import { usePanelStore } from "@/store/panelStore";
 import { useWorktreeStore } from "@/hooks/useWorktreeStore";
 import {
   matchesFilters,
+  matchesQuickStateFilter,
   sortWorktrees,
   groupByType,
   computeChipCounts,
@@ -188,6 +189,7 @@ export function WorktreeOverviewModal({
     alwaysShowWaiting,
     pinnedWorktrees,
     manualOrder,
+    quickStateFilter,
   } = useWorktreeFilterStore(
     useShallow((state) => ({
       query: state.query,
@@ -202,10 +204,12 @@ export function WorktreeOverviewModal({
       alwaysShowWaiting: state.alwaysShowWaiting,
       pinnedWorktrees: state.pinnedWorktrees,
       manualOrder: state.manualOrder,
+      quickStateFilter: state.quickStateFilter,
     }))
   );
   const clearAllFilters = useWorktreeFilterStore((state) => state.clearAll);
   const hasActiveFilters = useWorktreeFilterStore((state) => state.hasActiveFilters);
+  const setQuickStateFilter = useWorktreeFilterStore((state) => state.setQuickStateFilter);
 
   // Terminal store for derived metadata
   const panelsById = usePanelStore((state) => state.panelsById);
@@ -338,12 +342,21 @@ export function WorktreeOverviewModal({
         return false;
       }
 
-      if (alwaysShowActive && isActive && !hasActiveQuery) {
+      if (alwaysShowActive && isActive && !hasActiveQuery && quickStateFilter === "all") {
         return true;
       }
 
-      if (alwaysShowWaiting && derived.hasWaitingAgent && !hasActiveQuery) {
+      if (
+        alwaysShowWaiting &&
+        derived.hasWaitingAgent &&
+        !hasActiveQuery &&
+        quickStateFilter === "all"
+      ) {
         return true;
+      }
+
+      if (quickStateFilter !== "all" && !matchesQuickStateFilter(quickStateFilter, derived)) {
+        return false;
       }
 
       return matchesFilters(worktree, filters, derived, isActive);
@@ -382,6 +395,7 @@ export function WorktreeOverviewModal({
     derivedMetaMap,
     activeWorktreeId,
     hideMainWorktree,
+    quickStateFilter,
   ]);
 
   const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
@@ -454,24 +468,54 @@ export function WorktreeOverviewModal({
               ({filteredWorktrees.length}
               {filteredWorktrees.length !== worktrees.length && ` of ${worktrees.length}`})
             </span>
-            {/* Aggregate activity statistics */}
+            {/* Aggregate activity statistics — clickable chips that set quickStateFilter */}
             {(aggregateStats.workingCount > 0 || aggregateStats.waitingCount > 0) && (
               <div
-                className="flex items-center gap-2 ml-2 pl-3 border-l border-divider"
-                role="status"
-                aria-label="Agent activity statistics"
+                className="flex items-center gap-1 ml-2 pl-3 border-l border-divider"
+                role="group"
+                aria-label="Filter by agent state"
               >
                 {aggregateStats.workingCount > 0 && (
-                  <span className="flex items-center gap-1 text-xs tabular-nums text-[var(--color-state-working)]">
+                  <button
+                    type="button"
+                    aria-pressed={quickStateFilter === "working"}
+                    onClick={() =>
+                      setQuickStateFilter(quickStateFilter === "working" ? "all" : "working")
+                    }
+                    className={cn(
+                      "flex items-center gap-1 text-xs tabular-nums rounded-full px-2 py-0.5 transition-colors",
+                      "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent",
+                      quickStateFilter === "working"
+                        ? "bg-overlay-subtle shadow-[inset_0_-2px_0_0_var(--color-text-secondary)]"
+                        : "hover:bg-tint/[0.04]"
+                    )}
+                  >
                     <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-state-working)] motion-safe:animate-pulse" />
-                    {aggregateStats.workingCount} working
-                  </span>
+                    <span className="text-[var(--color-state-working)]">
+                      {aggregateStats.workingCount} working
+                    </span>
+                  </button>
                 )}
                 {aggregateStats.waitingCount > 0 && (
-                  <span className="flex items-center gap-1 text-xs tabular-nums text-status-warning">
+                  <button
+                    type="button"
+                    aria-pressed={quickStateFilter === "waiting"}
+                    onClick={() =>
+                      setQuickStateFilter(quickStateFilter === "waiting" ? "all" : "waiting")
+                    }
+                    className={cn(
+                      "flex items-center gap-1 text-xs tabular-nums rounded-full px-2 py-0.5 transition-colors",
+                      "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-daintree-accent",
+                      quickStateFilter === "waiting"
+                        ? "bg-overlay-subtle shadow-[inset_0_-2px_0_0_var(--color-text-secondary)]"
+                        : "hover:bg-tint/[0.04]"
+                    )}
+                  >
                     <span className="w-1.5 h-1.5 rounded-full bg-status-warning" />
-                    {aggregateStats.waitingCount} waiting
-                  </span>
+                    <span className="text-status-warning">
+                      {aggregateStats.waitingCount} waiting
+                    </span>
+                  </button>
                 )}
               </div>
             )}
