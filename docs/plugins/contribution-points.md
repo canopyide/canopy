@@ -417,7 +417,7 @@ Registers a forge backend — issues, pull/merge requests, reviews, CI roll-up, 
       {
         "id": "gitea",
         "name": "Gitea",
-        "matches": ["gitea.io", "*.gitea.example.com"],
+        "matches": ["gitea.io", "gitea.example.com"],
         "capabilities": ["issues", "pulls", "required-checks"]
       }
     ]
@@ -431,7 +431,7 @@ Registers a forge backend — issues, pull/merge requests, reviews, CI roll-up, 
 | --- | --- | --- |
 | `id` | yes | Namespaced at runtime as `{pluginId}.{id}` (the built-in GitHub plugin uses bare `github`). Must match the `descriptor.id` passed to `registerForgeProvider`. |
 | `name` | yes | Display label in Preferences → Forge Integrations. |
-| `matches` | yes | Hostname or glob patterns matched against the project's git remote URL; first matching provider wins. The host strips `www.`, lowercases, and handles HTTPS/SSH/SCP-form URLs before matching. |
+| `matches` | yes | List of exact hostnames. The host extracts the hostname from the project's git remote (HTTPS/SSH/SCP-form URLs handled), lowercases and trims it, then matches for **exact string equality** — no glob, wildcard, or suffix matching. List every distinct hostname your forge serves as a separate entry. First matching provider wins. |
 | `capabilities` | no | Informational hints driving the Preferences "supports: …" display only; the host does not interpret them. Behavior gates on whether the runtime capability field is present. |
 | `settingsScopeRef` | no | ID prefix in this plugin's `settings` contributions, used to group provider settings. |
 | `viewRefs` | no | IDs of `views` contributions shown under this provider's panel section. |

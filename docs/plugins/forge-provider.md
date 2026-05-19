@@ -44,7 +44,7 @@ Add a `forgeProviders` contribution to `plugin.json`. Daintree reads this eagerl
       {
         "id": "gitea",
         "name": "Gitea",
-        "matches": ["gitea.io", "*.gitea.example.com"],
+        "matches": ["gitea.io", "gitea.example.com"],
         "capabilities": ["issues", "pulls", "required-checks"]
       }
     ]
@@ -56,7 +56,7 @@ Add a `forgeProviders` contribution to `plugin.json`. Daintree reads this eagerl
 | --- | --- | --- |
 | `id` | yes | Namespaced at runtime as `{pluginId}.{id}`. The built-in GitHub plugin uses the bare `github`. Must match the `descriptor.id` you pass to `registerForgeProvider`. |
 | `name` | yes | Display label in Preferences → Forge Integrations. |
-| `matches` | yes | Hostname or glob patterns matched against the project's git remote URL; first matching provider wins. The host strips `www.`, lowercases, and handles HTTPS, SSH, and SCP-form (`git@host:owner/repo.git`) URLs before matching. |
+| `matches` | yes | List of exact hostnames. The host extracts the hostname from the project's git remote (HTTPS, SSH, and SCP-form `git@host:owner/repo.git` URLs all handled), lowercases and trims it, then matches it for **exact string equality** against each entry — there is no glob, wildcard, or suffix matching. List every distinct hostname your forge serves (e.g. a self-hosted instance and its CI mirror) as separate entries. First matching provider wins. |
 | `capabilities` | no | Informational hints driving the Preferences "supports: …" display only. The host does **not** gate behavior on this array — see [Add optional capabilities](#add-optional-capabilities). |
 | `settingsScopeRef` | no | ID prefix in this plugin's `settings` contributions, used to group provider settings. |
 | `viewRefs` | no | IDs of `views` contributions shown under this provider's panel section. |
@@ -121,6 +121,12 @@ function normalizePRState(rawState: string, merged: boolean): NormalizedPRState 
 }
 ```
 
+This example is GitHub's; it only ever produces `open|closed|merged`. `NormalizedPRState` also includes `"declined"` for providers that reject PRs without merging — Bitbucket's `DECLINED` (and `SUPERSEDED`). If your forge has such a state, map it explicitly instead of letting it fall through to the `return "open"` default:
+
+```ts
+if (upper === "DECLINED" || upper === "SUPERSEDED") return "declined";
+```
+
 When you submit state back to the provider's API, send `rawState`, never the normalized value — the normalized set is lossy by design.
 
 ## The rawData escape hatch
@@ -163,14 +169,14 @@ Mirror the GitHub provider's `__tests__/` coverage. A new provider ships unit te
 - **`parseRemote`** — HTTPS, SSH, and SCP-form URLs resolve; a hostname that isn't yours returns `null`.
 - **State normalization** — every provider state value maps to the right `Normalized*` value, and `rawState` round-trips verbatim.
 - **Core CRUD** — `listIssues`, `listPRs`, `getIssue`, `getPR`, `findPRByBranch`, `getCIStatus`, `getRepoMetadata` against a mocked transport, including empty pages and not-found.
-- **`getRateLimit`** — the provider's rate-limit transport projects into `RateLimitInfo` correctly, including the `null`-per-dimension case.
+- **`getRateLimit`** — if you implement it, the provider's rate-limit transport projects into `RateLimitInfo` correctly, including the `null`-per-dimension case.
 - **`validateCredentials` / `validateToken`** — valid, expired, and missing-token paths.
 
 External plugins use `@daintreehq/plugin-testing` (`createMockHost`) — see [Development loop → Testing](./dev-loop.md#testing). Built-ins follow the existing `plugins/builtin/github/main/__tests__/` patterns and run in the main test suite.
 
 ## Ship checklist
 
-- [ ] `contributes.forgeProviders[]` entry in `plugin.json`, with `matches` covering every hostname form your forge uses
+- [ ] `contributes.forgeProviders[]` entry in `plugin.json`, with `matches` listing every exact hostname your forge serves
 - [ ] `activate()` returns `host.registerForgeProvider({ id }, impl)`
 - [ ] All base `ForgeProviderImpl` methods implemented; unsupported mutations throw `"Not supported"`
 - [ ] `state` normalized and `rawState` preserved on every `Issue`/`PR`
