@@ -301,6 +301,66 @@ describe("HelpPanel agent switch (#8353)", () => {
     expect(document.querySelector('[data-testid="confirm-dialog"]')).toBeNull();
   });
 
+  it("switches when the preference was chosen before the terminal bound", async () => {
+    // Preference chosen while no terminal is bound, then auto-launch binds a
+    // different agent — the change must not be silently consumed (#8353).
+    helpPanelState.terminalId = null;
+    helpPanelState.agentId = null;
+    helpPanelState.preferredAgentId = "claude-code";
+    const { rerender } = render(<HelpPanel width={380} />);
+
+    await act(async () => {
+      bindTerminal("codex", "idle");
+      rerender(<HelpPanel width={380} />);
+    });
+
+    expect(controllerSpies.selectAgent).toHaveBeenCalledWith("claude-code");
+  });
+
+  it("closes a stale confirm when the preference reverts to the live agent", async () => {
+    bindTerminal("codex", "working");
+    helpPanelState.preferredAgentId = "codex";
+    const { rerender } = render(<HelpPanel width={380} />);
+
+    await act(async () => {
+      helpPanelState.preferredAgentId = "claude-code";
+      rerender(<HelpPanel width={380} />);
+    });
+    expect(document.querySelector('[data-testid="confirm-dialog"]')).not.toBeNull();
+
+    await act(async () => {
+      helpPanelState.preferredAgentId = "codex";
+      rerender(<HelpPanel width={380} />);
+    });
+
+    expect(document.querySelector('[data-testid="confirm-dialog"]')).toBeNull();
+    expect(controllerSpies.selectAgent).not.toHaveBeenCalled();
+  });
+
+  it("retargets the confirm when the preference moves to a third agent", async () => {
+    bindTerminal("codex", "working");
+    helpPanelState.preferredAgentId = "codex";
+    const { rerender } = render(<HelpPanel width={380} />);
+
+    await act(async () => {
+      helpPanelState.preferredAgentId = "claude-code";
+      rerender(<HelpPanel width={380} />);
+    });
+    await act(async () => {
+      helpPanelState.preferredAgentId = "claude";
+      rerender(<HelpPanel width={380} />);
+    });
+
+    expect(document.querySelector('[data-testid="dialog-title"]')?.textContent).toBe(
+      "Switch to Claude?"
+    );
+    await act(async () => {
+      fireEvent.click(document.querySelector('[data-testid="dialog-confirm"]')!);
+    });
+    expect(controllerSpies.selectAgent).toHaveBeenCalledWith("claude");
+    expect(controllerSpies.selectAgent).not.toHaveBeenCalledWith("claude-code");
+  });
+
   it("does not switch when no terminal is bound", async () => {
     helpPanelState.terminalId = null;
     helpPanelState.agentId = null;
