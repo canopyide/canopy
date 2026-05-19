@@ -47,7 +47,6 @@ export function NonMainSecondaryRow({
           isActive={isActive}
           underlineOnHover={underlineOnHover}
           rowLastUpdatedAt={worktree.issueLastUpdatedAt}
-          prDetectionPaused={prDetectionPaused}
         />
       )}
       {worktree.linked?.pr &&

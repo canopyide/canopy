@@ -19,8 +19,6 @@ interface IssueBadgeProps {
   isActive?: boolean;
   underlineOnHover?: boolean;
   rowLastUpdatedAt?: number;
-  /** Service-wide PR detection circuit breaker tripped — issue data may be stale. */
-  prDetectionPaused?: boolean;
 }
 
 export function IssueBadge({
@@ -32,7 +30,6 @@ export function IssueBadge({
   isActive,
   underlineOnHover,
   rowLastUpdatedAt,
-  prDetectionPaused,
 }: IssueBadgeProps) {
   // Detects the cold-title gap by comparing issueNumber to its previous-render
   // value via a ref; the lag (ref written in effect, no re-render) is what
@@ -81,8 +78,7 @@ export function IssueBadge({
   );
 
   const showStaleGlyph = freshnessCause === "stale" && !missingToken;
-  const showPausedGlyph =
-    (freshnessCause === "rate-limit" || (prDetectionPaused ?? false)) && !missingToken;
+  const showPausedGlyph = freshnessCause === "rate-limit" && !missingToken;
 
   return (
     <Tooltip open={isOpen} onOpenChange={handleOpenChange} delayDuration={300}>

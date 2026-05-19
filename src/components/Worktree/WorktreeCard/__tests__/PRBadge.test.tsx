@@ -143,4 +143,20 @@ describe("PRBadge freshness glyphs", () => {
 
     expect(screen.getAllByText(/data may be stale/).length).toBeGreaterThan(0);
   });
+
+  it("uses rate-limit aria label when freshnessCause is rate-limit", () => {
+    mockFreshnessCause = "rate-limit";
+    renderBadge();
+
+    const button = screen.getByRole("button");
+    expect(button.getAttribute("aria-label")).toContain("GitHub rate limited");
+    expect(button.getAttribute("aria-label")).not.toContain("PR detection paused");
+  });
+
+  it("uses circuit-breaker aria label when prDetectionPaused is true", () => {
+    renderBadge({ prDetectionPaused: true });
+
+    const button = screen.getByRole("button");
+    expect(button.getAttribute("aria-label")).toContain("PR detection paused");
+  });
 });

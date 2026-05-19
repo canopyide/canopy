@@ -83,7 +83,11 @@ export function PRBadge({
     : (ciVisual
         ? `Open ${prStateLabel} pull request #${prNumber} on GitHub — ${ciVisual.ariaLabel}`
         : `Open ${prStateLabel} pull request #${prNumber} on GitHub`) +
-      (showPausedGlyph ? " — PR detection paused" : "");
+      (freshnessCause === "rate-limit"
+        ? " — GitHub rate limited"
+        : freshnessCause === "circuit-breaker" || (prDetectionPaused ?? false)
+          ? " — PR detection paused"
+          : "");
 
   const freshnessSuffixStr = useMemo(
     () =>
