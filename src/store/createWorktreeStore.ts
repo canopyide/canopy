@@ -442,6 +442,10 @@ function snapshotsEqual(a: WorktreeSnapshot, b: WorktreeSnapshot): boolean {
     a.planFilePath === b.planFilePath &&
     a.aheadCount === b.aheadCount &&
     a.behindCount === b.behindCount &&
+    a.baseBranchName === b.baseBranchName &&
+    a.baseAheadCount === b.baseAheadCount &&
+    a.baseBehindCount === b.baseBehindCount &&
+    a.baseMatchesUpstream === b.baseMatchesUpstream &&
     a.lastFetchedAt === b.lastFetchedAt &&
     a.lastGitStatusCheckedAt === b.lastGitStatusCheckedAt &&
     a.fetchAuthFailed === b.fetchAuthFailed &&

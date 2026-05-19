@@ -461,6 +461,8 @@ export class ResourceProfileService {
         workspaceClient.updateMonitorConfig({
           pollIntervalActive: config.pollIntervalActive,
           pollIntervalBackground: config.pollIntervalBackground,
+          fetchIntervalActiveMs: config.fetchIntervalActiveMs,
+          fetchIntervalBackgroundMs: config.fetchIntervalBackgroundMs,
         });
       } catch {
         // non-critical

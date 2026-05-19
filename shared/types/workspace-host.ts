@@ -134,6 +134,18 @@ export interface WorktreeSnapshot {
   /** Number of commits behind the upstream tracking branch */
   behindCount?: number;
 
+  /** Name of the base branch (e.g. "develop") for divergence display */
+  baseBranchName?: string | null;
+
+  /** Commits the worktree branch is ahead of the base branch */
+  baseAheadCount?: number | null;
+
+  /** Commits the worktree branch is behind the base branch */
+  baseBehindCount?: number | null;
+
+  /** True when the upstream tracking branch and base branch point to the same commit */
+  baseMatchesUpstream?: boolean;
+
   /**
    * Epoch ms of the last successful background `git fetch` for this worktree's
    * repo. Mirrored from `RepoFetchCoordinator` so siblings sharing a commondir
@@ -223,6 +235,10 @@ export interface WorktreeSnapshot {
 export interface MonitorConfig {
   pollIntervalActive?: number;
   pollIntervalBackground?: number;
+  /** FetchScheduler focused (isCurrent) fetch interval (ms) */
+  fetchIntervalActiveMs?: number;
+  /** FetchScheduler background (non-current) fetch interval (ms) */
+  fetchIntervalBackgroundMs?: number;
   adaptiveBackoff?: boolean;
   pollIntervalMax?: number;
   circuitBreakerThreshold?: number;

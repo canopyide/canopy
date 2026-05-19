@@ -78,6 +78,8 @@ export class WorkspaceService {
   private activeWorktreeId: string | null = null;
   private pollIntervalActive: number = DEFAULT_ACTIVE_WORKTREE_INTERVAL_MS;
   private pollIntervalBackground: number = DEFAULT_BACKGROUND_WORKTREE_INTERVAL_MS;
+  private fetchIntervalActiveMs: number = 30_000;
+  private fetchIntervalBackgroundMs: number = 5 * 60_000;
   private adaptiveBackoff: boolean = true;
   private pollIntervalMax: number = 30000;
   private circuitBreakerThreshold: number = 3;
@@ -502,6 +504,12 @@ export class WorkspaceService {
     if (monitorConfig?.gitWatchDebounceMs !== undefined) {
       this.gitWatchDebounceMs = monitorConfig.gitWatchDebounceMs;
     }
+    if (monitorConfig?.fetchIntervalActiveMs !== undefined) {
+      this.fetchIntervalActiveMs = monitorConfig.fetchIntervalActiveMs;
+    }
+    if (monitorConfig?.fetchIntervalBackgroundMs !== undefined) {
+      this.fetchIntervalBackgroundMs = monitorConfig.fetchIntervalBackgroundMs;
+    }
 
     const currentIds = new Set(worktrees.map((wt) => wt.id));
 
@@ -554,6 +562,8 @@ export class WorkspaceService {
           circuitBreakerThreshold: this.circuitBreakerThreshold,
           gitWatchEnabled: this.gitWatchEnabled,
           gitWatchDebounceMs: this.gitWatchDebounceMs,
+          fetchIntervalActiveMs: this.fetchIntervalActiveMs,
+          fetchIntervalBackgroundMs: this.fetchIntervalBackgroundMs,
         });
 
         existingMonitor.ensureWatcherState();
@@ -2138,11 +2148,21 @@ ${lines.map((l) => "+" + l).join("\n")}`;
     if (config.pollIntervalMax !== undefined) {
       this.pollIntervalMax = config.pollIntervalMax;
     }
+    if (config.fetchIntervalActiveMs !== undefined) {
+      this.fetchIntervalActiveMs = config.fetchIntervalActiveMs;
+    }
+    if (config.fetchIntervalBackgroundMs !== undefined) {
+      this.fetchIntervalBackgroundMs = config.fetchIntervalBackgroundMs;
+    }
 
     for (const [worktreeId, monitor] of this.monitors) {
       const isActive = worktreeId === this.activeWorktreeId;
       const baseInterval = isActive ? this.pollIntervalActive : this.pollIntervalBackground;
-      monitor.updateConfig({ basePollingInterval: baseInterval });
+      monitor.updateConfig({
+        basePollingInterval: baseInterval,
+        fetchIntervalActiveMs: this.fetchIntervalActiveMs,
+        fetchIntervalBackgroundMs: this.fetchIntervalBackgroundMs,
+      });
     }
   }
 

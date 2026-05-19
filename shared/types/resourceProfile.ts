@@ -17,6 +17,10 @@ export interface ResourceProfileConfig {
    * release/reacquire churn under large visible fleets.
    */
   passiveWebGLThreshold: number;
+  /** FetchScheduler focused (isCurrent) fetch interval (ms) */
+  fetchIntervalActiveMs: number;
+  /** FetchScheduler background (non-current) fetch interval (ms) */
+  fetchIntervalBackgroundMs: number;
   /** HibernationService memory-pressure inactivity threshold (ms) */
   memoryPressureInactiveMs: number;
   /**
@@ -55,6 +59,8 @@ export const RESOURCE_PROFILE_CONFIGS: Record<ResourceProfile, ResourceProfileCo
     passiveWebGLThreshold: 16,
     memoryPressureInactiveMs: 60 * 60 * 1000, // 60 min
     lowMemoryFreeThresholdMb: null,
+    fetchIntervalActiveMs: 20_000,
+    fetchIntervalBackgroundMs: 3 * 60_000,
   },
   balanced: {
     pollIntervalActive: 2000,
@@ -65,6 +71,8 @@ export const RESOURCE_PROFILE_CONFIGS: Record<ResourceProfile, ResourceProfileCo
     passiveWebGLThreshold: 8,
     memoryPressureInactiveMs: 30 * 60 * 1000, // 30 min
     lowMemoryFreeThresholdMb: 768,
+    fetchIntervalActiveMs: 30_000,
+    fetchIntervalBackgroundMs: 5 * 60_000,
   },
   efficiency: {
     pollIntervalActive: 4000,
@@ -75,5 +83,7 @@ export const RESOURCE_PROFILE_CONFIGS: Record<ResourceProfile, ResourceProfileCo
     passiveWebGLThreshold: 6,
     memoryPressureInactiveMs: 15 * 60 * 1000, // 15 min
     lowMemoryFreeThresholdMb: 1024,
+    fetchIntervalActiveMs: 45_000,
+    fetchIntervalBackgroundMs: 10 * 60_000,
   },
 };
