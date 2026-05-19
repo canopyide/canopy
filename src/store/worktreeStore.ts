@@ -659,6 +659,11 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     // scope entry. The restored worktree's layout should be computed fresh.
     void loadTerminalStoreModule()
       .then(({ usePanelStore }) => {
+        // Symmetric to the enter-side maximize-clear guard: if a fresh scope
+        // was entered before this microtask drained, `_fleetScopeToken` is
+        // non-null and clearing preMaximizeLayout would clobber the new
+        // scope's legitimate snapshot.
+        if (get()._fleetScopeToken !== null) return;
         usePanelStore.setState({ preMaximizeLayout: null });
       })
       .catch(() => {});
@@ -736,6 +741,12 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
       isFleetScopeActive: false,
       _previousActiveWorktreeId: null,
       _fleetScopeToken: null,
+      // Bump the generation so any in-flight deferred policy/focus-restore
+      // microtask (which captured an older generation) sees a mismatch and
+      // bails — clearing the token alone can't invalidate them because the
+      // post-reset token is null and the exit-side guard compares against
+      // null.
+      _policyGeneration: get()._policyGeneration + 1,
     }),
 });
 

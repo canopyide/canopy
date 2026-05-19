@@ -622,6 +622,46 @@ describe("worktreeStore", () => {
       expect(terminalStoreState.preMaximizeLayout).toBeNull();
     });
 
+    it("exitFleetScope's deferred preMaximizeLayout clear bails if scope re-entered", async () => {
+      useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-pre-scope" });
+      const token = useWorktreeSelectionStore.getState().enterFleetScope();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      terminalStoreState.preMaximizeLayout = { gridCols: 3 };
+      useWorktreeSelectionStore.getState().exitFleetScope(token);
+      // A fresh scope is entered before the exit's deferred clear drains.
+      useWorktreeSelectionStore.getState().enterFleetScope();
+      panelSetStateMock.mockClear();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // The stale exit-side clear must not wipe the new scope's snapshot.
+      expect(panelSetStateMock).not.toHaveBeenCalledWith({ preMaximizeLayout: null });
+    });
+
+    it("reset during exitFleetScope's focus-restore window does not call setFocused", async () => {
+      setMockTerminals([
+        { id: "term-active", worktreeId: "wt-pre", location: "grid" },
+        { id: "term-primary", worktreeId: "wt-pre", location: "grid" },
+      ]);
+      useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-pre" });
+      const token = useWorktreeSelectionStore.getState().enterFleetScope();
+      lastArmedIdForFleet = "term-primary";
+      setFocusedMock.mockClear();
+
+      useWorktreeSelectionStore.getState().exitFleetScope(token);
+      // reset() bumps _policyGeneration, invalidating the pending focus-restore
+      // microtask whose token guard alone can't catch this (post-reset token
+      // is null, matching the exit-side null comparison).
+      useWorktreeSelectionStore.getState().reset();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(setFocusedMock).not.toHaveBeenCalled();
+      lastArmedIdForFleet = null;
+    });
+
     it("enterFleetScope's deferred maximize-clear bails if scope was exited first", async () => {
       useWorktreeSelectionStore.setState({ activeWorktreeId: "wt-race" });
       const token = useWorktreeSelectionStore.getState().enterFleetScope();
