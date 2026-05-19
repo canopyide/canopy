@@ -1,9 +1,10 @@
 import type { HelpAssistantTier } from "../types/ipc/maps.js";
+import type { BuiltInActionId } from "../types/actions.js";
 
 const ACTIONS_LIST_TOOL = "actions.list";
 const TERMINAL_WAIT_UNTIL_IDLE_TOOL = "terminal.waitUntilIdle";
 
-export const WORKBENCH_TIER_TOOLS: readonly string[] = [
+export const WORKBENCH_TIER_TOOLS = [
   ACTIONS_LIST_TOOL,
   "actions.getContext",
 
@@ -56,9 +57,9 @@ export const WORKBENCH_TIER_TOOLS: readonly string[] = [
 
   "notifications.recent",
   "errors.recent",
-];
+] as const satisfies readonly BuiltInActionId[];
 
-export const ACTION_TIER_ADDONS: readonly string[] = [
+export const ACTION_TIER_ADDONS = [
   "worktree.createWithRecipe",
   "worktree.setActive",
   "worktree.refresh",
@@ -96,9 +97,9 @@ export const ACTION_TIER_ADDONS: readonly string[] = [
   "project.update",
   "project.saveSettings",
   "project.muteNotifications",
-];
+] as const satisfies readonly BuiltInActionId[];
 
-export const SYSTEM_TIER_ADDONS: readonly string[] = [
+export const SYSTEM_TIER_ADDONS = [
   "worktree.delete",
 
   "copyTree.generateAndCopyFile",
@@ -114,7 +115,7 @@ export const SYSTEM_TIER_ADDONS: readonly string[] = [
 
   "forge.openIssue",
   "github.openPR",
-];
+] as const satisfies readonly BuiltInActionId[];
 
 /**
  * Tools added at each tier on top of the previous one. Useful for the

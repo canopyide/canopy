@@ -275,6 +275,11 @@ export const BUILT_IN_ACTION_IDS = [
 
   // -- agentActions --
   "agent.launch",
+  "agent.terminal",
+  "agent.focusNextWaiting",
+  "agent.focusNextWorking",
+  "agent.focusNextAgent",
+  "agent.focusPreviousAgent",
   "agent.getState",
 
   // -- app settings (other) --
@@ -294,6 +299,7 @@ export const BUILT_IN_ACTION_IDS = [
   "terminal.toggleInputLock",
   "terminal.viewInfo",
   "terminal.restartService",
+  "terminal.new",
 
   // -- terminalNavigationActions --
   "terminal.moveToDock",
@@ -322,6 +328,7 @@ export const BUILT_IN_ACTION_IDS = [
   "terminal.copyLink",
   "terminal.contextMenu",
   "terminal.sendToAgent",
+  "terminal.inject",
   "terminal.bulkCommand",
   "terminal.stashInput",
   "terminal.popStash",
