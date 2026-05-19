@@ -147,7 +147,7 @@ export function classifyTurnOutcome(args: {
       ) {
         return "tier-rejected";
       }
-      if (lastRecord.result === "error") {
+      if (lastRecord.result === "error" || lastRecord.result === "collision") {
         return "tool-error";
       }
     }

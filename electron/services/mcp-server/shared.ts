@@ -105,6 +105,7 @@ export const USER_REJECTED_CODE = "USER_REJECTED";
 export const CONFIRMATION_TIMEOUT_CODE = "CONFIRMATION_TIMEOUT";
 export const ELICITATION_FAILED_CODE = "ELICITATION_FAILED";
 export const EXECUTION_ERROR_CODE = "EXECUTION_ERROR";
+export const MCP_DEDUP_KEY_COLLISION_CODE = "MCP_DEDUP_KEY_COLLISION";
 
 /**
  * Application-level convention: codes here flag transient failures that a
