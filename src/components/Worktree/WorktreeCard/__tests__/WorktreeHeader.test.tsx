@@ -99,6 +99,7 @@ function renderHeader(overrides: Partial<WorktreeHeaderProps> = {}) {
         isPinned={false}
         branchLabel="feature/test"
         badges={{}}
+        gitStateIndicator={null}
         menu={baseMenu}
         {...overrides}
       />
@@ -462,6 +463,7 @@ describe("WorktreeHeader click bubbling", () => {
             isPinned={false}
             branchLabel="feature/test"
             badges={{}}
+            gitStateIndicator={null}
             menu={baseMenu}
             {...overrides}
           />
@@ -640,12 +642,13 @@ describe("WorktreeHeader decorative elements", () => {
     expect(pin!.getAttribute("class")).toContain("pointer-events-none");
   });
 
-  it("(detached) span has pointer-events-none", () => {
+  it("git state badge has pointer-events-none", () => {
     renderHeader({
-      worktree: { ...baseWorktree, isDetached: true },
+      gitStateIndicator: { kind: "detached", label: "detached", tone: "warning" },
     });
-    const detached = screen.getByText("(detached)");
-    expect(detached.className).toContain("pointer-events-none");
+    const badge = screen.getByText("detached");
+    expect(badge.className).toContain("pointer-events-none");
+    expect(badge.className).toContain("text-status-warning");
   });
 });
 
@@ -920,6 +923,7 @@ describe("WorktreeHeader cleanup button", () => {
             isPinned={false}
             branchLabel="feature/test"
             badges={{}}
+            gitStateIndicator={null}
             menu={baseMenu}
             onCleanupWorktree={onCleanupWorktree}
           />

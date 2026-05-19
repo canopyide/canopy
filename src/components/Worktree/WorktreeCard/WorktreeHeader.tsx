@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AgentState, TerminalRecipe, WorktreeState } from "@/types";
+import type { GitStateIndicator } from "./hooks/useWorktreeStatus";
 import { cn } from "@/lib/utils";
 import { STATE_LABELS, STATE_PRIORITY } from "../terminalStateConfig";
 import { BranchLabel } from "../BranchLabel";
@@ -48,6 +49,8 @@ export interface WorktreeHeaderProps {
     onOpenPR?: () => void;
     onOpenPlan?: () => void;
   };
+
+  gitStateIndicator: GitStateIndicator | null;
 
   menu: {
     launchAgents: import("../WorktreeMenuItems").WorktreeLaunchAgentItem[];
@@ -233,6 +236,7 @@ export function WorktreeHeader({
   onCheckResourceStatus,
   onCleanupWorktree,
   badges,
+  gitStateIndicator,
   menu,
 }: WorktreeHeaderProps) {
   const recipeOptions = useMemo(
@@ -317,9 +321,16 @@ export function WorktreeHeader({
               isMainWorktree={isMainOnStandardBranch ?? isMainWorktree}
             />
           )}
-          {worktree.isDetached && (
-            <span className="text-status-warning text-xs font-medium shrink-0 pointer-events-none">
-              (detached)
+          {gitStateIndicator && (
+            <span
+              className={cn(
+                "text-xs font-medium shrink-0 pointer-events-none",
+                gitStateIndicator.tone === "error" && "text-status-error",
+                gitStateIndicator.tone === "warning" && "text-status-warning",
+                gitStateIndicator.tone === "info" && "text-status-info"
+              )}
+            >
+              {gitStateIndicator.label}
             </span>
           )}
         </div>

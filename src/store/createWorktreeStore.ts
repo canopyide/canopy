@@ -462,6 +462,9 @@ function snapshotsEqual(a: WorktreeSnapshot, b: WorktreeSnapshot): boolean {
     a.wslGitEligible === b.wslGitEligible &&
     a.wslGitOptIn === b.wslGitOptIn &&
     a.wslGitDismissed === b.wslGitDismissed &&
+    a.repoState === b.repoState &&
+    a.isDetached === b.isDetached &&
+    a.head === b.head &&
     resourceStatusEqual(a.resourceStatus, b.resourceStatus) &&
     worktreeChangesEqual(a.worktreeChanges, b.worktreeChanges) &&
     lifecycleStatusEqual(a.lifecycleStatus, b.lifecycleStatus) &&

@@ -1,4 +1,4 @@
-import type { FileChangeDetail, WorktreeChanges } from "./git.js";
+import type { FileChangeDetail, RepoState, WorktreeChanges } from "./git.js";
 import type { GitHubPRCIStatus } from "./github.js";
 import type { PluginWorktreeLinked } from "./plugin.js";
 
@@ -86,6 +86,9 @@ export interface Worktree {
 
   /** Whether this worktree is in detached HEAD state */
   isDetached?: boolean;
+
+  /** Current in-progress git operation (REBASING, MERGING, CHERRY_PICKING, REVERTING). Absent when no blocking operation is in progress. */
+  repoState?: RepoState;
 
   /** Whether this is the currently active worktree based on cwd */
   isCurrent: boolean;

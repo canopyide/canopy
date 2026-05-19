@@ -13,7 +13,10 @@ import type { GitHubPRCIStatus } from "../../shared/types/github.js";
 import type { WorktreeSnapshot } from "../../shared/types/workspace-host.js";
 import { invalidateGitStatusCache, getWorktreeChangesWithStats } from "../utils/git.js";
 import { getGitDir } from "../utils/gitUtils.js";
-import { isRepoOperationInProgress } from "../utils/gitRepoOperationState.js";
+import {
+  isRepoOperationInProgress,
+  getRepoOperationStateSync,
+} from "../utils/gitRepoOperationState.js";
 import { WorktreeRemovedError } from "../utils/errorTypes.js";
 import { categorizeWorktree } from "../services/worktree/mood.js";
 import { AdaptivePollingStrategy, NoteFileReader } from "../services/worktree/index.js";
@@ -170,6 +173,11 @@ export class WorktreeMonitor {
   // Extra state
   private _createdAt: number | undefined;
   private _lifecycleStatus: WorktreeLifecycleStatus | undefined;
+
+  // Git operation state
+  private _isDetached: boolean = false;
+  private _head: string | undefined;
+  private _repoState: import("../../shared/types/git.js").RepoState | undefined;
 
   // Resource state
   private _resourceStatus:
@@ -976,6 +984,9 @@ export class WorktreeMonitor {
       wslGitOptIn: this._wslGitOptIn || undefined,
       wslGitDismissed: this._wslGitDismissed || undefined,
       linked: this._linked,
+      repoState: this._repoState || undefined,
+      isDetached: this._isDetached || undefined,
+      head: this._head || undefined,
     };
 
     return ensureSerializable(snapshot) as WorktreeSnapshot;
@@ -1227,6 +1238,21 @@ export class WorktreeMonitor {
     // Polling continues uninterrupted, so the next scheduled poll after
     // sentinels clear also picks up the change.
     const gitDir = getGitDir(this.path, { cache: true, logErrors: false });
+
+    // Detect blocking git operation state from sentinel files so the renderer
+    // can surface it even when git status is skipped.
+    if (gitDir) {
+      const opState = getRepoOperationStateSync(gitDir);
+      if (opState !== this._repoState) {
+        this._repoState = opState;
+        if (this._hasInitialStatus) {
+          this.emitUpdate();
+        }
+      }
+    } else {
+      this._repoState = undefined;
+    }
+
     if (gitDir && isRepoOperationInProgress(gitDir)) {
       // If we're skipping the very first poll (e.g. app started mid-rebase),
       // emit a default snapshot so the renderer can still display the worktree.
@@ -1549,17 +1575,33 @@ export class WorktreeMonitor {
 
   private async readCurrentBranch(): Promise<string | undefined> {
     const gitDir = getGitDir(this.path, { cache: true, logErrors: false });
-    if (!gitDir) return undefined;
+    if (!gitDir) {
+      this._isDetached = false;
+      this._head = undefined;
+      return undefined;
+    }
 
     try {
       const headContent = await readFile(pathJoin(gitDir, "HEAD"), "utf-8");
       const trimmed = headContent.trim();
       const prefix = "ref: refs/heads/";
       if (trimmed.startsWith(prefix)) {
+        this._isDetached = false;
+        this._head = undefined;
         return trimmed.slice(prefix.length);
+      }
+      // Detached HEAD — the file contains a commit SHA
+      if (/^[0-9a-f]{40}$/.test(trimmed)) {
+        this._isDetached = true;
+        this._head = trimmed;
+      } else {
+        this._isDetached = false;
+        this._head = undefined;
       }
       return undefined;
     } catch {
+      this._isDetached = false;
+      this._head = undefined;
       return undefined;
     }
   }
