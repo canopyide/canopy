@@ -2,7 +2,7 @@ import type { ActionCallbacks, ActionRegistry } from "../actionTypes";
 import type { ActionContext, ActionId } from "@shared/types/actions";
 import { defineAction } from "../defineAction";
 import { z } from "zod";
-import { githubClient } from "@/clients";
+import { forgeClient, githubClient } from "@/clients";
 import { useProjectStore } from "@/store/projectStore";
 import { actionService } from "@/services/ActionService";
 
@@ -76,7 +76,7 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
         if (!path) {
           throw new Error("No project path available to open issues");
         }
-        await githubClient.openIssues(path, query, state);
+        await forgeClient.openIssues(path, query, state);
       },
     })
   );
@@ -105,7 +105,7 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
         if (!path) {
           throw new Error("No project path available to open pull requests");
         }
-        await githubClient.openPRs(path, query, state);
+        await forgeClient.openPRs(path, query, state);
       },
     })
   );
@@ -129,7 +129,7 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
         if (!path) {
           throw new Error("No project path available to open commits");
         }
-        await githubClient.openCommits(path, branch);
+        await forgeClient.openCommits(path, branch);
       },
     })
   );
@@ -153,7 +153,7 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
       run: async ({ cwd, issueNumber }, ctx: ActionContext) => {
         const resolvedCwd = cwd ?? ctx.activeWorktreePath;
         if (!resolvedCwd) throw new Error("No active worktree");
-        await githubClient.openIssue(resolvedCwd, issueNumber);
+        await forgeClient.openIssue(resolvedCwd, issueNumber);
       },
     })
   );
@@ -178,7 +178,7 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
       run: async ({ cwd, issueNumber, username }, ctx: ActionContext) => {
         const resolvedCwd = cwd ?? ctx.activeWorktreePath;
         if (!resolvedCwd) throw new Error("No active worktree");
-        await githubClient.assignIssue(resolvedCwd, issueNumber, username);
+        await forgeClient.assignIssue(resolvedCwd, issueNumber, username);
       },
     })
   );
@@ -194,7 +194,7 @@ export function registerGithubActions(actions: ActionRegistry, _callbacks: Actio
       scope: "renderer",
       argsSchema: z.object({ token: z.string() }),
       run: async ({ token }) => {
-        return await githubClient.validateToken(token);
+        return await forgeClient.validateToken(token);
       },
     })
   );

@@ -678,6 +678,12 @@ export const CHANNELS = {
   FORGE_SET_DEFAULT_PROVIDER: "forge:set-default-provider",
   FORGE_GET_PROVIDERS: "forge:get-providers",
   FORGE_RESOLVE_PROVIDER: "forge:resolve-provider",
+  FORGE_OPEN_ISSUES: "forge:open-issues",
+  FORGE_OPEN_PRS: "forge:open-prs",
+  FORGE_OPEN_COMMITS: "forge:open-commits",
+  FORGE_OPEN_ISSUE: "forge:open-issue",
+  FORGE_ASSIGN_ISSUE: "forge:assign-issue",
+  FORGE_VALIDATE_TOKEN: "forge:validate-token",
 
   // Plugin channels
   PLUGIN_LIST: "plugin:list",

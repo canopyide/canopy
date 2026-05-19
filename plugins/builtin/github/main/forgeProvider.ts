@@ -529,6 +529,75 @@ export const githubForgeProvider: ForgeProviderImpl = {
     return `https://github.com/${repo.owner}/${repo.repo}/pull/${number}`;
   },
 
+  buildIssuesUrl(repo: RepoRef, options?: { query?: string; state?: string }): string {
+    const base = `https://github.com/${repo.owner}/${repo.repo}/issues`;
+    const params = new URLSearchParams();
+    if (options?.query) {
+      const qParts: string[] = [options.query];
+      if (options.state && options.state !== "all") {
+        qParts.push(`is:${options.state}`);
+      }
+      params.set("q", qParts.join(" "));
+    }
+    return params.toString() ? `${base}?${params.toString()}` : base;
+  },
+
+  buildPRsUrl(repo: RepoRef, options?: { query?: string; state?: string }): string {
+    const base = `https://github.com/${repo.owner}/${repo.repo}/pulls`;
+    const params = new URLSearchParams();
+    if (options?.query) {
+      const qParts: string[] = [options.query];
+      if (options.state && options.state !== "all") {
+        qParts.push(`is:${options.state}`);
+      }
+      params.set("q", qParts.join(" "));
+    }
+    return params.toString() ? `${base}?${params.toString()}` : base;
+  },
+
+  buildCommitsUrl(repo: RepoRef, branch?: string): string {
+    const base = `https://github.com/${repo.owner}/${repo.repo}/commits`;
+    return branch ? `${base}/${encodeURIComponent(branch)}` : base;
+  },
+
+  async assignIssue(repo: RepoRef, issueNumber: number, username: string): Promise<void> {
+    const token = GitHubAuth.getToken();
+    if (!token) {
+      throw new Error("GitHub token not configured. Set it in Settings.");
+    }
+    const url = `https://api.github.com/repos/${repo.owner}/${repo.repo}/issues/${issueNumber}/assignees`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ assignees: [username] }),
+      signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(
+        `Failed to assign issue #${issueNumber} to ${username}: HTTP ${response.status}${text ? ` — ${text.slice(0, 200)}` : ""}`
+      );
+    }
+  },
+
+  async validateToken(token: string): Promise<AuthValidation> {
+    if (!token || !token.trim()) {
+      return { valid: false, error: "Token is required" };
+    }
+    const result = await validateGitHubToken(token.trim());
+    return {
+      valid: result.valid,
+      scopes: result.scopes,
+      expiresAt: null,
+      ...(result.error ? { error: result.error } : {}),
+    };
+  },
+
   getRateLimit: getRateLimitImpl,
 
   reviews: reviewCapability,
