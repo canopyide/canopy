@@ -7,6 +7,8 @@ import { FolderGit2 } from "@/components/icons";
 import { InlineStatusBanner, type BannerAction } from "@/components/Terminal/InlineStatusBanner";
 import { projectClient } from "@/clients";
 import { actionService } from "@/services/ActionService";
+import { useDeferredLoading } from "@/hooks";
+import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
 import { formatErrorMessage } from "@shared/utils/errorMessage";
 import { validateFolderName } from "@shared/utils/folderName";
 import { isGitHubRemoteUrl } from "@shared/utils/githubUrl";
@@ -64,6 +66,9 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
   const [progressEvents, setProgressEvents] = useState<CloneRepoProgressEvent[]>([]);
   const [isCloning, setIsCloning] = useState(false);
   const [error, setError] = useState<CloneError | null>(null);
+  // Kept separate from `progressEvents` (which dedups by stage) so the
+  // cleanup-failure banner isn't swallowed by, or lost among, progress rows.
+  const [cleanupError, setCleanupError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [clonedPath, setClonedPath] = useState<string | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -86,6 +91,7 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
       setProgressEvents([]);
       setIsCloning(false);
       setError(null);
+      setCleanupError(null);
       setIsComplete(false);
       setClonedPath(null);
       hasFinalizedRef.current = false;
@@ -93,6 +99,10 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
     }
 
     const cleanup = projectClient.onCloneProgress((event) => {
+      if (event.stage === "cleanup-failed") {
+        setCleanupError(event.message);
+        return;
+      }
       setProgressEvents((prev) => {
         // Dedup by stage so a long clone (hundreds of byte-count updates per
         // stage) shows one live-updating row per stage instead of an unbounded
@@ -139,6 +149,7 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
   const startClone = async () => {
     setIsCloning(true);
     setError(null);
+    setCleanupError(null);
     setIsComplete(false);
     setProgressEvents([]);
     hasFinalizedRef.current = false;
@@ -191,7 +202,14 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
     parentPath.trim() !== "" &&
     folderName.trim() !== "" &&
     folderNameError === null;
-  const showProgress = isCloning || progressEvents.length > 0;
+  // Doherty gate: don't flash the progress box / spinner for a sub-400ms gap
+  // before the first git progress event — only reveal it if the wait exceeds
+  // the threshold. Once real progress arrives the box stays up regardless.
+  const showConnecting = useDeferredLoading(
+    isCloning && progressEvents.length === 0,
+    UI_DOHERTY_THRESHOLD
+  );
+  const showProgress = showConnecting || progressEvents.length > 0;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     // Enter acts as Retry too — startClone resets `error` internally, so this
@@ -295,12 +313,7 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
         {/* Progress Log */}
         {showProgress && (
           <div className="rounded-lg bg-muted/50 p-4 min-h-[120px] max-h-[250px] overflow-y-auto font-mono text-sm">
-            {progressEvents.length === 0 && isCloning && (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Spinner size="md" />
-                <span>Starting clone...</span>
-              </div>
-            )}
+            {showConnecting && <div className="text-muted-foreground">Connecting…</div>}
 
             {progressEvents.map((event, index) => (
               <div key={index} className="flex items-start gap-2 mb-1">
@@ -331,6 +344,23 @@ export function CloneRepoDialog({ isOpen, onSuccess, onCancel }: CloneRepoDialog
 
             <div ref={logEndRef} />
           </div>
+        )}
+
+        {/* Cleanup failure — the partial clone couldn't be removed and needs
+            manual deletion, so it gets its own persistent Tier 3 banner.
+            Kept separate from the recovery error block below because the two
+            failures are orthogonal (cleanup can fail whether or not the clone
+            itself recovered) and the user may need to act on both. */}
+        {cleanupError && (
+          <InlineStatusBanner
+            icon={AlertCircle}
+            severity="error"
+            title="Partial clone not removed"
+            description={cleanupError}
+            actions={[]}
+            onClose={() => setCleanupError(null)}
+            className="rounded-lg"
+          />
         )}
 
         {/* Error block — rendered alongside the progress log so the recovery
