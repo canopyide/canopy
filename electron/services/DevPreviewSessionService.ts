@@ -993,9 +993,9 @@ export class DevPreviewSessionService {
       !session.compilingEmitted &&
       session.status === "starting" &&
       !session.pendingUrl &&
-      !session.isRunningInstall
+      !session.isRunningInstall &&
+      session.compilingTimer === null
     ) {
-      if (session.compilingTimer !== null) return;
       session.compilingTimer = setTimeout(() => {
         session.compilingTimer = null;
         if (

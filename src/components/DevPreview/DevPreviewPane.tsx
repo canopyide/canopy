@@ -323,51 +323,6 @@ export function DevPreviewPane({
   const isMountedRef = useRef(true);
   const prevStatusRef = useRef(status);
 
-  const STALL_DETECTION_MS = 15_000;
-
-  // Stall detection — auto-open console drawer on fatal error or 15s no-phase-progress
-  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hasAutoOpenedConsoleRef = useRef(false);
-
-  useEffect(() => {
-    if (status === "error" && error) {
-      if (!hasAutoOpenedConsoleRef.current && !isConsoleOpen) {
-        hasAutoOpenedConsoleRef.current = true;
-        setDevPreviewConsoleOpen(id, true);
-      }
-      return;
-    }
-
-    if (status === "running" || status === "stopped") {
-      hasAutoOpenedConsoleRef.current = false;
-      if (stallTimerRef.current) {
-        clearTimeout(stallTimerRef.current);
-        stallTimerRef.current = null;
-      }
-      return;
-    }
-
-    if (status === "starting" || status === "installing") {
-      hasAutoOpenedConsoleRef.current = false;
-      if (stallTimerRef.current) {
-        clearTimeout(stallTimerRef.current);
-      }
-      stallTimerRef.current = setTimeout(() => {
-        if (!hasAutoOpenedConsoleRef.current && !isConsoleOpen) {
-          hasAutoOpenedConsoleRef.current = true;
-          setDevPreviewConsoleOpen(id, true);
-        }
-      }, STALL_DETECTION_MS);
-    }
-
-    return () => {
-      if (stallTimerRef.current) {
-        clearTimeout(stallTimerRef.current);
-        stallTimerRef.current = null;
-      }
-    };
-  }, [status, phaseLabel, error, id, isConsoleOpen, setDevPreviewConsoleOpen]);
-
   const loadTimeoutMs =
     Math.min(Math.max(projectSettings?.devServerLoadTimeout ?? 30, 1), 120) * 1000;
 
