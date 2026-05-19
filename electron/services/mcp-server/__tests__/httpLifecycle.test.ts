@@ -56,6 +56,7 @@ function fakeDeps(overrides?: Partial<HttpLifecycleDeps>): HttpLifecycleDeps {
       createHttpIdleTimer: vi.fn(() => setTimeout(() => {}, 1_000_000)),
       resetIdleTimer: vi.fn(),
       resetHttpIdleTimer: vi.fn(),
+      revokeSession: vi.fn(() => false),
     },
     auditService: {
       hydrate: vi.fn(),
@@ -85,6 +86,12 @@ function fakeDeps(overrides?: Partial<HttpLifecycleDeps>): HttpLifecycleDeps {
     emitStatusChange: vi.fn(),
     emitRuntimeStateChange: vi.fn(),
     setConfig: vi.fn(),
+    abusePolicy: {
+      recordDenial: vi.fn(() => ({ tripped: false })),
+      clearSession: vi.fn(),
+      clear: vi.fn(),
+      getSnapshot: vi.fn(() => null),
+    },
     ...overrides,
   } as unknown as HttpLifecycleDeps;
 }
