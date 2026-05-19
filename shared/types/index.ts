@@ -329,6 +329,9 @@ export type {
   McpAuditRecord,
   McpAuditResult,
   McpAuditStats,
+  McpAnomalySeverity,
+  McpAnomalyKind,
+  McpAnomalySignal,
   McpRuntimeSnapshot,
   McpRuntimeState,
 } from "./ipc/mcpServer.js";
