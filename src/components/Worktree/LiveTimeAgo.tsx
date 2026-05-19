@@ -16,10 +16,8 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 const WEEK = 7 * DAY;
-const MONTH = 30 * DAY;
-const YEAR = 365 * DAY;
 
-function formatTimeAgo(diffMs: number): { label: string; fullLabel: string } {
+function formatTimeAgo(diffMs: number): { label: string; fullLabel: string; isAbsolute?: boolean } {
   const seconds = Math.floor(diffMs / 1000);
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
@@ -27,6 +25,10 @@ function formatTimeAgo(diffMs: number): { label: string; fullLabel: string } {
 
   let label: string;
   let fullLabel: string;
+
+  if (days >= 30) {
+    return { label: "", fullLabel: "", isAbsolute: true };
+  }
 
   if (seconds < 5) {
     label = "now";
@@ -47,14 +49,6 @@ function formatTimeAgo(diffMs: number): { label: string; fullLabel: string } {
     const weeks = Math.floor(days / 7);
     label = `${weeks}w`;
     fullLabel = `${weeks} week${weeks !== 1 ? "s" : ""} ago`;
-  } else if (days < 365) {
-    const months = Math.floor(days / 30);
-    label = `${months}mo`;
-    fullLabel = `${months} month${months !== 1 ? "s" : ""} ago`;
-  } else {
-    const years = Math.floor(days / 365);
-    label = `${years}y`;
-    fullLabel = `${years} year${years !== 1 ? "s" : ""} ago`;
   }
 
   return { label, fullLabel };
@@ -71,14 +65,14 @@ function msUntilNextFlip(diffMs: number, now: number): number {
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
 
+  if (days >= 30) return Infinity;
   if (seconds < 5) return 5000 - diffMs;
   if (seconds < 60) return 1000 - (now % 1000);
   if (minutes < 60) return MINUTE - (now % MINUTE);
   if (hours < 24) return HOUR - (now % HOUR);
   if (days < 7) return DAY - (now % DAY);
   if (days < 30) return WEEK - (now % WEEK);
-  if (days < 365) return MONTH - (now % MONTH);
-  return YEAR - (now % YEAR);
+  return Infinity;
 }
 
 export function LiveTimeAgo({ timestamp, className }: LiveTimeAgoProps) {
@@ -101,15 +95,34 @@ export function LiveTimeAgo({ timestamp, className }: LiveTimeAgoProps) {
   }
 
   void tick;
-  const { label, fullLabel } = formatTimeAgo(Date.now() - timestamp);
+  const diffMs = Date.now() - timestamp;
+  const { label, fullLabel, isAbsolute } = formatTimeAgo(diffMs);
+  const isoDate = new Date(timestamp).toISOString();
+
+  if (isAbsolute) {
+    const absoluteLabel = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
+      new Date(timestamp)
+    );
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <time dateTime={isoDate} className={cn("tabular-nums", className)}>
+            {absoluteLabel}
+          </time>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{`Last commit: ${new Date(timestamp).toLocaleString()}`}</TooltipContent>
+      </Tooltip>
+    );
+  }
+
   const formattedDate = new Date(timestamp).toLocaleString();
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className={cn("tabular-nums", className)} aria-label={fullLabel}>
+        <time dateTime={isoDate} className={cn("tabular-nums", className)} aria-label={fullLabel}>
           {label}
-        </span>
+        </time>
       </TooltipTrigger>
       <TooltipContent side="bottom">{`${fullLabel} (${formattedDate})`}</TooltipContent>
     </Tooltip>

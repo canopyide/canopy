@@ -389,3 +389,86 @@ describe("WorktreeDetailsSection activity indicator", () => {
     expect(container.querySelector('[aria-hidden="true"]')).toBeNull();
   });
 });
+
+describe("WorktreeDetailsSection commit author chip", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-06-15T12:00:00Z").getTime());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("renders avatar and time when lastCommitAuthor and timestamp present", () => {
+    const worktree = {
+      ...baseWorktree,
+      worktreeChanges: {
+        ...baseWorktree.worktreeChanges,
+        lastCommitTimestampMs: Date.now() - 120_000,
+        lastCommitAuthor: { name: "Jane Doe", email: "jane@example.com" },
+        lastCommitMessage: "fix: stuff",
+      } as WorktreeChanges,
+    };
+    const { container } = renderSection({ worktree, hasChanges: false });
+
+    const imgs = container.querySelectorAll("img");
+    const avatarImg = Array.from(imgs).find((el) =>
+      el.getAttribute("src")?.includes("gravatar.com")
+    );
+    expect(avatarImg).toBeTruthy();
+    expect(container.textContent).toContain("2m");
+  });
+
+  it("renders square avatar for bot author", () => {
+    const worktree = {
+      ...baseWorktree,
+      worktreeChanges: {
+        ...baseWorktree.worktreeChanges,
+        lastCommitTimestampMs: Date.now() - 120_000,
+        lastCommitAuthor: {
+          name: "dependabot[bot]",
+          email: "49699333+dependabot[bot]@users.noreply.github.com",
+        },
+      } as WorktreeChanges,
+    };
+    const { container } = renderSection({ worktree, hasChanges: false });
+
+    const imgs = container.querySelectorAll("img");
+    const avatarImg = Array.from(imgs).find((el) =>
+      el.getAttribute("src")?.includes("gravatar.com")
+    );
+    expect(avatarImg).toBeTruthy();
+    expect(avatarImg!.className).toContain("rounded-md");
+    expect(avatarImg!.className).not.toContain("rounded-full");
+  });
+
+  it("renders LiveTimeAgo without avatar when timestamp present but author absent", () => {
+    const worktree = {
+      ...baseWorktree,
+      worktreeChanges: {
+        ...baseWorktree.worktreeChanges,
+        lastCommitTimestampMs: Date.now() - 120_000,
+      } as WorktreeChanges,
+    };
+    const { container } = renderSection({ worktree, hasChanges: false });
+
+    // Should show time without an avatar
+    expect(container.textContent).toContain("2m");
+    const imgs = container.querySelectorAll("img");
+    const gravatarImg = Array.from(imgs).find((el) =>
+      el.getAttribute("src")?.includes("gravatar.com")
+    );
+    expect(gravatarImg).toBeFalsy();
+  });
+
+  it("omits commit chip when lastCommitTimestampMs is absent", () => {
+    const worktree = { ...baseWorktree, lastActivityTimestamp: Date.now() };
+    renderSection({ worktree, hasChanges: false });
+
+    // Activity indicator should be visible but no commit author chip
+    expect(screen.getByText("now")).toBeDefined();
+    // "No activity" should NOT appear since there is activity
+    expect(screen.queryByText("No activity")).toBeNull();
+  });
+});

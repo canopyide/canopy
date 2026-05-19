@@ -8,6 +8,7 @@ interface AvatarProps {
   alt: string;
   title?: string;
   className?: string;
+  shape?: "circle" | "square";
 }
 
 // Synchronous memory-cache probe. A fresh Image set to an already-cached URL
@@ -20,10 +21,12 @@ function probeCache(url: string): boolean {
   return img.complete && img.naturalWidth > 0;
 }
 
-export function Avatar({ src, alt, title, className }: AvatarProps) {
+export function Avatar({ src, alt, title, className, shape = "circle" }: AvatarProps) {
   const [loaded, setLoaded] = useState(() => probeCache(src));
   const [error, setError] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
+
+  const radius = shape === "square" ? "rounded-md" : "rounded-full";
 
   // On src change the lazy initializer above does not re-run, so re-probe
   // here: cached → stay loaded (no placeholder flash on avatar swaps),
@@ -42,7 +45,8 @@ export function Avatar({ src, alt, title, className }: AvatarProps) {
       {(!loaded || error) && (
         <div
           className={cn(
-            "absolute inset-0 rounded-full flex items-center justify-center",
+            "absolute inset-0 flex items-center justify-center",
+            radius,
             error
               ? "bg-muted-foreground/30 ring-2 ring-inset ring-muted-foreground/50"
               : "bg-muted-foreground/20 animate-pulse-delayed"
@@ -60,7 +64,7 @@ export function Avatar({ src, alt, title, className }: AvatarProps) {
           alt={alt}
           onLoad={() => setLoaded(true)}
           onError={() => setError(true)}
-          className="rounded-full transition-opacity duration-150 ease-out w-full h-full"
+          className={cn(radius, "transition-opacity duration-150 ease-out w-full h-full")}
           style={{ opacity: loaded ? 1 : 0 }}
         />
       )}

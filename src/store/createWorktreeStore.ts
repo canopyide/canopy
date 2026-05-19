@@ -501,7 +501,9 @@ function worktreeChangesEqual(
     a.totalDeletions === b.totalDeletions &&
     a.latestFileMtime === b.latestFileMtime &&
     a.lastCommitMessage === b.lastCommitMessage &&
-    a.lastCommitTimestampMs === b.lastCommitTimestampMs
+    a.lastCommitTimestampMs === b.lastCommitTimestampMs &&
+    a.lastCommitAuthor?.name === b.lastCommitAuthor?.name &&
+    a.lastCommitAuthor?.email === b.lastCommitAuthor?.email
   );
 }
 
