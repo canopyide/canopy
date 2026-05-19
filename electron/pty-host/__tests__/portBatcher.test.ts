@@ -474,12 +474,16 @@ describe("PortBatcher", () => {
       expect(Buffer.from(emitted).toString("utf8")).toBe("foobar");
     });
 
-    it("a non-owned write into the same entry disables the fast path for that flush", () => {
+    it("owned + non-owned writes to the same terminal still concatenate correctly", () => {
+      // Two writes accumulate into one multi-chunk entry, so the fast path
+      // (single-chunk only) never engages regardless of the owned flags — the
+      // merge must still produce a correct fresh contiguous copy. (The
+      // `entry.owned &&= owned` accumulation is defensive: a single-chunk entry
+      // only ever has one write, so it has no observable effect today; it
+      // guards a future fast path that might span multiple chunks.)
       const deps = createDeps();
       const batcher = new PortBatcher(deps);
 
-      // owned then non-owned to the same terminal before flush: the entry must
-      // copy (the chunk is shared once any sibling batcher is non-owned).
       const a = ownedBytes("aa");
       const b = ownedBytes("bb");
       batcher.write("t1", a, 2, true);
@@ -491,6 +495,25 @@ describe("PortBatcher", () => {
 
       expect(emitted.buffer).not.toBe(a.buffer);
       expect(Buffer.from(emitted).toString("utf8")).toBe("aabb");
+    });
+
+    it("owned zero-length chunk fast-paths without breaking ACK accounting", () => {
+      // A 0-byte owned chunk satisfies the predicate (byteOffset 0,
+      // byteLength 0 === buffer.byteLength) — it must pass through cleanly and
+      // ACK exactly 0 bytes, not crash or miscount.
+      const deps = createDeps();
+      const batcher = new PortBatcher(deps);
+
+      const empty = new Uint8Array(0);
+      batcher.write("t1", empty, 0, true);
+      vi.runAllTimers();
+
+      const postMessage = deps.postMessage as ReturnType<typeof vi.fn>;
+      expect(postMessage).toHaveBeenCalledOnce();
+      const [, emitted, ackBytes] = postMessage.mock.calls[0];
+      expect(emitted).toBe(empty);
+      expect((emitted as Uint8Array).byteLength).toBe(0);
+      expect(ackBytes).toBe(0);
     });
   });
 

@@ -34,6 +34,10 @@ interface GcStats {
 // Uint8Array(totalBytes) per flush and copy the chunk in. This is the exact
 // allocation #8367 set out to retire; the GC observer below quantifies the
 // minor-GC pressure it generates so the fast path's benefit is measurable.
+// NOTE: this scenario baselines the *cost being retired* (the old allocate +
+// copy), not the new zero-copy fast path itself — it is the gate evidence
+// (#8367 instrument-first), not a fast-path regression guard. Fast-path
+// correctness is covered by the portBatcher unit suite.
 function simulatePortBatcherFlushFlood(flushes: number, chunkBytes: number): number {
   const source = new Uint8Array(chunkBytes);
   for (let i = 0; i < source.length; i += 1) {
