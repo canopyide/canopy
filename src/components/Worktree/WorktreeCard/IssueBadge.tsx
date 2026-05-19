@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { CircleDot } from "lucide-react";
+import { CircleDot, Clock, CloudOff } from "lucide-react";
 import { useDeferredLoading } from "@/hooks/useDeferredLoading";
 import { UI_DOHERTY_THRESHOLD } from "@/lib/animationUtils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import { useIssueTooltip } from "@/hooks/useGitHubTooltip";
 import { useGitHubBadgeTooltip } from "./hooks/useGitHubBadgeTooltip";
 import { useGitHubBadgeFreshness } from "./hooks/useGitHubBadgeFreshness";
-import { freshnessClass, freshnessSuffix } from "@/components/Layout/FreshnessUtils";
+import { freshnessClass, badgeFreshnessSuffix } from "@/components/Layout/FreshnessUtils";
 import { IssueTooltipContent, TooltipLoading, TokenMissingTooltip } from "./GitHubTooltipContent";
 
 interface IssueBadgeProps {
@@ -19,6 +19,8 @@ interface IssueBadgeProps {
   isActive?: boolean;
   underlineOnHover?: boolean;
   rowLastUpdatedAt?: number;
+  /** Service-wide PR detection circuit breaker tripped — issue data may be stale. */
+  prDetectionPaused?: boolean;
 }
 
 export function IssueBadge({
@@ -30,6 +32,7 @@ export function IssueBadge({
   isActive,
   underlineOnHover,
   rowLastUpdatedAt,
+  prDetectionPaused,
 }: IssueBadgeProps) {
   // Detects the cold-title gap by comparing issueNumber to its previous-render
   // value via a ref; the lag (ref written in effect, no re-render) is what
@@ -63,15 +66,23 @@ export function IssueBadge({
     prevIssueNumber.current = issueNumber;
   }, [issueNumber]);
 
-  const { freshnessLevel, cacheLastUpdatedAt, now } = useGitHubBadgeFreshness(
-    "issue",
-    rowLastUpdatedAt
-  );
+  const { freshnessLevel, freshnessCause, cacheLastUpdatedAt, rateLimitResetAt, now } =
+    useGitHubBadgeFreshness("issue", rowLastUpdatedAt);
 
   const freshnessSuffixStr = useMemo(
-    () => freshnessSuffix(freshnessLevel, cacheLastUpdatedAt, now),
-    [freshnessLevel, cacheLastUpdatedAt, now]
+    () =>
+      badgeFreshnessSuffix(
+        freshnessCause,
+        rowLastUpdatedAt ?? cacheLastUpdatedAt,
+        now,
+        rateLimitResetAt
+      ),
+    [freshnessCause, rowLastUpdatedAt, cacheLastUpdatedAt, rateLimitResetAt, now]
   );
+
+  const showStaleGlyph = freshnessCause === "stale" && !missingToken;
+  const showPausedGlyph =
+    (freshnessCause === "rate-limit" || (prDetectionPaused ?? false)) && !missingToken;
 
   return (
     <Tooltip open={isOpen} onOpenChange={handleOpenChange} delayDuration={300}>
@@ -124,6 +135,16 @@ export function IssueBadge({
                 </span>
               ))}
           </span>
+          {showStaleGlyph && (
+            <Clock
+              className="w-3 h-3 shrink-0 text-text-muted"
+              strokeWidth={2.5}
+              aria-hidden="true"
+            />
+          )}
+          {showPausedGlyph && (
+            <CloudOff className="w-3 h-3 shrink-0 text-text-muted" aria-hidden="true" />
+          )}
         </button>
       </TooltipTrigger>
       <TooltipContent side="right" align="start" className="p-3">

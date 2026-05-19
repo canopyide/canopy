@@ -5,6 +5,7 @@ import { IssueBadge } from "./IssueBadge";
 import { PRBadge } from "./PRBadge";
 import { FileText } from "lucide-react";
 import type { WorktreeState } from "@/types";
+import { usePRCircuitBreakerStore } from "@/store/prCircuitBreakerStore";
 
 interface NonMainSecondaryRowProps {
   worktree: WorktreeState;
@@ -35,6 +36,7 @@ export function NonMainSecondaryRow({
   hasPlanFile,
   badges,
 }: NonMainSecondaryRowProps) {
+  const prDetectionPaused = usePRCircuitBreakerStore((s) => s.tripped);
   return (
     <div className="flex flex-col gap-0.5 mt-1.5">
       {worktree.issueNumber && !hasIssueTitle && (
@@ -45,6 +47,7 @@ export function NonMainSecondaryRow({
           isActive={isActive}
           underlineOnHover={underlineOnHover}
           rowLastUpdatedAt={worktree.issueLastUpdatedAt}
+          prDetectionPaused={prDetectionPaused}
         />
       )}
       {worktree.linked?.pr &&
@@ -60,6 +63,7 @@ export function NonMainSecondaryRow({
             isActive={isActive}
             underlineOnHover={underlineOnHover}
             rowLastUpdatedAt={worktree.prLastUpdatedAt}
+            prDetectionPaused={prDetectionPaused}
           />
         )}
       {(hasUpstreamDelta || hasAuthFailedSignIn) && (

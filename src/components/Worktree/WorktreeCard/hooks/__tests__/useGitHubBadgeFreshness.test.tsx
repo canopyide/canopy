@@ -229,4 +229,89 @@ describe("useGitHubBadgeFreshness", () => {
 
     expect(result.current.freshnessLevel).toBe("aging");
   });
+
+  // -- freshnessCause discriminator --
+
+  it("returns undefined freshnessCause when fresh", () => {
+    const { result } = renderHook(() => useGitHubBadgeFreshness("pr", FIXED_NOW));
+    expect(result.current.freshnessLevel).toBe("fresh");
+    expect(result.current.freshnessCause).toBeUndefined();
+  });
+
+  it("returns freshnessCause 'stale' when past age threshold", () => {
+    const rowTime = FIXED_NOW - (STALE_THRESHOLD_MS + 1);
+    const { result } = renderHook(() => useGitHubBadgeFreshness("pr", rowTime));
+    expect(result.current.freshnessLevel).toBe("aging");
+    expect(result.current.freshnessCause).toBe("stale");
+  });
+
+  it("returns freshnessCause 'rate-limit' while rate-limit pause is active", () => {
+    useGitHubRateLimitStore.setState({
+      blocked: true,
+      kind: "primary",
+      resetAt: Date.now() + 60_000,
+    });
+    const { result } = renderHook(() => useGitHubBadgeFreshness("pr", Date.now()));
+    expect(result.current.freshnessCause).toBe("rate-limit");
+  });
+
+  it("returns freshnessCause 'circuit-breaker' for PR type when breaker tripped", () => {
+    usePRCircuitBreakerStore.setState({ tripped: true });
+    const { result } = renderHook(() => useGitHubBadgeFreshness("pr", Date.now()));
+    expect(result.current.freshnessCause).toBe("circuit-breaker");
+  });
+
+  it("does not return circuit-breaker cause for issue type when breaker tripped", () => {
+    usePRCircuitBreakerStore.setState({ tripped: true });
+    const { result } = renderHook(() => useGitHubBadgeFreshness("issue", Date.now()));
+    expect(result.current.freshnessLevel).toBe("fresh");
+    expect(result.current.freshnessCause).toBeUndefined();
+  });
+
+  it("rate-limit takes precedence over circuit-breaker for cause", () => {
+    useGitHubRateLimitStore.setState({
+      blocked: true,
+      kind: "primary",
+      resetAt: Date.now() + 60_000,
+    });
+    usePRCircuitBreakerStore.setState({ tripped: true });
+    const { result } = renderHook(() => useGitHubBadgeFreshness("pr", Date.now()));
+    expect(result.current.freshnessCause).toBe("rate-limit");
+  });
+
+  it("rate-limit takes precedence over age threshold for cause", () => {
+    const rowTime = FIXED_NOW - (STALE_THRESHOLD_MS + 1);
+    useGitHubRateLimitStore.setState({
+      blocked: true,
+      kind: "secondary",
+      resetAt: Date.now() + 60_000,
+    });
+    const { result } = renderHook(() => useGitHubBadgeFreshness("pr", rowTime));
+    expect(result.current.freshnessCause).toBe("rate-limit");
+  });
+
+  it("circuit-breaker takes precedence over age threshold for cause", () => {
+    const rowTime = FIXED_NOW - (STALE_THRESHOLD_MS + 1);
+    usePRCircuitBreakerStore.setState({ tripped: true });
+    const { result } = renderHook(() => useGitHubBadgeFreshness("pr", rowTime));
+    expect(result.current.freshnessCause).toBe("circuit-breaker");
+  });
+
+  // -- rateLimitResetAt passthrough --
+
+  it("returns rateLimitResetAt from the rate-limit store", () => {
+    const resetTime = Date.now() + 120_000;
+    useGitHubRateLimitStore.setState({
+      blocked: true,
+      kind: "primary",
+      resetAt: resetTime,
+    });
+    const { result } = renderHook(() => useGitHubBadgeFreshness("pr", Date.now()));
+    expect(result.current.rateLimitResetAt).toBe(resetTime);
+  });
+
+  it("returns null rateLimitResetAt when rate limit is not blocked", () => {
+    const { result } = renderHook(() => useGitHubBadgeFreshness("pr", FIXED_NOW));
+    expect(result.current.rateLimitResetAt).toBeNull();
+  });
 });
