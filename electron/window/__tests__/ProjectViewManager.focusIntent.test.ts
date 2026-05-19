@@ -335,6 +335,28 @@ describe("ProjectViewManager — pending focus intent", () => {
     ).toHaveLength(0);
   });
 
+  it("delivers focus intent when switchTo targets the already-active project", async () => {
+    // Same-project switchTo hits the early-return path. The renderer-side
+    // action short-circuits before this point, but a race between two
+    // concurrent switchTo calls can land here.
+    manager.setPendingFocusIntent("proj-a", "focus-next-waiting");
+    const result = await manager.switchTo("proj-a", "/path/a");
+
+    expect(result.isNew).toBe(false);
+    const focusSends = initialWc.send.mock.calls.filter(
+      ([channel]) => channel === CHANNELS.PROJECT_FOCUS_ON_ACTIVATE
+    );
+    expect(focusSends).toHaveLength(1);
+
+    // Intent must be cleared — a later switchTo without a fresh intent must
+    // not re-fire.
+    initialWc.send.mockClear();
+    await manager.switchTo("proj-a", "/path/a");
+    expect(
+      initialWc.send.mock.calls.filter(([c]) => c === CHANNELS.PROJECT_FOCUS_ON_ACTIVATE)
+    ).toHaveLength(0);
+  });
+
   it("does not deliver focus intent for a different projectId than the one switched", async () => {
     const incomingWc = createMockWebContents();
     wcQueue.push(incomingWc);

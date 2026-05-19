@@ -153,13 +153,19 @@ describe("agent.focusNextWaitingGlobal", () => {
       c: { waitingAgentCount: 1 },
     });
 
+    const focusNextWaiting = vi.fn();
+    panelStoreMock.getState.mockReturnValue({ focusNextWaiting, isInTrash: false });
+
     const actions = setupActions();
     await callAction(actions, "agent.focusNextWaitingGlobal");
 
     // Search starts after "b" → first hit is "c", not "a" or "b".
+    expect(state.switchProject).toHaveBeenCalledTimes(1);
     expect(state.switchProject).toHaveBeenCalledWith("c", {
       focusIntent: "focus-next-waiting",
     });
+    // Must not also dispatch the local action — cross-project path skips it.
+    expect(focusNextWaiting).not.toHaveBeenCalled();
   });
 
   it("wraps around to the head when current project is the last entry", async () => {
