@@ -4,6 +4,10 @@ import type {
   McpAuditResult,
   McpAuditStats,
   McpConfirmationDecision,
+  McpGrantRecord,
+  McpGrantRecordType,
+  McpGrantRevokedReason,
+  McpLogRecord,
 } from "../../../shared/types/ipc/mcpServer.js";
 import {
   MCP_AUDIT_DEFAULT_MAX_RECORDS,
@@ -20,8 +24,19 @@ import {
   minimumPermittingTier,
 } from "./shared.js";
 
+/**
+ * Hydrate predicate: existing on-disk records predate the discriminated
+ * union (#8442) and have no `type` field; new entries written by
+ * `appendGrantRecord` carry one. The union narrows on the presence of
+ * the field, never on a sentinel value, so legacy records remain plain
+ * `McpAuditRecord` instances.
+ */
+function isGrantRecord(record: McpLogRecord): record is McpGrantRecord {
+  return "type" in record && typeof (record as McpGrantRecord).type === "string";
+}
+
 export class AuditService {
-  private records: McpAuditRecord[] = [];
+  private records: McpLogRecord[] = [];
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private hydrated = false;
   /**
@@ -98,6 +113,7 @@ export class AuditService {
     outcome: AuditOutcome;
     confirmationDecision?: McpConfirmationDecision;
     argsSummary: string;
+    bannerSuppressed?: boolean;
   }): void {
     if (this.readConfig().auditEnabled === false) return;
     this.hydrate();
@@ -125,14 +141,55 @@ export class AuditService {
     }
     if (classification.result === "unauthorized") {
       record.tierHint = minimumPermittingTier(input.toolId);
+      if (input.bannerSuppressed) {
+        record.bannerSuppressed = true;
+      }
     }
 
     this.records.push(record);
+    this.enforceCap();
+    this.scheduleFlush();
+  }
+
+  /**
+   * Append a grant-lifecycle record to the same ring buffer as dispatch
+   * audit entries. Sharing the buffer keeps the audit-log surface honest:
+   * a reader walking the records in order sees grants minted, dispatches
+   * authorised under them, and the eventual expiry or revocation as a
+   * single chronological trail.
+   */
+  appendGrantRecord(input: {
+    type: McpGrantRecordType;
+    sessionId: string;
+    toolId: string;
+    ttlMs: number;
+    expiresAt?: number;
+    revokedReason?: McpGrantRevokedReason;
+  }): void {
+    if (this.readConfig().auditEnabled === false) return;
+    this.hydrate();
+
+    const record: McpGrantRecord = {
+      id: randomUUID(),
+      timestamp: Date.now(),
+      type: input.type,
+      sessionId: input.sessionId,
+      toolId: input.toolId,
+      ttlMs: input.ttlMs,
+    };
+    if (input.expiresAt !== undefined) record.expiresAt = input.expiresAt;
+    if (input.revokedReason !== undefined) record.revokedReason = input.revokedReason;
+
+    this.records.push(record);
+    this.enforceCap();
+    this.scheduleFlush();
+  }
+
+  private enforceCap(): void {
     const cap = this.normalizeMaxRecords(this.readConfig().auditMaxRecords);
     if (this.records.length > cap) {
       this.records.splice(0, this.records.length - cap);
     }
-    this.scheduleFlush();
   }
 
   /**
@@ -180,7 +237,27 @@ export class AuditService {
     this.flush();
   }
 
+  /**
+   * Newest-first view of dispatch records only. Grant lifecycle records
+   * (#8442) are filtered out for the legacy renderer surface that still
+   * shows `result`-keyed columns. {@link getLogRecords} returns the full
+   * union for callers that understand the new discriminator.
+   */
   getRecords(): McpAuditRecord[] {
+    this.hydrate();
+    const out: McpAuditRecord[] = [];
+    for (const record of this.records) {
+      if (!isGrantRecord(record)) out.push(record);
+    }
+    return out.reverse();
+  }
+
+  /**
+   * Newest-first view of the full log union — audit + grant records
+   * interleaved chronologically. Reserved for the audit panel surface
+   * that explicitly handles both shapes.
+   */
+  getLogRecords(): McpLogRecord[] {
     this.hydrate();
     return [...this.records].reverse();
   }

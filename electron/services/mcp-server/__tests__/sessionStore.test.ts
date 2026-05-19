@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionStore } from "../sessionStore.js";
-import type { McpSseSession, McpHttpSession } from "../shared.js";
+import { MCP_SSE_IDLE_TIMEOUT_MS, type McpSseSession, type McpHttpSession } from "../shared.js";
 
 function fakeSseSession(): McpSseSession {
   return {
@@ -34,6 +34,13 @@ describe("SessionStore.sessionWebContentsMap (#7002)", () => {
   });
 
   afterEach(() => {
+    // GrantCache owns a recurring sweep interval (`unref`'d) so the test
+    // runner can't be kept alive by it, but `vi.useFakeTimers` advances
+    // every registered timer regardless — we must explicitly dispose so
+    // tests can `vi.runAllTimers()`-equivalents without hitting the
+    // sweep loop. SessionStore.drain() keeps the cache usable; only
+    // dispose tears down the sweep timer.
+    store.grantCache.dispose();
     vi.useRealTimers();
   });
 
@@ -64,7 +71,9 @@ describe("SessionStore.sessionWebContentsMap (#7002)", () => {
     clearTimeout(session.idleTimer);
     session.idleTimer = store.createIdleTimer(sessionId);
 
-    vi.runAllTimers();
+    // Advance past the idle window only — running every timer would
+    // re-fire the GrantCache sweep interval indefinitely.
+    vi.advanceTimersByTime(MCP_SSE_IDLE_TIMEOUT_MS + 1);
 
     expect(store.sessions.has(sessionId)).toBe(false);
     expect(store.sessionTierMap.has(sessionId)).toBe(false);
@@ -82,12 +91,58 @@ describe("SessionStore.sessionWebContentsMap (#7002)", () => {
     clearTimeout(session.idleTimer);
     session.idleTimer = store.createHttpIdleTimer(sessionId);
 
-    vi.runAllTimers();
+    // Advance past the idle window only — running every timer would
+    // re-fire the GrantCache sweep interval indefinitely.
+    vi.advanceTimersByTime(MCP_SSE_IDLE_TIMEOUT_MS + 1);
 
     expect(store.httpSessions.has(sessionId)).toBe(false);
     expect(store.sessionTierMap.has(sessionId)).toBe(false);
     expect(store.sessionWebContentsMap.has(sessionId)).toBe(false);
     expect(resourceCleanups).toContain(sessionId);
+  });
+
+  it("drain() clears the grant cache without disposing it (cache stays usable across stop/start)", () => {
+    store.grantCache.issueGrant("s1", "git.commit");
+    expect(store.grantCache.check("s1", "git.commit").granted).toBe(true);
+
+    store.drain();
+    expect(store.grantCache.check("s1", "git.commit").granted).toBe(false);
+
+    // Cache is still alive — a subsequent issueGrant should not throw.
+    expect(() => store.grantCache.issueGrant("s2", "git.commit")).not.toThrow();
+    expect(store.grantCache.check("s2", "git.commit").granted).toBe(true);
+  });
+
+  it("SSE idle-timer expiry calls revokeSession with the session-idle reason", () => {
+    const sessionId = "sse-2";
+    const session = fakeSseSession();
+    store.sessions.set(sessionId, session);
+    // Spy on `revokeSession` directly — observing emissions is brittle
+    // because the GrantCache's sweep interval and 15-min lazy expiry
+    // both race with the 30-min SSE idle timer during a fast-forward
+    // and can emit `grant.expired` before the reaper runs.
+    const revokeSpy = vi.spyOn(store.grantCache, "revokeSession");
+
+    clearTimeout(session.idleTimer);
+    session.idleTimer = store.createIdleTimer(sessionId);
+
+    vi.advanceTimersByTime(MCP_SSE_IDLE_TIMEOUT_MS + 1);
+
+    expect(revokeSpy).toHaveBeenCalledWith(sessionId, "session-idle");
+  });
+
+  it("HTTP idle-timer expiry calls revokeSession with the session-idle reason", () => {
+    const sessionId = "http-2";
+    const session = fakeHttpSession();
+    store.httpSessions.set(sessionId, session);
+    const revokeSpy = vi.spyOn(store.grantCache, "revokeSession");
+
+    clearTimeout(session.idleTimer);
+    session.idleTimer = store.createHttpIdleTimer(sessionId);
+
+    vi.advanceTimersByTime(MCP_SSE_IDLE_TIMEOUT_MS + 1);
+
+    expect(revokeSpy).toHaveBeenCalledWith(sessionId, "session-idle");
   });
 
   it("idle-timer for a session that was already removed is a no-op (does not stomp another session's pin)", () => {
@@ -105,7 +160,9 @@ describe("SessionStore.sessionWebContentsMap (#7002)", () => {
     store.sessions.delete("evicted");
     store.sessionWebContentsMap.delete("evicted");
 
-    vi.runAllTimers();
+    // Advance past the idle window only — running every timer would
+    // re-fire the GrantCache sweep interval indefinitely.
+    vi.advanceTimersByTime(MCP_SSE_IDLE_TIMEOUT_MS + 1);
 
     // The other session's pin must remain untouched.
     expect(store.sessionWebContentsMap.get("alive")).toBe(1);

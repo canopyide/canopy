@@ -146,6 +146,45 @@ export function registerMcpServerHandlers(): () => void {
     )
   );
 
+  handlers.push(
+    typedHandleWithContext(
+      CHANNELS.MCP_SERVER_ISSUE_GRANT,
+      async (ctx, payload: { sessionId: string; toolId: string }) => {
+        if (!payload || typeof payload !== "object") {
+          throw new Error("Invalid payload");
+        }
+        const { sessionId, toolId } = payload;
+        if (typeof sessionId !== "string" || !sessionId) {
+          throw new Error("Invalid sessionId");
+        }
+        if (typeof toolId !== "string" || !toolId) {
+          throw new Error("Invalid toolId");
+        }
+        const svc = await getMcpServerService();
+        // Same caller-pin invariant as `setSessionTier` — only the
+        // renderer that minted the session can issue grants for it.
+        return svc.issueGrant(sessionId, toolId, ctx.webContentsId);
+      }
+    )
+  );
+
+  handlers.push(
+    typedHandleWithContext(
+      CHANNELS.MCP_SERVER_REVOKE_SESSION_GRANTS,
+      async (ctx, payload: { sessionId: string }) => {
+        if (!payload || typeof payload !== "object") {
+          throw new Error("Invalid payload");
+        }
+        const { sessionId } = payload;
+        if (typeof sessionId !== "string" || !sessionId) {
+          throw new Error("Invalid sessionId");
+        }
+        const svc = await getMcpServerService();
+        return svc.revokeSessionGrants(sessionId, ctx.webContentsId);
+      }
+    )
+  );
+
   // Push runtime-state transitions to every renderer. Subscribed lazily so
   // we don't pay the McpServerService import cost just to register a no-op
   // listener — but cleanup MUST observe whichever side won the race:

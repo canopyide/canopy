@@ -69,6 +69,98 @@ export interface McpAuditRecord {
    * non-unauthorized outcomes.
    */
   tierHint?: "workbench" | "action" | "system" | null;
+  /**
+   * For `unauthorized` outcomes only, true when the renderer banner was
+   * suppressed for this denial because the per-`(sessionId, toolId)`
+   * consecutive-denial counter had reached `MCP_DENIAL_SILENCE_THRESHOLD`.
+   * The audit record is still written so persistent denials remain visible
+   * in the audit panel even when no banner fired. See #8442.
+   */
+  bannerSuppressed?: boolean;
+}
+
+/**
+ * Lifecycle event for a per-`(sessionId, toolId)` grant minted via the
+ * "Approve once" flow that replaces sticky session-tier elevation (#8442).
+ * Written in parallel with the dispatch audit ring buffer; renderers
+ * subscribe to a separate live broadcast for the same payload shape.
+ *
+ * - `grant.issued`: the renderer's `Approve once` minted a fresh grant.
+ *   `expiresAt` is set; `revokedReason` is absent.
+ * - `grant.expired`: a `check()` lazily evicted an entry whose `expiresAt`
+ *   passed. Emitted at most once per `(sessionId, toolId)` per grant. The
+ *   periodic sweep also drives this when an idle session's grant ages out
+ *   without a follow-up read.
+ * - `grant.revoked`: an explicit `revokeSessionGrants` IPC, a session
+ *   teardown, or an idle reaper firing wiped the grant before its TTL
+ *   elapsed. `revokedReason` distinguishes those sources.
+ */
+export type McpGrantRecordType = "grant.issued" | "grant.expired" | "grant.revoked";
+
+export type McpGrantRevokedReason = "user" | "session-ended" | "session-idle";
+
+export interface McpGrantRecord {
+  type: McpGrantRecordType;
+  id: string;
+  timestamp: number;
+  sessionId: string;
+  toolId: string;
+  /** TTL the grant was minted with, in milliseconds. */
+  ttlMs: number;
+  /**
+   * Absolute epoch millis when the grant would expire without refresh.
+   * Set on `grant.issued`; absent on `grant.expired`/`grant.revoked` (the
+   * grant has already been deleted by record-write time).
+   */
+  expiresAt?: number;
+  /** Source of the revocation; only set on `grant.revoked`. */
+  revokedReason?: McpGrantRevokedReason;
+}
+
+/**
+ * Union of all records persisted to the MCP server's ring buffer. Existing
+ * `McpAuditRecord` entries are implicitly the `dispatch` kind — they have
+ * no `type` field — and predate this union; the discriminator lives only
+ * on `McpGrantRecord` to keep the legacy on-disk shape unchanged. Readers
+ * narrow with `"type" in record` rather than a typeof check on a missing
+ * field.
+ */
+export type McpLogRecord = McpAuditRecord | McpGrantRecord;
+
+/**
+ * Live event payload broadcast to the pinned renderer for a grant
+ * transition. Mirrors `McpGrantRecord` because renderers want the same
+ * fields they'd see in the audit log. Send is targeted (never broadcast)
+ * because grant state is session-scoped.
+ */
+export interface McpGrantLifecyclePayload {
+  type: McpGrantRecordType;
+  sessionId: string;
+  toolId: string;
+  ttlMs: number;
+  expiresAt?: number;
+  revokedReason?: McpGrantRevokedReason;
+}
+
+/**
+ * Result of a renderer-driven `revokeSessionGrants` IPC. The handler
+ * deletes every grant for the named session and reports how many entries
+ * were affected — useful for UI confirmation copy ("Revoked N grants").
+ */
+export interface McpRevokeSessionGrantsResult {
+  sessionId: string;
+  revokedCount: number;
+}
+
+/**
+ * Result of a renderer-driven `issueGrant` IPC. Returns the `expiresAt`
+ * and `ttlMs` so the renderer can render a countdown without polling.
+ */
+export interface McpIssueGrantResult {
+  sessionId: string;
+  toolId: string;
+  ttlMs: number;
+  expiresAt: number;
 }
 
 /** Minimum and maximum values accepted for the configurable ring-buffer cap. */

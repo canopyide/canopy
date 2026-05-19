@@ -12,6 +12,7 @@ import { createSessionServer } from "../sessionServer.js";
 import type { SessionServerDeps } from "../sessionServer.js";
 import type { SessionStore } from "../sessionStore.js";
 import { SessionStore as RealSessionStore } from "../sessionStore.js";
+import { GrantCache } from "../grantCache.js";
 import {
   buildToolError,
   buildMcpErrorPayload,
@@ -27,6 +28,10 @@ import {
 function fakeSessionStore(
   tier: "workbench" | "action" | "system" | "external" = "workbench"
 ): SessionStore {
+  // Real GrantCache instance with sweeping disabled — tests drive lazy
+  // eviction via the optional `now` clock when they need to assert
+  // expiry, and they call dispose() at teardown.
+  const grantCache = new GrantCache({ sweepIntervalMs: 0 });
   const store = {
     sessions: new Map(),
     httpSessions: new Map(),
@@ -35,6 +40,7 @@ function fakeSessionStore(
     resourceSubscriptions: new Map(),
     dedupInFlight: new Map(),
     dedupResultCache: new Map(),
+    grantCache,
     drain: vi.fn(),
     getTier: vi.fn(() => tier),
     createIdleTimer: vi.fn(() => setTimeout(() => {}, 1_000_000)),
@@ -1213,5 +1219,177 @@ describe("Resource error envelope (integration through sessionServer)", () => {
       expect((err as McpError).code).toBe(ErrorCode.InvalidRequest);
       expect((err as McpError).message).toContain("Unknown resource URI");
     }
+  });
+});
+
+describe("sessionServer grant cache fallback (#8442)", () => {
+  async function callTool(
+    server: ReturnType<typeof createSessionServer>,
+    params: { name: string; arguments?: Record<string, unknown> }
+  ) {
+    const handlers = (
+      server as unknown as {
+        _requestHandlers: Map<string, (req: unknown, extra: unknown) => Promise<unknown>>;
+      }
+    )._requestHandlers;
+    const handler = handlers.get("tools/call");
+    if (!handler) throw new Error("tools/call handler not found");
+    return handler(
+      {
+        method: "tools/call",
+        params,
+        jsonrpc: "2.0",
+        id: 1,
+      },
+      {
+        signal: new AbortController().signal,
+        _meta: {},
+        sendNotification: vi.fn(),
+        requestId: 1,
+      }
+    );
+  }
+
+  it("floor-permitted tool never consults the grant cache", async () => {
+    const sessionStore = fakeSessionStore("workbench");
+    const checkSpy = vi.spyOn(sessionStore.grantCache, "check");
+    const dispatchAction = vi.fn().mockResolvedValue({ result: { ok: true, result: { ok: 1 } } });
+    const deps = fakeDeps({ sessionStore, dispatchAction });
+    const server = createSessionServer("s", deps);
+    await server.connect(makeMockTransport());
+
+    // worktree.list is in WORKBENCH_TOOLS → static floor permits.
+    await callTool(server, { name: "worktree.list", arguments: {} });
+
+    expect(dispatchAction).toHaveBeenCalled();
+    expect(checkSpy).not.toHaveBeenCalled();
+    sessionStore.grantCache.dispose();
+  });
+
+  it("denied tool with an active grant dispatches and refreshes TTL on success", async () => {
+    const sessionStore = fakeSessionStore("workbench");
+    sessionStore.sessions.set("s", {
+      transport: {} as never,
+      idleTimer: setTimeout(() => {}, 1_000_000),
+    });
+    const resetIdle = sessionStore.resetIdleTimer as ReturnType<typeof vi.fn>;
+    resetIdle.mockClear();
+    sessionStore.grantCache.issueGrant("s", "worktree.delete");
+    const refreshSpy = vi.spyOn(sessionStore.grantCache, "refresh");
+    const dispatchAction = vi.fn().mockResolvedValue({ result: { ok: true, result: { ok: 1 } } });
+    const notify = vi.fn();
+    const deps = fakeDeps({ sessionStore, dispatchAction, notifyTierMismatch: notify });
+    const server = createSessionServer("s", deps);
+    await server.connect(makeMockTransport());
+
+    const result = (await callTool(server, {
+      name: "worktree.delete",
+      arguments: {},
+    })) as { isError?: boolean };
+
+    expect(result.isError).not.toBe(true);
+    expect(dispatchAction).toHaveBeenCalledWith("worktree.delete", expect.any(Object), false);
+    expect(notify).not.toHaveBeenCalled();
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(resetIdle).toHaveBeenCalledWith("s");
+    sessionStore.grantCache.dispose();
+  });
+
+  it("grant for tool A does not authorize tool B in the same session", async () => {
+    const sessionStore = fakeSessionStore("workbench");
+    sessionStore.grantCache.issueGrant("s", "worktree.delete");
+    const dispatchAction = vi.fn();
+    const notify = vi.fn();
+    const deps = fakeDeps({ sessionStore, dispatchAction, notifyTierMismatch: notify });
+    const server = createSessionServer("s", deps);
+    await server.connect(makeMockTransport());
+
+    // worktree.createWithRecipe is action-tier, distinct from worktree.delete.
+    const result = (await callTool(server, {
+      name: "worktree.createWithRecipe",
+      arguments: { branchName: "x" },
+    })) as { isError?: boolean };
+
+    expect(result.isError).toBe(true);
+    expect(dispatchAction).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({ toolId: "worktree.createWithRecipe" })
+    );
+    sessionStore.grantCache.dispose();
+  });
+
+  it("failed dispatch through a grant does not refresh the TTL", async () => {
+    const sessionStore = fakeSessionStore("workbench");
+    sessionStore.grantCache.issueGrant("s", "worktree.delete");
+    const refreshSpy = vi.spyOn(sessionStore.grantCache, "refresh");
+    const dispatchAction = vi.fn().mockResolvedValue({
+      result: { ok: false, error: { code: "BOOM", message: "boom" } },
+    });
+    const deps = fakeDeps({ sessionStore, dispatchAction });
+    const server = createSessionServer("s", deps);
+    await server.connect(makeMockTransport());
+
+    await callTool(server, { name: "worktree.delete", arguments: {} });
+
+    expect(dispatchAction).toHaveBeenCalled();
+    expect(refreshSpy).not.toHaveBeenCalled();
+    sessionStore.grantCache.dispose();
+  });
+
+  it("denials below the silence threshold fire the banner", async () => {
+    const sessionStore = fakeSessionStore("workbench");
+    const notify = vi.fn();
+    const audit = vi.fn();
+    const deps = fakeDeps({
+      sessionStore,
+      notifyTierMismatch: notify,
+      appendAuditRecord: audit,
+    });
+    const server = createSessionServer("s", deps);
+    await server.connect(makeMockTransport());
+
+    // 1st denial.
+    await callTool(server, { name: "worktree.delete", arguments: {} });
+    expect(notify).toHaveBeenCalledTimes(1);
+
+    // 2nd denial: still fires (threshold = 2 means 1st AND 2nd fire).
+    await callTool(server, { name: "worktree.delete", arguments: {} });
+    expect(notify).toHaveBeenCalledTimes(2);
+
+    // 3rd denial: suppressed but audited.
+    await callTool(server, { name: "worktree.delete", arguments: {} });
+    expect(notify).toHaveBeenCalledTimes(2);
+
+    // Every denial wrote an audit record.
+    const unauthorizedRecords = audit.mock.calls.filter(
+      (call) => call[0]?.outcome?.kind === "unauthorized"
+    );
+    expect(unauthorizedRecords).toHaveLength(3);
+    // The third record carries bannerSuppressed: true.
+    expect(unauthorizedRecords[2][0]).toMatchObject({ bannerSuppressed: true });
+    expect(unauthorizedRecords[0][0].bannerSuppressed).toBeUndefined();
+    expect(unauthorizedRecords[1][0].bannerSuppressed).toBeUndefined();
+
+    sessionStore.grantCache.dispose();
+  });
+
+  it("issueGrant zeroes the denial counter — banner re-arms after explicit approval", async () => {
+    const sessionStore = fakeSessionStore("workbench");
+    const notify = vi.fn();
+    const deps = fakeDeps({ sessionStore, notifyTierMismatch: notify });
+    const server = createSessionServer("s", deps);
+    await server.connect(makeMockTransport());
+
+    // Push the counter past the silence threshold.
+    await callTool(server, { name: "worktree.delete", arguments: {} });
+    await callTool(server, { name: "worktree.delete", arguments: {} });
+    await callTool(server, { name: "worktree.delete", arguments: {} });
+    expect(sessionStore.grantCache.shouldSuppressBanner("s", "worktree.delete")).toBe(true);
+
+    // Approval mints a grant + resets counter.
+    sessionStore.grantCache.issueGrant("s", "worktree.delete");
+    expect(sessionStore.grantCache.shouldSuppressBanner("s", "worktree.delete")).toBe(false);
+
+    sessionStore.grantCache.dispose();
   });
 });

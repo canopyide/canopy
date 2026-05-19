@@ -17,6 +17,11 @@ import type {
   HelpSessionActionContextResolver,
   McpTier,
 } from "./shared.js";
+import type {
+  McpGrantLifecyclePayload,
+  McpIssueGrantResult,
+  McpRevokeSessionGrantsResult,
+} from "../../../shared/types/ipc/mcpServer.js";
 import {
   extractBearerToken,
   isAuthorized,
@@ -834,6 +839,64 @@ export class HttpLifecycle {
     }
     this.deps.sessionStore.sessionTierMap.set(sessionId, tier);
     return { sessionId, tier };
+  }
+
+  /**
+   * Mint a time-bounded per-`(sessionId, toolId)` grant — the "Approve
+   * once" pathway that replaces sticky session-tier elevation for single
+   * tool calls (#8442). Validates the same caller-pin invariant as
+   * {@link setSessionTier}: only the renderer that minted the session
+   * can issue grants on its behalf.
+   */
+  issueGrant(sessionId: string, toolId: string, callerWcId?: number): McpIssueGrantResult {
+    if (!sessionId || typeof sessionId !== "string") {
+      throw new Error("Invalid sessionId");
+    }
+    if (!toolId || typeof toolId !== "string") {
+      throw new Error("Invalid toolId");
+    }
+    if (
+      !this.deps.sessionStore.sessions.has(sessionId) &&
+      !this.deps.sessionStore.httpSessions.has(sessionId)
+    ) {
+      throw new Error("Session is no longer active");
+    }
+    const pinnedWcId = this.deps.sessionStore.sessionWebContentsMap.get(sessionId);
+    if (pinnedWcId === undefined) {
+      throw new Error("Session is not eligible for renderer tier elevation");
+    }
+    if (callerWcId !== undefined && callerWcId !== pinnedWcId) {
+      throw new Error("Caller is not the pinned renderer for this session");
+    }
+    const entry = this.deps.sessionStore.grantCache.issueGrant(sessionId, toolId);
+    return {
+      sessionId,
+      toolId,
+      ttlMs: entry.ttlMs,
+      expiresAt: entry.expiresAt,
+    };
+  }
+
+  /**
+   * Drop every grant currently held by the session. Caller-pin checked
+   * identically to {@link issueGrant}. Returns the count of revoked
+   * grants for the renderer's confirmation copy.
+   */
+  revokeSessionGrants(sessionId: string, callerWcId?: number): McpRevokeSessionGrantsResult {
+    if (!sessionId || typeof sessionId !== "string") {
+      throw new Error("Invalid sessionId");
+    }
+    // Caller-pin is enforced when the session is still alive; if the
+    // session has already drained (idle reaper / explicit close) the
+    // pin map is empty and the revoke becomes an idempotent no-op so
+    // the renderer's cleanup pass after a banner dismissal succeeds
+    // even though there's nothing left to drop.
+    const pinnedWcId = this.deps.sessionStore.sessionWebContentsMap.get(sessionId);
+    if (pinnedWcId !== undefined && callerWcId !== undefined && callerWcId !== pinnedWcId) {
+      throw new Error("Caller is not the pinned renderer for this session");
+    }
+    const revokedCount = this.deps.sessionStore.grantCache.revokeSession(sessionId, "user");
+    return { sessionId, revokedCount };
   }
 
   getStatus(): {

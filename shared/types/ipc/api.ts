@@ -1412,13 +1412,32 @@ export interface ElectronAPI {
       callback: (snapshot: import("./mcpServer.js").McpRuntimeSnapshot) => void
     ): () => void;
     /**
-     * Elevate an active help-session's tier (Approve once). Server-side
-     * validates that the new tier is not a downgrade.
+     * Elevate an active help-session's tier (Always allow — pairs with a
+     * project-level `daintreeMcpTier` write). Server-side validates that
+     * the new tier is not a downgrade. The per-tool "Approve once" flow
+     * uses {@link issueGrant} instead (#8442).
      */
     setSessionTier(
       sessionId: string,
       tier: "workbench" | "action" | "system"
     ): Promise<{ sessionId: string; tier: "workbench" | "action" | "system" }>;
+    /**
+     * Mint a per-`(sessionId, toolId)` time-bounded grant — the "Approve
+     * once" pathway that replaces sticky session-tier elevation for one-
+     * off tool calls. Returns the TTL window so the renderer can render
+     * a countdown without polling (#8442).
+     */
+    issueGrant(
+      sessionId: string,
+      toolId: string
+    ): Promise<import("./mcpServer.js").McpIssueGrantResult>;
+    /**
+     * Drop every grant currently held by the session. Returns the count
+     * of revoked grants for the renderer's confirmation copy.
+     */
+    revokeSessionGrants(
+      sessionId: string
+    ): Promise<import("./mcpServer.js").McpRevokeSessionGrantsResult>;
     /**
      * Subscribe to tier-not-permitted pushes for the pinned help-session in
      * this WebContents. The callback fires when a tool call is denied because
@@ -1431,6 +1450,14 @@ export interface ElectronAPI {
         tier: string;
         targetTier: "workbench" | "action" | "system" | null;
       }) => void
+    ): () => void;
+    /**
+     * Subscribe to grant lifecycle events (`issued`, `expired`, `revoked`)
+     * for the pinned help-session in this WebContents. Targeted send —
+     * grant state is session-scoped (#8442).
+     */
+    onGrantLifecycle(
+      callback: (payload: import("./mcpServer.js").McpGrantLifecyclePayload) => void
     ): () => void;
   };
   helpAssistant: {

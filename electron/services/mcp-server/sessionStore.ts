@@ -2,6 +2,18 @@ import type { ActionContext } from "../../../shared/types/actions.js";
 import type { McpTier, McpSseSession, McpHttpSession } from "./shared.js";
 import { MCP_SSE_IDLE_TIMEOUT_MS } from "./shared.js";
 import type { CallToolResultLike, DedupCacheEntry } from "./sessionDedup.js";
+import { GrantCache, type GrantLifecycleEmitter } from "./grantCache.js";
+
+export interface SessionStoreOptions {
+  /**
+   * Lifecycle emitter wired through to the {@link GrantCache} so audit
+   * entries and renderer broadcasts fire for every `issued`/`expired`/
+   * `revoked` transition. Optional so the bare `new SessionStore(...)`
+   * test fixture path still constructs without an emitter (the cache
+   * defaults to silent).
+   */
+  emitGrantLifecycle?: GrantLifecycleEmitter;
+}
 
 export class SessionStore {
   readonly sessions = new Map<string, McpSseSession>();
@@ -24,11 +36,22 @@ export class SessionStore {
   // return the original result). Cleared on drain and idle expiry.
   readonly dedupInFlight = new Map<string, Map<string, Promise<CallToolResultLike>>>();
   readonly dedupResultCache = new Map<string, Map<string, DedupCacheEntry>>();
+  /**
+   * Per-`(sessionId, toolId)` time-bounded grants — replaces the sticky
+   * `sessionTierMap` elevation pathway for the "Approve once" flow (#8442).
+   * Co-located with the other session-scoped maps so a single drain or
+   * idle-timer firing tears them down in lockstep.
+   */
+  readonly grantCache: GrantCache;
 
   private readonly cleanupResourceSubscriptionsFn: (sessionId: string) => void;
 
-  constructor(cleanupResourceSubscriptions: (sessionId: string) => void) {
+  constructor(
+    cleanupResourceSubscriptions: (sessionId: string) => void,
+    options: SessionStoreOptions = {}
+  ) {
     this.cleanupResourceSubscriptionsFn = cleanupResourceSubscriptions;
+    this.grantCache = new GrantCache({ emit: options.emitGrantLifecycle });
   }
 
   clearDedupState(sessionId: string): void {
@@ -45,6 +68,10 @@ export class SessionStore {
       this.sessionWebContentsMap.delete(sessionId);
       this.sessionContextMap.delete(sessionId);
       this.clearDedupState(sessionId);
+      // Revoke through the audit-emitting path so the trail closes
+      // (`grant.revoked` with `session-idle` reason) instead of silently
+      // dropping the entries.
+      this.grantCache.revokeSession(sessionId, "session-idle");
       this.cleanupResourceSubscriptionsFn(sessionId);
       session.transport.close().catch(() => {
         // ignore close errors during idle timeout cleanup
@@ -70,6 +97,7 @@ export class SessionStore {
       this.sessionWebContentsMap.delete(sessionId);
       this.sessionContextMap.delete(sessionId);
       this.clearDedupState(sessionId);
+      this.grantCache.revokeSession(sessionId, "session-idle");
       this.cleanupResourceSubscriptionsFn(sessionId);
       session.transport.close().catch(() => {
         // ignore close errors during idle timeout cleanup
@@ -123,6 +151,12 @@ export class SessionStore {
     this.sessionTierMap.clear();
     this.sessionWebContentsMap.clear();
     this.sessionContextMap.clear();
+    // Wholesale teardown: drop grants without per-entry audit noise but
+    // keep the sweep timer so the store can be reused after a subsequent
+    // `start()`. The audit ring buffer still carries each grant's original
+    // `grant.issued` entry; teardown is an environmental event, not a user
+    // action worth a `grant.revoked` per tool.
+    this.grantCache.clearAll();
 
     for (const bucket of this.resourceSubscriptions.values()) {
       for (const unsub of bucket.values()) {

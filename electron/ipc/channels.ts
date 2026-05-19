@@ -567,11 +567,33 @@ export const CHANNELS = {
    */
   MCP_TIER_NOT_PERMITTED: "mcp-server:tier-not-permitted",
   /**
-   * Elevate the tier of an active help-session (Approve once). Mutates
+   * Elevate the tier of an active help-session (Always allow). Mutates
    * `sessionTierMap` in-place — never downgrades, so a malicious renderer
-   * cannot drop its own privileges.
+   * cannot drop its own privileges. The per-tool "Approve once" flow now
+   * uses {@link MCP_SERVER_ISSUE_GRANT} instead — this channel is reserved
+   * for the standing-permission path that pairs with a project-level
+   * `daintreeMcpTier` write (#8442).
    */
   MCP_SERVER_SET_SESSION_TIER: "mcp-server:set-session-tier",
+  /**
+   * Mint a per-`(sessionId, toolId)` time-bounded grant for the named tool
+   * (Approve once). The main process owns the TTL constant. Caller-pin
+   * checked: only the renderer that minted the help-session can issue
+   * grants on its behalf.
+   */
+  MCP_SERVER_ISSUE_GRANT: "mcp-server:issue-grant",
+  /**
+   * Revoke every grant currently held by the named session. Returns the
+   * count of revoked grants for the renderer's confirmation copy. Caller-
+   * pin checked.
+   */
+  MCP_SERVER_REVOKE_SESSION_GRANTS: "mcp-server:revoke-session-grants",
+  /**
+   * Push channel: a grant lifecycle event (`issued`, `expired`, `revoked`)
+   * fired for the help-session pinned to this renderer. Targeted send —
+   * grant state is session-scoped and never broadcast.
+   */
+  MCP_GRANT_LIFECYCLE: "mcp-server:grant-lifecycle",
 
   // Voice Input channels
   VOICE_INPUT_GET_SETTINGS: "voice-input:get-settings",
