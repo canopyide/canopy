@@ -30,11 +30,12 @@ describe("GitHubStatsToolbarButton freshness wiring", () => {
     expect(source).toContain("freshnessSuffix");
   });
 
-  it("does not import or use freshnessOpacityClass (issue #8180)", () => {
+  it("does not import or use freshnessOpacityClass or freshnessClass (issue #8180)", () => {
     // Opacity-as-stale reads as a disabled control on always-clickable pills
     // (WCAG 1.4.3/1.4.11/4.1.2). Staleness is carried by FreshnessGlyph + the
     // freshnessSuffix tooltip copy instead.
     expect(source).not.toContain("freshnessOpacityClass");
+    expect(source).not.toContain("freshnessClass");
   });
 
   it("passes FreshnessGlyph to all three GitHubStatPill instances", () => {

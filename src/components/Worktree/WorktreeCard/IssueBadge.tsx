@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import { useIssueTooltip } from "@/hooks/useGitHubTooltip";
 import { useGitHubBadgeTooltip } from "./hooks/useGitHubBadgeTooltip";
 import { useGitHubBadgeFreshness } from "./hooks/useGitHubBadgeFreshness";
-import { freshnessOpacityClass, freshnessSuffix } from "@/components/Layout/FreshnessUtils";
+import { freshnessClass, freshnessSuffix } from "@/components/Layout/FreshnessUtils";
 import { IssueTooltipContent, TooltipLoading, TokenMissingTooltip } from "./GitHubTooltipContent";
 
 interface IssueBadgeProps {
@@ -82,7 +82,7 @@ export function IssueBadge({
           data-no-dnd
           className={cn(
             "flex items-center gap-1.5 text-left cursor-pointer transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-daintree-accent min-w-0",
-            freshnessOpacityClass(freshnessLevel),
+            freshnessClass(freshnessLevel),
             isHeadline ? "text-[13px]" : "text-xs"
           )}
           aria-disabled={!isActive || undefined}
@@ -112,7 +112,7 @@ export function IssueBadge({
                   ? isActive
                     ? "text-text-primary font-medium"
                     : "text-text-secondary font-medium"
-                  : "text-text-primary/90"
+                  : "text-text-primary"
             )}
           >
             {issueTitle ||

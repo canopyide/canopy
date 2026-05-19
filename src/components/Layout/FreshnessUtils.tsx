@@ -1,14 +1,14 @@
 import { Clock } from "lucide-react";
 import type { FreshnessLevel } from "@/hooks/useRepositoryStats";
 
-export function freshnessOpacityClass(level: FreshnessLevel): string {
+export function freshnessClass(level: FreshnessLevel): string {
   switch (level) {
     case "aging":
       return "opacity-75";
     case "stale-disk":
-      return "opacity-60";
+      return "border-l-2 border-border-default italic";
     case "errored":
-      return "opacity-50";
+      return "border-l-2 border-border-default italic";
     case "fresh":
     default:
       return "";

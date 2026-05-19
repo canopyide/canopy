@@ -2,27 +2,31 @@
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
 import {
-  freshnessOpacityClass,
+  freshnessClass,
   FreshnessGlyph,
   formatTimeSince,
   freshnessSuffix,
 } from "../FreshnessUtils";
 
-describe("freshnessOpacityClass", () => {
+describe("freshnessClass", () => {
   it("returns empty string for fresh level", () => {
-    expect(freshnessOpacityClass("fresh")).toBe("");
+    expect(freshnessClass("fresh")).toBe("");
   });
 
   it("returns opacity-75 for aging level", () => {
-    expect(freshnessOpacityClass("aging")).toBe("opacity-75");
+    expect(freshnessClass("aging")).toBe("opacity-75");
   });
 
-  it("returns opacity-60 for stale-disk level", () => {
-    expect(freshnessOpacityClass("stale-disk")).toBe("opacity-60");
+  it("returns border-l-2 border-border-default italic for stale-disk level, not opacity", () => {
+    const result = freshnessClass("stale-disk");
+    expect(result).toBe("border-l-2 border-border-default italic");
+    expect(result).not.toMatch(/\bopacity-/);
   });
 
-  it("returns opacity-50 for errored level", () => {
-    expect(freshnessOpacityClass("errored")).toBe("opacity-50");
+  it("returns border-l-2 border-border-default italic for errored level, not opacity", () => {
+    const result = freshnessClass("errored");
+    expect(result).toBe("border-l-2 border-border-default italic");
+    expect(result).not.toMatch(/\bopacity-/);
   });
 });
 
