@@ -3,6 +3,12 @@ import { PERF_MARKS } from "@shared/perf/marks";
 import { markRendererPerformance } from "@/utils/performance";
 import { logDebug } from "@/utils/logger";
 
+// Renderer-side backpressure layer that throttles xterm consumption. The
+// IPC-layer counterparts (the burst absorber between PTY host and renderer) live
+// in electron/services/pty/types.ts: IPC_MAX_QUEUE_BYTES (3MB ceiling),
+// IPC_HIGH_WATERMARK_PERCENT (67, pause PTY), IPC_LOW_WATERMARK_PERCENT (33,
+// resume PTY). These two layers are independent: the IPC queue absorbs PTY
+// bursts, these watermarks pace how fast xterm drains them.
 const RENDERER_HIGH_WATERMARK_BYTES = 128 * 1024;
 const RENDERER_LOW_WATERMARK_BYTES = 32 * 1024;
 const COALESCE_BATCH_CAP_BYTES = 256 * 1024;

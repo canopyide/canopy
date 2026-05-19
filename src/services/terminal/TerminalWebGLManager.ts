@@ -165,6 +165,10 @@ export class TerminalWebGLManager {
   // run only the local resize-like reset through the pinned 0.19 internal shape
   // and follow with a full terminal.refresh(). If that internal shape drifts,
   // fall back to releasing/reacquiring only this context.
+  // Recurrence signature to watch for when triaging: ~12 concurrent agents, a
+  // Claude Code status line rewritten via \r at 1Hz, and visible-but-unfocused
+  // panes that take no further writes staying corrupted until a resize or
+  // atlasResync (see #8080).
   private atlasResyncPending = new Set<string>();
   private atlasResyncRafId: number | null = null;
 
