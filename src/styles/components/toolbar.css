@@ -89,8 +89,13 @@
  * carries the signal instead. Dark themes override --toolbar-control-armed-shadow
  * to a white-tinted ring; a black ring goes invisible on dark surfaces. Comes
  * after :hover in source order so the ring survives hover-over-armed (equal
- * specificity, later wins). */
-.toolbar-icon-button[aria-pressed="true"],
+ * specificity, later wins). The sidebar toggle opts out via
+ * [data-sidebar-toggle]: it's pressed nearly all the time (sidebar visible),
+ * so an always-on armed state reads as noise rather than state — the
+ * PanelLeftClose/PanelLeftOpen icon swap carries the signal instead (#8357).
+ * The :not() lifts armed to (0,3,0); hover stays (0,2,0) so other buttons are
+ * unaffected. */
+.toolbar-icon-button[aria-pressed="true"]:not([data-sidebar-toggle]),
 .toolbar-icon-button[aria-expanded="true"],
 .toolbar-icon-button[data-state="open"],
 .toolbar-agent-button[aria-pressed="true"],
