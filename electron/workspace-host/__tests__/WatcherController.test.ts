@@ -196,6 +196,44 @@ describe("WatcherController", () => {
     expect(host.onWatcherRecovered).toHaveBeenCalledTimes(1);
   });
 
+  it("does not fire a false onWatcherRecovered after disable then re-enable", () => {
+    // Degrade, then simulate a feature-disable (stop with budget reset) and a
+    // later re-enable that arms recursive cleanly. No real recovery occurred,
+    // so onWatcherRecovered must not fire.
+    mockRecursiveStartResult = false;
+    mockGitOnlyStartResult = true;
+    const host = makeHost({ isCurrent: true });
+    const ctrl = new WatcherController(host as WatcherControllerHost);
+
+    ctrl.start();
+    expect(ctrl.currentMode).toBe("git-only");
+
+    ctrl.stop(); // feature disable — ends the degradation episode
+    mockRecursiveStartResult = true;
+    ctrl.start("recursive");
+
+    expect(ctrl.currentMode).toBe("recursive");
+    expect(host.onWatcherRecovered).not.toHaveBeenCalled();
+  });
+
+  it("preserves the recovery signal across a benign rotation (stop(false))", () => {
+    // update() calls stop(false) then start(); a degraded watcher rotating
+    // this way must still signal recovery when recursive finally arms.
+    mockRecursiveStartResult = false;
+    mockGitOnlyStartResult = true;
+    const host = makeHost({ isCurrent: true });
+    const ctrl = new WatcherController(host as WatcherControllerHost);
+
+    ctrl.start();
+    expect(ctrl.currentMode).toBe("git-only");
+
+    mockRecursiveStartResult = true;
+    ctrl.update(); // stop(false) + start() — preserves wasDegraded
+
+    expect(ctrl.currentMode).toBe("recursive");
+    expect(host.onWatcherRecovered).toHaveBeenCalledTimes(1);
+  });
+
   it("fires onWatcherRecovered after a synchronous onWatcherFailed fallback recovers", () => {
     // Recursive fails + fires onWatcherFailed synchronously; git-only succeeds.
     mockRecursiveStartResult = false;

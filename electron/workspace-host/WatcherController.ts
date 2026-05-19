@@ -197,6 +197,11 @@ export class WatcherController {
       }
       this.watcherRetryCount = 0;
       this.retryBudgetResetCount = 0;
+      // A true shutdown / feature-disable ends the degradation episode, so a
+      // later re-arm is a fresh start, not a recovery. Benign rotations
+      // (stop(false) via update()) preserve the flag so a legitimate
+      // recovery still signals — mirrors the retry-budget lifecycle.
+      this.wasDegraded = false;
     }
     this.gitWatchRefreshPending = false;
   }

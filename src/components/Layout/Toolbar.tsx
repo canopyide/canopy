@@ -715,7 +715,10 @@ export function Toolbar({
             data-toolbar-item=""
           />
         ),
-        isAvailable: showDeveloperTools,
+        // Auto-surface the Problems button when the watcher is degraded so
+        // the persistent Tier-1 indicator is visible even for users who
+        // haven't enabled developer tools (the default).
+        isAvailable: showDeveloperTools || watcherDegraded,
       },
       "assistant-toggle": {
         render: () => <ToolbarAssistantButton key="assistant-toggle" data-toolbar-item="" />,
