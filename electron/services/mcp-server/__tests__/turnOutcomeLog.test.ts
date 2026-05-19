@@ -20,10 +20,14 @@ function makeAuditRecord(overrides: Partial<McpAuditRecord>): McpAuditRecord {
     argsSummary: overrides.argsSummary ?? "{}",
     result: overrides.result ?? "success",
     durationMs: overrides.durationMs ?? 12,
+    schemaVersion: overrides.schemaVersion ?? 1,
+    severity: overrides.severity ?? "info",
     ...(overrides.errorCode !== undefined ? { errorCode: overrides.errorCode } : {}),
     ...(overrides.confirmationDecision !== undefined
       ? { confirmationDecision: overrides.confirmationDecision }
       : {}),
+    ...(overrides.turnId !== undefined ? { turnId: overrides.turnId } : {}),
+    ...(overrides.repeatCount !== undefined ? { repeatCount: overrides.repeatCount } : {}),
   };
 }
 

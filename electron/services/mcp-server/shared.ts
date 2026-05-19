@@ -105,6 +105,7 @@ export const USER_REJECTED_CODE = "USER_REJECTED";
 export const CONFIRMATION_TIMEOUT_CODE = "CONFIRMATION_TIMEOUT";
 export const ELICITATION_FAILED_CODE = "ELICITATION_FAILED";
 export const EXECUTION_ERROR_CODE = "EXECUTION_ERROR";
+export const PRE_AUTH_FAILED_CODE = "PRE_AUTH_FAILED";
 
 /**
  * Application-level convention: codes here flag transient failures that a

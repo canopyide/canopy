@@ -9,6 +9,8 @@ import {
   MCP_AUDIT_DEFAULT_MAX_RECORDS,
   MCP_AUDIT_MAX_RECORDS,
   MCP_AUDIT_MIN_RECORDS,
+  MCP_AUDIT_SCHEMA_VERSION,
+  computeMcpAuditSeverity,
 } from "../../../shared/types/ipc/mcpServer.js";
 import type { McpTier } from "./shared.js";
 import {
@@ -18,6 +20,7 @@ import {
   USER_REJECTED_CODE,
   CONFIRMATION_TIMEOUT_CODE,
   minimumPermittingTier,
+  PRE_AUTH_FAILED_CODE,
 } from "./shared.js";
 
 export class AuditService {
@@ -30,6 +33,9 @@ export class AuditService {
    * no `toolId`/`tier` is known. Reset on app restart by design.
    */
   private auth401Count = 0;
+  /** Pre-auth record coalescing state — see `recordAuth401()`. */
+  private lastPreAuthRecordId: string | null = null;
+  private lastPreAuthRecordAt = 0;
 
   constructor(
     private readonly saveConfig: (patch: Record<string, unknown>) => void,
@@ -41,8 +47,14 @@ export class AuditService {
     const config = this.readConfig();
     const persisted = Array.isArray(config.auditLog) ? config.auditLog : [];
     const cap = this.normalizeMaxRecords(config.auditMaxRecords);
-    this.records =
-      persisted.length > cap ? persisted.slice(persisted.length - cap) : [...persisted];
+    const backfilled = persisted.map((r: Record<string, unknown>) => ({
+      ...r,
+      schemaVersion: (r.schemaVersion as number) ?? MCP_AUDIT_SCHEMA_VERSION,
+      severity:
+        (r.severity as string) ??
+        computeMcpAuditSeverity(r.result as McpAuditResult, r.errorCode as string | undefined),
+    })) as McpAuditRecord[];
+    this.records = backfilled.length > cap ? backfilled.slice(backfilled.length - cap) : backfilled;
     this.hydrated = true;
   }
 
@@ -116,6 +128,8 @@ export class AuditService {
       argsSummary: input.argsSummary,
       result: classification.result,
       durationMs: Math.max(0, Math.round(input.durationMs)),
+      schemaVersion: MCP_AUDIT_SCHEMA_VERSION,
+      severity: computeMcpAuditSeverity(classification.result, classification.errorCode),
     };
     if (classification.errorCode !== undefined) {
       record.errorCode = classification.errorCode;
@@ -127,26 +141,77 @@ export class AuditService {
       record.tierHint = minimumPermittingTier(input.toolId);
     }
 
-    this.records.push(record);
-    const cap = this.normalizeMaxRecords(this.readConfig().auditMaxRecords);
-    if (this.records.length > cap) {
-      this.records.splice(0, this.records.length - cap);
-    }
-    this.scheduleFlush();
+    this.enqueueAndTrim(record);
   }
 
   /**
-   * Increment the session-scoped 401 counter. Called from the HTTP lifecycle
-   * on bearer auth failures (missing/malformed/revoked) before any tool
-   * dispatch occurs. Gated by the same `auditEnabled` kill switch as
-   * `appendRecord` so toggling audit logging off uniformly silences both
-   * record writes and counter increments.
+   * Increment the session-scoped 401 counter and emit a rate-limited
+   * pre-auth audit record. Called from the HTTP lifecycle on bearer auth
+   * failures (missing/malformed/revoked) before any tool dispatch occurs.
+   * Gated by the same `auditEnabled` kill switch as `appendRecord`.
+   *
+   * Rate limit: the first 401 writes a record immediately. Subsequent 401s
+   * within the coalesce window (1s) increment `repeatCount` on the most
+   * recent pre-auth record rather than writing duplicates. `repeatCount` on
+   * the record body tracks the total occurrences, with `undefined` for
+   * a single occurrence and `>= 2` once coalescing kicks in.
    */
   recordAuth401(): void {
     if (this.readConfig().auditEnabled === false) return;
     this.auth401Count += 1;
+    this.hydrate();
+
+    const now = Date.now();
+    const COALESCE_WINDOW_MS = 1000;
+
+    if (this.lastPreAuthRecordId !== null && now - this.lastPreAuthRecordAt < COALESCE_WINDOW_MS) {
+      const existing = this.records.find((r) => r.id === this.lastPreAuthRecordId);
+      if (existing && existing.errorCode === PRE_AUTH_FAILED_CODE) {
+        existing.timestamp = now;
+        existing.repeatCount = (existing.repeatCount ?? 1) + 1;
+        this.scheduleFlush();
+        return;
+      }
+    }
+
+    const record: McpAuditRecord = {
+      id: randomUUID(),
+      timestamp: now,
+      toolId: "mcp.pre-auth",
+      sessionId: "",
+      tier: "system",
+      argsSummary: "pre-auth request rejected",
+      result: "unauthorized",
+      errorCode: PRE_AUTH_FAILED_CODE,
+      durationMs: 0,
+      schemaVersion: MCP_AUDIT_SCHEMA_VERSION,
+      severity: computeMcpAuditSeverity("unauthorized", PRE_AUTH_FAILED_CODE),
+    };
+
+    this.lastPreAuthRecordId = record.id;
+    this.lastPreAuthRecordAt = now;
+
+    this.enqueueAndTrim(record);
   }
 
+  private enqueueAndTrim(record: McpAuditRecord): void {
+    this.records.push(record);
+    const cap = this.normalizeMaxRecords(this.readConfig().auditMaxRecords);
+    if (this.records.length > cap) {
+      const evicted = this.records.splice(0, this.records.length - cap);
+      // If the coalesce target was evicted, reset so the next 401 writes a new record.
+      if (this.lastPreAuthRecordId) {
+        for (const r of evicted) {
+          if (r.id === this.lastPreAuthRecordId) {
+            this.lastPreAuthRecordId = null;
+            this.lastPreAuthRecordAt = 0;
+            break;
+          }
+        }
+      }
+    }
+    this.scheduleFlush();
+  }
   /**
    * Read the session-scoped audit health counters. Renderer-facing.
    */
