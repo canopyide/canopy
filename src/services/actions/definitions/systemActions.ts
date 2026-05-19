@@ -55,8 +55,10 @@ export function registerSystemActions(actions: ActionRegistry, _callbacks: Actio
       danger: "safe",
       scope: "renderer",
       argsSchema: z.object({ command: z.string() }),
+      resultSchema: z.object({ available: z.boolean() }),
       run: async ({ command }) => {
-        return await systemClient.checkCommand(command);
+        const result = await systemClient.checkCommand(command);
+        return { available: result };
       },
     })
   );
@@ -71,8 +73,10 @@ export function registerSystemActions(actions: ActionRegistry, _callbacks: Actio
       danger: "safe",
       scope: "renderer",
       argsSchema: z.object({ path: z.string() }),
+      resultSchema: z.object({ exists: z.boolean() }),
       run: async ({ path }) => {
-        return await systemClient.checkDirectory(path);
+        const result = await systemClient.checkDirectory(path);
+        return { exists: result };
       },
     })
   );
@@ -85,8 +89,10 @@ export function registerSystemActions(actions: ActionRegistry, _callbacks: Actio
     kind: "query",
     danger: "safe",
     scope: "renderer",
+    resultSchema: z.object({ path: z.string() }),
     run: async () => {
-      return await systemClient.getHomeDir();
+      const result = await systemClient.getHomeDir();
+      return { path: result };
     },
   }));
 
@@ -98,6 +104,7 @@ export function registerSystemActions(actions: ActionRegistry, _callbacks: Actio
     kind: "query",
     danger: "safe",
     scope: "renderer",
+    resultSchema: z.record(z.string(), z.string()),
     run: async () => {
       return await cliAvailabilityClient.get();
     },
@@ -127,6 +134,7 @@ export function registerSystemActions(actions: ActionRegistry, _callbacks: Actio
       danger: "safe",
       scope: "renderer",
       argsSchema: FileSearchPayloadSchema,
+      resultSchema: z.object({ files: z.array(z.string()) }),
       run: async (payload, ctx: ActionContext) => {
         const resolvedCwd = payload.cwd ?? ctx.activeWorktreePath;
         if (!resolvedCwd) throw new Error("No active worktree");
@@ -153,9 +161,26 @@ export function registerSystemActions(actions: ActionRegistry, _callbacks: Actio
           projectPath: z.string().optional(),
         })
         .optional(),
+      resultSchema: z.object({
+        commands: z.array(
+          z.object({
+            id: z.string(),
+            label: z.string(),
+            description: z.string(),
+            scope: z.string(),
+            agentId: z.string(),
+            sourcePath: z.string().optional(),
+            kind: z.string().optional(),
+          })
+        ),
+      }),
       run: async (payload) => {
         const agentId = payload?.agentId ?? "claude";
-        return await slashCommandsClient.list({ agentId, projectPath: payload?.projectPath });
+        const result = await slashCommandsClient.list({
+          agentId,
+          projectPath: payload?.projectPath,
+        });
+        return { commands: result };
       },
     })
   );
@@ -207,8 +232,10 @@ export function registerSystemActions(actions: ActionRegistry, _callbacks: Actio
     kind: "query",
     danger: "safe",
     scope: "renderer",
+    resultSchema: z.object({ available: z.boolean() }),
     run: async () => {
-      return await copyTreeClient.isAvailable();
+      const result = await copyTreeClient.isAvailable();
+      return { available: result };
     },
   }));
 
@@ -231,6 +258,17 @@ export function registerSystemActions(actions: ActionRegistry, _callbacks: Actio
           options: CopyTreeOptionsSchema.optional(),
         })
         .optional(),
+      resultSchema: z.object({
+        content: z.string(),
+        fileCount: z.number(),
+        error: z.string().optional(),
+        stats: z
+          .object({
+            totalSize: z.number(),
+            duration: z.number(),
+          })
+          .optional(),
+      }),
       run: async (args, ctx: ActionContext) => {
         const worktreeId = args?.worktreeId ?? ctx.activeWorktreeId;
         if (!worktreeId) throw new Error("No active worktree");
@@ -319,8 +357,10 @@ export function registerSystemActions(actions: ActionRegistry, _callbacks: Actio
             "Relative path within the worktree (e.g. 'src', 'src/components'). Omit for root."
           ),
       }),
+      resultSchema: z.object({ nodes: z.array(z.unknown()) }),
       run: async ({ worktreeId, dirPath }) => {
-        return await copyTreeClient.getFileTree(worktreeId, dirPath);
+        const result = await copyTreeClient.getFileTree(worktreeId, dirPath);
+        return { nodes: result };
       },
     })
   );
