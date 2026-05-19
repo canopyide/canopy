@@ -206,6 +206,8 @@ const dispose = host.registerForgeProvider({ id: "linear", label: "Linear" }, im
 - Returns a disposer that unbinds the single impl. Calling `registerForgeProvider` again with the same `descriptor.id` overwrites the prior binding; the older disposer becomes inert.
 - All bindings are automatically removed on plugin unload.
 
+For the end-to-end walkthrough — manifest entry, implementing `ForgeProviderImpl`, state normalization, capabilities, and tests — see [Implementing a forge provider](./forge-provider.md).
+
 ## `settings` — _Planned_
 
 Reads and subscribes to plugin-declared settings.
