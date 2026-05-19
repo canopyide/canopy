@@ -1,6 +1,8 @@
 import { Clock } from "lucide-react";
 import type { FreshnessLevel } from "@/hooks/useRepositoryStats";
 
+export type BadgeFreshnessCause = "stale" | "rate-limit" | "circuit-breaker";
+
 export function freshnessClass(level: FreshnessLevel): string {
   switch (level) {
     case "aging":
@@ -49,6 +51,33 @@ export function freshnessSuffix(
     case "errored":
       return " · couldn't reach GitHub";
     case "fresh":
+    default:
+      return "";
+  }
+}
+
+export function badgeFreshnessSuffix(
+  cause: BadgeFreshnessCause | undefined,
+  lastUpdated: number | null,
+  now: number,
+  resetAt?: number | null
+): string {
+  switch (cause) {
+    case "stale":
+      return ` · updated ${formatTimeSince(lastUpdated, now)}`;
+    case "rate-limit": {
+      let suffix = " · rate limited";
+      if (resetAt != null && resetAt > now) {
+        const retryTime = new Intl.DateTimeFormat("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+        }).format(new Date(resetAt));
+        suffix += `, retry at ${retryTime}`;
+      }
+      return suffix;
+    }
+    case "circuit-breaker":
+      return " · data may be stale — PR detection paused";
     default:
       return "";
   }

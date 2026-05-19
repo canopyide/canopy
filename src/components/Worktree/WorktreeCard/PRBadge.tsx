@@ -1,13 +1,13 @@
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { Clock, CornerDownRight, GitPullRequest } from "lucide-react";
+import { Clock, CloudOff, CornerDownRight, GitPullRequest } from "lucide-react";
 import type { CIStatus } from "@shared/types/forge";
 import type { NormalizedPRState } from "@shared/types/forge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import { usePRTooltip } from "@/hooks/useGitHubTooltip";
 import { useGitHubBadgeTooltip } from "./hooks/useGitHubBadgeTooltip";
 import { useGitHubBadgeFreshness } from "./hooks/useGitHubBadgeFreshness";
-import { freshnessSuffix } from "@/components/Layout/FreshnessUtils";
+import { badgeFreshnessSuffix } from "@/components/Layout/FreshnessUtils";
 import { PRTooltipContent, TooltipLoading, TokenMissingTooltip } from "./GitHubTooltipContent";
 import { getCIStatusVisual } from "@/lib/worktreeCIStatus";
 
@@ -21,6 +21,8 @@ interface PRBadgeProps {
   isActive?: boolean;
   underlineOnHover?: boolean;
   rowLastUpdatedAt?: number;
+  /** Service-wide PR detection circuit breaker tripped — this rollup may be stale. */
+  prDetectionPaused?: boolean;
 }
 
 export function PRBadge({
@@ -33,6 +35,7 @@ export function PRBadge({
   isActive,
   underlineOnHover,
   rowLastUpdatedAt,
+  prDetectionPaused,
 }: PRBadgeProps) {
   const { data, loading, error, missingToken, fetchTooltip, reset } = usePRTooltip(
     worktreePath,
@@ -47,7 +50,7 @@ export function PRBadge({
     onOpen,
   });
 
-  const { freshnessLevel, cacheLastUpdatedAt, now } = useGitHubBadgeFreshness(
+  const { freshnessCause, cacheLastUpdatedAt, rateLimitResetAt, now } = useGitHubBadgeFreshness(
     "pr",
     rowLastUpdatedAt
   );
@@ -68,15 +71,33 @@ export function PRBadge({
 
   const ciVisual = getCIStatusVisual(prCiStatus);
 
+  const showStaleGlyph = freshnessCause === "stale" && !missingToken;
+  const showPausedGlyph =
+    (freshnessCause === "rate-limit" ||
+      freshnessCause === "circuit-breaker" ||
+      (prDetectionPaused ?? false)) &&
+    !missingToken;
+
   const ariaLabel = missingToken
     ? "Configure GitHub token to see PR details"
-    : ciVisual
-      ? `Open ${prStateLabel} pull request #${prNumber} on GitHub — ${ciVisual.ariaLabel}`
-      : `Open ${prStateLabel} pull request #${prNumber} on GitHub`;
+    : (ciVisual
+        ? `Open ${prStateLabel} pull request #${prNumber} on GitHub — ${ciVisual.ariaLabel}`
+        : `Open ${prStateLabel} pull request #${prNumber} on GitHub`) +
+      (freshnessCause === "rate-limit"
+        ? " — GitHub rate limited"
+        : freshnessCause === "circuit-breaker" || (prDetectionPaused ?? false)
+          ? " — PR detection paused"
+          : "");
 
   const freshnessSuffixStr = useMemo(
-    () => freshnessSuffix(freshnessLevel, rowLastUpdatedAt ?? cacheLastUpdatedAt, now),
-    [freshnessLevel, rowLastUpdatedAt, cacheLastUpdatedAt, now]
+    () =>
+      badgeFreshnessSuffix(
+        freshnessCause,
+        rowLastUpdatedAt ?? cacheLastUpdatedAt,
+        now,
+        rateLimitResetAt
+      ),
+    [freshnessCause, rowLastUpdatedAt, cacheLastUpdatedAt, rateLimitResetAt, now]
   );
 
   return (
@@ -126,12 +147,15 @@ export function PRBadge({
               )}
             </span>
           )}
-          {freshnessLevel === "aging" && !missingToken && (
+          {showStaleGlyph && (
             <Clock
               className="w-3 h-3 shrink-0 text-text-muted"
               strokeWidth={2.5}
               aria-hidden="true"
             />
+          )}
+          {showPausedGlyph && (
+            <CloudOff className="w-3 h-3 shrink-0 text-text-muted" aria-hidden="true" />
           )}
         </button>
       </TooltipTrigger>
