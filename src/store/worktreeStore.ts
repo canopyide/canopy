@@ -3,6 +3,7 @@ import { terminalInstanceService } from "@/services/TerminalInstanceService";
 import { TerminalRefreshTier } from "@shared/types/panel";
 import { panelKindHasPty } from "@shared/config/panelKindRegistry";
 import type { GitHubIssue, GitHubPR } from "@shared/types/github";
+import type { FleetScopeToken } from "@shared/types/worktree";
 import { useFocusStore } from "@/store/focusStore";
 import { logErrorWithContext } from "@/utils/errorContext";
 import { PERF_MARKS } from "@shared/perf/marks";
@@ -51,6 +52,7 @@ interface WorktreeSelectionState {
   lastFocusedTerminalByWorktree: Map<string, string>;
   isFleetScopeActive: boolean;
   _previousActiveWorktreeId: string | null;
+  _fleetScopeToken: FleetScopeToken | null;
 
   setActiveWorktree: (id: string | null) => void;
   setFocusedWorktree: (id: string | null) => void;
@@ -77,8 +79,8 @@ interface WorktreeSelectionState {
   closeCrossWorktreeDiff: () => void;
   trackTerminalFocus: (worktreeId: string, terminalId: string) => void;
   clearWorktreeFocusTracking: (worktreeId: string) => void;
-  enterFleetScope: () => void;
-  exitFleetScope: () => void;
+  enterFleetScope: () => FleetScopeToken;
+  exitFleetScope: (token: FleetScopeToken) => void;
   reset: () => void;
 }
 
@@ -259,6 +261,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
   lastFocusedTerminalByWorktree: new Map<string, string>(),
   isFleetScopeActive: false,
   _previousActiveWorktreeId: null,
+  _fleetScopeToken: null,
 
   setActiveWorktree: (id) => {
     const previousId = get().activeWorktreeId;
@@ -589,13 +592,21 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
 
   enterFleetScope: () => {
     // Idempotent: first pre-scope activeWorktreeId wins so the restoration
-    // target isn't corrupted by a double-enter.
-    if (get().isFleetScopeActive) return;
+    // target isn't corrupted by a double-enter. Return the existing token so
+    // a caller that re-enters still holds a token that matches the live scope.
+    if (get().isFleetScopeActive) {
+      // Non-null in this branch: an active scope always has a live token.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- branded token narrowing
+      return get()._fleetScopeToken as FleetScopeToken;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- branding an opaque uuid
+    const token = crypto.randomUUID() as FleetScopeToken;
     const activeWorktreeId = get().activeWorktreeId;
     const generation = get()._policyGeneration + 1;
     set({
       isFleetScopeActive: true,
       _previousActiveWorktreeId: activeWorktreeId,
+      _fleetScopeToken: token,
       _policyGeneration: generation,
     });
     // Clear any active maximize so the fleet-scope render path isn't shadowed
@@ -608,7 +619,10 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     // we must not wipe a maximize the user set after the exit.
     void loadTerminalStoreModule()
       .then(({ usePanelStore }) => {
-        if (!get().isFleetScopeActive) return;
+        // Token equality (not `isFleetScopeActive`): if the caller exited and
+        // re-entered scope back-to-back, `isFleetScopeActive` is true again but
+        // for a *different* scope — wiping its maximize would be wrong.
+        if (get()._fleetScopeToken !== token) return;
         usePanelStore.setState({
           maximizedId: null,
           maximizeTarget: null,
@@ -620,10 +634,16 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     // instances actually stream live output inside the fleet grid. The
     // policy function consults `isFleetScopeActive` + the armed set.
     applyWorktreeTerminalPolicy(get, set, activeWorktreeId, generation);
+    return token;
   },
 
-  exitFleetScope: () => {
-    if (!get().isFleetScopeActive) return;
+  exitFleetScope: (token) => {
+    // Token-equality guard: a stale exit whose async caller fired after a
+    // newer `enterFleetScope()` carries an outdated token and is structurally
+    // a no-op here — it can't restore against the wrong scope. This replaces
+    // the prior `isFleetScopeActive` boolean check, which couldn't tell a
+    // stale exit apart from a legitimate one.
+    if (get()._fleetScopeToken !== token) return;
     const restoreId = get()._previousActiveWorktreeId;
     const generation = get()._policyGeneration + 1;
     // Snapshot the primary (most-recently-armed) terminal BEFORE `set()` so
@@ -632,6 +652,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     set({
       isFleetScopeActive: false,
       _previousActiveWorktreeId: null,
+      _fleetScopeToken: null,
       activeWorktreeId: restoreId,
       focusedWorktreeId: restoreId,
       _policyGeneration: generation,
@@ -641,14 +662,23 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     // scope entry. The restored worktree's layout should be computed fresh.
     void loadTerminalStoreModule()
       .then(({ usePanelStore }) => {
+        // Symmetric to the enter-side maximize-clear guard: if a fresh scope
+        // was entered before this microtask drained, `_fleetScopeToken` is
+        // non-null and clearing preMaximizeLayout would clobber the new
+        // scope's legitimate snapshot.
+        if (get()._fleetScopeToken !== null) return;
         usePanelStore.setState({ preMaximizeLayout: null });
       })
       .catch(() => {});
     // Focus the primary (most-recently-armed) terminal so the user lands on
     // a known pane instead of whatever `focusedId` happened to be during
     // fleet scope. Guarded by:
+    //   - token: a new `enterFleetScope()` during this async window mints a
+    //     fresh token (non-null), so restoring focus would fight the new
+    //     scope. `_fleetScopeToken === null` means no scope re-entered.
     //   - generation: prevents a stale microtask from overwriting a newer
-    //     worktree switch.
+    //     worktree switch (also catches concurrent setActiveWorktree /
+    //     selectWorktree that don't touch the token).
     //   - worktreeId match: the user's scope-exit intent is "restore the
     //     pre-scope worktree". If the primary lives elsewhere, focusing it
     //     would let `rendererStoreOrchestrator`'s focusedId subscription
@@ -659,6 +689,7 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
     if (primaryTerminalId && restoreId) {
       void loadTerminalStoreModule()
         .then(({ usePanelStore }) => {
+          if (get()._fleetScopeToken !== null) return;
           if (get()._policyGeneration !== generation) return;
           const terminal = usePanelStore.getState().panelsById[primaryTerminalId];
           if (!terminal) return;
@@ -712,6 +743,13 @@ const createWorktreeSelectionStore: StateCreator<WorktreeSelectionState> = (set,
       lastFocusedTerminalByWorktree: new Map<string, string>(),
       isFleetScopeActive: false,
       _previousActiveWorktreeId: null,
+      _fleetScopeToken: null,
+      // Bump the generation so any in-flight deferred policy/focus-restore
+      // microtask (which captured an older generation) sees a mismatch and
+      // bails — clearing the token alone can't invalidate them because the
+      // post-reset token is null and the exit-side guard compares against
+      // null.
+      _policyGeneration: get()._policyGeneration + 1,
     }),
 });
 

@@ -293,7 +293,13 @@ export function registerFleetActions(actions: ActionRegistry): void {
     run: async () => {
       const flag = useFleetScopeFlagStore.getState();
       if (!flag.isHydrated || flag.mode !== "scoped") return;
-      useWorktreeSelectionStore.getState().exitFleetScope();
+      // Read the live token synchronously at dispatch time and pass it
+      // through. `exitFleetScope` re-validates it against the store before any
+      // async work, so a scope torn down between this read and the call is a
+      // structural no-op rather than a misfired restore.
+      const token = useWorktreeSelectionStore.getState()._fleetScopeToken;
+      if (token === null) return;
+      useWorktreeSelectionStore.getState().exitFleetScope(token);
     },
   }));
 

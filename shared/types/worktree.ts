@@ -2,6 +2,14 @@ import type { FileChangeDetail, WorktreeChanges } from "./git.js";
 import type { GitHubPRCIStatus } from "./github.js";
 import type { PluginWorktreeLinked } from "./plugin.js";
 
+/**
+ * Opaque ownership token for an active fleet scope. Minted by
+ * `enterFleetScope()` and required by `exitFleetScope(token)` so a stale exit
+ * whose async continuation runs after a newer `enterFleetScope()` becomes a
+ * structural no-op (token mismatch) rather than racing a mutable slot.
+ */
+export type FleetScopeToken = string & { readonly __brand: unique symbol };
+
 /** Worktree mood indicator */
 export type WorktreeMood = "stable" | "active" | "stale" | "error";
 
